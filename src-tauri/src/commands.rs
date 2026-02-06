@@ -7,11 +7,21 @@ use std::fs::File;
 use std::path::PathBuf;
 use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
+use tree_sitter_bash;
+use tree_sitter_c;
+use tree_sitter_cpp;
+use tree_sitter_css;
+use tree_sitter_go;
+use tree_sitter_html;
 use tree_sitter_javascript;
+use tree_sitter_java;
 use tree_sitter_json;
 use tree_sitter_python;
 use tree_sitter_rust;
+use tree_sitter_toml_ng;
 use tree_sitter_typescript;
+use tree_sitter_xml;
+use tree_sitter_yaml;
 use uuid::Uuid;
 
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
@@ -48,13 +58,33 @@ struct LeafToken {
 
 fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
     if let Some(p) = path {
+        if let Some(file_name) = p.file_name().and_then(|name| name.to_str()) {
+            let lower_name = file_name.to_lowercase();
+            match lower_name.as_str() {
+                "dockerfile" | "makefile" => return Some(tree_sitter_bash::LANGUAGE.into()),
+                _ => {}
+            }
+        }
+
         if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
             return match ext.to_lowercase().as_str() {
-                "js" | "jsx" | "mjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
+                "js" | "jsx" | "mjs" | "cjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
                 "ts" | "tsx" | "mts" | "cts" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
                 "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
-                "py" => Some(tree_sitter_python::LANGUAGE.into()),
-                "json" => Some(tree_sitter_json::LANGUAGE.into()),
+                "py" | "pyw" => Some(tree_sitter_python::LANGUAGE.into()),
+                "json" | "jsonc" => Some(tree_sitter_json::LANGUAGE.into()),
+                "html" | "htm" | "xhtml" => Some(tree_sitter_html::LANGUAGE.into()),
+                "css" | "scss" | "sass" | "less" => Some(tree_sitter_css::LANGUAGE.into()),
+                "sh" | "bash" | "zsh" => Some(tree_sitter_bash::LANGUAGE.into()),
+                "toml" => Some(tree_sitter_toml_ng::LANGUAGE.into()),
+                "yaml" | "yml" => Some(tree_sitter_yaml::LANGUAGE.into()),
+                "xml" | "svg" => Some(tree_sitter_xml::LANGUAGE_XML.into()),
+                "c" | "h" => Some(tree_sitter_c::LANGUAGE.into()),
+                "cc" | "cp" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" => {
+                    Some(tree_sitter_cpp::LANGUAGE.into())
+                }
+                "go" => Some(tree_sitter_go::LANGUAGE.into()),
+                "java" => Some(tree_sitter_java::LANGUAGE.into()),
                 _ => None,
             };
         }
