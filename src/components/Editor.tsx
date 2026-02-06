@@ -19,10 +19,18 @@ interface CodeUnitDiff {
 }
 
 const MAX_LINE_RANGE = 2147483647;
+const DEFAULT_FETCH_BUFFER_LINES = 50;
+const LARGE_FILE_FETCH_BUFFER_LINES = 200;
+const LARGE_FILE_FETCH_DEBOUNCE_MS = 12;
+const NORMAL_FILE_FETCH_DEBOUNCE_MS = 50;
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
   return normalized === "\n" ? "" : normalized;
+}
+
+function normalizeLineText(value: string) {
+  return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 function getEditableText(element: HTMLDivElement) {
@@ -88,6 +96,8 @@ export function Editor({ tab }: { tab: FileTab }) {
   const { settings = { fontSize: 14, fontFamily: 'monospace' }, updateTab } = useStore();
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);
+  const [plainLines, setPlainLines] = useState<string[]>([]);
+  const [plainStartLine, setPlainStartLine] = useState(0);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -106,9 +116,33 @@ export function Editor({ tab }: { tab: FileTab }) {
   const pendingTextRef = useRef('');
 
   const itemSize = useMemo(() => (settings.fontSize || 14) * 1.5, [settings.fontSize]);
+  const isLargeReadOnlyMode = tab.largeFileMode;
+
+  const fetchPlainLines = useCallback(
+    async (start: number, end: number) => {
+      const version = ++currentRequestVersion.current;
+
+      try {
+        const lines = await invoke<string[]>('get_visible_lines_chunk', {
+          id: tab.id,
+          startLine: start,
+          endLine: end,
+        });
+
+        if (version !== currentRequestVersion.current) return;
+        if (!Array.isArray(lines)) return;
+
+        setPlainLines(lines.map(normalizeLineText));
+        setPlainStartLine(start);
+      } catch (e) {
+        console.error('Fetch visible lines error:', e);
+      }
+    },
+    [tab.id]
+  );
 
   const handleScroll = () => {
-    if (contentRef.current && listRef.current) {
+    if (!isLargeReadOnlyMode && contentRef.current && listRef.current) {
       const listEl = listRef.current._outerRef;
       if (listEl) {
         listEl.scrollTop = contentRef.current.scrollTop;
@@ -118,17 +152,22 @@ export function Editor({ tab }: { tab: FileTab }) {
   };
 
   const lineTokens = useMemo(() => {
+    if (isLargeReadOnlyMode) {
+      return [];
+    }
+
     const lines: SyntaxToken[][] = [];
     let currentLine: SyntaxToken[] = [];
 
     for (const token of tokens) {
       if (token.text === undefined || token.text === null) continue;
       const text = token.text.replace(/\r\n/g, '\n');
-      const linesInToken = text.split('\n');
+      const firstNewlineIndex = text.indexOf('\n');
 
-      if (linesInToken.length === 1) {
+      if (firstNewlineIndex === -1) {
         currentLine.push(token);
       } else {
+        const linesInToken = text.split('\n');
         currentLine.push({ ...token, text: linesInToken[0] });
         lines.push([...currentLine]);
 
@@ -171,16 +210,23 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const syncVisibleTokens = useCallback(
     async (lineCount: number) => {
-      const buffer = 50;
-      const scrollTop = contentRef.current?.scrollTop ?? 0;
+      const buffer = tab.largeFileMode ? LARGE_FILE_FETCH_BUFFER_LINES : DEFAULT_FETCH_BUFFER_LINES;
+      const scrollTop = isLargeReadOnlyMode
+        ? listRef.current?._outerRef?.scrollTop ?? 0
+        : contentRef.current?.scrollTop ?? 0;
       const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
       const currentLine = Math.max(0, Math.floor(scrollTop / itemSize));
       const start = Math.max(0, currentLine - buffer);
       const end = Math.max(start + 1, Math.min(lineCount, currentLine + viewportLines + buffer));
 
+      if (isLargeReadOnlyMode) {
+        await fetchPlainLines(start, end);
+        return;
+      }
+
       await fetchTokens(start, end);
     },
-    [fetchTokens, height, itemSize]
+    [fetchTokens, fetchPlainLines, height, itemSize, tab.largeFileMode, isLargeReadOnlyMode]
   );
 
   const loadTextFromBackend = useCallback(async () => {
@@ -283,19 +329,35 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const onItemsRendered = useCallback(
     ({ visibleStartIndex, visibleStopIndex }) => {
-      const buffer = 50;
+      const buffer = tab.largeFileMode ? LARGE_FILE_FETCH_BUFFER_LINES : DEFAULT_FETCH_BUFFER_LINES;
       const start = Math.max(0, visibleStartIndex - buffer);
       const end = Math.min(tab.lineCount, visibleStopIndex + buffer);
 
-      const cachedCount = lineTokens.length;
-      const isOutside = tokens.length === 0 || start < startLine || end > startLine + cachedCount;
+      const cachedCount = isLargeReadOnlyMode ? plainLines.length : lineTokens.length;
+      const cachedStart = isLargeReadOnlyMode ? plainStartLine : startLine;
+      const hasNoCache = isLargeReadOnlyMode ? plainLines.length === 0 : tokens.length === 0;
+      const isOutside = hasNoCache || start < cachedStart || end > cachedStart + cachedCount;
 
       if (isOutside) {
         if (requestTimeout.current) clearTimeout(requestTimeout.current);
-        requestTimeout.current = setTimeout(() => fetchTokens(start, Math.max(start + 1, end)), 50);
+        const debounceMs = tab.largeFileMode ? LARGE_FILE_FETCH_DEBOUNCE_MS : NORMAL_FILE_FETCH_DEBOUNCE_MS;
+        requestTimeout.current = setTimeout(
+          () => syncVisibleTokens(tab.lineCount),
+          debounceMs
+        );
       }
     },
-    [startLine, lineTokens.length, tokens.length, fetchTokens, tab.lineCount]
+    [
+      isLargeReadOnlyMode,
+      plainLines.length,
+      plainStartLine,
+      lineTokens.length,
+      tokens.length,
+      startLine,
+      syncVisibleTokens,
+      tab.lineCount,
+      tab.largeFileMode,
+    ]
   );
 
   const renderTokens = useCallback((tokensArr: SyntaxToken[]) => {
@@ -393,7 +455,28 @@ export function Editor({ tab }: { tab: FileTab }) {
     });
   }, []);
 
+  const renderPlainLine = useCallback((text: string) => {
+    if (!text) {
+      return null;
+    }
+
+    return <span>{text}</span>;
+  }, []);
+
   useEffect(() => {
+    if (isLargeReadOnlyMode) {
+      initializedRef.current = false;
+      suppressExternalReloadRef.current = false;
+      syncInFlightRef.current = false;
+      pendingTextRef.current = '';
+      syncedTextRef.current = '';
+      setTokens([]);
+      setStartLine(0);
+
+      void syncVisibleTokens(Math.max(1, tab.lineCount));
+      return;
+    }
+
     let cancelled = false;
 
     initializedRef.current = false;
@@ -423,9 +506,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (requestTimeout.current) clearTimeout(requestTimeout.current);
       if (editTimeout.current) clearTimeout(editTimeout.current);
     };
-  }, [tab.id, loadTextFromBackend, syncVisibleTokens]);
+  }, [tab.id, loadTextFromBackend, syncVisibleTokens, tab.lineCount, isLargeReadOnlyMode]);
 
   useEffect(() => {
+    if (isLargeReadOnlyMode) {
+      void syncVisibleTokens(Math.max(1, tab.lineCount));
+      return;
+    }
+
     if (!initializedRef.current) {
       return;
     }
@@ -445,33 +533,47 @@ export function Editor({ tab }: { tab: FileTab }) {
     };
 
     syncExternalChange();
-  }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens]);
+  }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens, isLargeReadOnlyMode]);
+
+  useEffect(() => {
+    if (!isLargeReadOnlyMode) {
+      setPlainLines([]);
+      setPlainStartLine(0);
+    }
+  }, [isLargeReadOnlyMode, tab.id]);
 
   return (
     <div ref={containerRef} className="flex-1 w-full h-full overflow-hidden bg-background relative">
-      <div
-        ref={contentRef}
-        contentEditable="plaintext-only"
-        suppressContentEditableWarning
-        className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
-        style={{
-          fontFamily: settings.fontFamily,
-          fontSize: `${settings.fontSize}px`,
-          lineHeight: '1.5',
-          whiteSpace: 'pre',
-          paddingLeft: '5rem',
-          caretColor: 'black',
-          color: 'transparent',
-        }}
-        onInput={handleInput}
-        onScroll={handleScroll}
-        onCompositionStart={handleCompositionStart}
-        onCompositionEnd={handleCompositionEnd}
-        spellCheck={false}
-      />
+      {!isLargeReadOnlyMode && (
+        <div
+          ref={contentRef}
+          contentEditable="plaintext-only"
+          suppressContentEditableWarning
+          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
+          style={{
+            fontFamily: settings.fontFamily,
+            fontSize: `${settings.fontSize}px`,
+            lineHeight: '1.5',
+            whiteSpace: 'pre',
+            paddingLeft: '5rem',
+            caretColor: 'black',
+            color: 'transparent',
+          }}
+          onInput={handleInput}
+          onScroll={handleScroll}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          spellCheck={false}
+        />
+      )}
 
       {width > 0 && height > 0 && (
-        <div ref={backdropRef} className="absolute inset-0 w-full h-full z-10 pointer-events-none overflow-hidden">
+        <div
+          ref={backdropRef}
+          className={`absolute inset-0 w-full h-full z-10 overflow-hidden ${
+            isLargeReadOnlyMode ? '' : 'pointer-events-none'
+          }`}
+        >
           <List
             ref={listRef}
             height={height}
@@ -481,11 +583,18 @@ export function Editor({ tab }: { tab: FileTab }) {
             onItemsRendered={onItemsRendered}
             overscanCount={20}
             style={{ overflowX: 'auto' }}
+            onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
           >
             {({ index, style }) => {
-              const relativeIndex = index - startLine;
+              const relativeIndex = isLargeReadOnlyMode ? index - plainStartLine : index - startLine;
               const lineTokensArr =
-                relativeIndex >= 0 && relativeIndex < lineTokens.length ? lineTokens[relativeIndex] : [];
+                !isLargeReadOnlyMode && relativeIndex >= 0 && relativeIndex < lineTokens.length
+                  ? lineTokens[relativeIndex]
+                  : [];
+              const plainLine =
+                isLargeReadOnlyMode && relativeIndex >= 0 && relativeIndex < plainLines.length
+                  ? plainLines[relativeIndex]
+                  : '';
 
               return (
                 <div
@@ -506,7 +615,11 @@ export function Editor({ tab }: { tab: FileTab }) {
                   >
                     {index + 1}
                   </span>
-                  {lineTokensArr.length > 0 ? renderTokens(lineTokensArr) : <span className="opacity-10 italic">...</span>}
+                  {isLargeReadOnlyMode
+                    ? renderPlainLine(plainLine)
+                    : lineTokensArr.length > 0
+                    ? renderTokens(lineTokensArr)
+                    : <span className="opacity-10 italic">...</span>}
                 </div>
               );
             }}

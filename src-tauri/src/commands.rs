@@ -25,6 +25,7 @@ use tree_sitter_yaml;
 use uuid::Uuid;
 
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
+const ENCODING_DETECT_SAMPLE_BYTES: usize = 1024 * 1024;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -374,7 +375,11 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
         enc
     } else {
         let mut detector = EncodingDetector::new();
-        detector.feed(&mmap, true);
+        if size as usize > ENCODING_DETECT_SAMPLE_BYTES {
+            detector.feed(&mmap[..ENCODING_DETECT_SAMPLE_BYTES], true);
+        } else {
+            detector.feed(&mmap, true);
+        }
         detector.guess(None, true)
     };
 
@@ -412,6 +417,44 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
         line_count,
         large_file_mode,
     })
+}
+
+#[tauri::command]
+pub fn get_visible_lines_chunk(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+) -> Result<Vec<String>, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let rope = &doc.rope;
+        let len = rope.len_lines();
+
+        let start = start_line.min(len);
+        let end = end_line.min(len);
+
+        if start >= end {
+            return Ok(Vec::new());
+        }
+
+        let mut lines = Vec::with_capacity(end - start);
+        for line_idx in start..end {
+            let mut text = rope.line(line_idx).to_string();
+
+            if text.ends_with('\n') {
+                text.pop();
+                if text.ends_with('\r') {
+                    text.pop();
+                }
+            }
+
+            lines.push(text);
+        }
+
+        Ok(lines)
+    } else {
+        Err("Document not found".to_string())
+    }
 }
 
 #[tauri::command]

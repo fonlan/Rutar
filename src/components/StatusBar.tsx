@@ -36,7 +36,7 @@ export function StatusBar() {
                     {activeTab.largeFileMode ? (
                         <span className="flex items-center gap-1 text-orange-500 font-medium">
                             <Zap className="w-3 h-3" />
-                            Large File Mode
+                            Large File Mode (Read-Only)
                         </span>
                     ) : (
                         <span className="flex items-center gap-1 text-green-600 dark:text-green-400">

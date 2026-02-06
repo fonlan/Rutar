@@ -19,6 +19,7 @@ pub fn run() {
             greet, 
             commands::open_file, 
             commands::get_visible_lines,
+            commands::get_visible_lines_chunk,
             commands::get_syntax_tokens,
             commands::close_file,
             commands::save_file,
@@ -33,4 +34,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
