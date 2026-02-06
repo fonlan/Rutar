@@ -1,18 +1,20 @@
-use crate::state::{AppState, Document};
-use tauri::State;
-use std::fs::File;
-use std::path::PathBuf;
-use memmap2::Mmap;
+use crate::state::{AppState, Document, EditOperation};
 use chardetng::EncodingDetector;
 use encoding_rs::Encoding;
+use memmap2::Mmap;
 use ropey::Rope;
-use uuid::Uuid;
-use tree_sitter::Parser;
+use std::fs::File;
+use std::path::PathBuf;
+use tauri::State;
+use tree_sitter::{InputEdit, Language, Parser, Point};
 use tree_sitter_javascript;
-use tree_sitter_typescript;
-use tree_sitter_rust;
-use tree_sitter_python;
 use tree_sitter_json;
+use tree_sitter_python;
+use tree_sitter_rust;
+use tree_sitter_typescript;
+use uuid::Uuid;
+
+const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,123 +39,14 @@ pub struct SyntaxToken {
     end_byte: Option<usize>,
 }
 
-#[tauri::command]
-pub fn get_syntax_tokens(state: State<'_, AppState>, id: String, start_line: usize, end_line: usize) -> Result<Vec<SyntaxToken>, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        let rope = &doc.rope;
-        let len = rope.len_lines();
-        
-        let start = start_line.min(len);
-        let end = end_line.min(len);
-        
-        if start >= end {
-            return Ok(Vec::new());
-        }
-
-        let start_char = rope.line_to_char(start);
-        let end_char = rope.line_to_char(end);
-        
-        let text: String = rope.slice(start_char..end_char).to_string();
-        let text_bytes = text.as_bytes();
-        
-        let language = get_language_from_path(&doc.path);
-        let mut parser = Parser::new();
-        
-        if let Some(lang) = language {
-            let _ = parser.set_language(&lang);
-        }
-        
-        let tree = parser.parse(&text, None);
-        let mut tokens = Vec::new();
-
-        if let Some(tree) = tree {
-            let root = tree.root_node();
-            let mut last_pos = 0;
-            
-            fn collect_tokens(node: tree_sitter::Node, tokens: &mut Vec<SyntaxToken>, text_bytes: &[u8], last_pos: &mut usize) {
-                let start = node.start_byte();
-                let end = node.end_byte();
-                
-                if start > *last_pos {
-                    let gap_text = String::from_utf8_lossy(&text_bytes[*last_pos..start]).to_string();
-                    if !gap_text.is_empty() {
-                        tokens.push(SyntaxToken {
-                            r#type: None,
-                            text: Some(gap_text),
-                            start_byte: Some(*last_pos),
-                            end_byte: Some(start),
-                        });
-                    }
-                }
-                *last_pos = start.max(*last_pos);
-
-                if node.child_count() == 0 {
-                    let text_slice = String::from_utf8_lossy(&text_bytes[start..end]).to_string();
-                    if !text_slice.is_empty() {
-                        tokens.push(SyntaxToken {
-                            r#type: Some(node.kind().to_string()),
-                            text: Some(text_slice),
-                            start_byte: Some(start),
-                            end_byte: Some(end),
-                        });
-                    }
-                    *last_pos = end.max(*last_pos);
-                } else {
-                    let mut cursor = node.walk();
-                    // 我们需要按顺序遍历所有子节点
-                    let mut has_child = cursor.goto_first_child();
-                    while has_child {
-                        collect_tokens(cursor.node(), tokens, text_bytes, last_pos);
-                        has_child = cursor.goto_next_sibling();
-                    }
-                    // 处理完子节点后，确保 last_pos 不落后于当前节点的 end
-                    if *last_pos < end {
-                        let remaining = String::from_utf8_lossy(&text_bytes[*last_pos..end]).to_string();
-                        if !remaining.is_empty() {
-                            tokens.push(SyntaxToken {
-                                r#type: None,
-                                text: Some(remaining),
-                                start_byte: Some(*last_pos),
-                                end_byte: Some(end),
-                            });
-                        }
-                        *last_pos = end;
-                    }
-                }
-            }
-            
-            collect_tokens(root, &mut tokens, text_bytes, &mut last_pos);
-            
-            // 处理最后的剩余部分
-            if last_pos < text_bytes.len() {
-                let remaining = String::from_utf8_lossy(&text_bytes[last_pos..]).to_string();
-                if !remaining.is_empty() {
-                    tokens.push(SyntaxToken {
-                        r#type: None,
-                        text: Some(remaining),
-                        start_byte: Some(last_pos),
-                        end_byte: Some(text_bytes.len()),
-                    });
-                }
-            }
-        } else {
-            // 如果解析失败，将整个文本作为一个纯文本 token 返回
-            let total_len = text.len();
-            tokens.push(SyntaxToken {
-                r#type: None,
-                text: Some(text),
-                start_byte: Some(0),
-                end_byte: Some(total_len),
-            });
-        }
-        
-        Ok(tokens)
-    } else {
-        Err("Document not found".to_string())
-    }
+#[derive(Debug)]
+struct LeafToken {
+    kind: String,
+    start_byte: usize,
+    end_byte: usize,
 }
 
-fn get_language_from_path(path: &Option<PathBuf>) -> Option<tree_sitter::Language> {
+fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
     if let Some(p) = path {
         if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
             return match ext.to_lowercase().as_str() {
@@ -166,66 +59,325 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<tree_sitter::Languag
             };
         }
     }
+
     None
+}
+
+fn create_parser(language: Option<Language>) -> Option<Parser> {
+    let lang = language?;
+    let mut parser = Parser::new();
+    parser.set_language(&lang).ok()?;
+    Some(parser)
+}
+
+fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {
+    if !enable_syntax {
+        doc.language = None;
+        doc.parser = None;
+        doc.tree = None;
+        doc.syntax_dirty = false;
+        return;
+    }
+
+    doc.language = get_language_from_path(&doc.path);
+    doc.parser = create_parser(doc.language.clone());
+    doc.tree = None;
+    doc.syntax_dirty = doc.parser.is_some();
+}
+
+fn ensure_document_tree(doc: &mut Document) {
+    if doc.parser.is_none() {
+        doc.tree = None;
+        doc.syntax_dirty = false;
+        return;
+    }
+
+    if !doc.syntax_dirty && doc.tree.is_some() {
+        return;
+    }
+
+    if let Some(parser) = doc.parser.as_mut() {
+        let source: String = doc.rope.chunks().collect();
+        let parsed = parser.parse(&source, doc.tree.as_ref());
+        doc.tree = parsed;
+    }
+
+    doc.syntax_dirty = false;
+}
+
+fn point_for_char(rope: &Rope, char_idx: usize) -> Point {
+    let clamped = char_idx.min(rope.len_chars());
+    let row = rope.char_to_line(clamped);
+    let line_start = rope.line_to_char(row);
+    let column = rope.slice(line_start..clamped).len_bytes();
+
+    Point { row, column }
+}
+
+fn advance_point_with_text(start: Point, text: &str) -> Point {
+    let mut row = start.row;
+    let mut column = start.column;
+
+    for b in text.bytes() {
+        if b == b'\n' {
+            row += 1;
+            column = 0;
+        } else {
+            column += 1;
+        }
+    }
+
+    Point { row, column }
+}
+
+fn collect_leaf_tokens(
+    node: tree_sitter::Node,
+    range_start_byte: usize,
+    range_end_byte: usize,
+    out: &mut Vec<LeafToken>,
+) {
+    if node.end_byte() <= range_start_byte || node.start_byte() >= range_end_byte {
+        return;
+    }
+
+    if node.child_count() == 0 {
+        let start = node.start_byte().max(range_start_byte);
+        let end = node.end_byte().min(range_end_byte);
+
+        if start < end {
+            out.push(LeafToken {
+                kind: node.kind().to_string(),
+                start_byte: start,
+                end_byte: end,
+            });
+        }
+
+        return;
+    }
+
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            collect_leaf_tokens(cursor.node(), range_start_byte, range_end_byte, out);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+}
+
+fn push_plain_token(tokens: &mut Vec<SyntaxToken>, rope: &Rope, start_byte: usize, end_byte: usize) {
+    if start_byte >= end_byte {
+        return;
+    }
+
+    let text = rope.byte_slice(start_byte..end_byte).to_string();
+    if text.is_empty() {
+        return;
+    }
+
+    tokens.push(SyntaxToken {
+        r#type: None,
+        text: Some(text),
+        start_byte: Some(start_byte),
+        end_byte: Some(end_byte),
+    });
+}
+
+fn build_tokens_with_gaps(
+    rope: &Rope,
+    mut leaves: Vec<LeafToken>,
+    range_start_byte: usize,
+    range_end_byte: usize,
+) -> Vec<SyntaxToken> {
+    leaves.sort_by(|a, b| {
+        a.start_byte
+            .cmp(&b.start_byte)
+            .then(a.end_byte.cmp(&b.end_byte))
+    });
+
+    let mut tokens = Vec::new();
+    let mut last_pos = range_start_byte;
+
+    for leaf in leaves {
+        if leaf.end_byte <= last_pos {
+            continue;
+        }
+
+        if leaf.start_byte > last_pos {
+            push_plain_token(&mut tokens, rope, last_pos, leaf.start_byte);
+        }
+
+        let start = leaf.start_byte.max(last_pos);
+        let end = leaf.end_byte.min(range_end_byte);
+
+        if start < end {
+            let text = rope.byte_slice(start..end).to_string();
+            if !text.is_empty() {
+                tokens.push(SyntaxToken {
+                    r#type: Some(leaf.kind),
+                    text: Some(text),
+                    start_byte: Some(start),
+                    end_byte: Some(end),
+                });
+            }
+            last_pos = end;
+        }
+
+        if last_pos >= range_end_byte {
+            break;
+        }
+    }
+
+    if last_pos < range_end_byte {
+        push_plain_token(&mut tokens, rope, last_pos, range_end_byte);
+    }
+
+    tokens
+}
+
+fn apply_operation(doc: &mut Document, operation: &EditOperation) -> Result<(), String> {
+    let rope = &mut doc.rope;
+    let start = operation.start_char.min(rope.len_chars());
+    let old_char_len = operation.old_text.chars().count();
+    let end = start
+        .checked_add(old_char_len)
+        .ok_or_else(|| "Edit range overflow".to_string())?;
+
+    if end > rope.len_chars() {
+        return Err("Edit range out of bounds".to_string());
+    }
+
+    let current_old = rope.slice(start..end).to_string();
+    if current_old != operation.old_text {
+        return Err("Edit history out of sync".to_string());
+    }
+
+    let start_byte = rope.char_to_byte(start);
+    let old_end_byte = start_byte + operation.old_text.len();
+    let new_end_byte = start_byte + operation.new_text.len();
+
+    let start_position = point_for_char(rope, start);
+    let old_end_position = advance_point_with_text(start_position, &operation.old_text);
+    let new_end_position = advance_point_with_text(start_position, &operation.new_text);
+
+    if start < end {
+        rope.remove(start..end);
+    }
+
+    if !operation.new_text.is_empty() {
+        rope.insert(start, &operation.new_text);
+    }
+
+    if let Some(tree) = doc.tree.as_mut() {
+        tree.edit(&InputEdit {
+            start_byte,
+            old_end_byte,
+            new_end_byte,
+            start_position,
+            old_end_position,
+            new_end_position,
+        });
+    }
+
+    doc.syntax_dirty = doc.parser.is_some();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_syntax_tokens(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+) -> Result<Vec<SyntaxToken>, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let len = doc.rope.len_lines();
+        let start = start_line.min(len);
+        let end = end_line.min(len);
+
+        if start >= end {
+            return Ok(Vec::new());
+        }
+
+        let start_char = doc.rope.line_to_char(start);
+        let end_char = doc.rope.line_to_char(end);
+
+        let start_byte = doc.rope.char_to_byte(start_char);
+        let end_byte = doc.rope.char_to_byte(end_char);
+
+        if start_byte >= end_byte {
+            return Ok(Vec::new());
+        }
+
+        ensure_document_tree(&mut doc);
+
+        if let Some(tree) = doc.tree.as_ref() {
+            let mut leaves = Vec::new();
+            collect_leaf_tokens(tree.root_node(), start_byte, end_byte, &mut leaves);
+            Ok(build_tokens_with_gaps(&doc.rope, leaves, start_byte, end_byte))
+        } else {
+            Ok(vec![SyntaxToken {
+                r#type: None,
+                text: Some(doc.rope.byte_slice(start_byte..end_byte).to_string()),
+                start_byte: Some(start_byte),
+                end_byte: Some(end_byte),
+            }])
+        }
+    } else {
+        Err("Document not found".to_string())
+    }
 }
 
 #[tauri::command]
 pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
     let file = File::open(&path_buf).map_err(|e| e.to_string())?;
-    
-    // Check file size for large file mode (> 50MB)
+
     let metadata = file.metadata().map_err(|e| e.to_string())?;
     let size = metadata.len();
-    let large_file_mode = size > 50 * 1024 * 1024;
+    let large_file_mode = size > LARGE_FILE_THRESHOLD_BYTES as u64;
 
-    // Use mmap
-    // Safety: The file is open and we assume no other process truncates it while we read.
     let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
 
-    // Detect encoding
-    // 1. Check BOM
-    let (encoding, _bom_size) = match Encoding::for_bom(&mmap) {
-        Some((enc, size)) => (Some(enc), size),
-        None => (None, 0),
-    };
-    
-    let encoding = if let Some(enc) = encoding {
+    let encoding = if let Some((enc, _size)) = Encoding::for_bom(&mmap) {
         enc
     } else {
-        // 2. Use chardetng
         let mut detector = EncodingDetector::new();
         detector.feed(&mmap, true);
         detector.guess(None, true)
     };
 
-    // Decode
-    // We skip BOM if present (handled by decode logic usually, but let's be careful)
-    // encoding_rs decode handles BOM stripping if the encoding matches? 
-    // Actually, decode_with_bom_removal is what we want if we pass the whole thing.
     let (cow, _, _malformed) = encoding.decode(&mmap);
-    
-    // Create Rope
     let rope = Rope::from_str(&cow);
     let line_count = rope.len_lines();
 
     let id = Uuid::new_v4().to_string();
-    
-    let doc = Document {
+
+    let mut doc = Document {
         rope,
         encoding,
         path: Some(path_buf.clone()),
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,
+        tree: None,
+        language: None,
+        syntax_dirty: false,
     };
-    
+
+    configure_document_syntax(&mut doc, !large_file_mode);
+
     state.documents.insert(id.clone(), doc);
-    
+
     Ok(FileInfo {
         id,
         path: path.clone(),
-        name: path_buf.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        name: path_buf
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         encoding: encoding.name().to_string(),
         line_count,
         large_file_mode,
@@ -233,14 +385,19 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
 }
 
 #[tauri::command]
-pub fn get_visible_lines(state: State<'_, AppState>, id: String, start_line: usize, end_line: usize) -> Result<String, String> {
+pub fn get_visible_lines(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+) -> Result<String, String> {
     if let Some(doc) = state.documents.get(&id) {
         let rope = &doc.rope;
         let len = rope.len_lines();
-        
+
         let start = start_line.min(len);
         let end = end_line.min(len);
-        
+
         if start >= end {
             return Ok(String::new());
         }
@@ -248,11 +405,7 @@ pub fn get_visible_lines(state: State<'_, AppState>, id: String, start_line: usi
         let start_char = rope.line_to_char(start);
         let end_char = rope.line_to_char(end);
 
-        // Get slice
-        let slice = rope.slice(start_char..end_char);
-        
-        // Return as String
-        Ok(slice.to_string())
+        Ok(rope.slice(start_char..end_char).to_string())
     } else {
         Err("Document not found".to_string())
     }
@@ -268,18 +421,12 @@ pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), Str
     if let Some(doc) = state.documents.get(&id) {
         if let Some(path) = &doc.path {
             let mut file = File::create(path).map_err(|e| e.to_string())?;
-            let rope = &doc.rope;
-            let encoding = doc.encoding;
+            let utf8_content: String = doc.rope.chunks().collect();
+            let (bytes, _, _malformed) = doc.encoding.encode(&utf8_content);
 
-            // Collect all chunks into a single UTF-8 string
-            let utf8_content: String = rope.chunks().collect();
-            
-            // Encode back to original encoding
-            let (bytes, _, _malformed) = encoding.encode(&utf8_content);
-            
             use std::io::Write;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
-            
+
             Ok(())
         } else {
             Err("No path associated with this file. Use Save As.".to_string())
@@ -292,18 +439,18 @@ pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), Str
 #[tauri::command]
 pub async fn save_file_as(state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
     let path_buf = PathBuf::from(&path);
+
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let mut file = File::create(&path_buf).map_err(|e| e.to_string())?;
-        let rope = &doc.rope;
-        let encoding = doc.encoding;
+        let utf8_content: String = doc.rope.chunks().collect();
+        let (bytes, _, _malformed) = doc.encoding.encode(&utf8_content);
 
-        let utf8_content: String = rope.chunks().collect();
-        let (bytes, _, _malformed) = encoding.encode(&utf8_content);
-        
         use std::io::Write;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
-        
+
         doc.path = Some(path_buf);
+        let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
+        configure_document_syntax(&mut doc, enable_syntax);
         Ok(())
     } else {
         Err("Document not found".to_string())
@@ -316,7 +463,7 @@ pub fn convert_encoding(state: State<'_, AppState>, id: String, new_encoding: St
         let label = new_encoding.as_bytes();
         let encoding = Encoding::for_label(label)
             .ok_or_else(|| format!("Unsupported encoding: {}", new_encoding))?;
-        
+
         doc.encoding = encoding;
         Ok(())
     } else {
@@ -328,18 +475,23 @@ pub fn convert_encoding(state: State<'_, AppState>, id: String, new_encoding: St
 pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
     let id = Uuid::new_v4().to_string();
     let encoding = encoding_rs::UTF_8;
-    
-    let doc = Document {
+
+    let mut doc = Document {
         rope: Rope::new(),
         encoding,
         path: None,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,
+        tree: None,
+        language: None,
+        syntax_dirty: false,
     };
-    
+
+    configure_document_syntax(&mut doc, true);
+
     state.documents.insert(id.clone(), doc);
-    
+
     Ok(FileInfo {
         id,
         path: String::new(),
@@ -361,25 +513,32 @@ pub struct DirEntry {
 pub fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
     let entries = std::fs::read_dir(path).map_err(|e| e.to_string())?;
     let mut result = Vec::new();
+
     for entry in entries {
         if let Ok(entry) = entry {
             let path = entry.path();
             result.push(DirEntry {
-                name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                name: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
                 path: path.to_string_lossy().to_string(),
                 is_dir: path.is_dir(),
             });
         }
     }
+
     Ok(result)
 }
 
 #[tauri::command]
 pub fn undo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        if let Some(prev) = doc.undo_stack.pop() {
-            let current = std::mem::replace(&mut doc.rope, prev);
-            doc.redo_stack.push(current);
+        if let Some(operation) = doc.undo_stack.pop() {
+            let inverse = operation.inverse();
+            apply_operation(&mut doc, &inverse)?;
+            doc.redo_stack.push(operation);
             Ok(doc.rope.len_lines())
         } else {
             Err("No more undo steps".to_string())
@@ -392,9 +551,9 @@ pub fn undo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
 #[tauri::command]
 pub fn redo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        if let Some(next) = doc.redo_stack.pop() {
-            let current = std::mem::replace(&mut doc.rope, next);
-            doc.undo_stack.push(current);
+        if let Some(operation) = doc.redo_stack.pop() {
+            apply_operation(&mut doc, &operation)?;
+            doc.undo_stack.push(operation);
             Ok(doc.rope.len_lines())
         } else {
             Err("No more redo steps".to_string())
@@ -405,27 +564,36 @@ pub fn redo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
 }
 
 #[tauri::command]
-pub fn edit_text(state: State<'_, AppState>, id: String, start_char: usize, end_char: usize, new_text: String) -> Result<usize, String> {
+pub fn edit_text(
+    state: State<'_, AppState>,
+    id: String,
+    start_char: usize,
+    end_char: usize,
+    new_text: String,
+) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        // Save current state to undo stack
-        let old_rope = doc.rope.clone();
-        doc.undo_stack.push(old_rope);
-        doc.redo_stack.clear(); // Clear redo stack on new edit
-        
-        let rope = &mut doc.rope;
-        let start = start_char.min(rope.len_chars());
-        let end = end_char.min(rope.len_chars());
-        
-        if start < end {
-            rope.remove(start..end);
+        let len_chars = doc.rope.len_chars();
+        let start = start_char.min(len_chars);
+        let end = end_char.min(len_chars).max(start);
+
+        let old_text = doc.rope.slice(start..end).to_string();
+        if old_text == new_text {
+            return Ok(doc.rope.len_lines());
         }
-        
-        if !new_text.is_empty() {
-            rope.insert(start, &new_text);
-        }
-        
-        Ok(rope.len_lines())
+
+        let operation = EditOperation {
+            start_char: start,
+            old_text,
+            new_text,
+        };
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        Ok(doc.rope.len_lines())
     } else {
         Err("Document not found".to_string())
     }
 }
+
