@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+/* 语法高亮主题 (GitHub Light 风格) */
+.whitespace-pre {
+    white-space: pre !important;
+}
+
+.token-keyword, .token-lexical_declaration, .token-variable_declaration, .token-function_declaration, .token-export_statement, .token-import_statement, .token-let_declaration, .token-const_item, .token-use_declaration, .token-mod_item, .token-enum_item, .token-struct_item, .token-impl_item, .token-trait_item { color: #d73a49 !important; font-weight: bold; }
+.token-string, .token-string_fragment, .token-string_literal, .token-string_content, .token-raw_string_literal { color: #032f62 !important; }
+.token-number, .token-number_literal, .token-integer_literal, .token-float_literal { color: #005cc5 !important; }
+.token-comment, .token-line_comment, .token-block_comment { color: #6a737d !important; font-style: italic; }
+.token-function, .token-call_expression, .token-function_item, .token-method_definition, .token-function_signature_item, .token-macro_invocation, .token-macro { color: #6f42c1 !important; }
+.token-identifier, .token-variable_identifier, .token-field_identifier, .token-scoped_identifier, .token-type_identifier { color: #24292e !important; }
+.token-type, .token-type_identifier, .token-primitive_type, .token-generic_type { color: #005cc5 !important; }
+.token-property, .token-property_identifier, .token-pair_key { color: #22863a !important; }
+.token-punctuation { color: #24292e !important; opacity: 0.8; }
+.token-operator, .token-binary_expression, .token-assignment_expression { color: #d73a49 !important; }
+.token-boolean, .token-boolean_literal, .token-true, .token-false, .token-null { color: #005cc5 !important; }
+.token-attribute_item { color: #6a737d !important; font-style: italic; }
+
+/* 修复特殊符号显示 */
+.token-_ { color: #24292e !important; opacity: 0.8; }
+
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+ 
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Prism Minimal Theme */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  @apply text-muted-foreground italic;
+}
+
+.token.punctuation {
+  @apply text-foreground/70;
+}
+
+.token.namespace {
+  @apply opacity-70;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  @apply text-orange-500;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  @apply text-green-600;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  @apply text-foreground;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  @apply text-blue-600 font-semibold;
+}
+
+.token.function,
+.token.class-name {
+  @apply text-purple-600;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  @apply text-yellow-600;
+}
