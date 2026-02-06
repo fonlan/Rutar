@@ -18,12 +18,25 @@ interface CodeUnitDiff {
   newText: string;
 }
 
+interface EditorSegmentState {
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
+const HUGE_EDITABLE_FETCH_BUFFER_LINES = 100;
 const LARGE_FILE_FETCH_DEBOUNCE_MS = 12;
+const HUGE_EDITABLE_FETCH_DEBOUNCE_MS = 24;
 const NORMAL_FILE_FETCH_DEBOUNCE_MS = 50;
+const LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD = 20000;
+const LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS = 160;
+const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
+const HUGE_EDITABLE_WINDOW_UNLOCK_MS = 260;
 const LARGE_FILE_EDIT_INTENT_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab']);
+const EMPTY_LINE_PLACEHOLDER = '\u200B';
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
@@ -32,6 +45,14 @@ function normalizeEditorText(value: string) {
 
 function normalizeLineText(value: string) {
   return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function normalizeEditableLineText(value: string) {
+  return normalizeLineText((value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
+}
+
+function normalizeSegmentText(value: string) {
+  return normalizeEditorText((value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
 }
 
 function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -152,10 +173,16 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
   const [plainStartLine, setPlainStartLine] = useState(0);
+  const [editableSegment, setEditableSegment] = useState<EditorSegmentState>({
+    startLine: 0,
+    endLine: 0,
+    text: '',
+  });
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const requestTimeout = useRef<any>(null);
@@ -168,15 +195,36 @@ export function Editor({ tab }: { tab: FileTab }) {
   const initializedRef = useRef(false);
   const suppressExternalReloadRef = useRef(false);
   const largeModePromptOpenRef = useRef(false);
+  const pendingSyncRequestedRef = useRef(false);
+  const hugeWindowLockedRef = useRef(false);
+  const hugeWindowFollowScrollOnUnlockRef = useRef(false);
+  const hugeWindowUnlockTimerRef = useRef<any>(null);
+  const pendingRestoreScrollTopRef = useRef<number | null>(null);
+  const editableSegmentRef = useRef<EditorSegmentState>({
+    startLine: 0,
+    endLine: 0,
+    text: '',
+  });
 
   const syncedTextRef = useRef('');
-  const pendingTextRef = useRef('');
 
   const fontSize = settings.fontSize || 14;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
   const isLargeReadOnlyMode = tab.largeFileMode;
+  const usePlainLineRendering =
+    isLargeReadOnlyMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
+  const isHugeEditableMode = !isLargeReadOnlyMode && tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
+  const largeFetchBuffer = isHugeEditableMode
+    ? HUGE_EDITABLE_FETCH_BUFFER_LINES
+    : tab.largeFileMode
+    ? LARGE_FILE_FETCH_BUFFER_LINES
+    : DEFAULT_FETCH_BUFFER_LINES;
+  const hugeEditablePaddingTop = `${alignScrollOffset(Math.max(0, editableSegment.startLine) * itemSize)}px`;
+  const hugeEditablePaddingBottom = `${alignScrollOffset(
+    Math.max(0, tab.lineCount - editableSegment.endLine) * itemSize
+  )}px`;
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -201,19 +249,87 @@ export function Editor({ tab }: { tab: FileTab }) {
     [tab.id]
   );
 
-  const handleScroll = () => {
-    if (!isLargeReadOnlyMode && contentRef.current && listRef.current) {
-      const listEl = listRef.current._outerRef;
-      if (listEl) {
-        const alignedTop = alignScrollOffset(contentRef.current.scrollTop);
-        const alignedLeft = alignScrollOffset(contentRef.current.scrollLeft);
+  const fetchEditableSegment = useCallback(
+    async (start: number, end: number) => {
+      const version = ++currentRequestVersion.current;
+      const absoluteScrollTop = scrollContainerRef.current?.scrollTop ?? contentRef.current?.scrollTop ?? 0;
 
-        if (Math.abs(contentRef.current.scrollTop - alignedTop) > 0.001) {
-          contentRef.current.scrollTop = alignedTop;
+      try {
+        const lines = await invoke<string[]>('get_visible_lines_chunk', {
+          id: tab.id,
+          startLine: start,
+          endLine: end,
+        });
+
+        if (version !== currentRequestVersion.current) return;
+        if (!Array.isArray(lines)) return;
+
+        const normalizedLines = lines.map(normalizeEditableLineText);
+        const text = normalizedLines.join('\n');
+        const segment = {
+          startLine: start,
+          endLine: end,
+          text,
+        };
+
+        editableSegmentRef.current = segment;
+        setEditableSegment(segment);
+        pendingRestoreScrollTopRef.current = absoluteScrollTop;
+
+        if (contentRef.current) {
+          contentRef.current.textContent = text;
         }
 
-        if (Math.abs(contentRef.current.scrollLeft - alignedLeft) > 0.001) {
-          contentRef.current.scrollLeft = alignedLeft;
+        syncedTextRef.current = text;
+        pendingSyncRequestedRef.current = false;
+      } catch (e) {
+        console.error('Fetch editable segment error:', e);
+      }
+    },
+    [tab.id]
+  );
+
+  useEffect(() => {
+    if (!isHugeEditableMode) {
+      pendingRestoreScrollTopRef.current = null;
+      return;
+    }
+
+    const targetScrollTop = pendingRestoreScrollTopRef.current;
+    if (targetScrollTop === null) {
+      return;
+    }
+
+    pendingRestoreScrollTopRef.current = null;
+
+    const alignedTop = alignScrollOffset(targetScrollTop);
+    window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current && Math.abs(scrollContainerRef.current.scrollTop - alignedTop) > 0.001) {
+        scrollContainerRef.current.scrollTop = alignedTop;
+      }
+
+      const listEl = listRef.current?._outerRef;
+      if (listEl && Math.abs(listEl.scrollTop - alignedTop) > 0.001) {
+        listEl.scrollTop = alignedTop;
+      }
+    });
+  }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
+
+  const handleScroll = () => {
+    const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+
+    if (!isLargeReadOnlyMode && scrollElement && listRef.current) {
+      const listEl = listRef.current._outerRef;
+      if (listEl) {
+        const alignedTop = alignScrollOffset(scrollElement.scrollTop);
+        const alignedLeft = alignScrollOffset(scrollElement.scrollLeft);
+
+        if (Math.abs(scrollElement.scrollTop - alignedTop) > 0.001) {
+          scrollElement.scrollTop = alignedTop;
+        }
+
+        if (Math.abs(scrollElement.scrollLeft - alignedLeft) > 0.001) {
+          scrollElement.scrollLeft = alignedLeft;
         }
 
         if (Math.abs(listEl.scrollTop - alignedTop) > 0.001) {
@@ -255,7 +371,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [isLargeReadOnlyMode]
+    [isHugeEditableMode, isLargeReadOnlyMode]
   );
 
   const handleLargeModePointerDown = useCallback(
@@ -317,7 +433,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, []);
 
   const lineTokens = useMemo(() => {
-    if (isLargeReadOnlyMode) {
+    if (usePlainLineRendering) {
       return [];
     }
 
@@ -349,7 +465,19 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     return lines;
-  }, [tokens]);
+  }, [tokens, usePlainLineRendering]);
+
+  const editableSegmentLines = useMemo(() => {
+    if (!isHugeEditableMode) {
+      return [];
+    }
+
+    if (editableSegment.endLine <= editableSegment.startLine) {
+      return [];
+    }
+
+    return editableSegment.text.split('\n');
+  }, [editableSegment.endLine, editableSegment.startLine, editableSegment.text, isHugeEditableMode]);
 
   const fetchTokens = useCallback(
     async (start: number, end: number) => {
@@ -375,8 +503,15 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const syncVisibleTokens = useCallback(
     async (lineCount: number) => {
-      const buffer = tab.largeFileMode ? LARGE_FILE_FETCH_BUFFER_LINES : DEFAULT_FETCH_BUFFER_LINES;
-      const scrollTop = isLargeReadOnlyMode
+      if (isHugeEditableMode && hugeWindowLockedRef.current) {
+        hugeWindowFollowScrollOnUnlockRef.current = true;
+        return;
+      }
+
+      const buffer = largeFetchBuffer;
+      const scrollTop = isHugeEditableMode
+        ? scrollContainerRef.current?.scrollTop ?? 0
+        : usePlainLineRendering
         ? listRef.current?._outerRef?.scrollTop ?? 0
         : contentRef.current?.scrollTop ?? 0;
       const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
@@ -384,17 +519,72 @@ export function Editor({ tab }: { tab: FileTab }) {
       const start = Math.max(0, currentLine - buffer);
       const end = Math.max(start + 1, Math.min(lineCount, currentLine + viewportLines + buffer));
 
-      if (isLargeReadOnlyMode) {
+      if (isHugeEditableMode) {
+        await fetchEditableSegment(start, end);
+        return;
+      }
+
+      if (usePlainLineRendering) {
         await fetchPlainLines(start, end);
         return;
       }
 
       await fetchTokens(start, end);
     },
-    [fetchTokens, fetchPlainLines, height, itemSize, tab.largeFileMode, isLargeReadOnlyMode]
+    [
+      fetchEditableSegment,
+      fetchTokens,
+      fetchPlainLines,
+      height,
+      isHugeEditableMode,
+      itemSize,
+      largeFetchBuffer,
+      hugeWindowLockedRef,
+      hugeWindowFollowScrollOnUnlockRef,
+      usePlainLineRendering,
+    ]
   );
 
+  const releaseHugeEditableWindowLock = useCallback(() => {
+    hugeWindowLockedRef.current = false;
+
+    if (!isHugeEditableMode) {
+      hugeWindowFollowScrollOnUnlockRef.current = false;
+      return;
+    }
+
+    if (!hugeWindowFollowScrollOnUnlockRef.current) {
+      return;
+    }
+
+    hugeWindowFollowScrollOnUnlockRef.current = false;
+    void syncVisibleTokens(Math.max(1, tab.lineCount));
+  }, [isHugeEditableMode, syncVisibleTokens, tab.lineCount]);
+
+  const scheduleHugeEditableWindowUnlock = useCallback(() => {
+    if (!isHugeEditableMode) {
+      return;
+    }
+
+    if (hugeWindowUnlockTimerRef.current) {
+      clearTimeout(hugeWindowUnlockTimerRef.current);
+    }
+
+    hugeWindowUnlockTimerRef.current = setTimeout(() => {
+      hugeWindowUnlockTimerRef.current = null;
+      releaseHugeEditableWindowLock();
+    }, HUGE_EDITABLE_WINDOW_UNLOCK_MS);
+  }, [isHugeEditableMode, releaseHugeEditableWindowLock]);
+
   const loadTextFromBackend = useCallback(async () => {
+    if (isHugeEditableMode) {
+      const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
+      const start = 0;
+      const end = Math.max(start + 1, Math.min(tab.lineCount, viewportLines + largeFetchBuffer));
+      await fetchEditableSegment(start, end);
+      return;
+    }
+
     const raw = await invoke<string>('get_visible_lines', {
       id: tab.id,
       startLine: 0,
@@ -407,19 +597,86 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     syncedTextRef.current = normalized;
-    pendingTextRef.current = normalized;
-  }, [tab.id]);
+    pendingSyncRequestedRef.current = false;
+  }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id, tab.lineCount]);
 
   const flushPendingSync = useCallback(async () => {
-    if (syncInFlightRef.current || isComposingRef.current) {
+    if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
       return;
     }
 
     const baseText = syncedTextRef.current;
-    const targetText = pendingTextRef.current;
+    const targetText = normalizeSegmentText(getEditableText(contentRef.current));
+    pendingSyncRequestedRef.current = false;
+
+    if (isHugeEditableMode) {
+      const segment = editableSegmentRef.current;
+      if (segment.endLine <= segment.startLine) {
+        return;
+      }
+
+      hugeWindowLockedRef.current = true;
+
+      if (baseText === targetText) {
+        syncedTextRef.current = targetText;
+        scheduleHugeEditableWindowUnlock();
+        return;
+      }
+
+      syncInFlightRef.current = true;
+
+      try {
+        const newLineCount = await invoke<number>('replace_line_range', {
+          id: tab.id,
+          startLine: segment.startLine,
+          endLine: segment.endLine,
+          newText: targetText,
+        });
+
+        const newLineCountSafe = Math.max(1, newLineCount);
+        const currentScrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+        const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
+        const currentLine = Math.max(0, Math.floor(currentScrollTop / itemSize));
+        const buffer = largeFetchBuffer;
+        const nextStart = Math.max(0, currentLine - buffer);
+        const nextEnd = Math.max(nextStart + 1, Math.min(newLineCountSafe, currentLine + viewportLines + buffer));
+
+        const nextSegment: EditorSegmentState = {
+          startLine: nextStart,
+          endLine: nextEnd,
+          text: targetText,
+        };
+
+        editableSegmentRef.current = nextSegment;
+        setEditableSegment(nextSegment);
+        syncedTextRef.current = targetText;
+        suppressExternalReloadRef.current = true;
+        updateTab(tab.id, { lineCount: newLineCountSafe, isDirty: true });
+
+        if (contentRef.current) {
+          const alignedTop = alignScrollOffset(currentScrollTop);
+          if (scrollContainerRef.current && Math.abs(scrollContainerRef.current.scrollTop - alignedTop) > 0.001) {
+            scrollContainerRef.current.scrollTop = alignedTop;
+          }
+        }
+      } catch (e) {
+        console.error('Large segment sync error:', e);
+      } finally {
+        syncInFlightRef.current = false;
+        scheduleHugeEditableWindowUnlock();
+
+        if (pendingSyncRequestedRef.current && !isComposingRef.current) {
+          void flushPendingSync();
+        }
+      }
+
+      return;
+    }
+
     const diff = buildCodeUnitDiff(baseText, targetText);
 
     if (!diff) {
+      syncedTextRef.current = targetText;
       return;
     }
 
@@ -445,67 +702,108 @@ export function Editor({ tab }: { tab: FileTab }) {
     } finally {
       syncInFlightRef.current = false;
 
-      if (pendingTextRef.current !== syncedTextRef.current && !isComposingRef.current) {
+      if (pendingSyncRequestedRef.current && !isComposingRef.current) {
         void flushPendingSync();
       }
     }
-  }, [tab.id, syncVisibleTokens, updateTab]);
+  }, [
+    height,
+    isHugeEditableMode,
+    itemSize,
+    largeFetchBuffer,
+    scheduleHugeEditableWindowUnlock,
+    syncVisibleTokens,
+    tab.id,
+    updateTab,
+  ]);
 
   const queueTextSync = useCallback(
-    (text: string) => {
-      pendingTextRef.current = text;
+    () => {
+      pendingSyncRequestedRef.current = true;
+
+      if (isHugeEditableMode) {
+        hugeWindowLockedRef.current = true;
+      }
 
       if (editTimeout.current) {
         clearTimeout(editTimeout.current);
       }
 
+      const debounceMs =
+        tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD
+          ? LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS
+          : NORMAL_EDIT_SYNC_DEBOUNCE_MS;
+
       editTimeout.current = setTimeout(() => {
         void flushPendingSync();
-      }, 40);
+      }, debounceMs);
     },
-    [flushPendingSync]
+    [flushPendingSync, isHugeEditableMode, tab.lineCount]
   );
 
   const handleInput = useCallback(
-    (e: React.FormEvent<HTMLDivElement>) => {
-      const currentText = getEditableText(e.currentTarget);
-      updateTab(tab.id, { isDirty: true });
-      pendingTextRef.current = currentText;
+    () => {
+      if (!tab.isDirty) {
+        updateTab(tab.id, { isDirty: true });
+      }
 
       if (!isComposingRef.current) {
-        queueTextSync(currentText);
+        queueTextSync();
       }
     },
-    [tab.id, updateTab, queueTextSync]
+    [tab.id, tab.isDirty, updateTab, queueTextSync]
   );
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
-  }, []);
+
+    if (isHugeEditableMode) {
+      hugeWindowLockedRef.current = true;
+    }
+  }, [isHugeEditableMode]);
 
   const handleCompositionEnd = useCallback(
-    (e: React.CompositionEvent<HTMLDivElement>) => {
+    () => {
       isComposingRef.current = false;
-      const currentText = getEditableText(e.currentTarget);
-      queueTextSync(currentText);
+      queueTextSync();
     },
     [queueTextSync]
   );
 
   const onItemsRendered = useCallback(
     ({ visibleStartIndex, visibleStopIndex }) => {
-      const buffer = tab.largeFileMode ? LARGE_FILE_FETCH_BUFFER_LINES : DEFAULT_FETCH_BUFFER_LINES;
+      if (isHugeEditableMode && (pendingSyncRequestedRef.current || syncInFlightRef.current || isComposingRef.current)) {
+        return;
+      }
+
+      const buffer = largeFetchBuffer;
       const start = Math.max(0, visibleStartIndex - buffer);
       const end = Math.min(tab.lineCount, visibleStopIndex + buffer);
 
-      const cachedCount = isLargeReadOnlyMode ? plainLines.length : lineTokens.length;
-      const cachedStart = isLargeReadOnlyMode ? plainStartLine : startLine;
-      const hasNoCache = isLargeReadOnlyMode ? plainLines.length === 0 : tokens.length === 0;
+      const cachedCount = isHugeEditableMode
+        ? Math.max(0, editableSegment.endLine - editableSegment.startLine)
+        : usePlainLineRendering
+        ? plainLines.length
+        : lineTokens.length;
+      const cachedStart = isHugeEditableMode
+        ? editableSegment.startLine
+        : usePlainLineRendering
+        ? plainStartLine
+        : startLine;
+      const hasNoCache = isHugeEditableMode
+        ? editableSegment.endLine <= editableSegment.startLine
+        : usePlainLineRendering
+        ? plainLines.length === 0
+        : tokens.length === 0;
       const isOutside = hasNoCache || start < cachedStart || end > cachedStart + cachedCount;
 
       if (isOutside) {
         if (requestTimeout.current) clearTimeout(requestTimeout.current);
-        const debounceMs = tab.largeFileMode ? LARGE_FILE_FETCH_DEBOUNCE_MS : NORMAL_FILE_FETCH_DEBOUNCE_MS;
+        const debounceMs = isHugeEditableMode
+          ? HUGE_EDITABLE_FETCH_DEBOUNCE_MS
+          : tab.largeFileMode
+          ? LARGE_FILE_FETCH_DEBOUNCE_MS
+          : NORMAL_FILE_FETCH_DEBOUNCE_MS;
         requestTimeout.current = setTimeout(
           () => syncVisibleTokens(tab.lineCount),
           debounceMs
@@ -513,11 +811,18 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [
-      isLargeReadOnlyMode,
+      editableSegment.endLine,
+      editableSegment.startLine,
+      isHugeEditableMode,
+      isComposingRef,
+      largeFetchBuffer,
+      usePlainLineRendering,
       plainLines.length,
       plainStartLine,
       lineTokens.length,
+      pendingSyncRequestedRef,
       tokens.length,
+      syncInFlightRef,
       startLine,
       syncVisibleTokens,
       tab.lineCount,
@@ -633,10 +938,18 @@ export function Editor({ tab }: { tab: FileTab }) {
       initializedRef.current = false;
       suppressExternalReloadRef.current = false;
       syncInFlightRef.current = false;
-      pendingTextRef.current = '';
+      pendingSyncRequestedRef.current = false;
+      hugeWindowLockedRef.current = false;
+      hugeWindowFollowScrollOnUnlockRef.current = false;
+      if (hugeWindowUnlockTimerRef.current) {
+        clearTimeout(hugeWindowUnlockTimerRef.current);
+        hugeWindowUnlockTimerRef.current = null;
+      }
       syncedTextRef.current = '';
       setTokens([]);
       setStartLine(0);
+      editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
+      setEditableSegment({ startLine: 0, endLine: 0, text: '' });
 
       void syncVisibleTokens(Math.max(1, tab.lineCount));
       return;
@@ -647,8 +960,16 @@ export function Editor({ tab }: { tab: FileTab }) {
     initializedRef.current = false;
     suppressExternalReloadRef.current = false;
     syncInFlightRef.current = false;
-    pendingTextRef.current = '';
+    pendingSyncRequestedRef.current = false;
+    hugeWindowLockedRef.current = false;
+    hugeWindowFollowScrollOnUnlockRef.current = false;
+    if (hugeWindowUnlockTimerRef.current) {
+      clearTimeout(hugeWindowUnlockTimerRef.current);
+      hugeWindowUnlockTimerRef.current = null;
+    }
     syncedTextRef.current = '';
+    editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
+    setEditableSegment({ startLine: 0, endLine: 0, text: '' });
 
     const bootstrap = async () => {
       try {
@@ -670,6 +991,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       cancelled = true;
       if (requestTimeout.current) clearTimeout(requestTimeout.current);
       if (editTimeout.current) clearTimeout(editTimeout.current);
+      if (hugeWindowUnlockTimerRef.current) {
+        clearTimeout(hugeWindowUnlockTimerRef.current);
+        hugeWindowUnlockTimerRef.current = null;
+      }
     };
   }, [tab.id, loadTextFromBackend, syncVisibleTokens, tab.lineCount, isLargeReadOnlyMode]);
 
@@ -701,13 +1026,38 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens, isLargeReadOnlyMode]);
 
   useEffect(() => {
-    if (!isLargeReadOnlyMode) {
+    if (!usePlainLineRendering) {
       setPlainLines([]);
       setPlainStartLine(0);
+    }
+
+    if (!isHugeEditableMode) {
+      editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
+      setEditableSegment({ startLine: 0, endLine: 0, text: '' });
+      hugeWindowLockedRef.current = false;
+      hugeWindowFollowScrollOnUnlockRef.current = false;
+      if (hugeWindowUnlockTimerRef.current) {
+        clearTimeout(hugeWindowUnlockTimerRef.current);
+        hugeWindowUnlockTimerRef.current = null;
+      }
+    }
+
+    if (!isLargeReadOnlyMode) {
       largeModePromptOpenRef.current = false;
       setShowLargeModeEditPrompt(false);
     }
-  }, [isLargeReadOnlyMode, tab.id]);
+  }, [isHugeEditableMode, isLargeReadOnlyMode, tab.id, usePlainLineRendering]);
+
+  useEffect(() => {
+    if (!isHugeEditableMode || !scrollContainerRef.current) {
+      return;
+    }
+
+    const scrollTop = scrollContainerRef.current.scrollTop;
+    if (contentRef.current && Math.abs(contentRef.current.scrollTop - scrollTop) > 0.001) {
+      contentRef.current.scrollTop = scrollTop;
+    }
+  }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
 
   useEffect(() => {
     if (isLargeReadOnlyMode) {
@@ -731,7 +1081,45 @@ export function Editor({ tab }: { tab: FileTab }) {
       onPointerDown={handleLargeModePointerDown}
       onKeyDown={handleLargeModeEditIntent}
     >
-      {!isLargeReadOnlyMode && (
+      {!isLargeReadOnlyMode && isHugeEditableMode && (
+        <div
+          ref={scrollContainerRef}
+          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
+          onScroll={handleScroll}
+        >
+          <div
+            className="relative"
+            style={{
+              minHeight: `${Math.max(1, tab.lineCount) * itemSize}px`,
+              minWidth: '100%',
+            }}
+          >
+            <div
+              ref={contentRef}
+              contentEditable="plaintext-only"
+              suppressContentEditableWarning
+              className="absolute left-0 right-0 editor-input-layer"
+              style={{
+                top: hugeEditablePaddingTop,
+                fontFamily: settings.fontFamily,
+                fontSize: `${renderedFontSizePx}px`,
+                lineHeight: `${lineHeightPx}px`,
+                whiteSpace: 'pre',
+                paddingLeft: '5rem',
+                paddingBottom: hugeEditablePaddingBottom,
+                caretColor: 'black',
+              }}
+              onInput={handleInput}
+              onPointerDown={handleEditorPointerDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              spellCheck={false}
+            />
+          </div>
+        </div>
+      )}
+
+      {!isLargeReadOnlyMode && !isHugeEditableMode && (
         <div
           ref={contentRef}
           contentEditable="plaintext-only"
@@ -773,14 +1161,21 @@ export function Editor({ tab }: { tab: FileTab }) {
             onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
           >
             {({ index, style }) => {
-              const relativeIndex = isLargeReadOnlyMode ? index - plainStartLine : index - startLine;
+              const relativeIndex = isHugeEditableMode
+                ? index - editableSegment.startLine
+                : usePlainLineRendering
+                ? index - plainStartLine
+                : index - startLine;
+              const plainRelativeIndex = index - plainStartLine;
               const lineTokensArr =
-                !isLargeReadOnlyMode && relativeIndex >= 0 && relativeIndex < lineTokens.length
+                !usePlainLineRendering && relativeIndex >= 0 && relativeIndex < lineTokens.length
                   ? lineTokens[relativeIndex]
                   : [];
               const plainLine =
-                isLargeReadOnlyMode && relativeIndex >= 0 && relativeIndex < plainLines.length
-                  ? plainLines[relativeIndex]
+                isHugeEditableMode && relativeIndex >= 0 && relativeIndex < editableSegmentLines.length
+                  ? editableSegmentLines[relativeIndex]
+                  : usePlainLineRendering && plainRelativeIndex >= 0 && plainRelativeIndex < plainLines.length
+                  ? plainLines[plainRelativeIndex]
                   : '';
 
               return (
@@ -802,7 +1197,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   >
                     {index + 1}
                   </span>
-                  {isLargeReadOnlyMode
+                  {usePlainLineRendering
                     ? renderPlainLine(plainLine)
                     : lineTokensArr.length > 0
                     ? renderTokens(lineTokensArr)

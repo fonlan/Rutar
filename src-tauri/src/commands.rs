@@ -670,3 +670,44 @@ pub fn edit_text(
     }
 }
 
+#[tauri::command]
+pub fn replace_line_range(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+    new_text: String,
+) -> Result<usize, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let len_lines = doc.rope.len_lines();
+        let start = start_line.min(len_lines);
+        let end = end_line.min(len_lines).max(start);
+
+        if start >= end {
+            return Ok(doc.rope.len_lines());
+        }
+
+        let start_char = doc.rope.line_to_char(start);
+        let end_char = doc.rope.line_to_char(end);
+
+        let old_text = doc.rope.slice(start_char..end_char).to_string();
+        if old_text == new_text {
+            return Ok(doc.rope.len_lines());
+        }
+
+        let operation = EditOperation {
+            start_char,
+            old_text,
+            new_text,
+        };
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        Ok(doc.rope.len_lines())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
