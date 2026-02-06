@@ -18,9 +18,21 @@ export function Editor({ tab }: { tab: FileTab }) {
     const [startLine, setStartLine] = useState(0);
     const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
     
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<any>(null);
+    const backdropRef = useRef<HTMLDivElement>(null);
     const requestTimeout = useRef<any>(null);
     const currentRequestVersion = useRef(0);
+
+    const handleScroll = () => {
+        if (contentRef.current && listRef.current) {
+            const listEl = listRef.current._outerRef;
+            if (listEl) {
+                listEl.scrollTop = contentRef.current.scrollTop;
+                listEl.scrollLeft = contentRef.current.scrollLeft;
+            }
+        }
+    };
 
     const lineTokens = useMemo(() => {
         const lines: SyntaxToken[][] = [];
@@ -76,6 +88,10 @@ export function Editor({ tab }: { tab: FileTab }) {
         }
     }, [tab.id]);
 
+    const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+        updateTab(tab.id, { isDirty: true });
+    };
+
     const onItemsRendered = useCallback(({ visibleStartIndex, visibleStopIndex }) => {
         const BUFFER = 50;
         const start = Math.max(0, visibleStartIndex - BUFFER);
@@ -119,33 +135,47 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const itemSize = useMemo(() => (settings.fontSize || 14) * 1.5, [settings.fontSize]);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace') {
-            updateTab(tab.id, { isDirty: true });
-        }
-    };
+    const fullText = useMemo(() => {
+        return tokens.map(t => t.text || '').join('');
+    }, [tokens]);
 
     useEffect(() => {
         fetchTokens(0, 150);
     }, [tab.id, fetchTokens]);
 
+    useEffect(() => {
+        if (contentRef.current && fullText !== contentRef.current.innerText) {
+            contentRef.current.innerText = fullText;
+        }
+    }, [fullText]);
+
     return (
-        <div 
-            ref={containerRef} 
-            className="flex-1 w-full h-full overflow-hidden bg-background relative focus:outline-none"
-            onKeyDown={handleKeyDown}
-            tabIndex={0}
-            onClick={() => textareaRef.current?.focus()}
+        <div
+            ref={containerRef}
+            className="flex-1 w-full h-full overflow-hidden bg-background relative"
         >
-            <textarea 
-                ref={textareaRef}
-                className="absolute opacity-0 pointer-events-none"
-                readOnly
+            <div
+                ref={contentRef}
+                contentEditable
+                suppressContentEditableWarning
+                className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
+                style={{
+                    fontFamily: settings.fontFamily,
+                    fontSize: `${settings.fontSize}px`,
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre',
+                    paddingLeft: '5rem',
+                    caretColor: 'black',
+                    color: 'transparent',
+                }}
+                onInput={handleInput}
+                onScroll={handleScroll}
             />
 
             {width > 0 && height > 0 && (
-                <div className="w-full h-full">
+                <div ref={backdropRef} className="absolute inset-0 w-full h-full z-10 pointer-events-none overflow-hidden">
                     <List
+                        ref={listRef}
                         height={height}
                         width={width}
                         itemCount={tab.lineCount}
@@ -161,7 +191,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                                 : [];
                             
                             return (
-                                <div 
+                                <div
                                     style={{
                                         ...style,
                                         width: 'max-content',
@@ -169,12 +199,12 @@ export function Editor({ tab }: { tab: FileTab }) {
                                         fontFamily: settings.fontFamily,
                                         fontSize: `${settings.fontSize}px`,
                                         lineHeight: '1.5',
-                                        whiteSpace: 'pre', // 关键：确保空格和换行生效
-                                    }} 
-                                    className="px-4 hover:bg-muted/5 text-foreground group"
+                                        whiteSpace: 'pre',
+                                    }}
+                                    className="px-4 hover:bg-muted/5 text-foreground group editor-line"
                                 >
-                                    <span 
-                                        className="inline-block text-muted-foreground/40 select-none w-12 text-right mr-4 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
+                                    <span
+                                        className="inline-block text-muted-foreground/40 line-number w-12 text-right mr-4 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
                                         style={{ fontSize: `${Math.max(10, settings.fontSize - 2)}px` }}
                                     >
                                         {index + 1}

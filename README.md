@@ -1,7 +1,52 @@
-# Tauri + React + Typescript
+# Rutar
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Rutar is a high-performance, lightweight code editor built with **Tauri**, **React 19**, and **Rust**. It leverages the power of **Tree-sitter** for accurate, IDE-grade syntax highlighting and **Ropey** for efficient large-scale text manipulation.
 
-## Recommended IDE Setup
+## 🚀 Key Features
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **Top-Grade Highlighting**: Syntax tokens are generated in the Rust backend using Tree-sitter, providing accurate and fast highlighting for JS, TS, Rust, Python, JSON, and more.
+- **Virtualized Rendering**: Handles massive files with ease using `react-window` to ensure smooth scrolling regardless of file size.
+- **Native Performance**: Built on Tauri for a small footprint and native-speed operations.
+- **Modern Tech Stack**: React 19, Tailwind CSS 4, and Zustand on the frontend; Rust with `ropey` and `tree-sitter` on the backend.
+- **Optimized for Windows**: Custom icons and window controls tailored for a native Windows experience.
+
+## 🛠 Tech Stack
+
+- **Backend**: Rust, Tauri v2, Tree-sitter, Ropey, DashMap, memmap2.
+- **Frontend**: React 19, Vite, TypeScript, Zustand, Tailwind CSS 4, Lucide React.
+
+## 📦 Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (Latest LTS)
+- [Rust](https://www.rust-lang.org/) (Latest stable)
+
+### Development
+
+1.  **Install Dependencies**:
+    ```bash
+    npm install --legacy-peer-deps
+    ```
+
+2.  **Start Dev Server**:
+    ```bash
+    npm run tauri dev
+    ```
+
+### Build
+
+To create a production build:
+```bash
+npm run tauri build
+```
+
+## 📂 Project Structure
+
+- `src/`: Frontend React application.
+- `src-tauri/`: Rust backend, IPC commands, and state management.
+- `AGENTS.md`: Detailed guidelines for AI coding agents working on this repository.
+
+## 📄 License
+
+MIT

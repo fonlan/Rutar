@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* 文本内容允许选择，行号不允许 */
+.editor-line {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.editor-line .line-number {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.editor-line .token {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Contenteditable selection styling */
+[contenteditable]::selection {
+  background: rgba(59, 130, 246, 0.3) !important;
+  color: transparent !important;
+}
+
 /* 语法高亮主题 (GitHub Light 风格) */
 .whitespace-pre {
     white-space: pre !important;
