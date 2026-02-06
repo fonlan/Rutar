@@ -92,6 +92,32 @@ function codeUnitOffsetToUnicodeScalarIndex(text: string, offset: number) {
   return scalarIndex;
 }
 
+function alignToDevicePixel(value: number) {
+  if (typeof window === 'undefined') {
+    return Math.max(1, Math.round(value));
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssPixelStep = 1 / dpr;
+  const aligned = Math.round(value / cssPixelStep) * cssPixelStep;
+
+  return Math.max(cssPixelStep, Number(aligned.toFixed(4)));
+}
+
+function alignScrollOffset(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  if (typeof window === 'undefined') {
+    return Math.round(value);
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssPixelStep = 1 / dpr;
+  return Number((Math.round(value / cssPixelStep) * cssPixelStep).toFixed(4));
+}
+
 export function Editor({ tab }: { tab: FileTab }) {
   const { settings = { fontSize: 14, fontFamily: 'monospace' }, updateTab } = useStore();
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
@@ -116,7 +142,10 @@ export function Editor({ tab }: { tab: FileTab }) {
   const syncedTextRef = useRef('');
   const pendingTextRef = useRef('');
 
-  const itemSize = useMemo(() => (settings.fontSize || 14) * 1.5, [settings.fontSize]);
+  const fontSize = settings.fontSize || 14;
+  const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
+  const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
+  const itemSize = lineHeightPx;
   const isLargeReadOnlyMode = tab.largeFileMode;
 
   const fetchPlainLines = useCallback(
@@ -146,8 +175,24 @@ export function Editor({ tab }: { tab: FileTab }) {
     if (!isLargeReadOnlyMode && contentRef.current && listRef.current) {
       const listEl = listRef.current._outerRef;
       if (listEl) {
-        listEl.scrollTop = contentRef.current.scrollTop;
-        listEl.scrollLeft = contentRef.current.scrollLeft;
+        const alignedTop = alignScrollOffset(contentRef.current.scrollTop);
+        const alignedLeft = alignScrollOffset(contentRef.current.scrollLeft);
+
+        if (Math.abs(contentRef.current.scrollTop - alignedTop) > 0.001) {
+          contentRef.current.scrollTop = alignedTop;
+        }
+
+        if (Math.abs(contentRef.current.scrollLeft - alignedLeft) > 0.001) {
+          contentRef.current.scrollLeft = alignedLeft;
+        }
+
+        if (Math.abs(listEl.scrollTop - alignedTop) > 0.001) {
+          listEl.scrollTop = alignedTop;
+        }
+
+        if (Math.abs(listEl.scrollLeft - alignedLeft) > 0.001) {
+          listEl.scrollLeft = alignedLeft;
+        }
       }
     }
   };
@@ -608,15 +653,14 @@ export function Editor({ tab }: { tab: FileTab }) {
           ref={contentRef}
           contentEditable="plaintext-only"
           suppressContentEditableWarning
-          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
+          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-input-layer"
           style={{
             fontFamily: settings.fontFamily,
-            fontSize: `${settings.fontSize}px`,
-            lineHeight: '1.5',
+            fontSize: `${renderedFontSizePx}px`,
+            lineHeight: `${lineHeightPx}px`,
             whiteSpace: 'pre',
             paddingLeft: '5rem',
             caretColor: 'black',
-            color: 'transparent',
           }}
           onInput={handleInput}
           onScroll={handleScroll}
@@ -663,15 +707,15 @@ export function Editor({ tab }: { tab: FileTab }) {
                     width: 'max-content',
                     minWidth: '100%',
                     fontFamily: settings.fontFamily,
-                    fontSize: `${settings.fontSize}px`,
-                    lineHeight: '1.5',
+                    fontSize: `${renderedFontSizePx}px`,
+                    lineHeight: `${lineHeightPx}px`,
                     whiteSpace: 'pre',
                   }}
                   className="px-4 hover:bg-muted/5 text-foreground group editor-line"
                 >
                   <span
                     className="inline-block text-muted-foreground/40 line-number w-12 text-right mr-4 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
-                    style={{ fontSize: `${Math.max(10, settings.fontSize - 2)}px` }}
+                    style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
                   >
                     {index + 1}
                   </span>
@@ -689,4 +733,3 @@ export function Editor({ tab }: { tab: FileTab }) {
     </div>
   );
 }
-

@@ -16,9 +16,20 @@
   -webkit-user-select: text !important;
 }
 
-/* Contenteditable selection styling */
-[contenteditable]::selection {
-  background: rgba(59, 130, 246, 0.3) !important;
+/* Editable input layer: keep glyphs hidden while preserving native selection */
+.editor-input-layer {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+}
+
+.editor-input-layer::selection {
+  background: rgba(59, 130, 246, 0.28) !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.editor-input-layer::-moz-selection {
+  background: rgba(59, 130, 246, 0.28) !important;
   color: transparent !important;
 }
 
