@@ -105,6 +105,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const backdropRef = useRef<HTMLDivElement>(null);
   const requestTimeout = useRef<any>(null);
   const editTimeout = useRef<any>(null);
+  const isScrollbarDragRef = useRef(false);
 
   const currentRequestVersion = useRef(0);
   const isComposingRef = useRef(false);
@@ -150,6 +151,50 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     }
   };
+
+  const handleEditorPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isLargeReadOnlyMode || !contentRef.current) {
+        return;
+      }
+
+      const editorElement = contentRef.current;
+      const verticalScrollbarWidth = editorElement.offsetWidth - editorElement.clientWidth;
+      const horizontalScrollbarHeight = editorElement.offsetHeight - editorElement.clientHeight;
+
+      if (verticalScrollbarWidth <= 0 && horizontalScrollbarHeight <= 0) {
+        return;
+      }
+
+      const rect = editorElement.getBoundingClientRect();
+      const onVerticalScrollbar =
+        verticalScrollbarWidth > 0 && event.clientX >= rect.right - verticalScrollbarWidth;
+      const onHorizontalScrollbar =
+        horizontalScrollbarHeight > 0 && event.clientY >= rect.bottom - horizontalScrollbarHeight;
+
+      if (!onVerticalScrollbar && !onHorizontalScrollbar) {
+        return;
+      }
+
+      isScrollbarDragRef.current = true;
+      editorElement.style.userSelect = 'none';
+      editorElement.style.webkitUserSelect = 'none';
+    },
+    [isLargeReadOnlyMode]
+  );
+
+  const endScrollbarDragSelectionGuard = useCallback(() => {
+    if (!isScrollbarDragRef.current) {
+      return;
+    }
+
+    isScrollbarDragRef.current = false;
+
+    if (contentRef.current) {
+      contentRef.current.style.userSelect = 'text';
+      contentRef.current.style.webkitUserSelect = 'text';
+    }
+  }, []);
 
   const lineTokens = useMemo(() => {
     if (isLargeReadOnlyMode) {
@@ -542,6 +587,20 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
   }, [isLargeReadOnlyMode, tab.id]);
 
+  useEffect(() => {
+    if (isLargeReadOnlyMode) {
+      return;
+    }
+
+    window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
+    window.addEventListener('blur', endScrollbarDragSelectionGuard);
+
+    return () => {
+      window.removeEventListener('pointerup', endScrollbarDragSelectionGuard);
+      window.removeEventListener('blur', endScrollbarDragSelectionGuard);
+    };
+  }, [endScrollbarDragSelectionGuard, isLargeReadOnlyMode]);
+
   return (
     <div ref={containerRef} className="flex-1 w-full h-full overflow-hidden bg-background relative">
       {!isLargeReadOnlyMode && (
@@ -561,6 +620,7 @@ export function Editor({ tab }: { tab: FileTab }) {
           }}
           onInput={handleInput}
           onScroll={handleScroll}
+          onPointerDown={handleEditorPointerDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           spellCheck={false}
@@ -629,5 +689,4 @@ export function Editor({ tab }: { tab: FileTab }) {
     </div>
   );
 }
-
 
