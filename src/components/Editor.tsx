@@ -23,6 +23,7 @@ const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
 const LARGE_FILE_FETCH_DEBOUNCE_MS = 12;
 const NORMAL_FILE_FETCH_DEBOUNCE_MS = 50;
+const LARGE_FILE_EDIT_INTENT_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab']);
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
@@ -31,6 +32,33 @@ function normalizeEditorText(value: string) {
 
 function normalizeLineText(value: string) {
   return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
+  if (event.isComposing) {
+    return false;
+  }
+
+  const key = event.key;
+  const hasPrimaryModifier = event.ctrlKey || event.metaKey;
+  const hasModifier = hasPrimaryModifier || event.altKey;
+
+  if (!hasModifier && key.length === 1) {
+    return true;
+  }
+
+  if (!hasModifier && LARGE_FILE_EDIT_INTENT_KEYS.has(key)) {
+    return true;
+  }
+
+  if (hasPrimaryModifier && !event.altKey) {
+    const normalized = key.toLowerCase();
+    if (normalized === 'v' || normalized === 'x') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getEditableText(element: HTMLDivElement) {
@@ -124,6 +152,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
   const [plainStartLine, setPlainStartLine] = useState(0);
+  const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -138,6 +167,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const syncInFlightRef = useRef(false);
   const initializedRef = useRef(false);
   const suppressExternalReloadRef = useRef(false);
+  const largeModePromptOpenRef = useRef(false);
 
   const syncedTextRef = useRef('');
   const pendingTextRef = useRef('');
@@ -227,6 +257,51 @@ export function Editor({ tab }: { tab: FileTab }) {
     },
     [isLargeReadOnlyMode]
   );
+
+  const handleLargeModePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isLargeReadOnlyMode) {
+        return;
+      }
+
+      if (document.activeElement !== event.currentTarget) {
+        event.currentTarget.focus();
+      }
+    },
+    [isLargeReadOnlyMode]
+  );
+
+  const handleLargeModeEditIntent = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!isLargeReadOnlyMode || !isLargeModeEditIntent(event)) {
+        return;
+      }
+
+      if (largeModePromptOpenRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      largeModePromptOpenRef.current = true;
+      setShowLargeModeEditPrompt(true);
+    },
+    [isLargeReadOnlyMode]
+  );
+
+  const handleKeepReadOnlyMode = useCallback(() => {
+    largeModePromptOpenRef.current = false;
+    setShowLargeModeEditPrompt(false);
+  }, []);
+
+  const handleEnterEditableMode = useCallback(() => {
+    largeModePromptOpenRef.current = false;
+    setShowLargeModeEditPrompt(false);
+    updateTab(tab.id, { largeFileMode: false });
+  }, [tab.id, updateTab]);
 
   const endScrollbarDragSelectionGuard = useCallback(() => {
     if (!isScrollbarDragRef.current) {
@@ -629,6 +704,8 @@ export function Editor({ tab }: { tab: FileTab }) {
     if (!isLargeReadOnlyMode) {
       setPlainLines([]);
       setPlainStartLine(0);
+      largeModePromptOpenRef.current = false;
+      setShowLargeModeEditPrompt(false);
     }
   }, [isLargeReadOnlyMode, tab.id]);
 
@@ -647,7 +724,13 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [endScrollbarDragSelectionGuard, isLargeReadOnlyMode]);
 
   return (
-    <div ref={containerRef} className="flex-1 w-full h-full overflow-hidden bg-background relative">
+    <div
+      ref={containerRef}
+      className="flex-1 w-full h-full overflow-hidden bg-background relative"
+      tabIndex={isLargeReadOnlyMode ? 0 : -1}
+      onPointerDown={handleLargeModePointerDown}
+      onKeyDown={handleLargeModeEditIntent}
+    >
       {!isLargeReadOnlyMode && (
         <div
           ref={contentRef}
@@ -728,6 +811,33 @@ export function Editor({ tab }: { tab: FileTab }) {
               );
             }}
           </List>
+        </div>
+      )}
+
+      {showLargeModeEditPrompt && isLargeReadOnlyMode && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35">
+          <div className="w-[min(92vw,420px)] rounded-lg border border-border bg-background p-4 shadow-2xl">
+            <p className="text-sm font-medium text-foreground">Large File Mode 当前为只读</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              检测到你在尝试输入。进入可编辑模式可能导致性能下降，是否继续？
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                onClick={handleKeepReadOnlyMode}
+              >
+                保持只读
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
+                onClick={handleEnterEditableMode}
+              >
+                进入编辑模式
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
