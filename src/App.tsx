@@ -25,17 +25,15 @@ interface AppConfig {
 }
 
 function App() {
-  const {
-    tabs = [],
-    activeTabId = null,
-    settings,
-    updateSettings,
-    contentTreeOpen,
-    contentTreeType,
-    contentTreeNodes,
-    contentTreeError,
-    setContentTreeData,
-  } = useStore();
+  const tabs = useStore((state) => state.tabs);
+  const activeTabId = useStore((state) => state.activeTabId);
+  const settings = useStore((state) => state.settings);
+  const updateSettings = useStore((state) => state.updateSettings);
+  const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+  const contentTreeType = useStore((state) => state.contentTreeType);
+  const contentTreeNodes = useStore((state) => state.contentTreeNodes);
+  const contentTreeError = useStore((state) => state.contentTreeError);
+  const setContentTreeData = useStore((state) => state.setContentTreeData);
   const [configReady, setConfigReady] = useState(false);
 
   useEffect(() => {
@@ -67,6 +65,7 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false;
 
     const preventDefaultDrop = (event: DragEvent) => {
       event.preventDefault();
@@ -74,13 +73,20 @@ function App() {
 
     const setupDragDrop = async () => {
       try {
-        unlisten = await getCurrentWindow().onDragDropEvent((event) => {
+        const unsubscribe = await getCurrentWindow().onDragDropEvent((event) => {
           if (event.payload.type !== 'drop') {
             return;
           }
 
           void openFilePaths(event.payload.paths);
         });
+
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+
+        unlisten = unsubscribe;
       } catch (error) {
         console.error('Failed to register drag drop listener:', error);
       }
@@ -91,6 +97,7 @@ function App() {
     void setupDragDrop();
 
     return () => {
+      disposed = true;
       window.removeEventListener('dragover', preventDefaultDrop);
       window.removeEventListener('drop', preventDefaultDrop);
       if (unlisten) {

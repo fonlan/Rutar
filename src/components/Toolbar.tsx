@@ -31,22 +31,21 @@ function getActiveEditorElement() {
 }
 
 export function Toolbar() {
-    const {
-        addTab,
-        tabs,
-        activeTabId,
-        closeTab,
-        updateTab,
-        setFolder,
-        settings,
-        updateSettings,
-        toggleContentTree,
-        contentTreeOpen,
-        setContentTreeData,
-    } = useStore();
+    const addTab = useStore((state) => state.addTab);
+    const tabs = useStore((state) => state.tabs);
+    const activeTabId = useStore((state) => state.activeTabId);
+    const closeTab = useStore((state) => state.closeTab);
+    const updateTab = useStore((state) => state.updateTab);
+    const setFolder = useStore((state) => state.setFolder);
+    const language = useStore((state) => state.settings.language);
+    const wordWrap = useStore((state) => state.settings.wordWrap);
+    const updateSettings = useStore((state) => state.updateSettings);
+    const toggleContentTree = useStore((state) => state.toggleContentTree);
+    const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+    const setContentTreeData = useStore((state) => state.setContentTreeData);
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
-    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const tr = (key: Parameters<typeof t>[1]) => t(language, key);
 
     const saveTab = useCallback(async (tab: FileTab) => {
         if (tab.path) {
@@ -217,8 +216,8 @@ export function Toolbar() {
     }, [activeTab]);
 
     const handleToggleWordWrap = useCallback(() => {
-        updateSettings({ wordWrap: !settings.wordWrap });
-    }, [settings.wordWrap, updateSettings]);
+        updateSettings({ wordWrap: !wordWrap });
+    }, [wordWrap, updateSettings]);
 
     const handleToggleContentTree = useCallback(async () => {
         if (!activeTab) {
@@ -371,7 +370,7 @@ export function Toolbar() {
                 icon={WrapText}
                 title={tr('toolbar.toggleWordWrap')}
                 onClick={handleToggleWordWrap}
-                active={!!settings.wordWrap}
+                active={!!wordWrap}
                 disabled={!activeTab}
             />
             <ToolbarBtn

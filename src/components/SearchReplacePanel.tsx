@@ -300,11 +300,14 @@ function renderMatchPreview(match: SearchMatch) {
 }
 
 export function SearchReplacePanel() {
-  const { tabs, activeTabId, updateTab, settings } = useStore();
+  const tabs = useStore((state) => state.tabs);
+  const activeTabId = useStore((state) => state.activeTabId);
+  const updateTab = useStore((state) => state.updateTab);
+  const language = useStore((state) => state.settings.language);
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [tabs, activeTabId]);
   const messages = useMemo(
-    () => getSearchMessages(settings.language === 'en-US' ? 'en-US' : 'zh-CN'),
-    [settings.language]
+    () => getSearchMessages(language === 'en-US' ? 'en-US' : 'zh-CN'),
+    [language]
   );
 
   const [isOpen, setIsOpen] = useState(false);

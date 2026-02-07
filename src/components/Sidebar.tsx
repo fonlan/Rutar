@@ -11,7 +11,11 @@ const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 600;
 
 export function Sidebar() {
-    const { folderPath, folderEntries, sidebarOpen, sidebarWidth, setSidebarWidth } = useStore();
+    const folderPath = useStore((state) => state.folderPath);
+    const folderEntries = useStore((state) => state.folderEntries);
+    const sidebarOpen = useStore((state) => state.sidebarOpen);
+    const sidebarWidth = useStore((state) => state.sidebarWidth);
+    const setSidebarWidth = useStore((state) => state.setSidebarWidth);
     const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
         width: sidebarWidth,
         minWidth: SIDEBAR_MIN_WIDTH,
@@ -53,8 +57,11 @@ export function Sidebar() {
 function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<any[]>([]);
-    const { activeTabId, setActiveTab, tabs, settings } = useStore();
-    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const activeTabId = useStore((state) => state.activeTabId);
+    const setActiveTab = useStore((state) => state.setActiveTab);
+    const tabs = useStore((state) => state.tabs);
+    const language = useStore((state) => state.settings.language);
+    const tr = (key: Parameters<typeof t>[1]) => t(language, key);
 
     const handleToggle = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();

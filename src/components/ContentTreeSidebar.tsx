@@ -26,8 +26,12 @@ export function ContentTreeSidebar({
   activeType: ContentTreeType;
   parseError: string | null;
 }) {
-  const { contentTreeOpen, settings, activeTabId, contentTreeWidth, setContentTreeWidth } = useStore();
-  const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+  const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+  const language = useStore((state) => state.settings.language);
+  const activeTabId = useStore((state) => state.activeTabId);
+  const contentTreeWidth = useStore((state) => state.contentTreeWidth);
+  const setContentTreeWidth = useStore((state) => state.setContentTreeWidth);
+  const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
     width: contentTreeWidth,
     minWidth: CONTENT_TREE_MIN_WIDTH,
@@ -41,7 +45,7 @@ export function ContentTreeSidebar({
     }
 
     return `${tr('contentTree.title')} - ${activeType.toUpperCase()}`;
-  }, [activeType, settings.language]);
+  }, [activeType, language]);
 
   if (!contentTreeOpen) {
     return null;

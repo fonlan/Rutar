@@ -8,21 +8,6 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
-use tree_sitter_bash;
-use tree_sitter_c;
-use tree_sitter_cpp;
-use tree_sitter_css;
-use tree_sitter_go;
-use tree_sitter_html;
-use tree_sitter_javascript;
-use tree_sitter_java;
-use tree_sitter_json;
-use tree_sitter_python;
-use tree_sitter_rust;
-use tree_sitter_toml_ng;
-use tree_sitter_typescript;
-use tree_sitter_xml;
-use tree_sitter_yaml;
 use uuid::Uuid;
 
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
@@ -194,13 +179,8 @@ fn get_node_text_preview(node: tree_sitter::Node<'_>, source: &str, max_len: usi
 
 fn first_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.is_named() {
-            return Some(child);
-        }
-    }
-
-    None
+    let first = node.children(&mut cursor).find(|child| child.is_named());
+    first
 }
 
 fn second_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
@@ -1778,19 +1758,17 @@ pub fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
     let entries = std::fs::read_dir(path).map_err(|e| e.to_string())?;
     let mut result = Vec::new();
 
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            result.push(DirEntry {
-                name: path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string(),
-                path: path.to_string_lossy().to_string(),
-                is_dir: path.is_dir(),
-            });
-        }
+    for entry in entries.flatten() {
+        let path = entry.path();
+        result.push(DirEntry {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            path: path.to_string_lossy().to_string(),
+            is_dir: path.is_dir(),
+        });
     }
 
     Ok(result)

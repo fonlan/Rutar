@@ -9,7 +9,13 @@ import { t } from '@/i18n';
 const appWindow = getCurrentWindow();
 
 export function TitleBar() {
-    const { tabs, activeTabId, setActiveTab, closeTab, toggleSettings, addTab, settings } = useStore();
+    const tabs = useStore((state) => state.tabs);
+    const activeTabId = useStore((state) => state.activeTabId);
+    const setActiveTab = useStore((state) => state.setActiveTab);
+    const closeTab = useStore((state) => state.closeTab);
+    const toggleSettings = useStore((state) => state.toggleSettings);
+    const addTab = useStore((state) => state.addTab);
+    const settings = useStore((state) => state.settings);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     const handleMinimize = () => appWindow.minimize();

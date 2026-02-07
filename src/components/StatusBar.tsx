@@ -4,7 +4,10 @@ import { Globe, Zap } from 'lucide-react';
 import { t } from '@/i18n';
 
 export function StatusBar() {
-    const { tabs, activeTabId, updateTab, settings } = useStore();
+    const tabs = useStore((state) => state.tabs);
+    const activeTabId = useStore((state) => state.activeTabId);
+    const updateTab = useStore((state) => state.updateTab);
+    const settings = useStore((state) => state.settings);
     const activeTab = tabs.find(t => t.id === activeTabId);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 

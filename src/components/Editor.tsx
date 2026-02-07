@@ -248,7 +248,8 @@ function dispatchDocumentUpdated(tabId: string) {
 }
 
 export function Editor({ tab }: { tab: FileTab }) {
-  const { settings, updateTab } = useStore();
+  const settings = useStore((state) => state.settings);
+  const updateTab = useStore((state) => state.updateTab);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);

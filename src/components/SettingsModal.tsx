@@ -5,7 +5,9 @@ import { useState } from 'react';
 import { t } from '@/i18n';
 
 export function SettingsModal() {
-  const { settings, toggleSettings, updateSettings } = useStore();
+  const settings = useStore((state) => state.settings);
+  const toggleSettings = useStore((state) => state.toggleSettings);
+  const updateSettings = useStore((state) => state.updateSettings);
   const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('appearance');
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 

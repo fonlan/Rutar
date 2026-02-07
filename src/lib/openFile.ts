@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { isReusableBlankTab } from '@/lib/tabUtils';
 import { FileTab, useStore } from '@/store/useStore';
 
+const openingPaths = new Set<string>();
+
 function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
   useStore.getState().updateTab(tabId, {
     id: fileInfo.id,
@@ -15,6 +17,13 @@ function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
 }
 
 export async function openFilePath(path: string) {
+  if (openingPaths.has(path)) {
+    return;
+  }
+
+  openingPaths.add(path);
+
+  try {
   const state = useStore.getState();
   const existing = state.tabs.find((tab) => tab.path === path);
   if (existing) {
@@ -34,6 +43,9 @@ export async function openFilePath(path: string) {
   }
 
   latestState.addTab(fileInfo);
+  } finally {
+    openingPaths.delete(path);
+  }
 }
 
 export async function openFilePaths(paths: string[]) {
