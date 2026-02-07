@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, WrapText, ListTree, WandSparkles, Minimize2
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -21,7 +21,7 @@ function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     );
 }
 
-function dispatchSearchOpen(mode: 'find' | 'replace') {
+function dispatchSearchOpen(mode: 'find' | 'replace' | 'filter') {
     window.dispatchEvent(
         new CustomEvent('rutar:search-open', {
             detail: { mode },
@@ -51,6 +51,7 @@ export function Toolbar() {
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
+    const filterTitle = language === 'en-US' ? 'Filter (Ctrl+Shift+F)' : '过滤 (Ctrl+Shift+F)';
 
     const formatMessages = toolbarFormatMessages[language];
 
@@ -267,6 +268,11 @@ export function Toolbar() {
         dispatchSearchOpen('replace');
     }, [activeTab]);
 
+    const handleFilter = useCallback(() => {
+        if (!activeTab) return;
+        dispatchSearchOpen('filter');
+    }, [activeTab]);
+
     const handleToggleWordWrap = useCallback(() => {
         updateSettings({ wordWrap: !wordWrap });
     }, [wordWrap, updateSettings]);
@@ -379,6 +385,10 @@ export function Toolbar() {
 
             if (key === 'f') {
                 event.preventDefault();
+                if (event.shiftKey) {
+                    handleFilter();
+                    return;
+                }
                 handleFind();
                 return;
             }
@@ -400,6 +410,7 @@ export function Toolbar() {
         handleOpenFile,
         handleRedo,
         handleReplace,
+        handleFilter,
         handleFormatBeautify,
         handleFormatMinify,
         handleSave,
@@ -433,6 +444,7 @@ export function Toolbar() {
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleFind} disabled={!activeTab} />
             <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!canEdit} />
+            <ToolbarBtn icon={FilterIcon} title={filterTitle} onClick={handleFilter} disabled={!activeTab} />
 
             {/* Format Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />

@@ -1,11 +1,17 @@
 ﻿import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import {
   ArrowDown,
+  Check,
   ArrowUp,
+  CirclePlus,
   ChevronDown,
   ChevronUp,
+  GripVertical,
+  Palette,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
 import {
@@ -15,7 +21,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { cn } from '@/lib/utils';
@@ -24,8 +32,67 @@ import { useStore } from '@/store/useStore';
 const MAX_LINE_RANGE = 2147483647;
 
 type SearchMode = 'literal' | 'regex' | 'wildcard';
-type SearchOpenMode = 'find' | 'replace';
+type SearchOpenMode = 'find' | 'replace' | 'filter';
 type SearchResultPanelState = 'closed' | 'minimized' | 'open';
+type PanelMode = 'find' | 'replace' | 'filter';
+type FilterRuleMatchMode = 'contains' | 'regex' | 'wildcard';
+type FilterRuleApplyTo = 'line' | 'match';
+
+const FILTER_MATCH_MODES: FilterRuleMatchMode[] = ['contains', 'regex', 'wildcard'];
+
+interface FilterRule {
+  id: string;
+  keyword: string;
+  matchMode: FilterRuleMatchMode;
+  backgroundColor: string;
+  textColor: string;
+  bold: boolean;
+  italic: boolean;
+  applyTo: FilterRuleApplyTo;
+}
+
+interface FilterRuleDragState {
+  draggingRuleId: string;
+  overRuleId: string | null;
+}
+
+interface FilterRuleStyle {
+  backgroundColor: string;
+  textColor: string;
+  bold: boolean;
+  italic: boolean;
+  applyTo: FilterRuleApplyTo;
+}
+
+interface FilterMatchRange {
+  startChar: number;
+  endChar: number;
+}
+
+interface FilterMatch {
+  line: number;
+  column: number;
+  length: number;
+  lineText: string;
+  ruleIndex: number;
+  style: FilterRuleStyle;
+  ranges: FilterMatchRange[];
+}
+
+interface FilterRuleInputPayload {
+  keyword: string;
+  matchMode: FilterRuleMatchMode;
+  backgroundColor: string;
+  textColor: string;
+  bold: boolean;
+  italic: boolean;
+  applyTo: FilterRuleApplyTo;
+}
+
+interface FilterRuleGroupPayload {
+  name: string;
+  rules: FilterRuleInputPayload[];
+}
 
 interface SearchMatch {
   start: number;
@@ -54,10 +121,28 @@ interface SearchRunResult {
   nextOffset?: number | null;
 }
 
+interface FilterRunResult {
+  matches: FilterMatch[];
+  documentVersion: number;
+  errorMessage: string | null;
+  nextLine?: number | null;
+}
+
 interface SearchChunkBackendResult {
   matches: SearchMatch[];
   documentVersion: number;
   nextOffset: number | null;
+}
+
+interface FilterChunkBackendResult {
+  matches: FilterMatch[];
+  documentVersion: number;
+  nextLine: number | null;
+}
+
+interface FilterCountBackendResult {
+  matchedLines: number;
+  documentVersion: number;
 }
 
 interface SearchFirstBackendResult {
@@ -72,7 +157,10 @@ interface SearchCountBackendResult {
 }
 
 const SEARCH_CHUNK_SIZE = 300;
-const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 360px)';
+const FILTER_CHUNK_SIZE = 300;
+const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 420px)';
+const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
+const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
 
 function getSearchMessages(language: 'zh-CN' | 'en-US') {
   if (language === 'en-US') {
@@ -80,6 +168,7 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       counting: 'Counting…',
       invalidRegex: 'Invalid regular expression',
       searchFailed: 'Search failed',
+      filterFailed: 'Filter failed',
       replaceFailed: 'Replace failed',
       replaceAllFailed: 'Replace all failed',
       noReplaceMatches: 'No matches to replace',
@@ -91,14 +180,62 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       statusNoMatches: 'No matches found',
       statusTotalPending: (current: number) => `Total matches counting… · Current ${current}/?`,
       statusTotalReady: (total: number, current: number) => `Total ${total} matches · Current ${current}/${Math.max(total, 1)}`,
+      statusEnterToFilter: 'Add filter rules and press Enter to run filter',
+      statusFiltering: 'Filtering...',
+      statusFilterNoMatches: 'No lines matched filters',
+      statusFilterTotalPending: (current: number) => `Matched lines counting… · Current ${current}/?`,
+      statusFilterTotalReady: (total: number, current: number) => `Matched lines ${total} · Current ${current}/${Math.max(total, 1)}`,
       find: 'Find',
       replace: 'Replace',
+      filter: 'Filter',
       switchToReplaceMode: 'Switch to replace mode',
+      switchToFilterMode: 'Switch to filter mode',
       noFileOpen: 'No file opened',
       close: 'Close',
       findPlaceholder: 'Find text',
-      collapseResults: 'Collapse search results',
-      expandResults: 'Expand search results',
+      filterAddRule: 'Add Rule',
+      filterRuleKeywordPlaceholder: 'Filter keyword',
+      filterMatchContains: 'Contains',
+      filterMatchRegex: 'Regex',
+      filterMatchWildcard: 'Wildcard',
+      filterApplyLine: 'Whole line',
+      filterApplyMatch: 'Match only',
+      filterStyleBold: 'Bold',
+      filterStyleItalic: 'Italic',
+      filterBackground: 'Bg',
+      filterNoBackground: 'No Bg',
+      filterTextColor: 'Text',
+      filterMoveUp: 'Move up',
+      filterMoveDown: 'Move down',
+      filterDeleteRule: 'Delete',
+      filterPriority: 'Priority',
+      filterDragPriorityHint: 'Drag to reorder priority',
+      filterRuleEmptyHint: 'Add at least one non-empty rule.',
+      filterRun: 'Filter',
+      filterRunHint: 'Click Filter to run current rules',
+      filterGroupNamePlaceholder: 'Rule group name',
+      filterSaveGroup: 'Save Group',
+      filterLoadGroup: 'Load Group',
+      filterDeleteGroup: 'Delete Group',
+      filterGroupSelectPlaceholder: 'Select rule group',
+      filterGroupsEmptyHint: 'No saved rule groups yet.',
+      filterImportGroups: 'Import Groups',
+      filterExportGroups: 'Export Groups',
+      filterGroupNameRequired: 'Please enter a rule group name',
+      filterGroupRuleRequired: 'Add at least one non-empty rule before saving',
+      filterGroupSelectRequired: 'Please select a rule group',
+      filterGroupsExportEmpty: 'No rule groups to export',
+      filterGroupSaved: (name: string) => `Saved rule group: ${name}`,
+      filterGroupLoaded: (name: string) => `Loaded rule group: ${name}`,
+      filterGroupDeleted: (name: string) => `Deleted rule group: ${name}`,
+      filterGroupsImported: (count: number) => `Imported ${count} rule groups`,
+      filterGroupsExported: (count: number) => `Exported ${count} rule groups`,
+      filterGroupLoadFailed: 'Failed to load rule groups',
+      filterGroupSaveFailed: 'Failed to save rule groups',
+      filterGroupImportFailed: 'Failed to import rule groups',
+      filterGroupExportFailed: 'Failed to export rule groups',
+      collapseResults: 'Collapse results',
+      expandResults: 'Expand results',
       results: 'Results',
       collapse: 'Collapse',
       replacePlaceholder: 'Replace with',
@@ -118,17 +255,28 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       lineColTitle: (line: number, col: number) => `Line ${line}, Col ${col}`,
       resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
         `Search Results · Total ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      filterResultsSummary: (totalLinesText: string, loaded: number) =>
+        `Filter Results · Total ${totalLinesText} lines · Loaded ${loaded}`,
       refreshResults: 'Refresh search results',
-      minimizeResults: 'Minimize search results',
-      closeResults: 'Close search results',
+      refreshFilterResults: 'Refresh filter results',
+      minimizeResults: 'Minimize results',
+      closeResults: 'Close results',
       resultsEmptyHint: 'Enter a keyword to list all matches here.',
       noMatchesHint: 'No matches found.',
+      filterResultsEmptyHint: 'Add rules and run filter to list matching lines here.',
+      noFilterMatchesHint: 'No lines matched current filter rules.',
       loadingMore: 'Loading more results...',
       scrollToLoadMore: 'Scroll to bottom to load more',
       loadedAll: (totalMatchesText: string) => `All results loaded (${totalMatchesText})`,
+      filterLoadingMore: 'Loading more filtered lines...',
+      filterScrollToLoadMore: 'Scroll to bottom to load more filtered lines',
+      filterLoadedAll: (totalLinesText: string) => `All filtered lines loaded (${totalLinesText})`,
       minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
         `Results ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      filterMinimizedSummary: (totalLinesText: string, loaded: number) =>
+        `Filtered ${totalLinesText} lines · Loaded ${loaded}`,
       openResults: 'Open search results',
+      openFilterResults: 'Open filter results',
     };
   }
 
@@ -136,6 +284,7 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     counting: '统计中…',
     invalidRegex: '正则表达式无效',
     searchFailed: '搜索失败',
+    filterFailed: '过滤失败',
     replaceFailed: '替换失败',
     replaceAllFailed: '全部替换失败',
     noReplaceMatches: '没有可替换的匹配项',
@@ -147,14 +296,62 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     statusNoMatches: '未找到匹配项',
     statusTotalPending: (current: number) => `匹配总计 统计中… · 当前 ${current}/?`,
     statusTotalReady: (total: number, current: number) => `匹配总计 ${total} 项 · 当前 ${current}/${Math.max(total, 1)}`,
+    statusEnterToFilter: '添加规则后按 Enter 开始过滤',
+    statusFiltering: '正在过滤...',
+    statusFilterNoMatches: '没有行匹配当前过滤规则',
+    statusFilterTotalPending: (current: number) => `匹配行总计统计中… · 当前 ${current}/?`,
+    statusFilterTotalReady: (total: number, current: number) => `匹配行总计 ${total} 行 · 当前 ${current}/${Math.max(total, 1)}`,
     find: '查找',
     replace: '替换',
+    filter: '过滤',
     switchToReplaceMode: '切换到替换模式',
+    switchToFilterMode: '切换到过滤模式',
     noFileOpen: '没有打开的文件',
     close: '关闭',
     findPlaceholder: '查找内容',
-    collapseResults: '收起搜索结果',
-    expandResults: '展开搜索结果',
+    filterAddRule: '新增规则',
+    filterRuleKeywordPlaceholder: '过滤关键字',
+    filterMatchContains: '存在',
+    filterMatchRegex: '正则',
+    filterMatchWildcard: '通配符',
+    filterApplyLine: '整行',
+    filterApplyMatch: '仅匹配项',
+    filterStyleBold: '粗体',
+    filterStyleItalic: '斜体',
+    filterBackground: '底色',
+    filterNoBackground: '无底色',
+    filterTextColor: '字体色',
+    filterMoveUp: '上移',
+    filterMoveDown: '下移',
+    filterDeleteRule: '删除',
+    filterPriority: '优先级',
+    filterDragPriorityHint: '拖拽可调整优先级',
+    filterRuleEmptyHint: '请至少添加一条非空规则。',
+    filterRun: '过滤',
+    filterRunHint: '点击“过滤”按钮后开始按规则过滤',
+    filterGroupNamePlaceholder: '规则组名称',
+    filterSaveGroup: '保存规则组',
+    filterLoadGroup: '加载规则组',
+    filterDeleteGroup: '删除规则组',
+    filterGroupSelectPlaceholder: '选择规则组',
+    filterGroupsEmptyHint: '暂无已保存规则组。',
+    filterImportGroups: '导入规则组',
+    filterExportGroups: '导出规则组',
+    filterGroupNameRequired: '请输入规则组名称',
+    filterGroupRuleRequired: '请至少添加一条非空规则再保存',
+    filterGroupSelectRequired: '请先选择规则组',
+    filterGroupsExportEmpty: '暂无可导出的规则组',
+    filterGroupSaved: (name: string) => `已保存规则组：${name}`,
+    filterGroupLoaded: (name: string) => `已加载规则组：${name}`,
+    filterGroupDeleted: (name: string) => `已删除规则组：${name}`,
+    filterGroupsImported: (count: number) => `已导入 ${count} 个规则组`,
+    filterGroupsExported: (count: number) => `已导出 ${count} 个规则组`,
+    filterGroupLoadFailed: '加载规则组失败',
+    filterGroupSaveFailed: '保存规则组失败',
+    filterGroupImportFailed: '导入规则组失败',
+    filterGroupExportFailed: '导出规则组失败',
+    collapseResults: '收起结果',
+    expandResults: '展开结果',
     results: '结果',
     collapse: '收起',
     replacePlaceholder: '替换为',
@@ -174,17 +371,28 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     lineColTitle: (line: number, col: number) => `行 ${line}，列 ${col}`,
     resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
       `搜索结果 · 总计 ${totalMatchesText} 处 / ${totalLinesText} 行 · 已加载 ${loaded} 处`,
+    filterResultsSummary: (totalLinesText: string, loaded: number) =>
+      `过滤结果 · 总计 ${totalLinesText} 行 · 已加载 ${loaded} 行`,
     refreshResults: '刷新搜索结果',
-    minimizeResults: '最小化搜索结果',
-    closeResults: '关闭搜索结果',
+    refreshFilterResults: '刷新过滤结果',
+    minimizeResults: '最小化结果',
+    closeResults: '关闭结果',
     resultsEmptyHint: '输入关键词后会在这里列出全部匹配项。',
     noMatchesHint: '没有找到任何匹配项。',
+    filterResultsEmptyHint: '添加规则并开始过滤后，这里会列出匹配行。',
+    noFilterMatchesHint: '没有行匹配当前过滤规则。',
     loadingMore: '正在加载更多结果...',
     scrollToLoadMore: '滚动到底部自动加载更多结果',
     loadedAll: (totalMatchesText: string) => `已加载全部搜索结果（共 ${totalMatchesText} 处）`,
+    filterLoadingMore: '正在加载更多过滤结果...',
+    filterScrollToLoadMore: '滚动到底部自动加载更多过滤结果',
+    filterLoadedAll: (totalLinesText: string) => `已加载全部过滤结果（共 ${totalLinesText} 行）`,
     minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
       `结果 总计${totalMatchesText}处 / ${totalLinesText}行 · 已加载${loaded}处`,
+    filterMinimizedSummary: (totalLinesText: string, loaded: number) =>
+      `过滤结果 ${totalLinesText}行 · 已加载${loaded}行`,
     openResults: '展开搜索结果',
+    openFilterResults: '展开过滤结果',
   };
 }
 
@@ -220,6 +428,135 @@ function dispatchNavigateToMatch(tabId: string, match: SearchMatch) {
       },
     })
   );
+}
+
+function dispatchNavigateToLine(tabId: string, line: number, column: number, length: number) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:navigate-to-line', {
+      detail: {
+        tabId,
+        line,
+        column,
+        length,
+      },
+    })
+  );
+}
+
+function createDefaultFilterRule(index: number): FilterRule {
+  return {
+    id: `filter-rule-${Date.now()}-${index}`,
+    keyword: '',
+    matchMode: 'contains',
+    backgroundColor: DEFAULT_FILTER_RULE_BACKGROUND,
+    textColor: DEFAULT_FILTER_RULE_TEXT,
+    bold: false,
+    italic: false,
+    applyTo: 'line',
+  };
+}
+
+function normalizeFilterRuleInputPayload(rule: FilterRuleInputPayload): FilterRuleInputPayload | null {
+  const keyword = rule.keyword.trim();
+  if (!keyword) {
+    return null;
+  }
+
+  const matchMode = FILTER_MATCH_MODES.includes(rule.matchMode) ? rule.matchMode : 'contains';
+  const applyTo: FilterRuleApplyTo = rule.applyTo === 'match' ? 'match' : 'line';
+
+  return {
+    keyword,
+    matchMode,
+    backgroundColor: rule.backgroundColor?.trim() || '',
+    textColor: rule.textColor?.trim() || DEFAULT_FILTER_RULE_TEXT,
+    bold: !!rule.bold,
+    italic: !!rule.italic,
+    applyTo,
+  };
+}
+
+function normalizeFilterRuleGroups(groups: FilterRuleGroupPayload[]): FilterRuleGroupPayload[] {
+  return groups
+    .map((group) => ({
+      name: group.name.trim(),
+      rules: (group.rules || []).map(normalizeFilterRuleInputPayload).filter((rule): rule is FilterRuleInputPayload => !!rule),
+    }))
+    .filter((group) => group.name.length > 0 && group.rules.length > 0);
+}
+
+function buildFilterRulesFromPayload(rules: FilterRuleInputPayload[]): FilterRule[] {
+  const normalizedRules = rules
+    .map(normalizeFilterRuleInputPayload)
+    .filter((rule): rule is FilterRuleInputPayload => !!rule);
+
+  if (normalizedRules.length === 0) {
+    return [createDefaultFilterRule(0)];
+  }
+
+  return normalizedRules.map((rule, index) => ({
+    id: `filter-rule-${Date.now()}-${index}`,
+    keyword: rule.keyword,
+    matchMode: rule.matchMode,
+    backgroundColor: rule.backgroundColor,
+    textColor: rule.textColor,
+    bold: rule.bold,
+    italic: rule.italic,
+    applyTo: rule.applyTo,
+  }));
+}
+
+function reorderFilterRules(rules: FilterRule[], draggingRuleId: string, targetRuleId: string): FilterRule[] {
+  if (draggingRuleId === targetRuleId) {
+    return rules;
+  }
+
+  const sourceIndex = rules.findIndex((rule) => rule.id === draggingRuleId);
+  const targetIndex = rules.findIndex((rule) => rule.id === targetRuleId);
+
+  if (sourceIndex < 0 || targetIndex < 0) {
+    return rules;
+  }
+
+  const nextRules = [...rules];
+  const [movedRule] = nextRules.splice(sourceIndex, 1);
+  nextRules.splice(targetIndex, 0, movedRule);
+  return nextRules;
+}
+
+function normalizeFilterRules(rules: FilterRule[]) {
+  return rules
+    .map((rule) => ({
+      id: rule.id,
+      keyword: rule.keyword.trim(),
+      matchMode: rule.matchMode,
+      backgroundColor: rule.backgroundColor,
+      textColor: rule.textColor,
+      bold: rule.bold,
+      italic: rule.italic,
+      applyTo: rule.applyTo,
+    }))
+    .filter((rule) => rule.keyword.length > 0);
+}
+
+function buildFilterRulesPayload(rules: FilterRule[]): FilterRuleInputPayload[] {
+  return normalizeFilterRules(rules).map((rule) => ({
+    keyword: rule.keyword,
+    matchMode: rule.matchMode,
+    backgroundColor: rule.backgroundColor,
+    textColor: rule.textColor,
+    bold: rule.bold,
+    italic: rule.italic,
+    applyTo: rule.applyTo,
+  }));
+}
+
+function cssColor(value: string | undefined, fallback: string) {
+  if (!value || value.trim().length === 0) {
+    return fallback;
+  }
+
+  return value;
 }
 
 function escapeRegexLiteral(keyword: string) {
@@ -299,6 +636,96 @@ function renderMatchPreview(match: SearchMatch) {
   );
 }
 
+function renderFilterPreview(match: FilterMatch) {
+  const lineText = match.lineText || '';
+  const style = match.style;
+  const textColor = cssColor(style?.textColor, 'inherit');
+  const bgColor = cssColor(style?.backgroundColor, 'transparent');
+  const isBold = !!style?.bold;
+  const isItalic = !!style?.italic;
+
+  if (!style || style.applyTo === 'line') {
+    return (
+      <span
+        style={{
+          color: textColor,
+          backgroundColor: bgColor,
+          fontWeight: isBold ? 700 : 400,
+          fontStyle: isItalic ? 'italic' : 'normal',
+        }}
+      >
+        {lineText || ' '}
+      </span>
+    );
+  }
+
+  const ranges = (match.ranges || [])
+    .map((range) => ({
+      start: Math.max(0, Math.min(lineText.length, range.startChar)),
+      end: Math.max(0, Math.min(lineText.length, range.endChar)),
+    }))
+    .filter((range) => range.end > range.start)
+    .sort((left, right) => left.start - right.start);
+
+  if (ranges.length === 0) {
+    return <span>{lineText || ' '}</span>;
+  }
+
+  const mergedRanges: Array<{ start: number; end: number }> = [];
+  for (const range of ranges) {
+    const previous = mergedRanges[mergedRanges.length - 1];
+    if (!previous || range.start > previous.end) {
+      mergedRanges.push(range);
+      continue;
+    }
+
+    previous.end = Math.max(previous.end, range.end);
+  }
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  mergedRanges.forEach((range, index) => {
+    if (range.start > cursor) {
+      nodes.push(<span key={`plain-${index}-${cursor}`}>{lineText.slice(cursor, range.start)}</span>);
+    }
+
+    nodes.push(
+      <span
+        key={`hl-${index}-${range.start}`}
+        style={{
+          color: textColor,
+          backgroundColor: bgColor,
+          fontWeight: isBold ? 700 : 400,
+          fontStyle: isItalic ? 'italic' : 'normal',
+        }}
+      >
+        {lineText.slice(range.start, range.end)}
+      </span>
+    );
+
+    cursor = range.end;
+  });
+
+  if (cursor < lineText.length) {
+    nodes.push(<span key={`tail-${cursor}`}>{lineText.slice(cursor)}</span>);
+  }
+
+  return <>{nodes}</>;
+}
+
+function matchModeLabel(mode: FilterRuleMatchMode, messages: ReturnType<typeof getSearchMessages>) {
+  if (mode === 'contains') {
+    return messages.filterMatchContains;
+  }
+
+  if (mode === 'regex') {
+    return messages.filterMatchRegex;
+  }
+
+  return messages.filterMatchWildcard;
+}
+
 export function SearchReplacePanel() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -311,16 +738,24 @@ export function SearchReplacePanel() {
   );
 
   const [isOpen, setIsOpen] = useState(false);
-  const [isReplaceMode, setIsReplaceMode] = useState(false);
+  const [panelMode, setPanelMode] = useState<PanelMode>('find');
   const [keyword, setKeyword] = useState('');
   const [replaceValue, setReplaceValue] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('literal');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [reverseSearch, setReverseSearch] = useState(false);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
+  const [filterRules, setFilterRules] = useState<FilterRule[]>([createDefaultFilterRule(0)]);
+  const [filterRuleGroups, setFilterRuleGroups] = useState<FilterRuleGroupPayload[]>([]);
+  const [selectedFilterGroupName, setSelectedFilterGroupName] = useState('');
+  const [filterGroupNameInput, setFilterGroupNameInput] = useState('');
+  const [filterRuleDragState, setFilterRuleDragState] = useState<FilterRuleDragState | null>(null);
+  const [filterMatches, setFilterMatches] = useState<FilterMatch[]>([]);
   const [totalMatchCount, setTotalMatchCount] = useState<number | null>(null);
   const [totalMatchedLineCount, setTotalMatchedLineCount] = useState<number | null>(null);
+  const [totalFilterMatchedLineCount, setTotalFilterMatchedLineCount] = useState<number | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [currentFilterMatchIndex, setCurrentFilterMatchIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultPanelState, setResultPanelState] = useState<SearchResultPanelState>('closed');
@@ -328,21 +763,40 @@ export function SearchReplacePanel() {
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
+  const isReplaceMode = panelMode === 'replace';
+  const isFilterMode = panelMode === 'filter';
+  const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
+  const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
+  const normalizedFilterRuleGroups = useMemo(
+    () => normalizeFilterRuleGroups(filterRuleGroups),
+    [filterRuleGroups]
+  );
+  const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resultListRef = useRef<HTMLDivElement>(null);
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
   const runVersionRef = useRef(0);
   const countRunVersionRef = useRef(0);
+  const filterRunVersionRef = useRef(0);
+  const filterCountRunVersionRef = useRef(0);
   const currentMatchIndexRef = useRef(0);
+  const currentFilterMatchIndexRef = useRef(0);
   const loadMoreLockRef = useRef(false);
   const loadMoreDebounceRef = useRef<number | null>(null);
   const chunkCursorRef = useRef<number | null>(null);
+  const filterLineCursorRef = useRef<number | null>(null);
   const searchParamsRef = useRef<{
     tabId: string;
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    documentVersion: number;
+  } | null>(null);
+  const filterParamsRef = useRef<{
+    tabId: string;
+    rulesKey: string;
     documentVersion: number;
   } | null>(null);
   const cachedSearchRef = useRef<{
@@ -354,6 +808,13 @@ export function SearchReplacePanel() {
     matches: SearchMatch[];
     nextOffset: number | null;
   } | null>(null);
+  const cachedFilterRef = useRef<{
+    tabId: string;
+    rulesKey: string;
+    documentVersion: number;
+    matches: FilterMatch[];
+    nextLine: number | null;
+  } | null>(null);
   const countCacheRef = useRef<{
     tabId: string;
     keyword: string;
@@ -363,13 +824,50 @@ export function SearchReplacePanel() {
     totalMatches: number;
     matchedLines: number;
   } | null>(null);
+  const filterCountCacheRef = useRef<{
+    tabId: string;
+    rulesKey: string;
+    documentVersion: number;
+    matchedLines: number;
+  } | null>(null);
 
   useEffect(() => {
     currentMatchIndexRef.current = currentMatchIndex;
   }, [currentMatchIndex]);
 
+  useEffect(() => {
+    currentFilterMatchIndexRef.current = currentFilterMatchIndex;
+  }, [currentFilterMatchIndex]);
+
+  const resetSearchState = useCallback((clearTotals = true) => {
+    setMatches([]);
+    setCurrentMatchIndex(0);
+    cachedSearchRef.current = null;
+    chunkCursorRef.current = null;
+    searchParamsRef.current = null;
+    countCacheRef.current = null;
+
+    if (clearTotals) {
+      setTotalMatchCount(null);
+      setTotalMatchedLineCount(null);
+    }
+  }, []);
+
+  const resetFilterState = useCallback((clearTotals = true) => {
+    setFilterMatches([]);
+    setCurrentFilterMatchIndex(0);
+    cachedFilterRef.current = null;
+    filterLineCursorRef.current = null;
+    filterParamsRef.current = null;
+    filterCountCacheRef.current = null;
+
+    if (clearTotals) {
+      setTotalFilterMatchedLineCount(null);
+    }
+  }, []);
+
   const executeCountSearch = useCallback(async (forceRefresh = false) => {
-    if (!activeTab || !keyword) {
+    if (!activeTab || !keyword || isFilterMode) {
       setTotalMatchCount(keyword ? 0 : null);
       setTotalMatchedLineCount(keyword ? 0 : null);
       return;
@@ -436,7 +934,66 @@ export function SearchReplacePanel() {
       setTotalMatchCount(null);
       setTotalMatchedLineCount(null);
     }
-  }, [activeTab, caseSensitive, keyword, searchMode]);
+  }, [activeTab, caseSensitive, isFilterMode, keyword, searchMode]);
+
+  const executeFilterCountSearch = useCallback(async (forceRefresh = false) => {
+    if (!activeTab) {
+      setTotalFilterMatchedLineCount(null);
+      return;
+    }
+
+    if (filterRulesPayload.length === 0) {
+      setTotalFilterMatchedLineCount(0);
+      return;
+    }
+
+    if (!forceRefresh) {
+      const cached = filterCountCacheRef.current;
+      if (cached && cached.tabId === activeTab.id && cached.rulesKey === filterRulesKey) {
+        try {
+          const currentDocumentVersion = await invoke<number>('get_document_version', {
+            id: activeTab.id,
+          });
+
+          if (currentDocumentVersion === cached.documentVersion) {
+            setTotalFilterMatchedLineCount(cached.matchedLines);
+            return;
+          }
+        } catch (error) {
+          console.warn('Failed to read document version for filter count:', error);
+        }
+      }
+    }
+
+    const runId = filterCountRunVersionRef.current + 1;
+    filterCountRunVersionRef.current = runId;
+
+    try {
+      const result = await invoke<FilterCountBackendResult>('filter_count_in_document', {
+        id: activeTab.id,
+        rules: filterRulesPayload,
+      });
+
+      if (filterCountRunVersionRef.current !== runId) {
+        return;
+      }
+
+      setTotalFilterMatchedLineCount(result.matchedLines ?? 0);
+      filterCountCacheRef.current = {
+        tabId: activeTab.id,
+        rulesKey: filterRulesKey,
+        documentVersion: result.documentVersion ?? 0,
+        matchedLines: result.matchedLines ?? 0,
+      };
+    } catch (error) {
+      if (filterCountRunVersionRef.current !== runId) {
+        return;
+      }
+
+      console.warn('Filter count failed:', error);
+      setTotalFilterMatchedLineCount(null);
+    }
+  }, [activeTab, filterRulesKey, filterRulesPayload]);
 
   const focusSearchInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -446,21 +1003,14 @@ export function SearchReplacePanel() {
   }, []);
 
   const executeSearch = useCallback(async (forceRefresh = false, silent = false): Promise<SearchRunResult | null> => {
-    if (!activeTab) {
+    if (!activeTab || isFilterMode) {
       return null;
     }
 
     if (!keyword) {
       setErrorMessage(null);
-      setMatches([]);
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
-      setCurrentMatchIndex(0);
+      resetSearchState();
       setIsSearching(false);
-      cachedSearchRef.current = null;
-      chunkCursorRef.current = null;
-      searchParamsRef.current = null;
-      countCacheRef.current = null;
       return {
         matches: [],
         documentVersion: 0,
@@ -588,14 +1138,7 @@ export function SearchReplacePanel() {
 
       const readableError = error instanceof Error ? error.message : String(error);
       setErrorMessage(`${messages.searchFailed}: ${readableError}`);
-      setMatches([]);
-      setCurrentMatchIndex(0);
-      cachedSearchRef.current = null;
-      chunkCursorRef.current = null;
-      searchParamsRef.current = null;
-      countCacheRef.current = null;
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
+      resetSearchState();
 
       return {
         matches: [],
@@ -608,14 +1151,160 @@ export function SearchReplacePanel() {
         setIsSearching(false);
       }
     }
-  }, [activeTab, caseSensitive, executeCountSearch, keyword, messages.searchFailed, searchMode]);
+  }, [activeTab, caseSensitive, executeCountSearch, isFilterMode, keyword, messages.searchFailed, resetSearchState, searchMode]);
+
+  const executeFilter = useCallback(async (forceRefresh = false, silent = false): Promise<FilterRunResult | null> => {
+  if (!activeTab) {
+    return null;
+  }
+
+    if (filterRulesPayload.length === 0) {
+      setErrorMessage(null);
+      resetFilterState(false);
+      setTotalFilterMatchedLineCount(0);
+      setIsSearching(false);
+      return {
+        matches: [],
+        documentVersion: 0,
+        errorMessage: null,
+        nextLine: null,
+      };
+    }
+
+    void executeFilterCountSearch(forceRefresh);
+
+    if (!forceRefresh) {
+      const cached = cachedFilterRef.current;
+      if (cached && cached.tabId === activeTab.id && cached.rulesKey === filterRulesKey) {
+        try {
+          const currentDocumentVersion = await invoke<number>('get_document_version', {
+            id: activeTab.id,
+          });
+
+          if (currentDocumentVersion === cached.documentVersion) {
+            setErrorMessage(null);
+            startTransition(() => {
+              setFilterMatches(cached.matches);
+              setCurrentFilterMatchIndex((previousIndex) => {
+                if (cached.matches.length === 0) {
+                  return 0;
+                }
+
+                return Math.min(previousIndex, cached.matches.length - 1);
+              });
+            });
+
+            filterLineCursorRef.current = cached.nextLine;
+            filterParamsRef.current = {
+              tabId: activeTab.id,
+              rulesKey: filterRulesKey,
+              documentVersion: cached.documentVersion,
+            };
+
+            return {
+              matches: cached.matches,
+              documentVersion: cached.documentVersion,
+              errorMessage: null,
+              nextLine: cached.nextLine,
+            };
+          }
+        } catch (error) {
+          console.warn('Failed to read document version for filter:', error);
+        }
+      }
+    }
+
+    const runVersion = filterRunVersionRef.current + 1;
+    filterRunVersionRef.current = runVersion;
+    if (!silent) {
+      setIsSearching(true);
+    }
+
+    try {
+      const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
+        id: activeTab.id,
+        rules: filterRulesPayload,
+        startLine: 0,
+        maxResults: FILTER_CHUNK_SIZE,
+      });
+
+      if (filterRunVersionRef.current !== runVersion) {
+        return null;
+      }
+
+      const nextMatches = backendResult.matches || [];
+      const documentVersion = backendResult.documentVersion ?? 0;
+      const nextLine = backendResult.nextLine ?? null;
+
+      setErrorMessage(null);
+      startTransition(() => {
+        setFilterMatches(nextMatches);
+        setCurrentFilterMatchIndex((previousIndex) => {
+          if (nextMatches.length === 0) {
+            return 0;
+          }
+
+          return Math.min(previousIndex, nextMatches.length - 1);
+        });
+      });
+
+      cachedFilterRef.current = {
+        tabId: activeTab.id,
+        rulesKey: filterRulesKey,
+        documentVersion,
+        matches: nextMatches,
+        nextLine,
+      };
+
+      filterLineCursorRef.current = nextLine;
+      filterParamsRef.current = {
+        tabId: activeTab.id,
+        rulesKey: filterRulesKey,
+        documentVersion,
+      };
+
+      return {
+        matches: nextMatches,
+        documentVersion,
+        errorMessage: null,
+        nextLine,
+      };
+    } catch (error) {
+      if (filterRunVersionRef.current !== runVersion) {
+        return null;
+      }
+
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterFailed}: ${readableError}`);
+      resetFilterState();
+
+      return {
+        matches: [],
+        documentVersion: 0,
+        errorMessage: readableError,
+        nextLine: null,
+      };
+    } finally {
+      if (filterRunVersionRef.current === runVersion && !silent) {
+        setIsSearching(false);
+      }
+    }
+  }, [
+    activeTab,
+    executeFilterCountSearch,
+    filterRulesKey,
+    filterRulesPayload,
+    isFilterMode,
+    messages.filterFailed,
+    resetFilterState,
+  ]);
 
   const loadMoreMatches = useCallback(async (): Promise<SearchMatch[] | null> => {
     if (loadMoreLockRef.current) {
       return null;
     }
 
-    if (!activeTab) {
+    if (!activeTab || isFilterMode) {
       return null;
     }
 
@@ -691,9 +1380,87 @@ export function SearchReplacePanel() {
       loadMoreLockRef.current = false;
       setIsSearching(false);
     }
-  }, [activeTab, caseSensitive, keyword, messages.searchFailed, searchMode]);
+  }, [activeTab, caseSensitive, isFilterMode, keyword, messages.searchFailed, searchMode]);
+
+  const loadMoreFilterMatches = useCallback(async (): Promise<FilterMatch[] | null> => {
+    if (loadMoreLockRef.current) {
+      return null;
+    }
+
+  if (!activeTab) {
+    return null;
+  }
+
+    const params = filterParamsRef.current;
+    const startLine = filterLineCursorRef.current;
+    if (!params || startLine === null) {
+      return null;
+    }
+
+    if (params.tabId !== activeTab.id || params.rulesKey !== filterRulesKey) {
+      return null;
+    }
+
+    loadMoreLockRef.current = true;
+    setIsSearching(true);
+    try {
+      const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
+        id: activeTab.id,
+        rules: filterRulesPayload,
+        startLine,
+        maxResults: FILTER_CHUNK_SIZE,
+      });
+
+      if (backendResult.documentVersion !== params.documentVersion) {
+        cachedFilterRef.current = null;
+        filterLineCursorRef.current = null;
+        filterParamsRef.current = null;
+        return null;
+      }
+
+      const appendedMatches = backendResult.matches || [];
+      const nextLine = backendResult.nextLine ?? null;
+      filterLineCursorRef.current = nextLine;
+
+      if (appendedMatches.length === 0) {
+        if (cachedFilterRef.current) {
+          cachedFilterRef.current.nextLine = nextLine;
+        }
+        return [];
+      }
+
+      startTransition(() => {
+        setFilterMatches((previousMatches) => {
+          const mergedMatches = [...previousMatches, ...appendedMatches];
+
+          cachedFilterRef.current = {
+            tabId: activeTab.id,
+            rulesKey: filterRulesKey,
+            documentVersion: params.documentVersion,
+            matches: mergedMatches,
+            nextLine,
+          };
+
+          return mergedMatches;
+        });
+      });
+
+      return appendedMatches;
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterFailed}: ${readableError}`);
+      return null;
+    } finally {
+      loadMoreLockRef.current = false;
+      setIsSearching(false);
+    }
+  }, [activeTab, filterRulesKey, filterRulesPayload, isFilterMode, messages.filterFailed]);
 
   const ensureAllMatchesLoaded = useCallback(async (): Promise<SearchMatch[]> => {
+    if (isFilterMode) {
+      return [];
+    }
+
     let previousCursor = chunkCursorRef.current;
     while (chunkCursorRef.current !== null) {
       const appended = await loadMoreMatches();
@@ -709,10 +1476,32 @@ export function SearchReplacePanel() {
     }
 
     return cachedSearchRef.current?.matches ?? [];
-  }, [loadMoreMatches]);
+  }, [isFilterMode, loadMoreMatches]);
+
+  const ensureAllFilterMatchesLoaded = useCallback(async (): Promise<FilterMatch[]> => {
+    if (!isFilterMode) {
+      return [];
+    }
+
+    let previousCursor = filterLineCursorRef.current;
+    while (filterLineCursorRef.current !== null) {
+      const appended = await loadMoreFilterMatches();
+      if (appended === null) {
+        break;
+      }
+
+      if (filterLineCursorRef.current === previousCursor) {
+        break;
+      }
+
+      previousCursor = filterLineCursorRef.current;
+    }
+
+    return cachedFilterRef.current?.matches ?? [];
+  }, [isFilterMode, loadMoreFilterMatches]);
 
   const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
-    if (!activeTab || !keyword) {
+    if (!activeTab || !keyword || isFilterMode) {
       return null;
     }
 
@@ -738,10 +1527,7 @@ export function SearchReplacePanel() {
 
       if (!firstMatch) {
         setErrorMessage(null);
-        startTransition(() => {
-          setMatches([]);
-          setCurrentMatchIndex(0);
-        });
+        resetSearchState(false);
 
         cachedSearchRef.current = {
           tabId: activeTab.id,
@@ -816,14 +1602,7 @@ export function SearchReplacePanel() {
 
       const readableError = error instanceof Error ? error.message : String(error);
       setErrorMessage(`${messages.searchFailed}: ${readableError}`);
-      setMatches([]);
-      setCurrentMatchIndex(0);
-      cachedSearchRef.current = null;
-      chunkCursorRef.current = null;
-      searchParamsRef.current = null;
-      countCacheRef.current = null;
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
+      resetSearchState();
       setIsSearching(false);
 
       return {
@@ -833,7 +1612,17 @@ export function SearchReplacePanel() {
         nextOffset: null,
       };
     }
-  }, [activeTab, caseSensitive, ensureAllMatchesLoaded, executeSearch, keyword, messages.searchFailed, searchMode]);
+  }, [
+    activeTab,
+    caseSensitive,
+    ensureAllMatchesLoaded,
+    executeSearch,
+    isFilterMode,
+    keyword,
+    messages.searchFailed,
+    resetSearchState,
+    searchMode,
+  ]);
 
   const navigateToMatch = useCallback(
     (targetMatch: SearchMatch) => {
@@ -846,7 +1635,24 @@ export function SearchReplacePanel() {
     [activeTab]
   );
 
+  const navigateToFilterMatch = useCallback(
+    (targetMatch: FilterMatch) => {
+      if (!activeTab) {
+        return;
+      }
+
+      dispatchNavigateToLine(
+        activeTab.id,
+        targetMatch.line,
+        Math.max(1, targetMatch.column || 1),
+        Math.max(0, targetMatch.length || 0)
+      );
+    },
+    [activeTab]
+  );
+
   const hasMoreMatches = chunkCursorRef.current !== null;
+  const hasMoreFilterMatches = filterLineCursorRef.current !== null;
 
   const handleResultListScroll = useCallback(
     (event: ReactUIEvent<HTMLDivElement>) => {
@@ -854,7 +1660,11 @@ export function SearchReplacePanel() {
         return;
       }
 
-      if (!keyword || !hasMoreMatches || isSearching || loadMoreLockRef.current) {
+      if (isFilterMode) {
+        if (filterRulesPayload.length === 0 || !hasMoreFilterMatches || isSearching || loadMoreLockRef.current) {
+          return;
+        }
+      } else if (!keyword || !hasMoreMatches || isSearching || loadMoreLockRef.current) {
         return;
       }
 
@@ -870,14 +1680,88 @@ export function SearchReplacePanel() {
 
       loadMoreDebounceRef.current = window.setTimeout(() => {
         loadMoreDebounceRef.current = null;
+        if (isFilterMode) {
+          void loadMoreFilterMatches();
+          return;
+        }
+
         void loadMoreMatches();
       }, 40);
     },
-    [hasMoreMatches, isOpen, isSearching, keyword, loadMoreMatches, resultPanelState]
+    [
+      filterRulesPayload.length,
+      hasMoreFilterMatches,
+      hasMoreMatches,
+      isFilterMode,
+      isOpen,
+      isSearching,
+      keyword,
+      loadMoreFilterMatches,
+      loadMoreMatches,
+      resultPanelState,
+    ]
   );
 
   const navigateByStep = useCallback(
     async (step: number) => {
+      if (isFilterMode) {
+        if (filterMatches.length > 0 && !isSearching) {
+          const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterMatches.length - 1);
+          const candidateIndex = boundedCurrentIndex + step;
+
+          if (candidateIndex < 0 && filterLineCursorRef.current !== null) {
+            const allMatches = await ensureAllFilterMatchesLoaded();
+            if (allMatches.length > 0) {
+              const lastIndex = allMatches.length - 1;
+              setCurrentFilterMatchIndex(lastIndex);
+              setFeedbackMessage(null);
+              navigateToFilterMatch(allMatches[lastIndex]);
+              return;
+            }
+          }
+
+          if (candidateIndex >= filterMatches.length) {
+            const appended = await loadMoreFilterMatches();
+            if (appended && appended.length > 0) {
+              const expandedMatches = [...filterMatches, ...appended];
+              const nextIndex = candidateIndex;
+              setCurrentFilterMatchIndex(nextIndex);
+              setFeedbackMessage(null);
+              navigateToFilterMatch(expandedMatches[nextIndex]);
+              return;
+            }
+          }
+
+          const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+          setCurrentFilterMatchIndex(nextIndex);
+          setFeedbackMessage(null);
+          navigateToFilterMatch(filterMatches[nextIndex]);
+          return;
+        }
+
+        const filterResult = await executeFilter();
+        if (!filterResult || filterResult.matches.length === 0) {
+          return;
+        }
+
+        const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterResult.matches.length - 1);
+        const nextIndex = (boundedCurrentIndex + step + filterResult.matches.length) % filterResult.matches.length;
+
+        setCurrentFilterMatchIndex(nextIndex);
+        setFeedbackMessage(null);
+        navigateToFilterMatch(filterResult.matches[nextIndex]);
+
+        if (step < 0 && filterResult.nextLine !== null) {
+          const allMatches = await ensureAllFilterMatchesLoaded();
+          if (allMatches.length > 0) {
+            const lastIndex = allMatches.length - 1;
+            setCurrentFilterMatchIndex(lastIndex);
+            navigateToFilterMatch(allMatches[lastIndex]);
+          }
+        }
+        return;
+      }
+
       if (keyword && matches.length > 0 && !isSearching) {
         const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, matches.length - 1);
         const candidateIndex = boundedCurrentIndex + step;
@@ -937,7 +1821,21 @@ export function SearchReplacePanel() {
         }
       }
     },
-    [ensureAllMatchesLoaded, executeFirstMatchSearch, isSearching, keyword, loadMoreMatches, matches, navigateToMatch]
+    [
+      ensureAllFilterMatchesLoaded,
+      ensureAllMatchesLoaded,
+      executeFilter,
+      executeFirstMatchSearch,
+      filterMatches,
+      isFilterMode,
+      isSearching,
+      keyword,
+      loadMoreFilterMatches,
+      loadMoreMatches,
+      matches,
+      navigateToFilterMatch,
+      navigateToMatch,
+    ]
   );
 
   const handleReplaceCurrent = useCallback(async () => {
@@ -1110,16 +2008,34 @@ export function SearchReplacePanel() {
 
       if (event.key === 'Enter') {
         event.preventDefault();
+        if (isFilterMode) {
+          if (!isSearching) {
+            void executeFilter(true);
+          }
+          return;
+        }
+
         const primaryStep = reverseSearch ? -1 : 1;
         const step = event.shiftKey ? -primaryStep : primaryStep;
         void navigateByStep(step);
       }
     },
-    [navigateByStep, reverseSearch]
+    [executeFilter, isFilterMode, isSearching, navigateByStep, reverseSearch]
   );
 
   const handleSelectMatch = useCallback(
     (targetIndex: number) => {
+      if (isFilterMode) {
+        if (targetIndex < 0 || targetIndex >= filterMatches.length) {
+          return;
+        }
+
+        setCurrentFilterMatchIndex(targetIndex);
+        setFeedbackMessage(null);
+        navigateToFilterMatch(filterMatches[targetIndex]);
+        return;
+      }
+
       if (targetIndex < 0 || targetIndex >= matches.length) {
         return;
       }
@@ -1128,14 +2044,307 @@ export function SearchReplacePanel() {
       setFeedbackMessage(null);
       navigateToMatch(matches[targetIndex]);
     },
-    [matches, navigateToMatch]
+    [filterMatches, isFilterMode, matches, navigateToFilterMatch, navigateToMatch]
   );
+
+  const updateFilterRule = useCallback((id: string, updater: (rule: FilterRule) => FilterRule) => {
+    setFilterRules((previousRules) =>
+      previousRules.map((rule) => {
+        if (rule.id !== id) {
+          return rule;
+        }
+
+        return updater(rule);
+      })
+    );
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+    resetFilterState();
+  }, [resetFilterState]);
+
+  const addFilterRule = useCallback(() => {
+    setFilterRules((previousRules) => [...previousRules, createDefaultFilterRule(previousRules.length)]);
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+  }, []);
+
+  const removeFilterRule = useCallback((id: string) => {
+    setFilterRules((previousRules) => {
+      const nextRules = previousRules.filter((rule) => rule.id !== id);
+      if (nextRules.length > 0) {
+        return nextRules;
+      }
+
+      return [createDefaultFilterRule(0)];
+    });
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+    resetFilterState();
+  }, [resetFilterState]);
+
+  const moveFilterRule = useCallback((id: string, direction: -1 | 1) => {
+    setFilterRules((previousRules) => {
+      const index = previousRules.findIndex((rule) => rule.id === id);
+      if (index < 0) {
+        return previousRules;
+      }
+
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= previousRules.length) {
+        return previousRules;
+      }
+
+      const nextRules = [...previousRules];
+      const [movedRule] = nextRules.splice(index, 1);
+      nextRules.splice(targetIndex, 0, movedRule);
+      return nextRules;
+    });
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+    resetFilterState();
+  }, [resetFilterState]);
+
+  const onFilterRuleDragStart = useCallback((event: ReactDragEvent<HTMLElement>, ruleId: string) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', ruleId);
+    setFilterRuleDragState({
+      draggingRuleId: ruleId,
+      overRuleId: null,
+    });
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+  }, []);
+
+  const onFilterRuleDragOver = useCallback((event: ReactDragEvent<HTMLElement>, ruleId: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+
+    setFilterRuleDragState((previous) => {
+      if (!previous || previous.overRuleId === ruleId) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        overRuleId: ruleId,
+      };
+    });
+  }, []);
+
+  const onFilterRuleDrop = useCallback((event: ReactDragEvent<HTMLElement>, targetRuleId: string) => {
+    event.preventDefault();
+
+    setFilterRules((previousRules) => {
+      const fallbackSourceId = event.dataTransfer.getData('text/plain');
+      const sourceRuleId = filterRuleDragState?.draggingRuleId || fallbackSourceId;
+      if (!sourceRuleId) {
+        return previousRules;
+      }
+
+      const reordered = reorderFilterRules(previousRules, sourceRuleId, targetRuleId);
+      return reordered;
+    });
+
+    setFilterRuleDragState(null);
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+    resetFilterState();
+  }, [filterRuleDragState?.draggingRuleId, resetFilterState]);
+
+  const onFilterRuleDragEnd = useCallback(() => {
+    setFilterRuleDragState(null);
+  }, []);
+
+  const persistFilterRuleGroups = useCallback(
+    async (groups: FilterRuleGroupPayload[]) => {
+      const normalized = normalizeFilterRuleGroups(groups);
+      await invoke('save_filter_rule_groups_config', {
+        groups: normalized,
+      });
+      setFilterRuleGroups(normalized);
+      return normalized;
+    },
+    []
+  );
+
+  const handleSaveFilterRuleGroup = useCallback(async () => {
+    const trimmedName = filterGroupNameInput.trim();
+    if (!trimmedName) {
+      setErrorMessage(messages.filterGroupNameRequired);
+      return;
+    }
+
+    if (filterRulesPayload.length === 0) {
+      setErrorMessage(messages.filterGroupRuleRequired);
+      return;
+    }
+
+    const nextGroups = [...normalizedFilterRuleGroups];
+    const groupIndex = nextGroups.findIndex((group) => group.name === trimmedName);
+    const nextGroup: FilterRuleGroupPayload = {
+      name: trimmedName,
+      rules: filterRulesPayload,
+    };
+
+    if (groupIndex >= 0) {
+      nextGroups[groupIndex] = nextGroup;
+    } else {
+      nextGroups.push(nextGroup);
+    }
+
+    try {
+      const savedGroups = await persistFilterRuleGroups(nextGroups);
+      setSelectedFilterGroupName(trimmedName);
+      setFilterGroupNameInput(trimmedName);
+      setFeedbackMessage(messages.filterGroupSaved(trimmedName));
+      setErrorMessage(null);
+
+      if (!savedGroups.some((group) => group.name === trimmedName)) {
+        setSelectedFilterGroupName('');
+      }
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterGroupSaveFailed}: ${readableError}`);
+    }
+  }, [
+    filterGroupNameInput,
+    filterRulesPayload,
+    messages,
+    normalizedFilterRuleGroups,
+    persistFilterRuleGroups,
+  ]);
+
+  const handleLoadFilterRuleGroup = useCallback(() => {
+    if (!selectedFilterGroupName) {
+      setErrorMessage(messages.filterGroupSelectRequired);
+      return;
+    }
+
+    const group = normalizedFilterRuleGroups.find((item) => item.name === selectedFilterGroupName);
+    if (!group) {
+      setErrorMessage(messages.filterGroupSelectRequired);
+      return;
+    }
+
+    setFilterRules(buildFilterRulesFromPayload(group.rules));
+    setFilterGroupNameInput(group.name);
+    setFeedbackMessage(messages.filterGroupLoaded(group.name));
+    setErrorMessage(null);
+    resetFilterState();
+  }, [messages, normalizedFilterRuleGroups, resetFilterState, selectedFilterGroupName]);
+
+  const handleDeleteFilterRuleGroup = useCallback(async () => {
+    if (!selectedFilterGroupName) {
+      setErrorMessage(messages.filterGroupSelectRequired);
+      return;
+    }
+
+    const nextGroups = normalizedFilterRuleGroups.filter((group) => group.name !== selectedFilterGroupName);
+
+    try {
+      await persistFilterRuleGroups(nextGroups);
+      setFeedbackMessage(messages.filterGroupDeleted(selectedFilterGroupName));
+      setErrorMessage(null);
+      setSelectedFilterGroupName('');
+      if (filterGroupNameInput.trim() === selectedFilterGroupName) {
+        setFilterGroupNameInput('');
+      }
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterGroupSaveFailed}: ${readableError}`);
+    }
+  }, [
+    filterGroupNameInput,
+    messages,
+    normalizedFilterRuleGroups,
+    persistFilterRuleGroups,
+    selectedFilterGroupName,
+  ]);
+
+  const handleImportFilterRuleGroups = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          {
+            name: 'JSON',
+            extensions: ['json'],
+          },
+        ],
+      });
+
+      if (!selected || typeof selected !== 'string') {
+        return;
+      }
+
+      const importedGroups = await invoke<FilterRuleGroupPayload[]>('import_filter_rule_groups', {
+        path: selected,
+      });
+      const importedNormalized = normalizeFilterRuleGroups(importedGroups || []);
+      if (importedNormalized.length === 0) {
+        setErrorMessage(messages.filterGroupImportFailed);
+        return;
+      }
+
+      const merged = [...normalizedFilterRuleGroups];
+      importedNormalized.forEach((importedGroup) => {
+        const existingIndex = merged.findIndex((group) => group.name === importedGroup.name);
+        if (existingIndex >= 0) {
+          merged[existingIndex] = importedGroup;
+        } else {
+          merged.push(importedGroup);
+        }
+      });
+
+      await persistFilterRuleGroups(merged);
+      setFeedbackMessage(messages.filterGroupsImported(importedNormalized.length));
+      setErrorMessage(null);
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterGroupImportFailed}: ${readableError}`);
+    }
+  }, [messages, normalizedFilterRuleGroups, persistFilterRuleGroups]);
+
+  const handleExportFilterRuleGroups = useCallback(async () => {
+    if (normalizedFilterRuleGroups.length === 0) {
+      setErrorMessage(messages.filterGroupsExportEmpty);
+      return;
+    }
+
+    try {
+      const selected = await save({
+        defaultPath: 'rutar-filter-rule-groups.json',
+        filters: [
+          {
+            name: 'JSON',
+            extensions: ['json'],
+          },
+        ],
+      });
+
+      if (!selected || typeof selected !== 'string') {
+        return;
+      }
+
+      await invoke('export_filter_rule_groups', {
+        path: selected,
+        groups: normalizedFilterRuleGroups,
+      });
+
+      setFeedbackMessage(messages.filterGroupsExported(normalizedFilterRuleGroups.length));
+      setErrorMessage(null);
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${messages.filterGroupExportFailed}: ${readableError}`);
+    }
+  }, [messages, normalizedFilterRuleGroups]);
 
   useEffect(() => {
     if (!activeTab) {
       setIsOpen(false);
-      setMatches([]);
-      setCurrentMatchIndex(0);
+      resetSearchState();
+      resetFilterState();
       setErrorMessage(null);
       return;
     }
@@ -1143,10 +2352,10 @@ export function SearchReplacePanel() {
     const handleSearchOpen = (event: Event) => {
       const customEvent = event as CustomEvent<SearchOpenEventDetail>;
       const openMode = customEvent.detail?.mode;
-      const shouldOpenReplace = openMode === 'replace';
+      const nextMode: PanelMode = openMode === 'replace' ? 'replace' : openMode === 'filter' ? 'filter' : 'find';
 
       setIsOpen(true);
-      setIsReplaceMode(shouldOpenReplace);
+      setPanelMode(nextMode);
       setResultPanelState('closed');
       setErrorMessage(null);
       setFeedbackMessage(null);
@@ -1157,7 +2366,36 @@ export function SearchReplacePanel() {
     return () => {
       window.removeEventListener('rutar:search-open', handleSearchOpen as EventListener);
     };
-  }, [activeTab, focusSearchInput]);
+  }, [activeTab, focusSearchInput, resetFilterState, resetSearchState]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFilterRuleGroups = async () => {
+      try {
+        const groups = await invoke<FilterRuleGroupPayload[]>('load_filter_rule_groups_config');
+        if (cancelled) {
+          return;
+        }
+
+        const normalized = normalizeFilterRuleGroups(groups || []);
+        setFilterRuleGroups(normalized);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const readableError = error instanceof Error ? error.message : String(error);
+        setErrorMessage(`${messages.filterGroupLoadFailed}: ${readableError}`);
+      }
+    };
+
+    void loadFilterRuleGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [messages.filterGroupLoadFailed]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -1277,13 +2515,9 @@ export function SearchReplacePanel() {
   }, [isOpen, resultPanelState, updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
-    cachedSearchRef.current = null;
-    countCacheRef.current = null;
-    chunkCursorRef.current = null;
-    searchParamsRef.current = null;
-    setTotalMatchCount(null);
-    setTotalMatchedLineCount(null);
-  }, [activeTab?.id]);
+    resetSearchState();
+    resetFilterState();
+  }, [activeTab?.id, resetFilterState, resetSearchState]);
 
   useEffect(() => {
     return () => {
@@ -1298,7 +2532,11 @@ export function SearchReplacePanel() {
       return;
     }
 
-    if (!keyword || matches.length === 0 || !hasMoreMatches || isSearching) {
+    if (isFilterMode) {
+      if (filterRulesPayload.length === 0 || filterMatches.length === 0 || !hasMoreFilterMatches || isSearching) {
+        return;
+      }
+    } else if (!keyword || matches.length === 0 || !hasMoreMatches || isSearching) {
       return;
     }
 
@@ -1306,7 +2544,12 @@ export function SearchReplacePanel() {
 
     const fillVisibleResultViewport = async () => {
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        if (cancelled || !hasMoreMatches || isSearching || loadMoreLockRef.current) {
+        if (
+          cancelled ||
+          isSearching ||
+          loadMoreLockRef.current ||
+          (isFilterMode ? !hasMoreFilterMatches : !hasMoreMatches)
+        ) {
           return;
         }
 
@@ -1319,7 +2562,7 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const appended = await loadMoreMatches();
+        const appended = isFilterMode ? await loadMoreFilterMatches() : await loadMoreMatches();
         if (!appended || appended.length === 0) {
           return;
         }
@@ -1334,7 +2577,19 @@ export function SearchReplacePanel() {
       cancelled = true;
       window.cancelAnimationFrame(rafId);
     };
-  }, [hasMoreMatches, isSearching, keyword, loadMoreMatches, matches.length, resultPanelState]);
+  }, [
+    filterMatches.length,
+    filterRulesPayload.length,
+    hasMoreFilterMatches,
+    hasMoreMatches,
+    isFilterMode,
+    isSearching,
+    keyword,
+    loadMoreFilterMatches,
+    loadMoreMatches,
+    matches.length,
+    resultPanelState,
+  ]);
 
   useEffect(() => {
     if (!activeTab) {
@@ -1349,7 +2604,7 @@ export function SearchReplacePanel() {
 
       event.preventDefault();
 
-      if (!keyword) {
+      if (!keyword && !isFilterMode) {
         if (!isOpen) {
           setIsOpen(true);
           focusSearchInput();
@@ -1357,7 +2612,7 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const primaryStep = reverseSearch ? -1 : 1;
+      const primaryStep = isFilterMode ? 1 : reverseSearch ? -1 : 1;
       const step = event.shiftKey ? -primaryStep : primaryStep;
       void navigateByStep(step);
     };
@@ -1366,17 +2621,55 @@ export function SearchReplacePanel() {
     return () => {
       window.removeEventListener('keydown', handleFindNextShortcuts);
     };
-  }, [activeTab, focusSearchInput, isOpen, keyword, navigateByStep, reverseSearch]);
+  }, [activeTab, focusSearchInput, isFilterMode, isOpen, keyword, navigateByStep, reverseSearch]);
 
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
+  const displayTotalFilterMatchedLineCount = totalFilterMatchedLineCount;
   const displayTotalMatchCountText =
     displayTotalMatchCount === null ? messages.counting : `${displayTotalMatchCount}`;
   const displayTotalMatchedLineCountText =
     displayTotalMatchedLineCount === null ? messages.counting : `${displayTotalMatchedLineCount}`;
+  const displayTotalFilterMatchedLineCountText =
+    displayTotalFilterMatchedLineCount === null ? messages.counting : `${displayTotalFilterMatchedLineCount}`;
 
   const renderedResultItems = useMemo(() => {
-    if (resultPanelState !== 'open' || !keyword || matches.length === 0) {
+    if (resultPanelState !== 'open') {
+      return null;
+    }
+
+    if (isFilterMode) {
+      if (filterRulesPayload.length === 0 || filterMatches.length === 0) {
+        return null;
+      }
+
+      return filterMatches.map((match, index) => {
+        const isActive = index === Math.min(currentFilterMatchIndex, filterMatches.length - 1);
+
+        return (
+          <button
+            key={`filter-${match.line}-${match.ruleIndex}-${index}`}
+            type="button"
+            className={cn(
+              'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
+              isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
+            )}
+            title={messages.lineColTitle(match.line, Math.max(1, match.column || 1))}
+            onClick={() => handleSelectMatch(index)}
+          >
+            <span className="w-16 shrink-0 border-r border-border/70 pr-2 text-right font-mono text-[11px] text-muted-foreground">
+              {match.line}
+            </span>
+            <span className="min-w-0 flex-1 pl-2 font-mono text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis">
+              {renderFilterPreview(match)}
+            </span>
+            {isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
+          </button>
+        );
+      });
+    }
+
+    if (!keyword || matches.length === 0) {
       return null;
     }
 
@@ -1404,9 +2697,47 @@ export function SearchReplacePanel() {
         </button>
       );
     });
-  }, [currentMatchIndex, handleSelectMatch, keyword, matches, resultPanelState]);
+  }, [
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    filterMatches,
+    filterRulesPayload.length,
+    handleSelectMatch,
+    isFilterMode,
+    keyword,
+    matches,
+    messages,
+    resultPanelState,
+  ]);
 
   const statusText = useMemo(() => {
+    if (isFilterMode) {
+      if (effectiveFilterRules.length === 0) {
+        return messages.statusEnterToFilter;
+      }
+
+      if (errorMessage) {
+        return errorMessage;
+      }
+
+      if (isSearching) {
+        return messages.statusFiltering;
+      }
+
+      if (filterMatches.length === 0) {
+        return messages.statusFilterNoMatches;
+      }
+
+      if (displayTotalFilterMatchedLineCount === null) {
+        return messages.statusFilterTotalPending(Math.min(currentFilterMatchIndex + 1, filterMatches.length));
+      }
+
+      return messages.statusFilterTotalReady(
+        displayTotalFilterMatchedLineCount,
+        Math.min(currentFilterMatchIndex + 1, filterMatches.length)
+      );
+    }
+
     if (!keyword) {
       return messages.statusEnterToSearch;
     }
@@ -1428,11 +2759,50 @@ export function SearchReplacePanel() {
     }
 
     return messages.statusTotalReady(displayTotalMatchCount, Math.min(currentMatchIndex + 1, matches.length));
-  }, [currentMatchIndex, displayTotalMatchCount, errorMessage, isSearching, keyword, matches.length, messages]);
+  }, [
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    displayTotalFilterMatchedLineCount,
+    displayTotalMatchCount,
+    effectiveFilterRules.length,
+    errorMessage,
+    filterMatches.length,
+    isFilterMode,
+    isSearching,
+    keyword,
+    matches.length,
+    messages,
+  ]);
 
   const canReplace = !!activeTab;
   const isResultPanelOpen = resultPanelState === 'open';
   const isResultPanelMinimized = resultPanelState === 'minimized';
+  const resultToggleTitle = isResultPanelOpen ? messages.collapseResults : messages.expandResults;
+  const resultToggleLabel = isResultPanelOpen
+    ? messages.collapse
+    : isFilterMode
+      ? messages.filterRun
+      : messages.results;
+  const isFilterRunReady = isFilterMode && filterRulesPayload.length > 0;
+
+  const toggleResultPanelAndRefresh = useCallback(() => {
+    setResultPanelState((previous) => (previous === 'open' ? 'minimized' : 'open'));
+
+    if (isSearching) {
+      return;
+    }
+
+    if (isFilterMode) {
+      if (filterRulesPayload.length > 0) {
+        void executeFilter();
+      }
+      return;
+    }
+
+    if (keyword) {
+      void executeSearch();
+    }
+  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
 
   if (!activeTab) {
     return null;
@@ -1463,12 +2833,12 @@ export function SearchReplacePanel() {
                 type="button"
                 className={cn(
                   'rounded px-2 py-1 text-xs transition-colors',
-                  !isReplaceMode
+                  panelMode === 'find'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
                 onClick={() => {
-                  setIsReplaceMode(false);
+                  setPanelMode('find');
                   focusSearchInput();
                 }}
               >
@@ -1478,18 +2848,35 @@ export function SearchReplacePanel() {
                 type="button"
                 className={cn(
                   'rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
-                  isReplaceMode
+                  panelMode === 'replace'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
                 onClick={() => {
-                  setIsReplaceMode(true);
+                  setPanelMode('replace');
                   focusSearchInput();
                 }}
                 disabled={!canReplace}
                 title={canReplace ? messages.switchToReplaceMode : messages.noFileOpen}
               >
                 {messages.replace}
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
+                  panelMode === 'filter'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                )}
+                onClick={() => {
+                  setPanelMode('filter');
+                  focusSearchInput();
+                }}
+                disabled={!canReplace}
+                title={canReplace ? messages.switchToFilterMode : messages.noFileOpen}
+              >
+                {messages.filter}
               </button>
             </div>
 
@@ -1503,53 +2890,353 @@ export function SearchReplacePanel() {
             </button>
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <input
-              ref={searchInputRef}
-              value={keyword}
-              onChange={(event) => {
-                setKeyword(event.target.value);
-                setFeedbackMessage(null);
-                setErrorMessage(null);
-                setMatches([]);
-                setTotalMatchCount(null);
-                setTotalMatchedLineCount(null);
-                setCurrentMatchIndex(0);
-                cachedSearchRef.current = null;
-                countCacheRef.current = null;
-                chunkCursorRef.current = null;
-                searchParamsRef.current = null;
-              }}
-              onKeyDown={handleKeywordKeyDown}
-              placeholder={messages.findPlaceholder}
-              className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <button
-              type="button"
-              className={cn(
-                'rounded-md border px-2 py-1 text-xs transition-colors',
-                resultPanelState !== 'closed'
-                  ? 'border-primary text-primary'
-                  : 'border-border text-muted-foreground hover:bg-muted'
-              )}
-              onClick={() => {
-                setResultPanelState((previous) => {
-                  if (previous === 'open') {
-                    return 'minimized';
-                  }
-                  return 'open';
-                });
+          {!isFilterMode ? (
+            <div className="mt-3 flex items-center gap-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                value={keyword}
+                onChange={(event) => {
+                  setKeyword(event.target.value);
+                  setFeedbackMessage(null);
+                  setErrorMessage(null);
+                  resetSearchState();
+                }}
+                onKeyDown={handleKeywordKeyDown}
+                placeholder={messages.findPlaceholder}
+                className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <button
+                type="button"
+                className={cn(
+                  'rounded-md border px-2 py-1 text-xs transition-colors',
+                  resultPanelState !== 'closed'
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted'
+                )}
+                onClick={toggleResultPanelAndRefresh}
+                title={resultToggleTitle}
+              >
+                {resultToggleLabel}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={addFilterRule}
+                >
+                  <CirclePlus className="h-3.5 w-3.5" />
+                  {messages.filterAddRule}
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-md border px-3 py-1 text-xs font-semibold transition-colors',
+                    resultPanelState !== 'closed'
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : isFilterRunReady
+                        ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600'
+                        : 'border-border bg-muted text-muted-foreground'
+                  )}
+                  onClick={toggleResultPanelAndRefresh}
+                  title={isFilterMode ? messages.filterRunHint : resultToggleTitle}
+                >
+                  {resultToggleLabel}
+                </button>
+              </div>
 
-                if (keyword && !isSearching) {
-                  void executeSearch();
-                }
-              }}
-              title={isResultPanelOpen ? messages.collapseResults : messages.expandResults}
-            >
-              {isResultPanelOpen ? messages.collapse : messages.results}
-            </button>
-          </div>
+              <div className="rounded-md border border-border/70 p-2">
+                <div className="mb-2 flex items-center gap-2">
+                  <input
+                    value={filterGroupNameInput}
+                    onChange={(event) => setFilterGroupNameInput(event.target.value)}
+                    placeholder={messages.filterGroupNamePlaceholder}
+                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => void handleSaveFilterRuleGroup()}
+                  >
+                    {messages.filterSaveGroup}
+                  </button>
+                </div>
+
+                <div className="mb-2 flex items-center gap-2">
+                  <select
+                    value={selectedFilterGroupName}
+                    onChange={(event) => {
+                      const nextName = event.target.value;
+                      setSelectedFilterGroupName(nextName);
+                      if (nextName) {
+                        setFilterGroupNameInput(nextName);
+                      }
+                    }}
+                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">{messages.filterGroupSelectPlaceholder}</option>
+                    {normalizedFilterRuleGroups.map((group) => (
+                      <option key={group.name} value={group.name}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={handleLoadFilterRuleGroup}
+                  >
+                    {messages.filterLoadGroup}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive"
+                    onClick={() => void handleDeleteFilterRuleGroup()}
+                  >
+                    {messages.filterDeleteGroup}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => void handleImportFilterRuleGroups()}
+                  >
+                    {messages.filterImportGroups}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => void handleExportFilterRuleGroups()}
+                  >
+                    {messages.filterExportGroups}
+                  </button>
+                  <span className="ml-auto text-[11px] text-muted-foreground">
+                    {normalizedFilterRuleGroups.length > 0
+                      ? `${normalizedFilterRuleGroups.length}`
+                      : messages.filterGroupsEmptyHint}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground">{messages.filterRunHint}</div>
+
+              {filterRules.map((rule, index) => {
+                const isDropTarget = filterRuleDragState?.overRuleId === rule.id;
+
+                return (
+                <div
+                  key={rule.id}
+                  className={cn(
+                    'rounded-md border border-border/70 p-2 transition-colors',
+                    isDropTarget ? 'border-primary bg-primary/5' : undefined
+                  )}
+                  onDragOver={(event) => onFilterRuleDragOver(event, rule.id)}
+                  onDrop={(event) => onFilterRuleDrop(event, rule.id)}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-1">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <span
+                        draggable
+                        onDragStart={(event) => onFilterRuleDragStart(event, rule.id)}
+                        onDragEnd={onFilterRuleDragEnd}
+                        title={messages.filterDragPriorityHint}
+                        className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-3 w-3" />
+                      </span>
+                      {messages.filterPriority} #{index + 1}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                        onClick={() => moveFilterRule(rule.id, -1)}
+                        disabled={index === 0}
+                        title={messages.filterMoveUp}
+                      >
+                        <ArrowUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                        onClick={() => moveFilterRule(rule.id, 1)}
+                        disabled={index === filterRules.length - 1}
+                        title={messages.filterMoveDown}
+                      >
+                        <ArrowDown className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        onClick={() => removeFilterRule(rule.id)}
+                        title={messages.filterDeleteRule}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    value={rule.keyword}
+                    onChange={(event) => {
+                      updateFilterRule(rule.id, (previous) => ({
+                        ...previous,
+                        keyword: event.target.value,
+                      }));
+                    }}
+                    onKeyDown={handleKeywordKeyDown}
+                    placeholder={messages.filterRuleKeywordPlaceholder}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {FILTER_MATCH_MODES.map((modeOption) => {
+                      return (
+                        <ModeButton
+                          key={`${rule.id}-${modeOption}`}
+                          active={rule.matchMode === modeOption}
+                          label={matchModeLabel(modeOption, messages)}
+                          onClick={() => {
+                            updateFilterRule(rule.id, (previous) => ({
+                              ...previous,
+                              matchMode: modeOption,
+                            }));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <label
+                      className={cn(
+                        'inline-flex items-center gap-1 text-[11px]',
+                        !rule.backgroundColor ? 'text-muted-foreground/60' : 'text-muted-foreground'
+                      )}
+                    >
+                      <Palette className="h-3 w-3" />
+                      {messages.filterBackground}
+                      <input
+                        type="color"
+                        disabled={!rule.backgroundColor}
+                        value={rule.backgroundColor || DEFAULT_FILTER_RULE_BACKGROUND}
+                        onChange={(event) => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            backgroundColor: event.target.value,
+                          }));
+                        }}
+                        className="h-6 w-8 rounded border border-border bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-40"
+                      />
+                    </label>
+
+                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={!rule.backgroundColor}
+                        onChange={(event) => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            backgroundColor: event.target.checked ? '' : previous.backgroundColor || DEFAULT_FILTER_RULE_BACKGROUND,
+                          }));
+                        }}
+                      />
+                      {messages.filterNoBackground}
+                    </label>
+
+                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      {messages.filterTextColor}
+                      <input
+                        type="color"
+                        value={rule.textColor}
+                        onChange={(event) => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            textColor: event.target.value,
+                          }));
+                        }}
+                        className="h-6 w-8 rounded border border-border bg-transparent p-0"
+                      />
+                    </label>
+
+                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={rule.bold}
+                        onChange={(event) => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            bold: event.target.checked,
+                          }));
+                        }}
+                      />
+                      {messages.filterStyleBold}
+                    </label>
+
+                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={rule.italic}
+                        onChange={(event) => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            italic: event.target.checked,
+                          }));
+                        }}
+                      />
+                      {messages.filterStyleItalic}
+                    </label>
+
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                        rule.applyTo === 'line'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                      onClick={() => {
+                        updateFilterRule(rule.id, (previous) => ({
+                          ...previous,
+                          applyTo: 'line',
+                        }));
+                      }}
+                    >
+                      {messages.filterApplyLine}
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                        rule.applyTo === 'match'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                      onClick={() => {
+                        updateFilterRule(rule.id, (previous) => ({
+                          ...previous,
+                          applyTo: 'match',
+                        }));
+                      }}
+                    >
+                      {messages.filterApplyMatch}
+                    </button>
+                  </div>
+                </div>
+              )})}
+
+              {effectiveFilterRules.length === 0 && (
+                <div className="rounded-md border border-dashed border-border px-2 py-2 text-xs text-muted-foreground">
+                  {messages.filterRuleEmptyHint}
+                </div>
+              )}
+            </div>
+          )}
 
           {isReplaceMode && (
             <div className="mt-2 flex items-center gap-2">
@@ -1563,6 +3250,7 @@ export function SearchReplacePanel() {
             </div>
           )}
 
+          {!isFilterMode && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <ModeButton
               active={searchMode === 'literal'}
@@ -1570,14 +3258,7 @@ export function SearchReplacePanel() {
               onClick={() => {
                 setSearchMode('literal');
                 setErrorMessage(null);
-                setMatches([]);
-                setTotalMatchCount(null);
-                setTotalMatchedLineCount(null);
-                setCurrentMatchIndex(0);
-                cachedSearchRef.current = null;
-                countCacheRef.current = null;
-                chunkCursorRef.current = null;
-                searchParamsRef.current = null;
+                resetSearchState();
               }}
             />
             <ModeButton
@@ -1586,14 +3267,7 @@ export function SearchReplacePanel() {
               onClick={() => {
                 setSearchMode('regex');
                 setErrorMessage(null);
-                setMatches([]);
-                setTotalMatchCount(null);
-                setTotalMatchedLineCount(null);
-                setCurrentMatchIndex(0);
-                cachedSearchRef.current = null;
-                countCacheRef.current = null;
-                chunkCursorRef.current = null;
-                searchParamsRef.current = null;
+                resetSearchState();
               }}
             />
             <ModeButton
@@ -1602,14 +3276,7 @@ export function SearchReplacePanel() {
               onClick={() => {
                 setSearchMode('wildcard');
                 setErrorMessage(null);
-                setMatches([]);
-                setTotalMatchCount(null);
-                setTotalMatchedLineCount(null);
-                setCurrentMatchIndex(0);
-                cachedSearchRef.current = null;
-                countCacheRef.current = null;
-                chunkCursorRef.current = null;
-                searchParamsRef.current = null;
+                resetSearchState();
               }}
             />
 
@@ -1620,14 +3287,7 @@ export function SearchReplacePanel() {
                 onChange={(event) => {
                   setCaseSensitive(event.target.checked);
                   setErrorMessage(null);
-                  setMatches([]);
-                  setTotalMatchCount(null);
-                  setTotalMatchedLineCount(null);
-                  setCurrentMatchIndex(0);
-                  cachedSearchRef.current = null;
-                  countCacheRef.current = null;
-                  chunkCursorRef.current = null;
-                  searchParamsRef.current = null;
+                  resetSearchState();
                 }}
               />
               {messages.caseSensitive}
@@ -1685,6 +3345,7 @@ export function SearchReplacePanel() {
               </>
             )}
           </div>
+          )}
 
           <div
             className={cn(
@@ -1707,14 +3368,23 @@ export function SearchReplacePanel() {
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <div className="text-xs font-medium text-foreground">
-              {messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
+              {isFilterMode
+                ? messages.filterResultsSummary(displayTotalFilterMatchedLineCountText, filterMatches.length)
+                : messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
             </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => void executeSearch(true)}
-                title={messages.refreshResults}
+                onClick={() => {
+                  if (isFilterMode) {
+                    void executeFilter(true);
+                    return;
+                  }
+
+                  void executeSearch(true);
+                }}
+                title={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
@@ -1738,23 +3408,43 @@ export function SearchReplacePanel() {
           </div>
 
           <div ref={resultListRef} className="max-h-56 overflow-y-auto" onScroll={handleResultListScroll}>
-            {!keyword && (
-              <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultsEmptyHint}</div>
-            )}
+            {isFilterMode ? (
+              <>
+                {filterRulesPayload.length === 0 && (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.filterResultsEmptyHint}</div>
+                )}
 
-            {!!keyword && matches.length === 0 && !isSearching && !errorMessage && (
-              <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noMatchesHint}</div>
+                {filterRulesPayload.length > 0 && filterMatches.length === 0 && !isSearching && !errorMessage && (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noFilterMatchesHint}</div>
+                )}
+              </>
+            ) : (
+              <>
+                {!keyword && (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultsEmptyHint}</div>
+                )}
+
+                {!!keyword && matches.length === 0 && !isSearching && !errorMessage && (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noMatchesHint}</div>
+                )}
+              </>
             )}
 
             {renderedResultItems}
 
-            {!!keyword && matches.length > 0 && (
+            {(isFilterMode ? filterMatches.length > 0 : !!keyword && matches.length > 0) && (
               <div className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">
-                {isSearching
-                  ? messages.loadingMore
-                  : hasMoreMatches
-                    ? messages.scrollToLoadMore
-                    : messages.loadedAll(displayTotalMatchCountText)}
+                {isFilterMode
+                  ? isSearching
+                    ? messages.filterLoadingMore
+                    : hasMoreFilterMatches
+                      ? messages.filterScrollToLoadMore
+                      : messages.filterLoadedAll(displayTotalFilterMatchedLineCountText)
+                  : isSearching
+                    ? messages.loadingMore
+                    : hasMoreMatches
+                      ? messages.scrollToLoadMore
+                      : messages.loadedAll(displayTotalMatchCountText)}
               </div>
             )}
           </div>
@@ -1765,18 +3455,28 @@ export function SearchReplacePanel() {
       {isResultPanelMinimized && (
         <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-30">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow-lg backdrop-blur">
-            <span className="text-muted-foreground">{messages.minimizedSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}</span>
+            <span className="text-muted-foreground">
+              {isFilterMode
+                ? messages.filterMinimizedSummary(displayTotalFilterMatchedLineCountText, filterMatches.length)
+                : messages.minimizedSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
+            </span>
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => {
                 setResultPanelState('open');
 
-                if (keyword && !isSearching) {
-                  void executeSearch();
+                if (!isSearching) {
+                  if (isFilterMode) {
+                    if (filterRulesPayload.length > 0) {
+                      void executeFilter();
+                    }
+                  } else if (keyword) {
+                    void executeSearch();
+                  }
                 }
               }}
-              title={messages.openResults}
+              title={isFilterMode ? messages.openFilterResults : messages.openResults}
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>

@@ -26,6 +26,8 @@ const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospace";
 const DEFAULT_FONT_SIZE: u32 = 14;
 const DEFAULT_TAB_WIDTH: u8 = 4;
 const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
+const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
+const FILTER_MAX_RANGES_PER_LINE: usize = 256;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +39,8 @@ pub struct AppConfig {
     tab_width: u8,
     word_wrap: bool,
     highlight_current_line: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -49,6 +53,7 @@ struct PartialAppConfig {
     tab_width: Option<u8>,
     word_wrap: Option<bool>,
     highlight_current_line: Option<bool>,
+    filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
 
 impl Default for AppConfig {
@@ -61,6 +66,7 @@ impl Default for AppConfig {
             tab_width: DEFAULT_TAB_WIDTH,
             word_wrap: false,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
+            filter_rule_groups: None,
         }
     }
 }
@@ -127,6 +133,75 @@ pub struct SearchChunkResultPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SearchCountResultPayload {
     total_matches: usize,
+    matched_lines: usize,
+    document_version: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterRuleInput {
+    keyword: String,
+    match_mode: String,
+    background_color: String,
+    text_color: String,
+    bold: bool,
+    italic: bool,
+    apply_to: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterRuleGroupConfig {
+    name: String,
+    rules: Vec<FilterRuleInput>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FilterRuleGroupsFilePayload {
+    filter_rule_groups: Vec<FilterRuleGroupConfig>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterRuleStyleResult {
+    background_color: String,
+    text_color: String,
+    bold: bool,
+    italic: bool,
+    apply_to: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterMatchRangeResult {
+    start_char: usize,
+    end_char: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterLineMatchResult {
+    line: usize,
+    column: usize,
+    length: usize,
+    line_text: String,
+    rule_index: usize,
+    style: FilterRuleStyleResult,
+    ranges: Vec<FilterMatchRangeResult>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterChunkResultPayload {
+    matches: Vec<FilterLineMatchResult>,
+    document_version: u64,
+    next_line: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterCountResultPayload {
     matched_lines: usize,
     document_version: u64,
 }
@@ -705,6 +780,75 @@ fn format_structured_text(
     }
 }
 
+fn normalize_filter_rule_input(rule: FilterRuleInput) -> Option<FilterRuleInput> {
+    let keyword = rule.keyword.trim().to_string();
+    if keyword.is_empty() {
+        return None;
+    }
+
+    let match_mode = match parse_filter_match_mode(&rule.match_mode).ok()? {
+        FilterMatchMode::Contains => "contains".to_string(),
+        FilterMatchMode::Regex => "regex".to_string(),
+        FilterMatchMode::Wildcard => "wildcard".to_string(),
+    };
+
+    let apply_to = match parse_filter_apply_to(&rule.apply_to).ok()? {
+        FilterApplyTo::Line => "line".to_string(),
+        FilterApplyTo::Match => "match".to_string(),
+    };
+
+    let background_color = rule.background_color.trim().to_string();
+
+    let text_color = if rule.text_color.trim().is_empty() {
+        DEFAULT_FILTER_RULE_TEXT.to_string()
+    } else {
+        rule.text_color
+    };
+
+    Some(FilterRuleInput {
+        keyword,
+        match_mode,
+        background_color,
+        text_color,
+        bold: rule.bold,
+        italic: rule.italic,
+        apply_to,
+    })
+}
+
+fn normalize_filter_rule_groups(
+    groups: Option<Vec<FilterRuleGroupConfig>>,
+) -> Option<Vec<FilterRuleGroupConfig>> {
+    let normalized_groups: Vec<FilterRuleGroupConfig> = groups
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|group| {
+            let name = group.name.trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
+
+            let rules: Vec<FilterRuleInput> = group
+                .rules
+                .into_iter()
+                .filter_map(normalize_filter_rule_input)
+                .collect();
+
+            if rules.is_empty() {
+                return None;
+            }
+
+            Some(FilterRuleGroupConfig { name, rules })
+        })
+        .collect();
+
+    if normalized_groups.is_empty() {
+        None
+    } else {
+        Some(normalized_groups)
+    }
+}
+
 fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: normalize_language(Some(config.language.as_str())),
@@ -718,6 +862,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         tab_width: normalize_tab_width(config.tab_width),
         word_wrap: config.word_wrap,
         highlight_current_line: config.highlight_current_line,
+        filter_rule_groups: normalize_filter_rule_groups(config.filter_rule_groups),
     }
 }
 
@@ -941,12 +1086,21 @@ pub fn load_config() -> Result<AppConfig, String> {
         config.highlight_current_line = highlight_current_line;
     }
 
+    config.filter_rule_groups = normalize_filter_rule_groups(partial.filter_rule_groups);
+
     Ok(config)
 }
 
 #[tauri::command]
 pub fn save_config(config: AppConfig) -> Result<(), String> {
-    let normalized = normalize_app_config(config);
+    let mut normalized = normalize_app_config(config);
+
+    if normalized.filter_rule_groups.is_none() {
+        if let Ok(existing) = load_config() {
+            normalized.filter_rule_groups = existing.filter_rule_groups;
+        }
+    }
+
     let path = config_file_path()?;
 
     if let Some(parent) = path.parent() {
@@ -967,6 +1121,61 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
             set_windows_context_shell_display_name(&hkcu, WIN_DIR_BG_SHELL_KEY, display_name)?;
         }
     }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_filter_rule_groups_config() -> Result<Vec<FilterRuleGroupConfig>, String> {
+    let config = load_config()?;
+    Ok(config.filter_rule_groups.unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn save_filter_rule_groups_config(groups: Vec<FilterRuleGroupConfig>) -> Result<(), String> {
+    let mut config = load_config()?;
+    config.filter_rule_groups = normalize_filter_rule_groups(Some(groups));
+    save_config(config)
+}
+
+#[tauri::command]
+pub fn import_filter_rule_groups(path: String) -> Result<Vec<FilterRuleGroupConfig>, String> {
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if raw.trim().is_empty() {
+        return Err("Import file is empty".to_string());
+    }
+
+    let parsed_groups = match serde_json::from_str::<FilterRuleGroupsFilePayload>(&raw) {
+        Ok(payload) => payload.filter_rule_groups,
+        Err(_) => serde_json::from_str::<Vec<FilterRuleGroupConfig>>(&raw)
+            .map_err(|e| format!("Failed to parse filter groups file: {}", e))?,
+    };
+
+    let normalized = normalize_filter_rule_groups(Some(parsed_groups)).unwrap_or_default();
+    if normalized.is_empty() {
+        return Err("No valid filter rule groups found in import file".to_string());
+    }
+
+    Ok(normalized)
+}
+
+#[tauri::command]
+pub fn export_filter_rule_groups(path: String, groups: Vec<FilterRuleGroupConfig>) -> Result<(), String> {
+    let normalized = normalize_filter_rule_groups(Some(groups)).unwrap_or_default();
+    if normalized.is_empty() {
+        return Err("No valid filter rule groups to export".to_string());
+    }
+
+    let output_path = PathBuf::from(path);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let payload = FilterRuleGroupsFilePayload {
+        filter_rule_groups: normalized,
+    };
+    let content = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    fs::write(output_path, format!("{}\n", content)).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -1280,6 +1489,205 @@ fn wildcard_to_regex_source(keyword: &str) -> String {
     }
 
     source
+}
+
+#[derive(Clone, Copy)]
+enum FilterMatchMode {
+    Contains,
+    Regex,
+    Wildcard,
+}
+
+#[derive(Clone, Copy)]
+enum FilterApplyTo {
+    Line,
+    Match,
+}
+
+#[derive(Clone)]
+struct CompiledFilterRule {
+    rule_index: usize,
+    keyword: String,
+    match_mode: FilterMatchMode,
+    regex: Option<regex::Regex>,
+    style: FilterRuleStyleResult,
+    apply_to: FilterApplyTo,
+}
+
+fn parse_filter_match_mode(mode: &str) -> Result<FilterMatchMode, String> {
+    match mode.trim().to_lowercase().as_str() {
+        "contains" | "exist" | "exists" => Ok(FilterMatchMode::Contains),
+        "regex" => Ok(FilterMatchMode::Regex),
+        "wildcard" => Ok(FilterMatchMode::Wildcard),
+        _ => Err("Unsupported filter match mode".to_string()),
+    }
+}
+
+fn parse_filter_apply_to(value: &str) -> Result<FilterApplyTo, String> {
+    match value.trim().to_lowercase().as_str() {
+        "line" => Ok(FilterApplyTo::Line),
+        "match" => Ok(FilterApplyTo::Match),
+        _ => Err("Unsupported filter apply target".to_string()),
+    }
+}
+
+fn compile_filter_rules(rules: Vec<FilterRuleInput>) -> Result<Vec<CompiledFilterRule>, String> {
+    let mut compiled = Vec::new();
+
+    for (rule_index, rule) in rules.into_iter().enumerate() {
+        if rule.keyword.is_empty() {
+            continue;
+        }
+
+        let match_mode = parse_filter_match_mode(&rule.match_mode)?;
+        let apply_to = parse_filter_apply_to(&rule.apply_to)?;
+
+        let regex = match match_mode {
+            FilterMatchMode::Contains => None,
+            FilterMatchMode::Regex => Some(
+                RegexBuilder::new(&rule.keyword)
+                    .build()
+                    .map_err(|e| e.to_string())?,
+            ),
+            FilterMatchMode::Wildcard => {
+                let regex_source = wildcard_to_regex_source(&rule.keyword);
+                Some(
+                    RegexBuilder::new(&regex_source)
+                        .build()
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+        };
+
+        compiled.push(CompiledFilterRule {
+            rule_index,
+            keyword: rule.keyword,
+            match_mode,
+            regex,
+            style: FilterRuleStyleResult {
+                background_color: rule.background_color,
+                text_color: rule.text_color,
+                bold: rule.bold,
+                italic: rule.italic,
+                apply_to: match apply_to {
+                    FilterApplyTo::Line => "line".to_string(),
+                    FilterApplyTo::Match => "match".to_string(),
+                },
+            },
+            apply_to,
+        });
+    }
+
+    Ok(compiled)
+}
+
+fn line_matches_filter_rule(line_text: &str, rule: &CompiledFilterRule) -> bool {
+    match rule.match_mode {
+        FilterMatchMode::Contains => line_text.contains(&rule.keyword),
+        FilterMatchMode::Regex | FilterMatchMode::Wildcard => {
+            rule.regex.as_ref().map(|regex| regex.is_match(line_text)).unwrap_or(false)
+        }
+    }
+}
+
+fn collect_filter_rule_ranges(
+    line_text: &str,
+    rule: &CompiledFilterRule,
+    max_ranges: usize,
+) -> Vec<(usize, usize)> {
+    if max_ranges == 0 {
+        return Vec::new();
+    }
+
+    match rule.match_mode {
+        FilterMatchMode::Contains => line_text
+            .match_indices(&rule.keyword)
+            .take(max_ranges)
+            .map(|(start, matched)| (start, start + matched.len()))
+            .collect(),
+        FilterMatchMode::Regex | FilterMatchMode::Wildcard => rule
+            .regex
+            .as_ref()
+            .map(|regex| {
+                regex
+                    .find_iter(line_text)
+                    .take(max_ranges)
+                    .map(|capture| (capture.start(), capture.end()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn normalize_rope_line_text(line_text: &str) -> String {
+    line_text.trim_end_matches('\n').trim_end_matches('\r').to_string()
+}
+
+fn build_filter_match_result(
+    line_number: usize,
+    line_text: &str,
+    rule: &CompiledFilterRule,
+    ranges_in_bytes: Vec<(usize, usize)>,
+) -> FilterLineMatchResult {
+    let byte_to_char = build_byte_to_char_map(line_text);
+    let fallback_start_char = 0usize;
+    let fallback_end_char = 0usize;
+
+    let (column, length) = if let Some((first_start, first_end)) = ranges_in_bytes.first().copied() {
+        let start_char = *byte_to_char.get(first_start).unwrap_or(&fallback_start_char);
+        let end_char = *byte_to_char.get(first_end).unwrap_or(&start_char);
+        (start_char.saturating_add(1), end_char.saturating_sub(start_char))
+    } else {
+        (1usize, 0usize)
+    };
+
+    let ranges = ranges_in_bytes
+        .into_iter()
+        .map(|(start, end)| {
+            let start_char = *byte_to_char.get(start).unwrap_or(&fallback_start_char);
+            let end_char = *byte_to_char.get(end).unwrap_or(&fallback_end_char);
+            FilterMatchRangeResult {
+                start_char,
+                end_char,
+            }
+        })
+        .collect();
+
+    FilterLineMatchResult {
+        line: line_number,
+        column,
+        length,
+        line_text: line_text.to_string(),
+        rule_index: rule.rule_index,
+        style: rule.style.clone(),
+        ranges,
+    }
+}
+
+fn match_line_with_filter_rules(
+    line_number: usize,
+    line_text: &str,
+    rules: &[CompiledFilterRule],
+) -> Option<FilterLineMatchResult> {
+    for rule in rules {
+        if !line_matches_filter_rule(line_text, rule) {
+            continue;
+        }
+
+        let max_ranges = match rule.apply_to {
+            FilterApplyTo::Line => 1,
+            FilterApplyTo::Match => FILTER_MAX_RANGES_PER_LINE,
+        };
+        let ranges = collect_filter_rule_ranges(line_text, rule, max_ranges);
+
+        return Some(build_filter_match_result(line_number, line_text, rule, ranges));
+    }
+
+    None
+}
+
+fn line_matches_any_filter_rule(line_text: &str, rules: &[CompiledFilterRule]) -> bool {
+    rules.iter().any(|rule| line_matches_filter_rule(line_text, rule))
 }
 
 fn compute_kmp_lps(pattern: &[u8]) -> Vec<usize> {
@@ -1843,6 +2251,95 @@ pub fn search_count_in_document(
             total_matches,
             matched_lines,
             document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn filter_count_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+) -> Result<FilterCountResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let compiled_rules = compile_filter_rules(rules)?;
+
+        if compiled_rules.is_empty() {
+            return Ok(FilterCountResultPayload {
+                matched_lines: 0,
+                document_version: doc.document_version,
+            });
+        }
+
+        let mut matched_lines = 0usize;
+        let total_lines = doc.rope.len_lines();
+
+        for line_index in 0..total_lines {
+            let line_slice = doc.rope.line(line_index);
+            let line_text = normalize_rope_line_text(&line_slice.to_string());
+
+            if line_matches_any_filter_rule(&line_text, &compiled_rules) {
+                matched_lines = matched_lines.saturating_add(1);
+            }
+        }
+
+        Ok(FilterCountResultPayload {
+            matched_lines,
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn filter_in_document_chunk(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+    start_line: usize,
+    max_results: usize,
+) -> Result<FilterChunkResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let compiled_rules = compile_filter_rules(rules)?;
+
+        if compiled_rules.is_empty() {
+            return Ok(FilterChunkResultPayload {
+                matches: Vec::new(),
+                document_version: doc.document_version,
+                next_line: None,
+            });
+        }
+
+        let effective_max = max_results.max(1);
+        let total_lines = doc.rope.len_lines();
+        let mut line_index = start_line.min(total_lines);
+        let mut matches: Vec<FilterLineMatchResult> = Vec::new();
+        let mut next_line = None;
+
+        while line_index < total_lines {
+            let line_number = line_index + 1;
+            let line_slice = doc.rope.line(line_index);
+            let line_text = normalize_rope_line_text(&line_slice.to_string());
+
+            if let Some(filter_match) = match_line_with_filter_rules(line_number, &line_text, &compiled_rules) {
+                if matches.len() >= effective_max {
+                    next_line = Some(line_index);
+                    break;
+                }
+
+                matches.push(filter_match);
+            }
+
+            line_index = line_index.saturating_add(1);
+        }
+
+        Ok(FilterChunkResultPayload {
+            matches,
+            document_version: doc.document_version,
+            next_line,
         })
     } else {
         Err("Document not found".to_string())
