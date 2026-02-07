@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-import { FixedSizeList as List } from 'react-window';
+import { VariableSizeList as List } from 'react-window';
 import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
@@ -220,6 +220,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const requestTimeout = useRef<any>(null);
   const editTimeout = useRef<any>(null);
   const isScrollbarDragRef = useRef(false);
+  const rowHeightsRef = useRef<Map<number, number>>(new Map());
 
   const currentRequestVersion = useRef(0);
   const isComposingRef = useRef(false);
@@ -259,6 +260,41 @@ export function Editor({ tab }: { tab: FileTab }) {
   const hugeEditablePaddingBottom = `${alignScrollOffset(
     Math.max(0, tab.lineCount - editableSegment.endLine) * itemSize
   )}px`;
+
+  const getListItemSize = useCallback(
+    (index: number) => {
+      if (!wordWrap) {
+        return itemSize;
+      }
+
+      return rowHeightsRef.current.get(index) ?? itemSize;
+    },
+    [itemSize, wordWrap]
+  );
+
+  const measureRenderedLineHeight = useCallback(
+    (index: number, element: HTMLDivElement | null) => {
+      if (!wordWrap || !element) {
+        return;
+      }
+
+      const measuredHeight = Math.max(itemSize, alignToDevicePixel(element.scrollHeight));
+      const previousHeight = rowHeightsRef.current.get(index);
+
+      if (previousHeight !== undefined && Math.abs(previousHeight - measuredHeight) < 0.5) {
+        return;
+      }
+
+      rowHeightsRef.current.set(index, measuredHeight);
+      listRef.current?.resetAfterIndex?.(index);
+    },
+    [itemSize, wordWrap]
+  );
+
+  useEffect(() => {
+    rowHeightsRef.current.clear();
+    listRef.current?.resetAfterIndex?.(0, true);
+  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, width, wordWrap]);
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -558,22 +594,30 @@ export function Editor({ tab }: { tab: FileTab }) {
   );
 
   const syncVisibleTokens = useCallback(
-    async (lineCount: number) => {
+    async (lineCount: number, visibleRange?: { start: number; stop: number }) => {
       if (isHugeEditableMode && hugeWindowLockedRef.current) {
         hugeWindowFollowScrollOnUnlockRef.current = true;
         return;
       }
 
       const buffer = largeFetchBuffer;
-      const scrollTop = isHugeEditableMode
-        ? scrollContainerRef.current?.scrollTop ?? 0
-        : usePlainLineRendering
-        ? listRef.current?._outerRef?.scrollTop ?? 0
-        : contentRef.current?.scrollTop ?? 0;
-      const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
-      const currentLine = Math.max(0, Math.floor(scrollTop / itemSize));
-      const start = Math.max(0, currentLine - buffer);
-      const end = Math.max(start + 1, Math.min(lineCount, currentLine + viewportLines + buffer));
+      let start = 0;
+      let end = 1;
+
+      if (visibleRange) {
+        start = Math.max(0, visibleRange.start - buffer);
+        end = Math.max(start + 1, Math.min(lineCount, visibleRange.stop + buffer));
+      } else {
+        const scrollTop = isHugeEditableMode
+          ? scrollContainerRef.current?.scrollTop ?? 0
+          : usePlainLineRendering
+          ? listRef.current?._outerRef?.scrollTop ?? 0
+          : contentRef.current?.scrollTop ?? 0;
+        const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
+        const currentLine = Math.max(0, Math.floor(scrollTop / itemSize));
+        start = Math.max(0, currentLine - buffer);
+        end = Math.max(start + 1, Math.min(lineCount, currentLine + viewportLines + buffer));
+      }
 
       if (isHugeEditableMode) {
         await fetchEditableSegment(start, end);
@@ -884,7 +928,10 @@ export function Editor({ tab }: { tab: FileTab }) {
           ? LARGE_FILE_FETCH_DEBOUNCE_MS
           : NORMAL_FILE_FETCH_DEBOUNCE_MS;
         requestTimeout.current = setTimeout(
-          () => syncVisibleTokens(tab.lineCount),
+          () => syncVisibleTokens(tab.lineCount, {
+            start: visibleStartIndex,
+            stop: visibleStopIndex,
+          }),
           debounceMs
         );
       }
@@ -1466,7 +1513,8 @@ export function Editor({ tab }: { tab: FileTab }) {
             height={height}
             width={width}
             itemCount={tab.lineCount}
-            itemSize={itemSize}
+            itemSize={getListItemSize}
+            estimatedItemSize={itemSize}
             onItemsRendered={onItemsRendered}
             overscanCount={20}
             style={{ overflowX: horizontalOverflowMode, overflowY: 'auto' }}
@@ -1493,6 +1541,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
               return (
                 <div
+                  ref={(element) => measureRenderedLineHeight(index, element)}
                   style={{
                     ...style,
                     width: wordWrap ? '100%' : 'max-content',
@@ -1500,21 +1549,27 @@ export function Editor({ tab }: { tab: FileTab }) {
                     fontFamily: settings.fontFamily,
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
-                    whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                   }}
-                  className="px-4 hover:bg-muted/5 text-foreground group editor-line"
+                  className="px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start"
                 >
                   <span
-                    className="inline-block text-muted-foreground/40 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
+                    className="shrink-0 text-muted-foreground/40 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
                     style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
                   >
                     {index + 1}
                   </span>
-                  {usePlainLineRendering
-                    ? renderHighlightedPlainLine(plainLine, index + 1)
-                    : lineTokensArr.length > 0
-                    ? renderHighlightedTokens(lineTokensArr, index + 1)
-                    : <span className="opacity-10 italic">...</span>}
+                  <div
+                    className={wordWrap ? 'min-w-0 flex-1' : 'shrink-0'}
+                    style={{
+                      whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                    }}
+                  >
+                    {usePlainLineRendering
+                      ? renderHighlightedPlainLine(plainLine, index + 1)
+                      : lineTokensArr.length > 0
+                      ? renderHighlightedTokens(lineTokensArr, index + 1)
+                      : <span className="opacity-10 italic">...</span>}
+                  </div>
                 </div>
               );
             }}
