@@ -74,6 +74,17 @@ interface SearchCountBackendResult {
 const SEARCH_CHUNK_SIZE = 300;
 const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 360px)';
 
+function getReservedLayoutHeight(selector: string) {
+  const elements = document.querySelectorAll<HTMLElement>(selector);
+  if (elements.length === 0) {
+    return 0;
+  }
+
+  return Array.from(elements).reduce((total, element) => {
+    return total + element.getBoundingClientRect().height;
+  }, 0);
+}
+
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
   window.dispatchEvent(
     new CustomEvent('rutar:force-refresh', {
@@ -193,6 +204,7 @@ export function SearchReplacePanel() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultPanelState, setResultPanelState] = useState<SearchResultPanelState>('closed');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1025,45 +1037,90 @@ export function SearchReplacePanel() {
     focusSearchInput();
   }, [focusSearchInput, isOpen]);
 
+  const updateSearchSidebarTopOffset = useCallback(() => {
+    const reservedTopHeight = Math.max(
+      0,
+      Math.ceil(getReservedLayoutHeight('[data-layout-region="titlebar"], [data-layout-region="toolbar"]'))
+    );
+    const nextOffset = `${reservedTopHeight}px`;
+
+    setSearchSidebarTopOffset((previousOffset) =>
+      previousOffset === nextOffset ? previousOffset : nextOffset
+    );
+  }, []);
+
   const updateSearchSidebarBottomOffset = useCallback(() => {
-    if (!isOpen || resultPanelState === 'closed') {
-      setSearchSidebarBottomOffset('0px');
-      return;
+    const reservedBottomHeight = Math.max(
+      0,
+      Math.ceil(getReservedLayoutHeight('[data-layout-region="statusbar"]'))
+    );
+
+    let nextOffsetValue = reservedBottomHeight;
+
+    if (isOpen && resultPanelState !== 'closed') {
+      const targetElement =
+        resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
+
+      if (targetElement) {
+        const rect = targetElement.getBoundingClientRect();
+        const resultPanelOffset = Math.max(0, Math.ceil(window.innerHeight - rect.top));
+        nextOffsetValue = Math.max(nextOffsetValue, resultPanelOffset);
+      }
     }
 
-    const targetElement =
-      resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
-    if (!targetElement) {
-      return;
-    }
-
-    const rect = targetElement.getBoundingClientRect();
-    const nextOffset = `${Math.max(0, Math.ceil(window.innerHeight - rect.top))}px`;
+    const nextOffset = `${nextOffsetValue}px`;
     setSearchSidebarBottomOffset((previousOffset) =>
       previousOffset === nextOffset ? previousOffset : nextOffset
     );
   }, [isOpen, resultPanelState]);
 
   useEffect(() => {
+    updateSearchSidebarTopOffset();
+  }, [updateSearchSidebarTopOffset]);
+
+  useEffect(() => {
     updateSearchSidebarBottomOffset();
   }, [updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
-    if (!isOpen || resultPanelState === 'closed') {
-      return;
-    }
+    const titleAndToolbarElements = document.querySelectorAll<HTMLElement>(
+      '[data-layout-region="titlebar"], [data-layout-region="toolbar"]'
+    );
+    const observer = new ResizeObserver(() => {
+      updateSearchSidebarTopOffset();
+    });
 
-    const targetElement =
-      resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
-    if (!targetElement) {
-      return;
-    }
+    titleAndToolbarElements.forEach((element) => {
+      observer.observe(element);
+    });
 
+    window.addEventListener('resize', updateSearchSidebarTopOffset);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateSearchSidebarTopOffset);
+    };
+  }, [updateSearchSidebarTopOffset]);
+
+  useEffect(() => {
     const observer = new ResizeObserver(() => {
       updateSearchSidebarBottomOffset();
     });
 
-    observer.observe(targetElement);
+    const statusBarElement = document.querySelector<HTMLElement>('[data-layout-region="statusbar"]');
+    if (statusBarElement) {
+      observer.observe(statusBarElement);
+    }
+
+    if (isOpen && resultPanelState !== 'closed') {
+      const targetElement =
+        resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
+
+      if (targetElement) {
+        observer.observe(targetElement);
+      }
+    }
+
     window.addEventListener('resize', updateSearchSidebarBottomOffset);
 
     return () => {
@@ -1090,7 +1147,7 @@ export function SearchReplacePanel() {
   }, []);
 
   useEffect(() => {
-    if (!isOpen || resultPanelState !== 'open') {
+    if (resultPanelState !== 'open') {
       return;
     }
 
@@ -1130,7 +1187,7 @@ export function SearchReplacePanel() {
       cancelled = true;
       window.cancelAnimationFrame(rafId);
     };
-  }, [hasMoreMatches, isOpen, isSearching, keyword, loadMoreMatches, matches.length, resultPanelState]);
+  }, [hasMoreMatches, isSearching, keyword, loadMoreMatches, matches.length, resultPanelState]);
 
   useEffect(() => {
     if (!activeTab) {
@@ -1172,7 +1229,7 @@ export function SearchReplacePanel() {
     displayTotalMatchedLineCount === null ? '统计中…' : `${displayTotalMatchedLineCount}`;
 
   const renderedResultItems = useMemo(() => {
-    if (!isOpen || resultPanelState !== 'open' || !keyword || matches.length === 0) {
+    if (resultPanelState !== 'open' || !keyword || matches.length === 0) {
       return null;
     }
 
@@ -1200,7 +1257,7 @@ export function SearchReplacePanel() {
         </button>
       );
     });
-  }, [currentMatchIndex, handleSelectMatch, isOpen, keyword, matches, resultPanelState]);
+  }, [currentMatchIndex, handleSelectMatch, keyword, matches, resultPanelState]);
 
   const statusText = useMemo(() => {
     if (!keyword) {
@@ -1227,8 +1284,8 @@ export function SearchReplacePanel() {
   }, [currentMatchIndex, displayTotalMatchCount, errorMessage, isSearching, keyword, matches.length]);
 
   const canReplace = !!activeTab;
-  const isResultPanelOpen = isOpen && resultPanelState === 'open';
-  const isResultPanelMinimized = isOpen && resultPanelState === 'minimized';
+  const isResultPanelOpen = resultPanelState === 'open';
+  const isResultPanelMinimized = resultPanelState === 'minimized';
 
   if (!activeTab) {
     return null;
@@ -1238,10 +1295,14 @@ export function SearchReplacePanel() {
     <>
       <div
         className={cn(
-          'fixed right-0 top-0 z-40 transform-gpu overflow-x-hidden transition-transform duration-200 ease-out',
+          'fixed right-0 z-40 transform-gpu overflow-x-hidden transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
-        style={{ width: SEARCH_SIDEBAR_WIDTH, bottom: searchSidebarBottomOffset }}
+        style={{
+          width: SEARCH_SIDEBAR_WIDTH,
+          top: searchSidebarTopOffset,
+          bottom: searchSidebarBottomOffset,
+        }}
       >
         <div
           className={cn(
@@ -1489,7 +1550,7 @@ export function SearchReplacePanel() {
         </div>
       </div>
 
-      {isOpen && resultPanelState !== 'closed' && (
+      {resultPanelState !== 'closed' && (
         <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-2 pb-2">
         <div
           className={cn(

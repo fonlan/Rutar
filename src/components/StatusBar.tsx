@@ -7,7 +7,10 @@ export function StatusBar() {
     const activeTab = tabs.find(t => t.id === activeTabId);
 
     if (!activeTab) return (
-        <div className="h-6 bg-muted/50 border-t flex items-center px-3 text-[10px] text-muted-foreground select-none">
+        <div
+            className="h-6 bg-muted/50 border-t flex items-center px-3 text-[10px] text-muted-foreground select-none"
+            data-layout-region="statusbar"
+        >
             Rutar Ready
         </div>
     );
@@ -30,7 +33,10 @@ export function StatusBar() {
     };
 
     return (
-        <div className="h-6 bg-muted/50 border-t flex items-center justify-between px-3 text-[10px] text-muted-foreground select-none">
+        <div
+            className="h-6 bg-muted/50 border-t flex items-center justify-between px-3 text-[10px] text-muted-foreground select-none"
+            data-layout-region="statusbar"
+        >
             <div className="flex items-center gap-4">
                 {activeTab.largeFileMode && (
                     <>

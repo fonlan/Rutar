@@ -35,6 +35,7 @@ export function TitleBar() {
         <div 
             className="flex h-9 w-full select-none items-center bg-background border-b relative"
             data-tauri-drag-region
+            data-layout-region="titlebar"
         >
             {/* Tabs Container */}
             <div className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full items-end pl-1 relative z-10 pointer-events-none">

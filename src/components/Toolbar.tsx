@@ -311,7 +311,10 @@ export function Toolbar() {
     ]);
 
     return (
-        <div className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden shadow-sm z-40">
+        <div
+            className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden shadow-sm z-40"
+            data-layout-region="toolbar"
+        >
             {/* File Group */}
             <ToolbarBtn icon={FilePlus} title="New File (Ctrl+N)" onClick={handleNewFile} />
             <ToolbarBtn icon={FolderOpen} title="Open File (Ctrl+O)" onClick={handleOpenFile} />
