@@ -528,7 +528,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
   const contentPaddingLeft = '4.5rem';
-  const horizontalOverflowMode = wordWrap ? 'hidden' : 'scroll';
+  const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;

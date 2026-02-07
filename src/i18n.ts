@@ -3,6 +3,8 @@ import { AppLanguage } from '@/store/useStore';
 export type I18nKey =
   | 'app.readyOpenHint'
   | 'titleBar.settings'
+  | 'titleBar.closeOtherTabs'
+  | 'titleBar.closeAllTabs'
   | 'toolbar.newFile'
   | 'toolbar.openFile'
   | 'toolbar.openFolder'
@@ -51,6 +53,8 @@ type Messages = Record<I18nKey, string>;
 const zhCN: Messages = {
   'app.readyOpenHint': '就绪：打开文件或文件夹',
   'titleBar.settings': '设置',
+  'titleBar.closeOtherTabs': '关闭其他标签页',
+  'titleBar.closeAllTabs': '关闭所有标签页',
   'toolbar.newFile': '新建文件 (Ctrl+N)',
   'toolbar.openFile': '打开文件 (Ctrl+O)',
   'toolbar.openFolder': '打开文件夹',
@@ -98,6 +102,8 @@ const zhCN: Messages = {
 const enUS: Messages = {
   'app.readyOpenHint': 'READY: Open a file or folder',
   'titleBar.settings': 'Settings',
+  'titleBar.closeOtherTabs': 'Close Other Tabs',
+  'titleBar.closeAllTabs': 'Close All Tabs',
   'toolbar.newFile': 'New File (Ctrl+N)',
   'toolbar.openFile': 'Open File (Ctrl+O)',
   'toolbar.openFolder': 'Open Folder',

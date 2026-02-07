@@ -1,12 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 
 const appWindow = getCurrentWindow();
+
+interface TabContextMenuState {
+    tabId: string;
+    x: number;
+    y: number;
+}
 
 export function TitleBar() {
     const tabs = useStore((state) => state.tabs);
@@ -17,6 +23,8 @@ export function TitleBar() {
     const addTab = useStore((state) => state.addTab);
     const settings = useStore((state) => state.settings);
     const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+    const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
+    const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const alwaysOnTopTitle = isAlwaysOnTop ? 'Disable Always on Top' : 'Enable Always on Top';
 
@@ -45,6 +53,27 @@ export function TitleBar() {
         };
     }, []);
 
+    const closeTabsByIds = useCallback(
+        async (tabIds: string[]) => {
+            if (tabIds.length === 0) {
+                return;
+            }
+
+            tabIds.forEach((id) => closeTab(id));
+
+            const closeResults = await Promise.allSettled(
+                tabIds.map((id) => invoke('close_file', { id }))
+            );
+
+            closeResults.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    console.error('Failed to close tab ' + tabIds[index] + ':', result.reason);
+                }
+            });
+        },
+        [closeTab]
+    );
+
     const handleCloseTab = useCallback(async (tab: FileTab) => {
         const shouldCreateBlankTab = tabs.length === 1;
 
@@ -62,6 +91,56 @@ export function TitleBar() {
         }
     }, [addTab, closeTab, tabs.length]);
 
+    const handleCloseOtherTabs = useCallback(async (tab: FileTab) => {
+        const tabIdsToClose = tabs
+            .filter((currentTab) => currentTab.id !== tab.id)
+            .map((currentTab) => currentTab.id);
+
+        if (tabIdsToClose.length === 0) {
+            return;
+        }
+
+        setActiveTab(tab.id);
+        await closeTabsByIds(tabIdsToClose);
+        setActiveTab(tab.id);
+    }, [closeTabsByIds, setActiveTab, tabs]);
+
+    const handleCloseAllTabs = useCallback(async () => {
+        const tabIdsToClose = tabs.map((tab) => tab.id);
+
+        if (tabIdsToClose.length === 0) {
+            return;
+        }
+
+        await closeTabsByIds(tabIdsToClose);
+
+        try {
+            const fileInfo = await invoke<FileTab>('new_file');
+            addTab(fileInfo);
+        } catch (error) {
+            console.error('Failed to create tab after closing all tabs:', error);
+        }
+    }, [addTab, closeTabsByIds, tabs]);
+
+    const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const menuWidth = 176;
+        const menuHeight = 84;
+        const viewportPadding = 8;
+
+        const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
+        const boundedY = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding);
+
+        setActiveTab(tab.id);
+        setTabContextMenu({
+            tabId: tab.id,
+            x: Math.max(viewportPadding, boundedX),
+            y: Math.max(viewportPadding, boundedY),
+        });
+    }, [setActiveTab]);
+
     const handleToggleAlwaysOnTop = useCallback(async () => {
         const nextValue = !isAlwaysOnTop;
 
@@ -73,8 +152,52 @@ export function TitleBar() {
         }
     }, [isAlwaysOnTop]);
 
+    useEffect(() => {
+        if (!tabContextMenu) {
+            return;
+        }
+
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+
+            if (tabContextMenuRef.current && target && !tabContextMenuRef.current.contains(target)) {
+                setTabContextMenu(null);
+            }
+        };
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setTabContextMenu(null);
+            }
+        };
+
+        const handleWindowBlur = () => {
+            setTabContextMenu(null);
+        };
+
+        window.addEventListener('pointerdown', handlePointerDown);
+        window.addEventListener('keydown', handleEscape);
+        window.addEventListener('blur', handleWindowBlur);
+
+        return () => {
+            window.removeEventListener('pointerdown', handlePointerDown);
+            window.removeEventListener('keydown', handleEscape);
+            window.removeEventListener('blur', handleWindowBlur);
+        };
+    }, [tabContextMenu]);
+
+    useEffect(() => {
+        if (!tabContextMenu) {
+            return;
+        }
+
+        if (!tabs.some((tab) => tab.id === tabContextMenu.tabId)) {
+            setTabContextMenu(null);
+        }
+    }, [tabContextMenu, tabs]);
+
     return (
-        <div 
+        <div
             className="flex h-9 w-full select-none items-stretch bg-background relative"
             data-tauri-drag-region
             data-layout-region="titlebar"
@@ -86,6 +209,7 @@ export function TitleBar() {
                     <div
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
+                        onContextMenu={(event) => handleTabContextMenu(event, tab)}
                         className={cn(
                             "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer mr-1 relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
                             activeTabId === tab.id ? "bg-background border-border z-20" : "border-transparent hover:bg-muted/80"
@@ -103,10 +227,44 @@ export function TitleBar() {
                         >
                             <X className="w-3 h-3" />
                         </button>
-                        
+
                     </div>
                 ))}
             </div>
+
+            {tabContextMenu && (
+                <div
+                    ref={tabContextMenuRef}
+                    className="fixed z-[80] min-w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+                    style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+                >
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            const targetTab = tabs.find((tab) => tab.id === tabContextMenu.tabId);
+                            setTabContextMenu(null);
+                            if (!targetTab) {
+                                return;
+                            }
+                            void handleCloseOtherTabs(targetTab);
+                        }}
+                        disabled={tabs.length <= 1}
+                    >
+                        {tr('titleBar.closeOtherTabs')}
+                    </button>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => {
+                            setTabContextMenu(null);
+                            void handleCloseAllTabs();
+                        }}
+                    >
+                        {tr('titleBar.closeAllTabs')}
+                    </button>
+                </div>
+            )}
 
             {/* Window Controls */}
             <div className="flex items-center h-full bg-background border-b border-border relative z-20 px-1">
@@ -121,37 +279,37 @@ export function TitleBar() {
                 >
                     {isAlwaysOnTop ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                 </button>
-                <button 
+                <button
                     type="button"
                     onClick={() => toggleSettings(true)}
-                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors" 
+                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                     title={tr('titleBar.settings')}
                 >
                     <Settings className="w-4 h-4" />
                 </button>
                 <div className="w-[1px] h-4 bg-border mx-1"></div>
-                <button 
+                <button
                     type="button"
-                    onClick={handleMinimize} 
+                    onClick={handleMinimize}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                 >
                     <Minus className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                     type="button"
-                    onClick={handleMaximize} 
+                    onClick={handleMaximize}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                 >
                     <Square className="w-3.5 h-3.5" />
                 </button>
-                <button 
+                <button
                     type="button"
-                    onClick={handleClose} 
+                    onClick={handleClose}
                     className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center rounded-md transition-colors"
                 >
                     <X className="w-4 h-4" />
                 </button>
             </div>
         </div>
-    )
+    );
 }
