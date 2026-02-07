@@ -1,10 +1,11 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, WrapText 
+    Undo, Redo, Search, Replace, WrapText, X
 } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect } from 'react';
+import { isReusableBlankTab } from '@/lib/tabUtils';
 import { useStore, FileTab } from '@/store/useStore';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
@@ -32,6 +33,7 @@ export function Toolbar() {
         addTab,
         tabs,
         activeTabId,
+        closeTab,
         updateTab,
         setFolder,
         setActiveTab,
@@ -85,13 +87,28 @@ export function Toolbar() {
                     return;
                  }
 
+                 const currentActiveTab = tabs.find((tab) => tab.id === activeTabId);
                  const fileInfo = await invoke<FileTab>('open_file', { path: selected });
-                 addTab(fileInfo);
+                 if (currentActiveTab && isReusableBlankTab(currentActiveTab)) {
+                    updateTab(currentActiveTab.id, {
+                        id: fileInfo.id,
+                        name: fileInfo.name,
+                        path: fileInfo.path,
+                        encoding: fileInfo.encoding,
+                        lineCount: fileInfo.lineCount,
+                        largeFileMode: fileInfo.largeFileMode,
+                        isDirty: false,
+                    });
+                    setActiveTab(fileInfo.id);
+                    await invoke('close_file', { id: currentActiveTab.id });
+                 } else {
+                    addTab(fileInfo);
+                 }
             }
         } catch (e) {
             console.error('Failed to open file:', e);
         }
-    }, [addTab, setActiveTab, tabs]);
+    }, [activeTabId, addTab, setActiveTab, tabs, updateTab]);
 
     const handleOpenFolder = useCallback(async () => {
         try {
@@ -133,6 +150,25 @@ export function Toolbar() {
             }
         }
     }, [saveTab, tabs]);
+
+    const handleCloseActiveTab = useCallback(async () => {
+        if (!activeTab) return;
+
+        const shouldCreateBlankTab = tabs.length === 1;
+
+        closeTab(activeTab.id);
+
+        try {
+            await invoke('close_file', { id: activeTab.id });
+
+            if (shouldCreateBlankTab) {
+                const fileInfo = await invoke<FileTab>('new_file');
+                addTab(fileInfo);
+            }
+        } catch (e) {
+            console.error('Failed to close tab:', e);
+        }
+    }, [activeTab, addTab, closeTab, tabs.length]);
 
     const handleUndo = useCallback(async () => {
         if (!activeTab) return;
@@ -230,6 +266,12 @@ export function Toolbar() {
                 return;
             }
 
+            if (key === 'w') {
+                event.preventDefault();
+                void handleCloseActiveTab();
+                return;
+            }
+
             if (key === 'z' && !event.shiftKey) {
                 event.preventDefault();
                 void handleUndo();
@@ -258,6 +300,7 @@ export function Toolbar() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [
         handleFind,
+        handleCloseActiveTab,
         handleNewFile,
         handleOpenFile,
         handleRedo,
@@ -276,6 +319,7 @@ export function Toolbar() {
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn icon={Save} title="Save (Ctrl+S)" onClick={handleSave} disabled={!activeTab} />
             <ToolbarBtn icon={SaveAll} title="Save All (Ctrl+Shift+S)" onClick={handleSaveAll} disabled={tabs.length === 0} />
+            <ToolbarBtn icon={X} title="Close Tab (Ctrl/Cmd+W)" onClick={() => void handleCloseActiveTab()} disabled={!activeTab} />
             
             {/* Edit Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />

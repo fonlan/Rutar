@@ -2,6 +2,7 @@ import { useStore, FileTab } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { File, Folder, ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isReusableBlankTab } from '@/lib/tabUtils';
 import { useState, useCallback } from 'react';
 
 export function Sidebar() {
@@ -27,7 +28,7 @@ export function Sidebar() {
 function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<any[]>([]);
-    const { addTab, activeTabId, setActiveTab, tabs } = useStore();
+    const { addTab, activeTabId, setActiveTab, tabs, updateTab } = useStore();
 
     const handleToggle = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -53,14 +54,30 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
                 setActiveTab(existing.id);
             } else {
                 try {
+                    const currentActiveTab = tabs.find((tab) => tab.id === activeTabId);
                     const fileInfo = await invoke<FileTab>('open_file', { path: entry.path });
-                    addTab(fileInfo);
+
+                    if (currentActiveTab && isReusableBlankTab(currentActiveTab)) {
+                        updateTab(currentActiveTab.id, {
+                            id: fileInfo.id,
+                            name: fileInfo.name,
+                            path: fileInfo.path,
+                            encoding: fileInfo.encoding,
+                            lineCount: fileInfo.lineCount,
+                            largeFileMode: fileInfo.largeFileMode,
+                            isDirty: false,
+                        });
+                        setActiveTab(fileInfo.id);
+                        await invoke('close_file', { id: currentActiveTab.id });
+                    } else {
+                        addTab(fileInfo);
+                    }
                 } catch (e) {
                     console.error(e);
                 }
             }
         }
-    }, [entry, isOpen, children.length, tabs, addTab, setActiveTab]);
+    }, [entry, isOpen, children.length, tabs, activeTabId, addTab, setActiveTab, updateTab]);
 
     return (
         <div>

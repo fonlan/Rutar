@@ -1,16 +1,35 @@
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, X, Settings } from 'lucide-react';
-import { useStore } from '@/store/useStore';
+import { useCallback } from 'react';
+import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 
 const appWindow = getCurrentWindow();
 
 export function TitleBar() {
-    const { tabs, activeTabId, setActiveTab, closeTab, toggleSettings } = useStore();
+    const { tabs, activeTabId, setActiveTab, closeTab, toggleSettings, addTab } = useStore();
 
     const handleMinimize = () => appWindow.minimize();
     const handleMaximize = () => appWindow.toggleMaximize();
     const handleClose = () => appWindow.close();
+
+    const handleCloseTab = useCallback(async (tab: FileTab) => {
+        const shouldCreateBlankTab = tabs.length === 1;
+
+        closeTab(tab.id);
+
+        try {
+            await invoke('close_file', { id: tab.id });
+
+            if (shouldCreateBlankTab) {
+                const fileInfo = await invoke<FileTab>('new_file');
+                addTab(fileInfo);
+            }
+        } catch (error) {
+            console.error('Failed to close tab:', error);
+        }
+    }, [addTab, closeTab, tabs.length]);
 
     return (
         <div 
@@ -33,7 +52,7 @@ export function TitleBar() {
                             type="button"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                closeTab(tab.id);
+                                void handleCloseTab(tab);
                             }}
                             className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded p-0.5"
                         >
