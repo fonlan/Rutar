@@ -13,13 +13,11 @@ export function SettingsModal() {
 
   return (
     <div 
-        className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm" 
-        onClick={() => toggleSettings(false)}
+        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4" 
         role="presentation"
     >
       <div 
-        className="w-[600px] h-[400px] bg-background border rounded-lg shadow-lg flex overflow-hidden ring-1 ring-border"
-        onClick={(e) => e.stopPropagation()}
+        className="pointer-events-auto h-[min(86vh,620px)] w-[min(92vw,840px)] bg-background border rounded-lg shadow-lg flex overflow-hidden ring-1 ring-border"
         role="dialog"
       >
         {/* Sidebar */}

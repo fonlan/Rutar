@@ -97,6 +97,29 @@ option {
 .token-boolean, .token-boolean_literal, .token-true, .token-false, .token-null { color: #a241b9 !important; }
 .token-attribute_item { color: #5f6a7a !important; font-style: italic; }
 
+/* Cross-language targeted improvements */
+.token-tag, .token-tag_name, .token-start_tag, .token-end_tag, .token-self_closing_tag { color: #0550ae !important; font-weight: 600; }
+.token-attribute, .token-attribute_name, .token-property_name, .token-field_identifier, .token-member_expression { color: #a15c00 !important; }
+.token-attribute_value, .token-quoted_attribute_value { color: #0a7b4f !important; }
+.token-class, .token-class_declaration, .token-class_definition, .token-interface, .token-interface_declaration, .token-enum, .token-enum_declaration, .token-struct, .token-namespace, .token-module { color: #0e7490 !important; font-weight: 600; }
+.token-function_declaration, .token-function_definition, .token-function_expression, .token-method_definition, .token-constructor_declaration, .token-call_expression, .token-method_invocation { color: #6f42c1 !important; }
+.token-decorator, .token-annotation, .token-marker_annotation, .token-attribute_specifier { color: #5f6a7a !important; font-style: italic; }
+.token-preprocessor, .token-preproc_call, .token-preproc_function_def, .token-macro_type_specifier { color: #b4236a !important; }
+.token-ifdef, .token-ifndef, .token-elif, .token-endif, .token-include, .token-pragma, .token-define { color: #b4236a !important; }
+.token-regex, .token-regex_pattern, .token-regex_flags, .token-escape_sequence, .token-escape_interpolation { color: #bc4c00 !important; }
+.token-error, .token-erroneous_end_tag, .token-erroneous_end_tag_name, .token-error_sentinel { color: #dc2626 !important; font-weight: 600; }
+.token-boolean_scalar, .token-null_scalar, .token-none, .token-nullptr, .token-nil, .token-undefined, .token-constant, .token-constant_builtin { color: #a241b9 !important; }
+.token-anchor, .token-anchor_name, .token-alias, .token-alias_name, .token-tag_directive, .token-tag_handle, .token-tag_prefix { color: #5f6a7a !important; }
+.token-doctype { color: #0e7490 !important; font-weight: 600; }
+
+/* XML + TOML targeted improvements */
+.token-name, .token-pitarget { color: #0550ae !important; font-weight: 600; }
+.token-attvalue, .token-entityvalue, .token-systemliteral, .token-pubidliteral, .token-pseudoattvalue, .token-encname { color: #0a7b4f !important; }
+.token-chardata, .token-cdata { color: #374151 !important; }
+.token-bare_key, .token-quoted_key, .token-dotted_key { color: #a15c00 !important; font-weight: 600; }
+.token-local_date, .token-local_time, .token-local_date_time, .token-offset_date_time { color: #0e7490 !important; }
+.token-__, .token-___, .token-____ { color: #4b5563 !important; opacity: 0.9; }
+
 /* 修复特殊符号显示 */
 .token-_ { color: #4b5563 !important; opacity: 0.9; }
 
@@ -112,6 +135,27 @@ option {
 .dark .token-operator, .dark .token-binary_expression, .dark .token-assignment_expression { color: #ff9e64 !important; }
 .dark .token-boolean, .dark .token-boolean_literal, .dark .token-true, .dark .token-false, .dark .token-null { color: #c792ea !important; }
 .dark .token-attribute_item { color: #9aa5b1 !important; font-style: italic; }
+
+.dark .token-tag, .dark .token-tag_name, .dark .token-start_tag, .dark .token-end_tag, .dark .token-self_closing_tag { color: #7dcfff !important; font-weight: 600; }
+.dark .token-attribute, .dark .token-attribute_name, .dark .token-property_name, .dark .token-field_identifier, .dark .token-member_expression { color: #ffcb6b !important; }
+.dark .token-attribute_value, .dark .token-quoted_attribute_value { color: #a5d6ff !important; }
+.dark .token-class, .dark .token-class_declaration, .dark .token-class_definition, .dark .token-interface, .dark .token-interface_declaration, .dark .token-enum, .dark .token-enum_declaration, .dark .token-struct, .dark .token-namespace, .dark .token-module { color: #4fc1ff !important; font-weight: 600; }
+.dark .token-function_declaration, .dark .token-function_definition, .dark .token-function_expression, .dark .token-method_definition, .dark .token-constructor_declaration, .dark .token-call_expression, .dark .token-method_invocation { color: #c39bff !important; }
+.dark .token-decorator, .dark .token-annotation, .dark .token-marker_annotation, .dark .token-attribute_specifier { color: #9aa5b1 !important; font-style: italic; }
+.dark .token-preprocessor, .dark .token-preproc_call, .dark .token-preproc_function_def, .dark .token-macro_type_specifier { color: #ff7ab2 !important; }
+.dark .token-ifdef, .dark .token-ifndef, .dark .token-elif, .dark .token-endif, .dark .token-include, .dark .token-pragma, .dark .token-define { color: #ff7ab2 !important; }
+.dark .token-regex, .dark .token-regex_pattern, .dark .token-regex_flags, .dark .token-escape_sequence, .dark .token-escape_interpolation { color: #ff9e64 !important; }
+.dark .token-error, .dark .token-erroneous_end_tag, .dark .token-erroneous_end_tag_name, .dark .token-error_sentinel { color: #f87171 !important; font-weight: 600; }
+.dark .token-boolean_scalar, .dark .token-null_scalar, .dark .token-none, .dark .token-nullptr, .dark .token-nil, .dark .token-undefined, .dark .token-constant, .dark .token-constant_builtin { color: #c792ea !important; }
+.dark .token-anchor, .dark .token-anchor_name, .dark .token-alias, .dark .token-alias_name, .dark .token-tag_directive, .dark .token-tag_handle, .dark .token-tag_prefix { color: #9aa5b1 !important; }
+.dark .token-doctype { color: #4fc1ff !important; font-weight: 600; }
+
+.dark .token-name, .dark .token-pitarget { color: #7dcfff !important; font-weight: 600; }
+.dark .token-attvalue, .dark .token-entityvalue, .dark .token-systemliteral, .dark .token-pubidliteral, .dark .token-pseudoattvalue, .dark .token-encname { color: #a5d6ff !important; }
+.dark .token-chardata, .dark .token-cdata { color: #d7dee5 !important; }
+.dark .token-bare_key, .dark .token-quoted_key, .dark .token-dotted_key { color: #ffcb6b !important; font-weight: 600; }
+.dark .token-local_date, .dark .token-local_time, .dark .token-local_date_time, .dark .token-offset_date_time { color: #4fc1ff !important; }
+.dark .token-__, .dark .token-___, .dark .token-____ { color: #93a4b8 !important; opacity: 0.9; }
 
 .dark .token-_ { color: #93a4b8 !important; opacity: 0.9; }
 
