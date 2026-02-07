@@ -32,6 +32,11 @@ interface SearchHighlightState {
   id: number;
 }
 
+interface PairHighlightPosition {
+  line: number;
+  column: number;
+}
+
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
@@ -45,6 +50,22 @@ const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
 const HUGE_EDITABLE_WINDOW_UNLOCK_MS = 260;
 const LARGE_FILE_EDIT_INTENT_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab']);
 const EMPTY_LINE_PLACEHOLDER = '\u200B';
+const OPENING_BRACKETS: Record<string, string> = {
+  '(': ')',
+  '[': ']',
+  '{': '}',
+};
+const CLOSING_BRACKETS: Record<string, string> = {
+  ')': '(',
+  ']': '[',
+  '}': '{',
+};
+const QUOTE_CHARACTERS = new Set(["'", '"']);
+const SEARCH_HIGHLIGHT_CLASS = 'rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70';
+const PAIR_HIGHLIGHT_CLASS =
+  'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
+const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
+  'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
@@ -159,6 +180,191 @@ function getCaretLineInElement(element: HTMLDivElement) {
 
   const textBeforeCaret = caretRange.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   return textBeforeCaret.split('\n').length;
+}
+
+function getSelectionOffsetsInElement(element: HTMLDivElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) {
+    return null;
+  }
+
+  const startRange = range.cloneRange();
+  startRange.selectNodeContents(element);
+  startRange.setEnd(range.startContainer, range.startOffset);
+
+  const endRange = range.cloneRange();
+  endRange.selectNodeContents(element);
+  endRange.setEnd(range.endContainer, range.endOffset);
+
+  return {
+    start: normalizeLineText(startRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
+    end: normalizeLineText(endRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
+    isCollapsed: range.collapsed,
+  };
+}
+
+function isEscapedCharacter(text: string, index: number) {
+  if (index <= 0 || index > text.length) {
+    return false;
+  }
+
+  let backslashCount = 0;
+  let cursor = index - 1;
+
+  while (cursor >= 0 && text[cursor] === '\\') {
+    backslashCount += 1;
+    cursor -= 1;
+  }
+
+  return backslashCount % 2 === 1;
+}
+
+function findMatchingBracketIndex(text: string, index: number) {
+  const char = text[index];
+  if (!char) {
+    return null;
+  }
+
+  const closing = OPENING_BRACKETS[char];
+  if (closing) {
+    let depth = 0;
+    for (let cursor = index + 1; cursor < text.length; cursor += 1) {
+      const current = text[cursor];
+      if (current === char) {
+        depth += 1;
+      } else if (current === closing) {
+        if (depth === 0) {
+          return cursor;
+        }
+        depth -= 1;
+      }
+    }
+    return null;
+  }
+
+  const opening = CLOSING_BRACKETS[char];
+  if (!opening) {
+    return null;
+  }
+
+  let depth = 0;
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const current = text[cursor];
+    if (current === char) {
+      depth += 1;
+    } else if (current === opening) {
+      if (depth === 0) {
+        return cursor;
+      }
+      depth -= 1;
+    }
+  }
+
+  return null;
+}
+
+function countUnescapedQuotesBefore(text: string, index: number, quote: string) {
+  let count = 0;
+
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function findMatchingQuoteIndex(text: string, index: number) {
+  const quote = text[index];
+  if (!QUOTE_CHARACTERS.has(quote) || isEscapedCharacter(text, index)) {
+    return null;
+  }
+
+  const countBefore = countUnescapedQuotesBefore(text, index, quote);
+  const isOpeningQuote = countBefore % 2 === 0;
+
+  if (isOpeningQuote) {
+    for (let cursor = index + 1; cursor < text.length; cursor += 1) {
+      if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
+        return cursor;
+      }
+    }
+    return null;
+  }
+
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
+      return cursor;
+    }
+  }
+
+  return null;
+}
+
+function findMatchingPairNearOffset(text: string, offset: number): [number, number] | null {
+  const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
+  const candidateIndexes: number[] = [];
+
+  if (safeOffset > 0) {
+    candidateIndexes.push(safeOffset - 1);
+  }
+
+  if (safeOffset < text.length) {
+    candidateIndexes.push(safeOffset);
+  }
+
+  for (const index of candidateIndexes) {
+    const char = text[index];
+
+    let matchedIndex: number | null = null;
+    if (OPENING_BRACKETS[char] || CLOSING_BRACKETS[char]) {
+      matchedIndex = findMatchingBracketIndex(text, index);
+    } else if (QUOTE_CHARACTERS.has(char)) {
+      matchedIndex = findMatchingQuoteIndex(text, index);
+    }
+
+    if (matchedIndex !== null) {
+      return [index, matchedIndex];
+    }
+  }
+
+  return null;
+}
+
+function codeUnitOffsetToLineColumn(text: string, offset: number) {
+  const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
+  const prefix = text.slice(0, safeOffset);
+  const line = prefix.split('\n').length;
+  const lastNewline = prefix.lastIndexOf('\n');
+  const column = safeOffset - (lastNewline + 1);
+
+  return {
+    line,
+    column,
+  };
+}
+
+function arePairHighlightPositionsEqual(
+  left: PairHighlightPosition[],
+  right: PairHighlightPosition[]
+) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i].line !== right[i].line || left[i].column !== right[i].column) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function buildCodeUnitDiff(previousText: string, nextText: string): CodeUnitDiff | null {
@@ -281,6 +487,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   });
   const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
+  const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
@@ -325,6 +532,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
+  const isPairHighlightEnabled = !usePlainLineRendering;
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
     : tab.largeFileMode
@@ -813,11 +1021,52 @@ export function Editor({ tab }: { tab: FileTab }) {
     setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
   }, [highlightCurrentLine, isHugeEditableMode, tab.lineCount]);
 
-  const syncActiveLineAfterInteraction = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      updateActiveLineFromSelection();
+  const updatePairHighlightsFromSelection = useCallback(() => {
+    if (!isPairHighlightEnabled || !contentRef.current) {
+      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    const text = normalizeSegmentText(getEditableText(contentRef.current));
+    const selectionOffsets = getSelectionOffsetsInElement(contentRef.current);
+
+    if (!selectionOffsets || !selectionOffsets.isCollapsed) {
+      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    const matched = findMatchingPairNearOffset(text, selectionOffsets.end);
+    if (!matched) {
+      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    const sortedIndexes = matched[0] <= matched[1] ? matched : [matched[1], matched[0]];
+    const nextHighlights = sortedIndexes.map((offset) => {
+      const local = codeUnitOffsetToLineColumn(text, offset);
+      const absoluteLine = isHugeEditableMode
+        ? editableSegmentRef.current.startLine + local.line
+        : local.line;
+
+      return {
+        line: Math.max(1, absoluteLine),
+        column: local.column + 1,
+      };
     });
-  }, [updateActiveLineFromSelection]);
+
+    setPairHighlights((prev) => (arePairHighlightPositionsEqual(prev, nextHighlights) ? prev : nextHighlights));
+  }, [isHugeEditableMode, isPairHighlightEnabled]);
+
+  const syncSelectionState = useCallback(() => {
+    updateActiveLineFromSelection();
+    updatePairHighlightsFromSelection();
+  }, [updateActiveLineFromSelection, updatePairHighlightsFromSelection]);
+
+  const syncSelectionAfterInteraction = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      syncSelectionState();
+    });
+  }, [syncSelectionState]);
 
   const flushPendingSync = useCallback(async () => {
     if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
@@ -968,11 +1217,13 @@ export function Editor({ tab }: { tab: FileTab }) {
         updateTab(tab.id, { isDirty: true });
       }
 
+      syncSelectionAfterInteraction();
+
       if (!isComposingRef.current) {
         queueTextSync();
       }
     },
-    [tab.id, tab.isDirty, updateTab, queueTextSync]
+    [tab.id, tab.isDirty, updateTab, queueTextSync, syncSelectionAfterInteraction]
   );
 
   const handleCompositionStart = useCallback(() => {
@@ -1101,30 +1352,110 @@ export function Editor({ tab }: { tab: FileTab }) {
     [searchHighlight]
   );
 
+  const getPairHighlightColumnsForLine = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (!isPairHighlightEnabled || pairHighlights.length === 0) {
+        return [];
+      }
+
+      return pairHighlights
+        .filter((position) => position.line === lineNumber)
+        .map((position) => position.column - 1)
+        .filter((columnIndex) => columnIndex >= 0 && columnIndex < lineTextLength);
+    },
+    [isPairHighlightEnabled, pairHighlights]
+  );
+
+  const getInlineHighlightClass = useCallback((isSearchMatch: boolean, isPairMatch: boolean) => {
+    if (isSearchMatch && isPairMatch) {
+      return SEARCH_AND_PAIR_HIGHLIGHT_CLASS;
+    }
+
+    if (isSearchMatch) {
+      return SEARCH_HIGHLIGHT_CLASS;
+    }
+
+    if (isPairMatch) {
+      return PAIR_HIGHLIGHT_CLASS;
+    }
+
+    return '';
+  }, []);
+
+  const buildLineHighlightSegments = useCallback(
+    (
+      lineTextLength: number,
+      searchRange: { start: number; end: number } | null,
+      pairColumns: number[]
+    ) => {
+      const boundaries = new Set<number>([0, lineTextLength]);
+
+      if (searchRange) {
+        boundaries.add(searchRange.start);
+        boundaries.add(searchRange.end);
+      }
+
+      pairColumns.forEach((column) => {
+        boundaries.add(column);
+        boundaries.add(Math.min(lineTextLength, column + 1));
+      });
+
+      const sorted = Array.from(boundaries).sort((left, right) => left - right);
+      const segments: Array<{ start: number; end: number; className: string }> = [];
+
+      for (let i = 0; i < sorted.length - 1; i += 1) {
+        const start = sorted[i];
+        const end = sorted[i + 1];
+
+        if (end <= start) {
+          continue;
+        }
+
+        const isSearchMatch = !!searchRange && start >= searchRange.start && end <= searchRange.end;
+        const isPairMatch = pairColumns.some((column) => start >= column && end <= column + 1);
+
+        segments.push({
+          start,
+          end,
+          className: getInlineHighlightClass(isSearchMatch, isPairMatch),
+        });
+      }
+
+      return segments;
+    },
+    [getInlineHighlightClass]
+  );
+
   const renderHighlightedPlainLine = useCallback(
     (text: string, lineNumber: number) => {
       const safeText = text || '';
       const range = getLineHighlightRange(lineNumber, safeText.length);
+      const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
 
-      if (!range) {
+      if (!range && pairColumns.length === 0) {
         return renderPlainLine(safeText);
       }
 
-      const before = safeText.slice(0, range.start);
-      const matchText = safeText.slice(range.start, range.end);
-      const after = safeText.slice(range.end);
+      const segments = buildLineHighlightSegments(safeText.length, range, pairColumns);
 
       return (
         <span>
-          {before}
-          <mark className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
-            {matchText}
-          </mark>
-          {after}
+          {segments.map((segment, segmentIndex) => {
+            const part = safeText.slice(segment.start, segment.end);
+            if (!segment.className) {
+              return <span key={`plain-segment-${lineNumber}-${segmentIndex}`}>{part}</span>;
+            }
+
+            return (
+              <mark key={`plain-segment-${lineNumber}-${segmentIndex}`} className={segment.className}>
+                {part}
+              </mark>
+            );
+          })}
         </span>
       );
     },
-    [getLineHighlightRange, renderPlainLine]
+    [buildLineHighlightSegments, getLineHighlightRange, getPairHighlightColumnsForLine, renderPlainLine]
   );
 
   const getTokenTypeClass = useCallback((token: SyntaxToken) => {
@@ -1564,12 +1895,16 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       const lineText = tokensArr.map((token) => token.text ?? '').join('');
       const range = getLineHighlightRange(lineNumber, lineText.length);
+      const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
 
-      if (!range) {
+      if (!range && pairColumns.length === 0) {
         return renderTokens(tokensArr);
       }
 
+      const segments = buildLineHighlightSegments(lineText.length, range, pairColumns);
+
       let cursor = 0;
+      let segmentIndex = 0;
       const rendered: React.ReactNode[] = [];
 
       tokensArr.forEach((token, tokenIndex) => {
@@ -1592,46 +1927,58 @@ export function Editor({ tab }: { tab: FileTab }) {
           return;
         }
 
-        const overlapStart = Math.max(tokenStart, range.start);
-        const overlapEnd = Math.min(tokenEnd, range.end);
-
-        if (overlapStart >= overlapEnd) {
-          rendered.push(
-            <span key={`t-full-${tokenIndex}`} className={typeClass}>
-              {tokenText}
-            </span>
-          );
-          cursor = tokenEnd;
-          return;
+        while (segmentIndex < segments.length && segments[segmentIndex].end <= tokenStart) {
+          segmentIndex += 1;
         }
 
-        const beforeLength = overlapStart - tokenStart;
-        const matchLength = overlapEnd - overlapStart;
-        const afterLength = tokenEnd - overlapEnd;
+        let localCursor = tokenStart;
+        let localPartIndex = 0;
 
-        if (beforeLength > 0) {
-          rendered.push(
-            <span key={`t-before-${tokenIndex}`} className={typeClass}>
-              {tokenText.slice(0, beforeLength)}
-            </span>
-          );
+        while (localCursor < tokenEnd && segmentIndex < segments.length) {
+          const segment = segments[segmentIndex];
+
+          if (segment.start >= tokenEnd) {
+            break;
+          }
+
+          const partStart = Math.max(localCursor, segment.start);
+          const partEnd = Math.min(tokenEnd, segment.end);
+
+          if (partEnd <= partStart) {
+            segmentIndex += 1;
+            continue;
+          }
+
+          const tokenSliceStart = partStart - tokenStart;
+          const tokenSliceEnd = partEnd - tokenStart;
+          const partText = tokenText.slice(tokenSliceStart, tokenSliceEnd);
+
+          if (!segment.className) {
+            rendered.push(
+              <span key={`t-part-${tokenIndex}-${localPartIndex}`} className={typeClass}>
+                {partText}
+              </span>
+            );
+          } else {
+            rendered.push(
+              <mark key={`t-part-${tokenIndex}-${localPartIndex}`} className={segment.className}>
+                <span className={typeClass}>{partText}</span>
+              </mark>
+            );
+          }
+
+          localCursor = partEnd;
+          localPartIndex += 1;
+
+          if (segment.end <= localCursor) {
+            segmentIndex += 1;
+          }
         }
 
-        rendered.push(
-          <mark
-            key={`t-match-${tokenIndex}`}
-            className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70"
-          >
-            <span className={typeClass}>
-              {tokenText.slice(beforeLength, beforeLength + matchLength)}
-            </span>
-          </mark>
-        );
-
-        if (afterLength > 0) {
+        if (localCursor < tokenEnd) {
           rendered.push(
-            <span key={`t-after-${tokenIndex}`} className={typeClass}>
-              {tokenText.slice(beforeLength + matchLength)}
+            <span key={`t-tail-${tokenIndex}`} className={typeClass}>
+              {tokenText.slice(localCursor - tokenStart)}
             </span>
           );
         }
@@ -1641,7 +1988,13 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       return rendered;
     },
-    [getLineHighlightRange, getTokenTypeClass, renderTokens]
+    [
+      buildLineHighlightSegments,
+      getLineHighlightRange,
+      getPairHighlightColumnsForLine,
+      getTokenTypeClass,
+      renderTokens,
+    ]
   );
 
   useEffect(() => {
@@ -1781,27 +2134,36 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [endScrollbarDragSelectionGuard]);
 
   useEffect(() => {
+    if (isPairHighlightEnabled) {
+      return;
+    }
+
+    setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+  }, [isPairHighlightEnabled]);
+
+  useEffect(() => {
     const handleSelectionChange = () => {
-      updateActiveLineFromSelection();
+      syncSelectionState();
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, [updateActiveLineFromSelection]);
+  }, [syncSelectionState]);
 
   useEffect(() => {
     if (!highlightCurrentLine) {
       return;
     }
 
-    updateActiveLineFromSelection();
-  }, [highlightCurrentLine, updateActiveLineFromSelection]);
+    syncSelectionState();
+  }, [highlightCurrentLine, syncSelectionState]);
 
   useEffect(() => {
     setActiveLineNumber(1);
     setSearchHighlight(null);
+    setPairHighlights([]);
 
     if (contentTreeFlashTimerRef.current) {
       window.clearTimeout(contentTreeFlashTimerRef.current);
@@ -1993,9 +2355,9 @@ export function Editor({ tab }: { tab: FileTab }) {
               }}
               onInput={handleInput}
               onPointerDown={handleEditorPointerDown}
-              onKeyUp={syncActiveLineAfterInteraction}
-              onPointerUp={syncActiveLineAfterInteraction}
-              onFocus={syncActiveLineAfterInteraction}
+              onKeyUp={syncSelectionAfterInteraction}
+              onPointerUp={syncSelectionAfterInteraction}
+              onFocus={syncSelectionAfterInteraction}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
               spellCheck={false}
@@ -2022,9 +2384,9 @@ export function Editor({ tab }: { tab: FileTab }) {
           onInput={handleInput}
           onScroll={handleScroll}
           onPointerDown={handleEditorPointerDown}
-          onKeyUp={syncActiveLineAfterInteraction}
-          onPointerUp={syncActiveLineAfterInteraction}
-          onFocus={syncActiveLineAfterInteraction}
+          onKeyUp={syncSelectionAfterInteraction}
+          onPointerUp={syncSelectionAfterInteraction}
+          onFocus={syncSelectionAfterInteraction}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           spellCheck={false}

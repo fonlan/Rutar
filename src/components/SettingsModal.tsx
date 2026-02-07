@@ -30,6 +30,8 @@ export function SettingsModal() {
 
   const controlClassName =
     'flex h-10 w-full rounded-lg border border-input bg-background/70 text-foreground px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
+  const switchOnText = settings.language === 'zh-CN' ? '开' : 'ON';
+  const switchOffText = settings.language === 'zh-CN' ? '关' : 'OFF';
 
   if (!settings.isOpen) return null;
 
@@ -137,13 +139,36 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ wordWrap: !settings.wordWrap })}
                       className={cn(
-                        'h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors flex items-center overflow-hidden',
-                        settings.wordWrap ? 'bg-primary justify-end' : 'bg-muted-foreground/30 justify-start'
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.wordWrap
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
                       )}
                       aria-pressed={!!settings.wordWrap}
                       aria-label={tr('toolbar.toggleWordWrap')}
                     >
-                      <span className="h-5 w-5 rounded-full bg-white shadow" />
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.wordWrap
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.wordWrap
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
                     </button>
                   </div>
                 </section>
@@ -224,15 +249,36 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ highlightCurrentLine: !settings.highlightCurrentLine })}
                       className={cn(
-                        'h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors flex items-center overflow-hidden',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.highlightCurrentLine
-                          ? 'bg-primary justify-end'
-                          : 'bg-muted-foreground/30 justify-start'
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
                       )}
                       aria-pressed={!!settings.highlightCurrentLine}
                       aria-label={currentLineLabel}
                     >
-                      <span className="h-5 w-5 rounded-full bg-white shadow" />
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.highlightCurrentLine
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.highlightCurrentLine
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
                     </button>
                   </div>
                 </section>
