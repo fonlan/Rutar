@@ -74,6 +74,120 @@ interface SearchCountBackendResult {
 const SEARCH_CHUNK_SIZE = 300;
 const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 360px)';
 
+function getSearchMessages(language: 'zh-CN' | 'en-US') {
+  if (language === 'en-US') {
+    return {
+      counting: 'Counting…',
+      invalidRegex: 'Invalid regular expression',
+      searchFailed: 'Search failed',
+      replaceFailed: 'Replace failed',
+      replaceAllFailed: 'Replace all failed',
+      noReplaceMatches: 'No matches to replace',
+      replacedCurrent: 'Replaced current match',
+      textUnchanged: 'Text unchanged',
+      replacedAll: (count: number) => `Replaced all ${count} matches`,
+      statusEnterToSearch: 'Enter keyword and press Enter to search',
+      statusSearching: 'Searching...',
+      statusNoMatches: 'No matches found',
+      statusTotalPending: (current: number) => `Total matches counting… · Current ${current}/?`,
+      statusTotalReady: (total: number, current: number) => `Total ${total} matches · Current ${current}/${Math.max(total, 1)}`,
+      find: 'Find',
+      replace: 'Replace',
+      switchToReplaceMode: 'Switch to replace mode',
+      noFileOpen: 'No file opened',
+      close: 'Close',
+      findPlaceholder: 'Find text',
+      collapseResults: 'Collapse search results',
+      expandResults: 'Expand search results',
+      results: 'Results',
+      collapse: 'Collapse',
+      replacePlaceholder: 'Replace with',
+      modeLiteral: 'Literal',
+      modeRegex: 'Regex',
+      modeWildcard: 'Wildcard',
+      caseSensitive: 'Case Sensitive',
+      reverseSearch: 'Reverse Search',
+      prevMatch: 'Previous match',
+      previous: 'Previous',
+      nextMatch: 'Next match',
+      next: 'Next',
+      replaceCurrentMatch: 'Replace current match',
+      replaceAllMatches: 'Replace all matches',
+      replaceAll: 'Replace All',
+      shortcutHint: 'F3 Next / Shift+F3 Previous',
+      lineColTitle: (line: number, col: number) => `Line ${line}, Col ${col}`,
+      resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+        `Search Results · Total ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      refreshResults: 'Refresh search results',
+      minimizeResults: 'Minimize search results',
+      closeResults: 'Close search results',
+      resultsEmptyHint: 'Enter a keyword to list all matches here.',
+      noMatchesHint: 'No matches found.',
+      loadingMore: 'Loading more results...',
+      scrollToLoadMore: 'Scroll to bottom to load more',
+      loadedAll: (totalMatchesText: string) => `All results loaded (${totalMatchesText})`,
+      minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+        `Results ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      openResults: 'Open search results',
+    };
+  }
+
+  return {
+    counting: '统计中…',
+    invalidRegex: '正则表达式无效',
+    searchFailed: '搜索失败',
+    replaceFailed: '替换失败',
+    replaceAllFailed: '全部替换失败',
+    noReplaceMatches: '没有可替换的匹配项',
+    replacedCurrent: '已替换当前匹配项',
+    textUnchanged: '文本未发生变化',
+    replacedAll: (count: number) => `已全部替换 ${count} 处`,
+    statusEnterToSearch: '输入关键词后按 Enter 开始搜索',
+    statusSearching: '正在搜索...',
+    statusNoMatches: '未找到匹配项',
+    statusTotalPending: (current: number) => `匹配总计 统计中… · 当前 ${current}/?`,
+    statusTotalReady: (total: number, current: number) => `匹配总计 ${total} 项 · 当前 ${current}/${Math.max(total, 1)}`,
+    find: '查找',
+    replace: '替换',
+    switchToReplaceMode: '切换到替换模式',
+    noFileOpen: '没有打开的文件',
+    close: '关闭',
+    findPlaceholder: '查找内容',
+    collapseResults: '收起搜索结果',
+    expandResults: '展开搜索结果',
+    results: '结果',
+    collapse: '收起',
+    replacePlaceholder: '替换为',
+    modeLiteral: '普通',
+    modeRegex: '正则',
+    modeWildcard: '通配符',
+    caseSensitive: '区分大小写',
+    reverseSearch: '反向搜索',
+    prevMatch: '上一个匹配',
+    previous: '上一个',
+    nextMatch: '下一个匹配',
+    next: '下一个',
+    replaceCurrentMatch: '替换当前匹配项',
+    replaceAllMatches: '替换全部匹配项',
+    replaceAll: '全部替换',
+    shortcutHint: 'F3 下一个 / Shift+F3 上一个',
+    lineColTitle: (line: number, col: number) => `行 ${line}，列 ${col}`,
+    resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+      `搜索结果 · 总计 ${totalMatchesText} 处 / ${totalLinesText} 行 · 已加载 ${loaded} 处`,
+    refreshResults: '刷新搜索结果',
+    minimizeResults: '最小化搜索结果',
+    closeResults: '关闭搜索结果',
+    resultsEmptyHint: '输入关键词后会在这里列出全部匹配项。',
+    noMatchesHint: '没有找到任何匹配项。',
+    loadingMore: '正在加载更多结果...',
+    scrollToLoadMore: '滚动到底部自动加载更多结果',
+    loadedAll: (totalMatchesText: string) => `已加载全部搜索结果（共 ${totalMatchesText} 处）`,
+    minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+      `结果 总计${totalMatchesText}处 / ${totalLinesText}行 · 已加载${loaded}处`,
+    openResults: '展开搜索结果',
+  };
+}
+
 function getReservedLayoutHeight(selector: string) {
   const elements = document.querySelectorAll<HTMLElement>(selector);
   if (elements.length === 0) {
@@ -151,7 +265,7 @@ function buildSearchRegex(keyword: string, mode: SearchMode, caseSensitive: bool
   } catch (error) {
     return {
       regex: null,
-      errorMessage: error instanceof Error ? error.message : '正则表达式无效',
+      errorMessage: error instanceof Error ? error.message : null,
     };
   }
 }
@@ -186,8 +300,12 @@ function renderMatchPreview(match: SearchMatch) {
 }
 
 export function SearchReplacePanel() {
-  const { tabs, activeTabId, updateTab } = useStore();
+  const { tabs, activeTabId, updateTab, settings } = useStore();
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [tabs, activeTabId]);
+  const messages = useMemo(
+    () => getSearchMessages(settings.language === 'en-US' ? 'en-US' : 'zh-CN'),
+    [settings.language]
+  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [isReplaceMode, setIsReplaceMode] = useState(false);
@@ -466,7 +584,7 @@ export function SearchReplacePanel() {
       }
 
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`搜索失败: ${readableError}`);
+      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       setMatches([]);
       setCurrentMatchIndex(0);
       cachedSearchRef.current = null;
@@ -487,7 +605,7 @@ export function SearchReplacePanel() {
         setIsSearching(false);
       }
     }
-  }, [activeTab, caseSensitive, executeCountSearch, keyword, searchMode]);
+  }, [activeTab, caseSensitive, executeCountSearch, keyword, messages.searchFailed, searchMode]);
 
   const loadMoreMatches = useCallback(async (): Promise<SearchMatch[] | null> => {
     if (loadMoreLockRef.current) {
@@ -564,13 +682,13 @@ export function SearchReplacePanel() {
       return appendedMatches;
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`搜索失败: ${readableError}`);
+      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       return null;
     } finally {
       loadMoreLockRef.current = false;
       setIsSearching(false);
     }
-  }, [activeTab, caseSensitive, keyword, searchMode]);
+  }, [activeTab, caseSensitive, keyword, messages.searchFailed, searchMode]);
 
   const ensureAllMatchesLoaded = useCallback(async (): Promise<SearchMatch[]> => {
     let previousCursor = chunkCursorRef.current;
@@ -694,7 +812,7 @@ export function SearchReplacePanel() {
       }
 
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`搜索失败: ${readableError}`);
+      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       setMatches([]);
       setCurrentMatchIndex(0);
       cachedSearchRef.current = null;
@@ -712,7 +830,7 @@ export function SearchReplacePanel() {
         nextOffset: null,
       };
     }
-  }, [activeTab, caseSensitive, ensureAllMatchesLoaded, executeSearch, keyword, searchMode]);
+  }, [activeTab, caseSensitive, ensureAllMatchesLoaded, executeSearch, keyword, messages.searchFailed, searchMode]);
 
   const navigateToMatch = useCallback(
     (targetMatch: SearchMatch) => {
@@ -826,7 +944,7 @@ export function SearchReplacePanel() {
 
     const searchResult = await executeSearch();
     if (!searchResult || searchResult.matches.length === 0) {
-      setFeedbackMessage('没有可替换的匹配项');
+      setFeedbackMessage(messages.noReplaceMatches);
       return;
     }
 
@@ -837,7 +955,7 @@ export function SearchReplacePanel() {
     if (searchMode === 'regex') {
       const regexResult = buildSearchRegex(keyword, searchMode, caseSensitive, false);
       if (!regexResult.regex) {
-        setErrorMessage(regexResult.errorMessage || '正则表达式无效');
+        setErrorMessage(regexResult.errorMessage || messages.invalidRegex);
         return;
       }
 
@@ -855,7 +973,7 @@ export function SearchReplacePanel() {
       const safeLineCount = Math.max(1, newLineCount);
       updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
       dispatchEditorForceRefresh(activeTab.id, safeLineCount);
-      setFeedbackMessage('宸叉浛鎹㈠綋鍓嶅尮閰嶉」');
+      setFeedbackMessage(messages.replacedCurrent);
 
       const nextResult = await executeSearch(true);
       if (nextResult && nextResult.matches.length > 0) {
@@ -865,9 +983,22 @@ export function SearchReplacePanel() {
       }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`替换失败: ${readableError}`);
+      setErrorMessage(`${messages.replaceFailed}: ${readableError}`);
     }
-  }, [activeTab, caseSensitive, executeSearch, keyword, navigateToMatch, replaceValue, searchMode, updateTab]);
+  }, [
+    activeTab,
+    caseSensitive,
+    executeSearch,
+    keyword,
+    messages.invalidRegex,
+    messages.noReplaceMatches,
+    messages.replaceFailed,
+    messages.replacedCurrent,
+    navigateToMatch,
+    replaceValue,
+    searchMode,
+    updateTab,
+  ]);
 
   const handleReplaceAll = useCallback(async () => {
     if (!activeTab) {
@@ -876,7 +1007,7 @@ export function SearchReplacePanel() {
 
     const searchResult = await executeSearch();
     if (!searchResult || searchResult.matches.length === 0) {
-      setFeedbackMessage('没有可替换的匹配项');
+      setFeedbackMessage(messages.noReplaceMatches);
       return;
     }
 
@@ -886,7 +1017,7 @@ export function SearchReplacePanel() {
       if (searchMode === 'regex') {
         const regexResult = buildSearchRegex(keyword, searchMode, caseSensitive, true);
         if (!regexResult.regex) {
-          setErrorMessage(regexResult.errorMessage || '正则表达式无效');
+          setErrorMessage(regexResult.errorMessage || messages.invalidRegex);
           return;
         }
 
@@ -903,7 +1034,7 @@ export function SearchReplacePanel() {
         });
 
         if (replacementCount === 0) {
-          setFeedbackMessage('文本未发生变化');
+          setFeedbackMessage(messages.textUnchanged);
           return;
         }
 
@@ -944,14 +1075,27 @@ export function SearchReplacePanel() {
         }
       }
 
-      setFeedbackMessage(`已全部替换 ${searchResult.matches.length} 处`);
+      setFeedbackMessage(messages.replacedAll(searchResult.matches.length));
       setCurrentMatchIndex(0);
       await executeSearch(true);
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`全部替换失败: ${readableError}`);
+      setErrorMessage(`${messages.replaceAllFailed}: ${readableError}`);
     }
-  }, [activeTab, caseSensitive, executeSearch, keyword, replaceValue, searchMode, updateTab]);
+  }, [
+    activeTab,
+    caseSensitive,
+    executeSearch,
+    keyword,
+    messages.invalidRegex,
+    messages.noReplaceMatches,
+    messages.replaceAllFailed,
+    messages.replacedAll,
+    messages.textUnchanged,
+    replaceValue,
+    searchMode,
+    updateTab,
+  ]);
 
   const handleKeywordKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -1224,9 +1368,9 @@ export function SearchReplacePanel() {
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
   const displayTotalMatchCountText =
-    displayTotalMatchCount === null ? '统计中…' : `${displayTotalMatchCount}`;
+    displayTotalMatchCount === null ? messages.counting : `${displayTotalMatchCount}`;
   const displayTotalMatchedLineCountText =
-    displayTotalMatchedLineCount === null ? '统计中…' : `${displayTotalMatchedLineCount}`;
+    displayTotalMatchedLineCount === null ? messages.counting : `${displayTotalMatchedLineCount}`;
 
   const renderedResultItems = useMemo(() => {
     if (resultPanelState !== 'open' || !keyword || matches.length === 0) {
@@ -1244,7 +1388,7 @@ export function SearchReplacePanel() {
             'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
             isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
           )}
-          title={`Line ${match.line}, Col ${match.column}`}
+          title={messages.lineColTitle(match.line, match.column)}
           onClick={() => handleSelectMatch(index)}
         >
           <span className="w-16 shrink-0 border-r border-border/70 pr-2 text-right font-mono text-[11px] text-muted-foreground">
@@ -1261,7 +1405,7 @@ export function SearchReplacePanel() {
 
   const statusText = useMemo(() => {
     if (!keyword) {
-      return '输入关键词后按 Enter 开始搜索';
+      return messages.statusEnterToSearch;
     }
 
     if (errorMessage) {
@@ -1269,19 +1413,19 @@ export function SearchReplacePanel() {
     }
 
     if (isSearching) {
-      return '正在搜索...';
+      return messages.statusSearching;
     }
 
     if (matches.length === 0) {
-      return '未找到匹配项';
+      return messages.statusNoMatches;
     }
 
     if (displayTotalMatchCount === null) {
-      return `匹配总计 统计中… · 当前 ${Math.min(currentMatchIndex + 1, matches.length)}/?`;
+      return messages.statusTotalPending(Math.min(currentMatchIndex + 1, matches.length));
     }
 
-    return `匹配总计 ${displayTotalMatchCount} 项 · 当前 ${Math.min(currentMatchIndex + 1, matches.length)}/${Math.max(displayTotalMatchCount, 1)}`;
-  }, [currentMatchIndex, displayTotalMatchCount, errorMessage, isSearching, keyword, matches.length]);
+    return messages.statusTotalReady(displayTotalMatchCount, Math.min(currentMatchIndex + 1, matches.length));
+  }, [currentMatchIndex, displayTotalMatchCount, errorMessage, isSearching, keyword, matches.length, messages]);
 
   const canReplace = !!activeTab;
   const isResultPanelOpen = resultPanelState === 'open';
@@ -1325,7 +1469,7 @@ export function SearchReplacePanel() {
                   focusSearchInput();
                 }}
               >
-                查找
+                {messages.find}
               </button>
               <button
                 type="button"
@@ -1340,9 +1484,9 @@ export function SearchReplacePanel() {
                   focusSearchInput();
                 }}
                 disabled={!canReplace}
-                title={canReplace ? '切换到替换模式' : '没有打开的文件'}
+                title={canReplace ? messages.switchToReplaceMode : messages.noFileOpen}
               >
-                替换
+                {messages.replace}
               </button>
             </div>
 
@@ -1350,7 +1494,7 @@ export function SearchReplacePanel() {
               type="button"
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => setIsOpen(false)}
-              title="关闭"
+              title={messages.close}
             >
               <X className="h-4 w-4" />
             </button>
@@ -1375,7 +1519,7 @@ export function SearchReplacePanel() {
                 searchParamsRef.current = null;
               }}
               onKeyDown={handleKeywordKeyDown}
-              placeholder="查找内容"
+              placeholder={messages.findPlaceholder}
               className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
             />
             <button
@@ -1398,9 +1542,9 @@ export function SearchReplacePanel() {
                   void executeSearch();
                 }
               }}
-              title={isResultPanelOpen ? '收起搜索结果' : '展开搜索结果'}
+              title={isResultPanelOpen ? messages.collapseResults : messages.expandResults}
             >
-              {isResultPanelOpen ? '收起' : '结果'}
+              {isResultPanelOpen ? messages.collapse : messages.results}
             </button>
           </div>
 
@@ -1410,7 +1554,7 @@ export function SearchReplacePanel() {
               <input
                 value={replaceValue}
                 onChange={(event) => setReplaceValue(event.target.value)}
-                placeholder="替换为"
+                placeholder={messages.replacePlaceholder}
                 className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
@@ -1419,7 +1563,7 @@ export function SearchReplacePanel() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <ModeButton
               active={searchMode === 'literal'}
-              label="普通"
+              label={messages.modeLiteral}
               onClick={() => {
                 setSearchMode('literal');
                 setErrorMessage(null);
@@ -1435,7 +1579,7 @@ export function SearchReplacePanel() {
             />
             <ModeButton
               active={searchMode === 'regex'}
-              label="正则"
+              label={messages.modeRegex}
               onClick={() => {
                 setSearchMode('regex');
                 setErrorMessage(null);
@@ -1451,7 +1595,7 @@ export function SearchReplacePanel() {
             />
             <ModeButton
               active={searchMode === 'wildcard'}
-              label="通配符"
+              label={messages.modeWildcard}
               onClick={() => {
                 setSearchMode('wildcard');
                 setErrorMessage(null);
@@ -1483,7 +1627,7 @@ export function SearchReplacePanel() {
                   searchParamsRef.current = null;
                 }}
               />
-              区分大小写
+              {messages.caseSensitive}
             </label>
 
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1492,27 +1636,27 @@ export function SearchReplacePanel() {
                 checked={reverseSearch}
                 onChange={(event) => setReverseSearch(event.target.checked)}
               />
-              反向搜索
+              {messages.reverseSearch}
             </label>
 
             <button
               type="button"
               className="ml-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
               onClick={() => void navigateByStep(-1)}
-              title="上一个匹配"
+              title={messages.prevMatch}
             >
               <ArrowUp className="h-3 w-3" />
-              上一个
+              {messages.previous}
             </button>
 
             <button
               type="button"
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
               onClick={() => void navigateByStep(1)}
-              title="下一个匹配"
+              title={messages.nextMatch}
             >
               <ArrowDown className="h-3 w-3" />
-              下一个
+              {messages.next}
             </button>
 
             {isReplaceMode && (
@@ -1522,18 +1666,18 @@ export function SearchReplacePanel() {
                   className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
                   onClick={() => void handleReplaceCurrent()}
                   disabled={!canReplace}
-                  title={canReplace ? '替换当前匹配项' : '没有打开的文件'}
+                  title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
                 >
-                  替换
+                  {messages.replace}
                 </button>
                 <button
                   type="button"
                   className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
                   onClick={() => void handleReplaceAll()}
                   disabled={!canReplace}
-                  title={canReplace ? '替换全部匹配项' : '没有打开的文件'}
+                  title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
                 >
-                  全部替换
+                  {messages.replaceAll}
                 </button>
               </>
             )}
@@ -1545,7 +1689,7 @@ export function SearchReplacePanel() {
               errorMessage ? 'text-destructive' : 'text-muted-foreground'
             )}
           >
-            {feedbackMessage || statusText} · F3 下一个 / Shift+F3 上一个
+            {feedbackMessage || statusText} · {messages.shortcutHint}
           </div>
         </div>
       </div>
@@ -1560,14 +1704,14 @@ export function SearchReplacePanel() {
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <div className="text-xs font-medium text-foreground">
-              搜索结果 · 总计 {displayTotalMatchCountText} 处 / {displayTotalMatchedLineCountText} 行 · 已加载 {matches.length} 处
+              {messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
             </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => void executeSearch(true)}
-                title="刷新搜索结果"
+                title={messages.refreshResults}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
@@ -1575,7 +1719,7 @@ export function SearchReplacePanel() {
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => setResultPanelState('minimized')}
-                title="最小化搜索结果"
+                title={messages.minimizeResults}
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
@@ -1583,7 +1727,7 @@ export function SearchReplacePanel() {
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => setResultPanelState('closed')}
-                title="关闭搜索结果"
+                title={messages.closeResults}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1592,11 +1736,11 @@ export function SearchReplacePanel() {
 
           <div ref={resultListRef} className="max-h-56 overflow-y-auto" onScroll={handleResultListScroll}>
             {!keyword && (
-              <div className="px-3 py-4 text-xs text-muted-foreground">输入关键词后会在这里列出全部匹配项。</div>
+              <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultsEmptyHint}</div>
             )}
 
             {!!keyword && matches.length === 0 && !isSearching && !errorMessage && (
-              <div className="px-3 py-4 text-xs text-muted-foreground">没有找到任何匹配项。</div>
+              <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noMatchesHint}</div>
             )}
 
             {renderedResultItems}
@@ -1604,10 +1748,10 @@ export function SearchReplacePanel() {
             {!!keyword && matches.length > 0 && (
               <div className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">
                 {isSearching
-                  ? '正在加载更多结果...'
+                  ? messages.loadingMore
                   : hasMoreMatches
-                    ? '滚动到底部自动加载更多结果'
-                    : `已加载全部搜索结果（共 ${displayTotalMatchCountText} 处）`}
+                    ? messages.scrollToLoadMore
+                    : messages.loadedAll(displayTotalMatchCountText)}
               </div>
             )}
           </div>
@@ -1618,7 +1762,7 @@ export function SearchReplacePanel() {
       {isResultPanelMinimized && (
         <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-30">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow-lg backdrop-blur">
-            <span className="text-muted-foreground">结果 总计{displayTotalMatchCountText}处 / {displayTotalMatchedLineCountText}行 · 已加载{matches.length}处</span>
+            <span className="text-muted-foreground">{messages.minimizedSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}</span>
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -1629,7 +1773,7 @@ export function SearchReplacePanel() {
                   void executeSearch();
                 }
               }}
-              title="展开搜索结果"
+              title={messages.openResults}
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
@@ -1637,7 +1781,7 @@ export function SearchReplacePanel() {
               type="button"
               className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => setResultPanelState('closed')}
-              title="关闭搜索结果"
+              title={messages.closeResults}
             >
               <X className="h-3.5 w-3.5" />
             </button>

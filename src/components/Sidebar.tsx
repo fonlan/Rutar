@@ -4,6 +4,7 @@ import { File, Folder, ChevronRight, ChevronDown, FolderOpen } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { isReusableBlankTab } from '@/lib/tabUtils';
 import { useState, useCallback } from 'react';
+import { t } from '@/i18n';
 
 export function Sidebar() {
     const { folderPath, folderEntries, sidebarOpen } = useStore();
@@ -28,7 +29,8 @@ export function Sidebar() {
 function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<any[]>([]);
-    const { addTab, activeTabId, setActiveTab, tabs, updateTab } = useStore();
+    const { addTab, activeTabId, setActiveTab, tabs, updateTab, settings } = useStore();
+    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     const handleToggle = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -110,12 +112,12 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
                         children.map((child) => (
                             <FileEntry key={child.path} entry={child} level={level + 1} />
                         ))
-                    ) : (
+                ) : (
                         <div 
                             className="py-1 text-[10px] text-muted-foreground italic"
                             style={{ paddingLeft: `${(level + 1) * 12 + 24}px` }}
                         >
-                            Empty
+                            {tr('sidebar.empty')}
                         </div>
                     )}
                 </div>

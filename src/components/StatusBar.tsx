@@ -1,17 +1,19 @@
 import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Globe, Zap } from 'lucide-react';
+import { t } from '@/i18n';
 
 export function StatusBar() {
-    const { tabs, activeTabId, updateTab } = useStore();
+    const { tabs, activeTabId, updateTab, settings } = useStore();
     const activeTab = tabs.find(t => t.id === activeTabId);
+    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     if (!activeTab) return (
         <div
             className="h-6 bg-muted/50 border-t flex items-center px-3 text-[10px] text-muted-foreground select-none"
             data-layout-region="statusbar"
         >
-            Rutar Ready
+            {tr('status.ready')}
         </div>
     );
 
@@ -42,12 +44,12 @@ export function StatusBar() {
                     <>
                         <span className="flex items-center gap-1 text-orange-500 font-medium">
                             <Zap className="w-3 h-3" />
-                            Highlight Off (Large File)
+                            {tr('status.largeFileHighlightOff')}
                         </span>
                         <div className="w-[1px] h-3 bg-border" />
                     </>
                 )}
-                <span>Lines: {activeTab.lineCount.toLocaleString()}</span>
+                <span>{tr('status.lines')}: {activeTab.lineCount.toLocaleString()}</span>
             </div>
             
             <div className="flex items-center gap-4">

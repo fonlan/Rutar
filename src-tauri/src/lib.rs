@@ -35,7 +35,9 @@ pub fn run() {
             commands::search_in_document_chunk,
             commands::search_count_in_document,
             commands::search_in_document,
-            commands::get_document_version
+            commands::get_document_version,
+            commands::load_config,
+            commands::save_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
+import { t } from '@/i18n';
 
 interface SyntaxToken {
   type?: string;
@@ -200,6 +201,7 @@ function dispatchDocumentUpdated(tabId: string) {
 
 export function Editor({ tab }: { tab: FileTab }) {
   const { settings = { fontSize: 14, fontFamily: 'monospace', wordWrap: false }, updateTab } = useStore();
+  const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
@@ -1580,9 +1582,9 @@ export function Editor({ tab }: { tab: FileTab }) {
       {showLargeModeEditPrompt && isLargeReadOnlyMode && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35">
           <div className="w-[min(92vw,420px)] rounded-lg border border-border bg-background p-4 shadow-2xl">
-            <p className="text-sm font-medium text-foreground">Large File Mode 当前为只读</p>
+            <p className="text-sm font-medium text-foreground">{tr('editor.largeMode.readOnlyTitle')}</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              检测到你在尝试输入。进入可编辑模式可能导致性能下降，是否继续？
+              {tr('editor.largeMode.readOnlyDesc')}
             </p>
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
@@ -1590,14 +1592,14 @@ export function Editor({ tab }: { tab: FileTab }) {
                 className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
                 onClick={handleKeepReadOnlyMode}
               >
-                保持只读
+                {tr('editor.largeMode.keepReadOnly')}
               </button>
               <button
                 type="button"
                 className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
                 onClick={handleEnterEditableMode}
               >
-                进入编辑模式
+                {tr('editor.largeMode.enterEditable')}
               </button>
             </div>
           </div>

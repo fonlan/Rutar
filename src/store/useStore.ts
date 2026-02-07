@@ -10,8 +10,11 @@ export interface FileTab {
   isDirty?: boolean;
 }
 
+export type AppLanguage = 'zh-CN' | 'en-US';
+
 interface SettingsState {
   isOpen: boolean;
+  language: AppLanguage;
   fontFamily: string;
   fontSize: number;
   wordWrap: boolean;
@@ -43,6 +46,7 @@ export const useStore = create<AppState>((set) => ({
   activeTabId: null,
   settings: {
     isOpen: false,
+    language: 'zh-CN',
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
     wordWrap: false,

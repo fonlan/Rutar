@@ -9,6 +9,12 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Native Performance**: Built on Tauri for a small footprint and native-speed operations.
 - **Modern Tech Stack**: React 19, Tailwind CSS 4, and Zustand on the frontend; Rust with `ropey` and `tree-sitter` on the backend.
 - **Optimized for Windows**: Custom icons and window controls tailored for a native Windows experience.
+- **Multi-language UI**: Supports Simplified Chinese / English and can switch in Settings.
+
+## Configuration
+
+- User configuration is saved to `%AppData%\Rutar\config.json`.
+- Current fields include `language`, `fontFamily`, `fontSize`, and `wordWrap`.
 
 ## 🛠 Tech Stack
 

@@ -1,12 +1,13 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, WrapText, X
+    Undo, Redo, Search, Replace, WrapText
 } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect } from 'react';
 import { isReusableBlankTab } from '@/lib/tabUtils';
 import { useStore, FileTab } from '@/store/useStore';
+import { t } from '@/i18n';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     window.dispatchEvent(
@@ -42,6 +43,7 @@ export function Toolbar() {
     } = useStore();
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
+    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     const saveTab = useCallback(async (tab: FileTab) => {
         if (tab.path) {
@@ -316,33 +318,32 @@ export function Toolbar() {
             data-layout-region="toolbar"
         >
             {/* File Group */}
-            <ToolbarBtn icon={FilePlus} title="New File (Ctrl+N)" onClick={handleNewFile} />
-            <ToolbarBtn icon={FolderOpen} title="Open File (Ctrl+O)" onClick={handleOpenFile} />
-            <ToolbarBtn icon={FileUp} title="Open Folder" onClick={handleOpenFolder} />
+            <ToolbarBtn icon={FilePlus} title={tr('toolbar.newFile')} onClick={handleNewFile} />
+            <ToolbarBtn icon={FolderOpen} title={tr('toolbar.openFile')} onClick={handleOpenFile} />
+            <ToolbarBtn icon={FileUp} title={tr('toolbar.openFolder')} onClick={handleOpenFolder} />
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Save} title="Save (Ctrl+S)" onClick={handleSave} disabled={!activeTab} />
-            <ToolbarBtn icon={SaveAll} title="Save All (Ctrl+Shift+S)" onClick={handleSaveAll} disabled={tabs.length === 0} />
-            <ToolbarBtn icon={X} title="Close Tab (Ctrl/Cmd+W)" onClick={() => void handleCloseActiveTab()} disabled={!activeTab} />
+            <ToolbarBtn icon={Save} title={tr('toolbar.save')} onClick={handleSave} disabled={!activeTab} />
+            <ToolbarBtn icon={SaveAll} title={tr('toolbar.saveAll')} onClick={handleSaveAll} disabled={tabs.length === 0} />
             
             {/* Edit Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Scissors} title="Cut" onClick={() => void handleClipboardAction('cut')} disabled={!canEdit} />
-            <ToolbarBtn icon={Copy} title="Copy" onClick={() => void handleClipboardAction('copy')} disabled={!activeTab} />
-            <ToolbarBtn icon={ClipboardPaste} title="Paste" onClick={() => void handleClipboardAction('paste')} disabled={!canEdit} />
+            <ToolbarBtn icon={Scissors} title={tr('toolbar.cut')} onClick={() => void handleClipboardAction('cut')} disabled={!canEdit} />
+            <ToolbarBtn icon={Copy} title={tr('toolbar.copy')} onClick={() => void handleClipboardAction('copy')} disabled={!activeTab} />
+            <ToolbarBtn icon={ClipboardPaste} title={tr('toolbar.paste')} onClick={() => void handleClipboardAction('paste')} disabled={!canEdit} />
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Undo} title="Undo (Ctrl+Z)" onClick={handleUndo} disabled={!canEdit} />
-            <ToolbarBtn icon={Redo} title="Redo (Ctrl+Y / Ctrl+Shift+Z)" onClick={handleRedo} disabled={!canEdit} />
+            <ToolbarBtn icon={Undo} title={tr('toolbar.undo')} onClick={handleUndo} disabled={!canEdit} />
+            <ToolbarBtn icon={Redo} title={tr('toolbar.redo')} onClick={handleRedo} disabled={!canEdit} />
             
             {/* Search Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Search} title="Find (Ctrl+F)" onClick={handleFind} disabled={!activeTab} />
-            <ToolbarBtn icon={Replace} title="Replace (Ctrl+H)" onClick={() => void handleReplace()} disabled={!canEdit} />
+            <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleFind} disabled={!activeTab} />
+            <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!canEdit} />
             
             {/* View Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn
                 icon={WrapText}
-                title="Toggle Word Wrap"
+                title={tr('toolbar.toggleWordWrap')}
                 onClick={handleToggleWordWrap}
                 active={!!settings.wordWrap}
                 disabled={!activeTab}

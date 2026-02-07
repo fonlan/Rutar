@@ -4,7 +4,7 @@ use encoding_rs::Encoding;
 use memmap2::Mmap;
 use regex::RegexBuilder;
 use ropey::Rope;
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::PathBuf;
 use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
@@ -27,6 +27,38 @@ use uuid::Uuid;
 
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
 const ENCODING_DETECT_SAMPLE_BYTES: usize = 1024 * 1024;
+const DEFAULT_LANGUAGE: &str = "zh-CN";
+const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospace";
+const DEFAULT_FONT_SIZE: u32 = 14;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    language: String,
+    font_family: String,
+    font_size: u32,
+    word_wrap: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PartialAppConfig {
+    language: Option<String>,
+    font_family: Option<String>,
+    font_size: Option<u32>,
+    word_wrap: Option<bool>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            language: DEFAULT_LANGUAGE.to_string(),
+            font_family: DEFAULT_FONT_FAMILY.to_string(),
+            font_size: DEFAULT_FONT_SIZE,
+            word_wrap: false,
+        }
+    }
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,6 +175,85 @@ fn create_parser(language: Option<Language>) -> Option<Parser> {
     let mut parser = Parser::new();
     parser.set_language(&lang).ok()?;
     Some(parser)
+}
+
+fn normalize_language(language: Option<&str>) -> String {
+    match language {
+        Some("en-US") => "en-US".to_string(),
+        _ => DEFAULT_LANGUAGE.to_string(),
+    }
+}
+
+fn normalize_app_config(config: AppConfig) -> AppConfig {
+    AppConfig {
+        language: normalize_language(Some(config.language.as_str())),
+        font_family: if config.font_family.trim().is_empty() {
+            DEFAULT_FONT_FAMILY.to_string()
+        } else {
+            config.font_family
+        },
+        font_size: config.font_size.clamp(8, 72),
+        word_wrap: config.word_wrap,
+    }
+}
+
+fn config_file_path() -> Result<PathBuf, String> {
+    let app_data = std::env::var("APPDATA")
+        .map_err(|_| "Failed to locate APPDATA directory".to_string())?;
+    Ok(PathBuf::from(app_data).join("Rutar").join("config.json"))
+}
+
+#[tauri::command]
+pub fn load_config() -> Result<AppConfig, String> {
+    let path = config_file_path()?;
+    if !path.exists() {
+        return Ok(AppConfig::default());
+    }
+
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if raw.trim().is_empty() {
+        return Ok(AppConfig::default());
+    }
+
+    let partial: PartialAppConfig = serde_json::from_str(&raw)
+        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+
+    let mut config = AppConfig::default();
+
+    if let Some(language) = partial.language {
+        config.language = normalize_language(Some(language.as_str()));
+    }
+
+    if let Some(font_family) = partial.font_family {
+        if !font_family.trim().is_empty() {
+            config.font_family = font_family;
+        }
+    }
+
+    if let Some(font_size) = partial.font_size {
+        config.font_size = font_size.clamp(8, 72);
+    }
+
+    if let Some(word_wrap) = partial.word_wrap {
+        config.word_wrap = word_wrap;
+    }
+
+    Ok(config)
+}
+
+#[tauri::command]
+pub fn save_config(config: AppConfig) -> Result<(), String> {
+    let normalized = normalize_app_config(config);
+    let path = config_file_path()?;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let content = serde_json::to_string_pretty(&normalized).map_err(|e| e.to_string())?;
+    fs::write(path, format!("{}\n", content)).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {

@@ -4,11 +4,13 @@ import { Minus, Square, X, Settings } from 'lucide-react';
 import { useCallback } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
+import { t } from '@/i18n';
 
 const appWindow = getCurrentWindow();
 
 export function TitleBar() {
-    const { tabs, activeTabId, setActiveTab, closeTab, toggleSettings, addTab } = useStore();
+    const { tabs, activeTabId, setActiveTab, closeTab, toggleSettings, addTab, settings } = useStore();
+    const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     const handleMinimize = () => appWindow.minimize();
     const handleMaximize = () => appWindow.toggleMaximize();
@@ -71,7 +73,7 @@ export function TitleBar() {
                     type="button"
                     onClick={() => toggleSettings(true)}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors" 
-                    title="Settings"
+                    title={tr('titleBar.settings')}
                 >
                     <Settings className="w-4 h-4" />
                 </button>
