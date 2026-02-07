@@ -46,10 +46,11 @@ export function TitleBar() {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
                         className={cn(
-                            "group flex items-center h-[calc(100%-2px)] min-w-[100px] max-w-[200px] px-3 border-t border-x rounded-t-sm cursor-pointer mr-1 relative bg-muted transition-colors pointer-events-auto",
+                            "group flex items-center h-[calc(100%-2px)] min-w-[100px] max-w-[200px] px-3 border-t border-x rounded-t-sm cursor-pointer mr-1 relative overflow-hidden bg-muted transition-colors pointer-events-auto",
                             activeTabId === tab.id ? "bg-background border-border" : "border-transparent hover:bg-muted/80"
                         )}
                     >
+                        {activeTabId === tab.id && <div className="absolute left-0 right-0 top-0 h-[3px] bg-blue-500" />}
                         <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
                         <button
                             type="button"
