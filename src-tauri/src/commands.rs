@@ -10,6 +10,11 @@ use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
 use uuid::Uuid;
 
+#[cfg(windows)]
+use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+#[cfg(windows)]
+use winreg::RegKey;
+
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
 const ENCODING_DETECT_SAMPLE_BYTES: usize = 1024 * 1024;
 const DEFAULT_LANGUAGE: &str = "zh-CN";
@@ -434,10 +439,177 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
     }
 }
 
+#[cfg(windows)]
+fn context_menu_display_name(language: &str) -> &'static str {
+    match normalize_language(Some(language)) {
+        value if value == "zh-CN" => "使用 Rutar 打开",
+        _ => "Open with Rutar",
+    }
+}
+
+#[cfg(windows)]
+const WIN_FILE_SHELL_KEY: &str = r"Software\Classes\*\shell\Rutar";
+#[cfg(windows)]
+const WIN_DIR_SHELL_KEY: &str = r"Software\Classes\Directory\shell\Rutar";
+#[cfg(windows)]
+const WIN_DIR_BG_SHELL_KEY: &str = r"Software\Classes\Directory\Background\shell\Rutar";
+
+#[cfg(windows)]
+fn executable_path_string() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Ok(exe.to_string_lossy().to_string())
+}
+
+#[cfg(windows)]
+fn context_menu_command_line(argument_placeholder: &str) -> Result<String, String> {
+    let exe = executable_path_string()?;
+    Ok(format!("\"{}\" \"{}\"", exe, argument_placeholder))
+}
+
+#[cfg(windows)]
+fn write_windows_context_shell(
+    root: &RegKey,
+    shell_key: &str,
+    icon_path: &str,
+    argument_placeholder: &str,
+    display_name: &str,
+) -> Result<(), String> {
+    let (menu_key, _) = root
+        .create_subkey(shell_key)
+        .map_err(|e| format!("Failed to create registry key {}: {}", shell_key, e))?;
+
+    menu_key
+        .set_value("", &display_name)
+        .map_err(|e| e.to_string())?;
+    menu_key
+        .set_value("Icon", &icon_path)
+        .map_err(|e| e.to_string())?;
+
+    let command = context_menu_command_line(argument_placeholder)?;
+    let (command_key, _) = menu_key
+        .create_subkey("command")
+        .map_err(|e| e.to_string())?;
+    command_key.set_value("", &command).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_windows_context_shell_display_name(
+    root: &RegKey,
+    shell_key: &str,
+    display_name: &str,
+) -> Result<(), String> {
+    match root.open_subkey_with_flags(shell_key, KEY_WRITE) {
+        Ok(menu_key) => menu_key.set_value("", &display_name).map_err(|e| e.to_string()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!("Failed to open registry key {}: {}", shell_key, err)),
+    }
+}
+
+#[cfg(windows)]
+fn remove_registry_tree(root: &RegKey, path: &str) -> Result<(), String> {
+    match root.delete_subkey_all(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!("Failed to remove registry key {}: {}", path, err)),
+    }
+}
+
+#[cfg(windows)]
+fn read_registry_command(root: &RegKey, shell_key: &str) -> Option<String> {
+    let command_key_path = format!(r"{}\command", shell_key);
+    let command_key = root.open_subkey_with_flags(command_key_path, KEY_READ).ok()?;
+    command_key.get_value::<String, _>("").ok()
+}
+
+#[cfg(windows)]
+fn expected_registry_command(argument_placeholder: &str) -> Option<String> {
+    context_menu_command_line(argument_placeholder).ok()
+}
+
 fn config_file_path() -> Result<PathBuf, String> {
     let app_data = std::env::var("APPDATA")
         .map_err(|_| "Failed to locate APPDATA directory".to_string())?;
     Ok(PathBuf::from(app_data).join("Rutar").join("config.json"))
+}
+
+#[tauri::command]
+pub fn get_startup_paths(state: State<'_, AppState>) -> Vec<String> {
+    state.take_startup_paths()
+}
+
+#[tauri::command]
+pub fn register_windows_context_menu(language: Option<String>) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        Err("Windows context menu is only supported on Windows".to_string())
+    }
+
+    #[cfg(windows)]
+    {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let icon_path = executable_path_string()?;
+        let normalized_language = normalize_language(language.as_deref());
+        let display_name = context_menu_display_name(normalized_language.as_str());
+
+        write_windows_context_shell(&hkcu, WIN_FILE_SHELL_KEY, &icon_path, "%1", display_name)?;
+        write_windows_context_shell(&hkcu, WIN_DIR_SHELL_KEY, &icon_path, "%1", display_name)?;
+        write_windows_context_shell(&hkcu, WIN_DIR_BG_SHELL_KEY, &icon_path, "%V", display_name)?;
+
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn unregister_windows_context_menu() -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        Err("Windows context menu is only supported on Windows".to_string())
+    }
+
+    #[cfg(windows)]
+    {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        remove_registry_tree(&hkcu, WIN_FILE_SHELL_KEY)?;
+        remove_registry_tree(&hkcu, WIN_DIR_SHELL_KEY)?;
+        remove_registry_tree(&hkcu, WIN_DIR_BG_SHELL_KEY)?;
+
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn is_windows_context_menu_registered() -> bool {
+    #[cfg(not(windows))]
+    {
+        false
+    }
+
+    #[cfg(windows)]
+    {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let expected_file = match expected_registry_command("%1") {
+            Some(value) => value,
+            None => return false,
+        };
+        let expected_dir_bg = match expected_registry_command("%V") {
+            Some(value) => value,
+            None => return false,
+        };
+
+        let file_ok = read_registry_command(&hkcu, WIN_FILE_SHELL_KEY)
+            .map(|value| value == expected_file)
+            .unwrap_or(false);
+        let dir_ok = read_registry_command(&hkcu, WIN_DIR_SHELL_KEY)
+            .map(|value| value == expected_file)
+            .unwrap_or(false);
+        let dir_bg_ok = read_registry_command(&hkcu, WIN_DIR_BG_SHELL_KEY)
+            .map(|value| value == expected_dir_bg)
+            .unwrap_or(false);
+
+        file_ok && dir_ok && dir_bg_ok
+    }
 }
 
 #[tauri::command]
@@ -497,6 +669,18 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
 
     let content = serde_json::to_string_pretty(&normalized).map_err(|e| e.to_string())?;
     fs::write(path, format!("{}\n", content)).map_err(|e| e.to_string())?;
+
+    #[cfg(windows)]
+    {
+        if is_windows_context_menu_registered() {
+            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+            let display_name = context_menu_display_name(normalized.language.as_str());
+
+            set_windows_context_shell_display_name(&hkcu, WIN_FILE_SHELL_KEY, display_name)?;
+            set_windows_context_shell_display_name(&hkcu, WIN_DIR_SHELL_KEY, display_name)?;
+            set_windows_context_shell_display_name(&hkcu, WIN_DIR_BG_SHELL_KEY, display_name)?;
+        }
+    }
 
     Ok(())
 }

@@ -1,0 +1,126 @@
+<?xml version="1.0" standalone="no"?>
+<svg id="icon-svg" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <!-- 1. 全局投影 (Soft Drop Shadow) -->
+                    <filter id="drop-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="blur"/>
+                        <feOffset in="blur" dx="0" dy="16" result="offsetBlur"/>
+                        <feFlood flood-color="#000000" flood-opacity="0.15"/>
+                        <feComposite in2="offsetBlur" operator="in"/>
+                        <feMerge>
+                            <feMergeNode/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+
+                    <!-- 2. 粘土质感 - 顶部高光 (Clay Highlight) -->
+                    <linearGradient id="paper-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="100%" stop-color="#e6e6e6"/>
+                    </linearGradient>
+
+                    <!-- 3. 橙色图形渐变 (Orange Shape Gradient) -->
+                    <linearGradient id="orange-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#FF9F5A"/> <!-- Lighter Orange -->
+                        <stop offset="100%" stop-color="#F25C30"/> <!-- Darker Red-Orange -->
+                    </linearGradient>
+                    
+                    <!-- 4. 蓝色折角渐变 (Blue Fold Gradient) -->
+                    <linearGradient id="blue-gradient" x1="20%" y1="0%" x2="80%" y2="100%">
+                        <stop offset="0%" stop-color="#4DB8FF"/> <!-- Lighter Blue -->
+                        <stop offset="100%" stop-color="#2D75E2"/> <!-- Deep Blue -->
+                    </linearGradient>
+
+                    <!-- 5. 内部凹陷效果 (Inset Shadow for text lines) -->
+                    <filter id="inset-shadow">
+                        <!-- Shadow -->
+                        <feOffset dx="2" dy="4"/>
+                        <feGaussianBlur stdDeviation="3" result="offset-blur"/>
+                        <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+                        <feFlood flood-color="black" flood-opacity="0.2" result="color"/>
+                        <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+                        <!-- Highlight (bottom right) -->
+                        <feOffset dx="-2" dy="-2" in="SourceGraphic" result="offset-highlight"/>
+                        <feComposite operator="out" in="SourceGraphic" in2="offset-highlight" result="inverse-highlight"/>
+                        <feFlood flood-color="white" flood-opacity="0.5" result="color-highlight"/>
+                        <feComposite operator="in" in="color-highlight" in2="inverse-highlight" result="highlight"/>
+                        <feMerge>
+                            <feMergeNode in="shadow"/>
+                            <!-- <feMergeNode in="highlight"/>  Highlight is subtle, sometimes skipping it looks cleaner for clay --> 
+                        </feMerge>
+                    </filter>
+
+                    <!-- 简单的内部阴影模拟 (Simple Inner Shadow) -->
+                    <filter id="inner-shadow-soft">
+                        <feComponentTransfer in="SourceAlpha">
+                            <feFuncA type="table" tableValues="1 0"/>
+                        </feComponentTransfer>
+                        <feGaussianBlur stdDeviation="4"/>
+                        <feOffset dx="2" dy="4" result="shadow"/>
+                        <feFlood flood-color="rgb(0,0,0)" flood-opacity="0.15"/>
+                        <feComposite in2="shadow" operator="in" result="shadow"/>
+                        <feComposite in2="shadow" operator="in" in="SourceGraphic"/> <!-- Clip to original -->
+                        <feMerge>
+                            <feMergeNode in="SourceGraphic"/>
+                            <feMergeNode in="shadow"/>
+                        </feMerge>
+                    </filter>
+                    
+                    <!-- 蓝色形状的立体光照 -->
+                    <filter id="blue-lighting">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
+                        <feSpecularLighting in="blur" surfaceScale="5" specularConstant="0.75" specularExponent="20" lighting-color="#ffffff" result="specOut">
+                            <fePointLight x="-500" y="-500" z="200"/>
+                        </feSpecularLighting>
+                        <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut"/>
+                        <feMerge>
+                            <feMergeNode in="SourceGraphic"/>
+                            <feMergeNode in="specOut"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+
+                <!-- === 1. 文档主体 (Document Body) === -->
+                <!-- 略微圆润的长方形，模拟厚纸张/粘土板 -->
+                <rect x="80" y="40" width="352" height="432" rx="48" fill="url(#paper-gradient)" filter="url(#drop-shadow)"/>
+
+                <!-- === 2. 凹陷的文本行 (Indented Text Lines) === -->
+                <!-- 底部三行，模拟原图中的白色条纹 -->
+                <g opacity="0.6">
+                    <!-- 线条1 -->
+                    <rect x="128" y="320" width="256" height="24" rx="12" fill="#d1d5db"/>
+                    <rect x="128" y="320" width="256" height="24" rx="12" fill="none" stroke="rgba(0,0,0,0.05)" stroke-width="2"/>
+                    
+                    <!-- 线条2 -->
+                    <rect x="128" y="364" width="256" height="24" rx="12" fill="#d1d5db"/>
+                    
+                    <!-- 线条3 (短一点) -->
+                    <rect x="128" y="408" width="160" height="24" rx="12" fill="#d1d5db"/>
+                </g>
+
+                <!-- === 3. 核心装饰：橙色立体图形 (Orange Shape) === -->
+                <!-- 提取自原图背景色，作为 Logo 或文件类型标识 -->
+                <g filter="url(#drop-shadow)">
+                    <!-- 稍微旋转的圆角矩形 -->
+                    <rect x="156" y="120" width="200" height="150" rx="40" fill="url(#orange-gradient)" transform="rotate(-5, 256, 195)"/>
+                    
+                    <!-- 给橙色图形加一点高光边框以增强立体感 -->
+                    <rect x="156" y="120" width="200" height="150" rx="40" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="4" transform="rotate(-5, 256, 195)"/>
+                </g>
+
+                <!-- === 4. 右上角折角：蓝色三角形 (Blue Fold) === -->
+                <!-- 提取自原图的前景蓝色形状，改为折角隐喻 -->
+                <!-- 使用路径绘制一个圆润的三角形/折角覆盖在右上角 -->
+                <g filter="url(#blue-lighting)">
+                     <!-- 阴影在折角下面 -->
+                    <path d="M 330 40 L 432 40 L 432 160 C 432 160 330 160 330 140 Z" fill="rgba(0,0,0,0.1)" transform="translate(-5, 5)"/>
+                    
+                    <!-- 蓝色折角主体 -->
+                    <!-- 形状设计：模拟原图中蓝色三角形的圆润感，像一个厚厚的贴纸折过来 -->
+                    <path d="M 320 40 L 432 40 C 432 40 432 40 432 48 L 432 152 C 432 175 410 185 390 175 L 320 130 C 300 115 300 60 320 40 Z" fill="url(#blue-gradient)" filter="url(#drop-shadow)"/>
+                          
+                    <!-- 折角上的高光细节 -->
+                    <path d="M 330 50 L 410 50 C 410 50 350 100 340 120" stroke="rgba(255,255,255,0.4)" stroke-width="6" stroke-linecap="round" fill="none"/>
+                </g>
+
+            </svg>

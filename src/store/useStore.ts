@@ -31,6 +31,7 @@ interface SettingsState {
   fontSize: number;
   wordWrap: boolean;
   highlightCurrentLine: boolean;
+  windowsContextMenuEnabled: boolean;
 }
 
 interface AppState {
@@ -79,6 +80,7 @@ export const useStore = create<AppState>((set) => ({
     fontSize: 14,
     wordWrap: false,
     highlightCurrentLine: true,
+    windowsContextMenuEnabled: false,
   },
   sidebarOpen: false,
   sidebarWidth: 240,

@@ -5,9 +5,20 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let startup_paths = std::env::args()
+        .skip(1)
+        .filter(|value| {
+            if value.starts_with('-') {
+                return false;
+            }
+
+            std::path::Path::new(value).exists()
+        })
+        .collect::<Vec<String>>();
+
     if let Err(err) = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState::new())
+        .manage(AppState::new(startup_paths))
         .invoke_handler(tauri::generate_handler![
             commands::open_file, 
             commands::get_visible_lines,
@@ -30,7 +41,11 @@ pub fn run() {
             commands::get_document_version,
             commands::get_content_tree,
             commands::load_config,
-            commands::save_config
+            commands::save_config,
+            commands::register_windows_context_menu,
+            commands::unregister_windows_context_menu,
+            commands::is_windows_context_menu_registered,
+            commands::get_startup_paths
         ])
         .run(tauri::generate_context!())
     {

@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use encoding_rs::Encoding;
 use ropey::Rope;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tree_sitter::{Language, Parser, Tree};
 
 #[derive(Clone)]
@@ -36,12 +37,22 @@ pub struct Document {
 
 pub struct AppState {
     pub documents: DashMap<String, Document>,
+    startup_paths: Mutex<Vec<String>>,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(startup_paths: Vec<String>) -> Self {
         Self {
             documents: DashMap::new(),
+            startup_paths: Mutex::new(startup_paths),
         }
+    }
+
+    pub fn take_startup_paths(&self) -> Vec<String> {
+        let mut paths = self
+            .startup_paths
+            .lock()
+            .expect("failed to lock startup paths");
+        std::mem::take(&mut *paths)
     }
 }

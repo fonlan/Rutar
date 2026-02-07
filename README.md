@@ -16,6 +16,10 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - User configuration is saved to `%AppData%\Rutar\config.json`.
 - Current fields include `language`, `fontFamily`, `fontSize`, and `wordWrap`.
 
+### Windows 11 Context Menu Integration
+
+- **Classic context menu (Show more options)**: managed by registry keys under `HKCU\Software\Classes` and can be toggled directly in Settings.
+
 ## 🛠 Tech Stack
 
 - **Backend**: Rust, Tauri v2, Tree-sitter, Ropey, DashMap, memmap2.

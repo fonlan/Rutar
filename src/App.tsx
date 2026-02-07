@@ -16,6 +16,24 @@ import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
 
 let hasInitializedStartupTab = false;
 
+function sortFolderEntries(entries: any[]) {
+  entries.sort((a, b) => {
+    if (a.is_dir === b.is_dir) {
+      return a.name.localeCompare(b.name);
+    }
+
+    return a.is_dir ? -1 : 1;
+  });
+}
+
+function detectWindowsPlatform() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  return /windows/i.test(navigator.userAgent);
+}
+
 interface AppConfig {
   language: AppLanguage;
   theme: AppTheme;
@@ -30,12 +48,86 @@ function App() {
   const activeTabId = useStore((state) => state.activeTabId);
   const settings = useStore((state) => state.settings);
   const updateSettings = useStore((state) => state.updateSettings);
+  const setFolder = useStore((state) => state.setFolder);
   const contentTreeOpen = useStore((state) => state.contentTreeOpen);
   const contentTreeType = useStore((state) => state.contentTreeType);
   const contentTreeNodes = useStore((state) => state.contentTreeNodes);
   const contentTreeError = useStore((state) => state.contentTreeError);
   const setContentTreeData = useStore((state) => state.setContentTreeData);
   const [configReady, setConfigReady] = useState(false);
+  const isWindows = detectWindowsPlatform();
+
+  useEffect(() => {
+    if (!isWindows) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadWindowsContextMenuStatus = async () => {
+      try {
+        const enabled = await invoke<boolean>('is_windows_context_menu_registered');
+        if (cancelled) {
+          return;
+        }
+
+        updateSettings({ windowsContextMenuEnabled: enabled });
+      } catch (error) {
+        console.error('Failed to read Windows context menu status:', error);
+      }
+    };
+
+    void loadWindowsContextMenuStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isWindows, updateSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const openStartupPaths = async () => {
+      try {
+        const startupPaths = await invoke<string[]>('get_startup_paths');
+        if (cancelled || startupPaths.length === 0) {
+          return;
+        }
+
+        for (const startupPath of startupPaths) {
+          if (cancelled) {
+            return;
+          }
+
+          try {
+            const entries = await invoke<any[]>('read_dir', { path: startupPath });
+            if (cancelled) {
+              return;
+            }
+
+            sortFolderEntries(entries);
+            setFolder(startupPath, entries);
+            continue;
+          } catch {
+          }
+
+          try {
+            await openFilePaths([startupPath]);
+          } catch (error) {
+            console.error(`Failed to open startup path: ${startupPath}`, error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load startup paths:', error);
+      }
+    };
+
+    void openStartupPaths();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setFolder]);
 
   useEffect(() => {
     if (hasInitializedStartupTab) {

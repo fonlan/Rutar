@@ -1,8 +1,9 @@
-import { X, Type, Monitor, Palette, Languages } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { t } from '@/i18n';
+import { invoke } from '@tauri-apps/api/core';
 
 export function SettingsModal() {
   const settings = useStore((state) => state.settings);
@@ -32,6 +33,30 @@ export function SettingsModal() {
     'flex h-10 w-full rounded-lg border border-input bg-background/70 text-foreground px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
   const switchOnText = settings.language === 'zh-CN' ? '开' : 'ON';
   const switchOffText = settings.language === 'zh-CN' ? '关' : 'OFF';
+  const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
+
+  const windowsContextLabel = settings.language === 'zh-CN' ? 'Windows 11 右键菜单' : 'Windows 11 Context Menu';
+  const windowsContextDesc = settings.language === 'zh-CN'
+    ? '在文件和文件夹右键菜单中显示“使用 Rutar 打开”。'
+    : 'Show "Open with Rutar" for files and folders in the context menu.';
+
+  const handleToggleWindowsContextMenu = async () => {
+    const nextEnabled = !settings.windowsContextMenuEnabled;
+
+    try {
+      if (nextEnabled) {
+        await invoke('register_windows_context_menu', {
+          language: settings.language,
+        });
+      } else {
+        await invoke('unregister_windows_context_menu');
+      }
+
+      updateSettings({ windowsContextMenuEnabled: nextEnabled });
+    } catch (error) {
+      console.error('Failed to update Windows context menu:', error);
+    }
+  };
 
   if (!settings.isOpen) return null;
 
@@ -172,6 +197,55 @@ export function SettingsModal() {
                     </button>
                   </div>
                 </section>
+
+                {isWindows && (
+                  <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <SquareTerminal className="w-4 h-4 text-muted-foreground" />
+                          <p className="text-sm font-medium leading-none">{windowsContextLabel}</p>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{windowsContextDesc}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleWindowsContextMenu()}
+                        className={cn(
+                          'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                          settings.windowsContextMenuEnabled
+                            ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                            : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                        )}
+                        aria-pressed={!!settings.windowsContextMenuEnabled}
+                        aria-label={windowsContextLabel}
+                      >
+                        <span
+                          className={cn(
+                            'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                            settings.windowsContextMenuEnabled
+                              ? 'opacity-0 text-primary-foreground/80'
+                              : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                          )}
+                        >
+                          {switchOffText}
+                        </span>
+                        <span
+                          className={cn(
+                            'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                            settings.windowsContextMenuEnabled
+                              ? 'opacity-95 text-primary-foreground'
+                              : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                          )}
+                        >
+                          {switchOnText}
+                        </span>
+                        <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
