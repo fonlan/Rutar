@@ -94,6 +94,54 @@ function getEditableText(element: HTMLDivElement) {
   return normalizeEditorText(element.textContent || "");
 }
 
+function setCaretToLineStart(element: HTMLDivElement, line: number) {
+  const content = normalizeEditorText(getEditableText(element));
+  if (element.textContent !== content) {
+    element.textContent = content;
+  }
+
+  const targetLine = Math.max(1, Math.floor(line));
+
+  let currentLine = 1;
+  let targetOffset = 0;
+
+  if (targetLine > 1) {
+    for (let index = 0; index < content.length; index += 1) {
+      if (content[index] === '\n') {
+        currentLine += 1;
+        if (currentLine === targetLine) {
+          targetOffset = index + 1;
+          break;
+        }
+      }
+    }
+  }
+
+  let textNode = element.firstChild as Text | null;
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+    textNode = document.createTextNode(content);
+    element.replaceChildren(textNode);
+  }
+
+  const safeOffset = Math.min(targetOffset, textNode.textContent?.length ?? 0);
+
+  if (!textNode) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(textNode, safeOffset);
+  range.collapse(true);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function buildCodeUnitDiff(previousText: string, nextText: string): CodeUnitDiff | null {
   if (previousText === nextText) {
     return null;
@@ -212,6 +260,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     text: '',
   });
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
+  const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
@@ -234,6 +283,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const hugeWindowLockedRef = useRef(false);
   const hugeWindowFollowScrollOnUnlockRef = useRef(false);
   const hugeWindowUnlockTimerRef = useRef<any>(null);
+  const contentTreeFlashTimerRef = useRef<any>(null);
   const pendingRestoreScrollTopRef = useRef<number | null>(null);
   const editableSegmentRef = useRef<EditorSegmentState>({
     startLine: 0,
@@ -1682,11 +1732,24 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     setSearchHighlight(null);
+
+    if (contentTreeFlashTimerRef.current) {
+      window.clearTimeout(contentTreeFlashTimerRef.current);
+      contentTreeFlashTimerRef.current = null;
+    }
+
+    setContentTreeFlashLine(null);
   }, [tab.id]);
 
   useEffect(() => {
     const handleNavigateToLine = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string; line?: number; column?: number; length?: number }>;
+      const customEvent = event as CustomEvent<{
+        tabId?: string;
+        line?: number;
+        column?: number;
+        length?: number;
+        source?: string;
+      }>;
       const detail = customEvent.detail;
 
       if (!detail || detail.tabId !== tab.id) {
@@ -1696,6 +1759,32 @@ export function Editor({ tab }: { tab: FileTab }) {
       const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
+      const shouldMoveCaretToLineStart = detail.source === 'content-tree';
+
+      const placeCaretAtTargetLineStart = () => {
+        if (!contentRef.current) {
+          return;
+        }
+
+        const lineForCaret = isHugeEditableMode
+          ? Math.max(1, targetLine - editableSegmentRef.current.startLine)
+          : targetLine;
+
+        setCaretToLineStart(contentRef.current, lineForCaret);
+      };
+
+      if (detail.source === 'content-tree') {
+        if (contentTreeFlashTimerRef.current) {
+          window.clearTimeout(contentTreeFlashTimerRef.current);
+          contentTreeFlashTimerRef.current = null;
+        }
+
+        setContentTreeFlashLine(targetLine);
+        contentTreeFlashTimerRef.current = window.setTimeout(() => {
+          setContentTreeFlashLine(null);
+          contentTreeFlashTimerRef.current = null;
+        }, 1000);
+      }
 
       setSearchHighlight({
         line: targetLine,
@@ -1715,6 +1804,15 @@ export function Editor({ tab }: { tab: FileTab }) {
         if (contentRef.current) {
           contentRef.current.scrollTop = targetScrollTop;
           contentRef.current.focus();
+
+          if (shouldMoveCaretToLineStart) {
+            window.requestAnimationFrame(() => {
+              placeCaretAtTargetLineStart();
+              window.setTimeout(() => {
+                placeCaretAtTargetLineStart();
+              }, 60);
+            });
+          }
         }
 
         if (listElement) {
@@ -1736,6 +1834,12 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (contentRef.current) {
         contentRef.current.scrollTop = targetScrollTop;
         contentRef.current.focus();
+
+        if (shouldMoveCaretToLineStart) {
+          window.requestAnimationFrame(() => {
+            placeCaretAtTargetLineStart();
+          });
+        }
       }
 
       if (listElement) {
@@ -1746,8 +1850,10 @@ export function Editor({ tab }: { tab: FileTab }) {
     };
 
     window.addEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
+    window.addEventListener('rutar:navigate-to-content-tree', handleNavigateToLine as EventListener);
     return () => {
       window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
+      window.removeEventListener('rutar:navigate-to-content-tree', handleNavigateToLine as EventListener);
     };
   }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, syncVisibleTokens, tab.id, tab.lineCount]);
 
@@ -1897,7 +2003,9 @@ export function Editor({ tab }: { tab: FileTab }) {
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
                   }}
-                  className="px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start"
+                  className={`px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
+                    contentTreeFlashLine === index + 1 ? 'bg-primary/15 dark:bg-primary/20' : ''
+                  }`}
                 >
                   <span
                     className="shrink-0 text-muted-foreground/40 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"

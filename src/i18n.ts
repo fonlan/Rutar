@@ -16,10 +16,15 @@ export type I18nKey =
   | 'toolbar.find'
   | 'toolbar.replace'
   | 'toolbar.toggleWordWrap'
+  | 'toolbar.contentTree'
   | 'status.ready'
   | 'status.lines'
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
+  | 'contentTree.title'
+  | 'contentTree.empty'
+  | 'contentTree.unsupportedType'
+  | 'contentTree.parseFailed'
   | 'settings.title'
   | 'settings.general'
   | 'settings.appearance'
@@ -58,10 +63,15 @@ const zhCN: Messages = {
   'toolbar.find': '查找 (Ctrl+F)',
   'toolbar.replace': '替换 (Ctrl+H)',
   'toolbar.toggleWordWrap': '切换自动换行',
+  'toolbar.contentTree': '内容树',
   'status.ready': 'Rutar 就绪',
   'status.lines': '行数',
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
+  'contentTree.title': '内容树',
+  'contentTree.empty': '暂无可显示的树结构',
+  'contentTree.unsupportedType': '当前标签页不是 JSON / YAML / XML 文件，无法打开内容树。',
+  'contentTree.parseFailed': '无法解析当前文件：',
   'settings.title': '设置',
   'settings.general': '通用',
   'settings.appearance': '外观',
@@ -99,10 +109,15 @@ const enUS: Messages = {
   'toolbar.find': 'Find (Ctrl+F)',
   'toolbar.replace': 'Replace (Ctrl+H)',
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
+  'toolbar.contentTree': 'Content Tree',
   'status.ready': 'Rutar Ready',
   'status.lines': 'Lines',
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
+  'contentTree.title': 'Content Tree',
+  'contentTree.empty': 'No tree data',
+  'contentTree.unsupportedType': 'The active tab is not JSON, YAML, or XML. Cannot open content tree.',
+  'contentTree.parseFailed': 'Failed to parse active file:',
   'settings.title': 'Settings',
   'settings.general': 'General',
   'settings.appearance': 'Appearance',
@@ -132,3 +147,4 @@ const dictionaries: Record<AppLanguage, Messages> = {
 export function t(language: AppLanguage, key: I18nKey): string {
   return dictionaries[language][key] ?? dictionaries['zh-CN'][key] ?? key;
 }
+

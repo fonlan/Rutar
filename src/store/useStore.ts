@@ -13,6 +13,16 @@ export interface FileTab {
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';
 
+export type ContentTreeType = 'json' | 'yaml' | 'xml' | null;
+
+export interface ContentTreeNode {
+  label: string;
+  nodeType: string;
+  line: number;
+  column: number;
+  children: ContentTreeNode[];
+}
+
 interface SettingsState {
   isOpen: boolean;
   language: AppLanguage;
@@ -28,6 +38,10 @@ interface AppState {
   settings: SettingsState;
   
   sidebarOpen: boolean;
+  contentTreeOpen: boolean;
+  contentTreeType: ContentTreeType;
+  contentTreeError: string | null;
+  contentTreeNodes: ContentTreeNode[];
   folderPath: string | null;
   folderEntries: any[];
 
@@ -41,6 +55,12 @@ interface AppState {
   
   setFolder: (path: string | null, entries: any[]) => void;
   toggleSidebar: (open?: boolean) => void;
+  toggleContentTree: (open?: boolean) => void;
+  setContentTreeData: (payload: {
+    treeType: ContentTreeType;
+    nodes: ContentTreeNode[];
+    error?: string | null;
+  }) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -55,6 +75,10 @@ export const useStore = create<AppState>((set) => ({
     wordWrap: false,
   },
   sidebarOpen: false,
+  contentTreeOpen: false,
+  contentTreeType: null,
+  contentTreeError: null,
+  contentTreeNodes: [],
   folderPath: null,
   folderEntries: [],
 
@@ -82,4 +106,10 @@ export const useStore = create<AppState>((set) => ({
   })),
   setFolder: (path, entries) => set({ folderPath: path, folderEntries: entries, sidebarOpen: !!path }),
   toggleSidebar: (open) => set((state) => ({ sidebarOpen: open ?? !state.sidebarOpen })),
+  toggleContentTree: (open) => set((state) => ({ contentTreeOpen: open ?? !state.contentTreeOpen })),
+  setContentTreeData: ({ treeType, nodes, error }) => set({
+    contentTreeType: treeType,
+    contentTreeNodes: nodes,
+    contentTreeError: error ?? null,
+  }),
 }));

@@ -1,13 +1,14 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, WrapText
+    Undo, Redo, Search, Replace, WrapText, ListTree
 } from 'lucide-react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { message, open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect } from 'react';
 import { openFilePath } from '@/lib/openFile';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
+import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     window.dispatchEvent(
@@ -39,6 +40,9 @@ export function Toolbar() {
         setFolder,
         settings,
         updateSettings,
+        toggleContentTree,
+        contentTreeOpen,
+        setContentTreeData,
     } = useStore();
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
@@ -216,6 +220,51 @@ export function Toolbar() {
         updateSettings({ wordWrap: !settings.wordWrap });
     }, [settings.wordWrap, updateSettings]);
 
+    const handleToggleContentTree = useCallback(async () => {
+        if (!activeTab) {
+            await message(tr('contentTree.unsupportedType'), {
+                title: tr('contentTree.title'),
+                kind: 'warning',
+            });
+            return;
+        }
+
+        const treeType = detectContentTreeType(activeTab);
+        if (!treeType) {
+            await message(tr('contentTree.unsupportedType'), {
+                title: tr('contentTree.title'),
+                kind: 'warning',
+            });
+            return;
+        }
+
+        if (contentTreeOpen) {
+            toggleContentTree(false);
+            return;
+        }
+
+        try {
+            const nodes = await loadContentTree(activeTab, treeType);
+            setContentTreeData({
+                treeType,
+                nodes,
+                error: null,
+            });
+            toggleContentTree(true);
+        } catch (error) {
+            const messageText = error instanceof Error ? error.message : String(error);
+            await message(`${tr('contentTree.parseFailed')} ${messageText}`, {
+                title: tr('contentTree.title'),
+                kind: 'warning',
+            });
+            setContentTreeData({
+                treeType,
+                nodes: [],
+                error: messageText,
+            });
+        }
+    }, [activeTab, contentTreeOpen, setContentTreeData, toggleContentTree, tr]);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             const withPrimaryModifier = event.ctrlKey || event.metaKey;
@@ -324,6 +373,12 @@ export function Toolbar() {
                 onClick={handleToggleWordWrap}
                 active={!!settings.wordWrap}
                 disabled={!activeTab}
+            />
+            <ToolbarBtn
+                icon={ListTree}
+                title={tr('toolbar.contentTree')}
+                onClick={() => void handleToggleContentTree()}
+                active={contentTreeOpen}
             />
         </div>
     )

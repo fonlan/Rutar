@@ -130,11 +130,251 @@ pub struct SearchCountResultPayload {
     document_version: u64,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentTreeNode {
+    label: String,
+    node_type: String,
+    line: usize,
+    column: usize,
+    children: Vec<ContentTreeNode>,
+}
+
+#[derive(Clone, Copy)]
+enum ContentTreeFileType {
+    Json,
+    Yaml,
+    Xml,
+}
+
 #[derive(Debug)]
 struct LeafToken {
     kind: String,
     start_byte: usize,
     end_byte: usize,
+}
+
+fn truncate_preview(value: &str, max_len: usize) -> String {
+    if value.chars().count() <= max_len {
+        return value.to_string();
+    }
+
+    let mut preview: String = value.chars().take(max_len).collect();
+    preview.push_str("...");
+    preview
+}
+
+fn parse_content_tree_file_type(file_type: &str) -> Option<ContentTreeFileType> {
+    match file_type.trim().to_lowercase().as_str() {
+        "json" => Some(ContentTreeFileType::Json),
+        "yaml" | "yml" => Some(ContentTreeFileType::Yaml),
+        "xml" => Some(ContentTreeFileType::Xml),
+        _ => None,
+    }
+}
+
+fn get_content_tree_language(file_type: ContentTreeFileType) -> Language {
+    match file_type {
+        ContentTreeFileType::Json => tree_sitter_json::LANGUAGE.into(),
+        ContentTreeFileType::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+        ContentTreeFileType::Xml => tree_sitter_xml::LANGUAGE_XML.into(),
+    }
+}
+
+fn get_node_text_preview(node: tree_sitter::Node<'_>, source: &str, max_len: usize) -> String {
+    let snippet = source
+        .get(node.start_byte()..node.end_byte())
+        .unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    truncate_preview(snippet.trim(), max_len)
+}
+
+fn first_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.is_named() {
+            return Some(child);
+        }
+    }
+
+    None
+}
+
+fn second_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    let mut cursor = node.walk();
+    let mut found_first = false;
+
+    for child in node.children(&mut cursor) {
+        if !child.is_named() {
+            continue;
+        }
+
+        if !found_first {
+            found_first = true;
+            continue;
+        }
+
+        return Some(child);
+    }
+
+    None
+}
+
+fn is_pair_kind(kind: &str) -> bool {
+    kind == "pair" || kind.contains("pair")
+}
+
+fn is_container_kind(file_type: ContentTreeFileType, kind: &str) -> bool {
+    match file_type {
+        ContentTreeFileType::Json => kind == "object" || kind == "array",
+        ContentTreeFileType::Yaml => {
+            kind == "document"
+                || kind == "stream"
+                || kind.contains("mapping")
+                || kind.contains("sequence")
+        }
+        ContentTreeFileType::Xml => kind == "document" || kind == "element",
+    }
+}
+
+fn is_scalar_value_kind(file_type: ContentTreeFileType, kind: &str) -> bool {
+    !is_pair_kind(kind) && !is_container_kind(file_type, kind)
+}
+
+fn format_content_tree_label(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    file_type: ContentTreeFileType,
+    has_named_children: bool,
+) -> String {
+    let kind = node.kind();
+
+    match file_type {
+        ContentTreeFileType::Json => match kind {
+            "object" => "{}".to_string(),
+            "array" => "[]".to_string(),
+            "pair" => {
+                if let Some(key_node) = first_named_child(node) {
+                    let key = get_node_text_preview(key_node, source, 60).trim_matches('"').to_string();
+
+                    if let Some(value_node) = second_named_child(node) {
+                        if is_scalar_value_kind(file_type, value_node.kind()) {
+                            return format!("{}: {}", key, get_node_text_preview(value_node, source, 80));
+                        }
+                    }
+
+                    return format!("{}:", key);
+                }
+
+                kind.to_string()
+            }
+            "string" | "number" | "true" | "false" | "null" => {
+                get_node_text_preview(node, source, 80)
+            }
+            _ => {
+                if has_named_children {
+                    kind.to_string()
+                } else {
+                    get_node_text_preview(node, source, 80)
+                }
+            }
+        },
+        ContentTreeFileType::Yaml => {
+            if kind.contains("mapping") {
+                return "{}".to_string();
+            }
+
+            if kind.contains("sequence") {
+                return "[]".to_string();
+            }
+
+            if kind.contains("pair") {
+                if let Some(key_node) = first_named_child(node) {
+                    let key = get_node_text_preview(key_node, source, 60);
+
+                    if let Some(value_node) = second_named_child(node) {
+                        if is_scalar_value_kind(file_type, value_node.kind()) {
+                            return format!("{}: {}", key, get_node_text_preview(value_node, source, 80));
+                        }
+                    }
+
+                    return format!("{}:", key);
+                }
+            }
+
+            if has_named_children {
+                kind.to_string()
+            } else {
+                get_node_text_preview(node, source, 80)
+            }
+        }
+        ContentTreeFileType::Xml => {
+            if kind == "element" {
+                let preview = get_node_text_preview(node, source, 80);
+                if let Some(raw_name) = preview
+                    .trim_start_matches('<')
+                    .split([' ', '>', '/'])
+                    .find(|part| !part.trim().is_empty())
+                {
+                    return format!("<{}>", raw_name);
+                }
+            }
+
+            if kind == "attribute" {
+                let preview = get_node_text_preview(node, source, 80);
+                return format!("@{}", preview);
+            }
+
+            if kind == "text" {
+                return format!("#text {}", get_node_text_preview(node, source, 60));
+            }
+
+            if has_named_children {
+                kind.to_string()
+            } else {
+                get_node_text_preview(node, source, 80)
+            }
+        }
+    }
+}
+
+fn build_tree_sitter_content_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    file_type: ContentTreeFileType,
+) -> ContentTreeNode {
+    let mut children = Vec::new();
+    let kind = node.kind();
+
+    if is_pair_kind(kind) {
+        if let Some(value_node) = second_named_child(node) {
+            if !is_scalar_value_kind(file_type, value_node.kind()) {
+                children.push(build_tree_sitter_content_node(value_node, source, file_type));
+            }
+        }
+    } else if is_container_kind(file_type, kind) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.is_named() {
+                children.push(build_tree_sitter_content_node(child, source, file_type));
+            }
+        }
+    }
+
+    let has_named_children = !children.is_empty();
+    let label = format_content_tree_label(node, source, file_type, has_named_children);
+    let start = node.start_position();
+
+    ContentTreeNode {
+        label,
+        node_type: node.kind().to_string(),
+        line: start.row + 1,
+        column: start.column + 1,
+        children,
+    }
 }
 
 fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
@@ -1219,6 +1459,46 @@ pub fn search_in_document(
 pub fn get_document_version(state: State<'_, AppState>, id: String) -> Result<u64, String> {
     if let Some(doc) = state.documents.get(&id) {
         Ok(doc.document_version)
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_content_tree(
+    state: State<'_, AppState>,
+    id: String,
+    file_type: String,
+) -> Result<Vec<ContentTreeNode>, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let source = doc.rope.to_string();
+        let content_type = parse_content_tree_file_type(&file_type)
+            .ok_or_else(|| "Unsupported content type".to_string())?;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&get_content_tree_language(content_type))
+            .map_err(|error| format!("Failed to configure content parser: {}", error))?;
+
+        let tree = parser
+            .parse(&source, None)
+            .ok_or_else(|| "Failed to parse content tree".to_string())?;
+
+        let root_node = tree.root_node();
+        let mut cursor = root_node.walk();
+        let named_children: Vec<_> = root_node.children(&mut cursor).filter(|node| node.is_named()).collect();
+
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root_node
+        };
+
+        Ok(vec![build_tree_sitter_content_node(
+            start_node,
+            &source,
+            content_type,
+        )])
     } else {
         Err("Document not found".to_string())
     }

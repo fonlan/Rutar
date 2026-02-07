@@ -36,6 +36,7 @@ pub fn run() {
             commands::search_count_in_document,
             commands::search_in_document,
             commands::get_document_version,
+            commands::get_content_tree,
             commands::load_config,
             commands::save_config
         ])
