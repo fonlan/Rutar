@@ -174,6 +174,22 @@ function alignScrollOffset(value: number) {
   return Number((Math.round(value / cssPixelStep) * cssPixelStep).toFixed(4));
 }
 
+function isPointerOnScrollbar(element: HTMLElement, clientX: number, clientY: number) {
+  const verticalScrollbarWidth = element.offsetWidth - element.clientWidth;
+  const horizontalScrollbarHeight = element.offsetHeight - element.clientHeight;
+
+  if (verticalScrollbarWidth <= 0 && horizontalScrollbarHeight <= 0) {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  const onVerticalScrollbar = verticalScrollbarWidth > 0 && clientX >= rect.right - verticalScrollbarWidth;
+  const onHorizontalScrollbar =
+    horizontalScrollbarHeight > 0 && clientY >= rect.bottom - horizontalScrollbarHeight;
+
+  return onVerticalScrollbar || onHorizontalScrollbar;
+}
+
 function dispatchDocumentUpdated(tabId: string) {
   window.dispatchEvent(
     new CustomEvent('rutar:document-updated', {
@@ -229,10 +245,11 @@ export function Editor({ tab }: { tab: FileTab }) {
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
-  const isLargeReadOnlyMode = tab.largeFileMode;
-  const usePlainLineRendering =
-    isLargeReadOnlyMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
-  const isHugeEditableMode = !isLargeReadOnlyMode && tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
+  const contentPaddingLeft = '4.5rem';
+  const horizontalOverflowMode = wordWrap ? 'hidden' : 'scroll';
+  const isLargeReadOnlyMode = false;
+  const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
+  const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
     : tab.largeFileMode
@@ -269,7 +286,6 @@ export function Editor({ tab }: { tab: FileTab }) {
   const fetchEditableSegment = useCallback(
     async (start: number, end: number) => {
       const version = ++currentRequestVersion.current;
-      const absoluteScrollTop = scrollContainerRef.current?.scrollTop ?? contentRef.current?.scrollTop ?? 0;
 
       try {
         const lines = await invoke<string[]>('get_visible_lines_chunk', {
@@ -291,7 +307,9 @@ export function Editor({ tab }: { tab: FileTab }) {
 
         editableSegmentRef.current = segment;
         setEditableSegment(segment);
-        pendingRestoreScrollTopRef.current = absoluteScrollTop;
+        if (!isScrollbarDragRef.current) {
+          pendingRestoreScrollTopRef.current = scrollContainerRef.current?.scrollTop ?? contentRef.current?.scrollTop ?? 0;
+        }
 
         if (contentRef.current) {
           contentRef.current.textContent = text;
@@ -338,8 +356,23 @@ export function Editor({ tab }: { tab: FileTab }) {
     if (!isLargeReadOnlyMode && scrollElement && listRef.current) {
       const listEl = listRef.current._outerRef;
       if (listEl) {
-        const alignedTop = alignScrollOffset(scrollElement.scrollTop);
-        const alignedLeft = alignScrollOffset(scrollElement.scrollLeft);
+        const scrollTop = scrollElement.scrollTop;
+        const scrollLeft = scrollElement.scrollLeft;
+
+        if (isScrollbarDragRef.current) {
+          if (Math.abs(listEl.scrollTop - scrollTop) > 0.001) {
+            listEl.scrollTop = scrollTop;
+          }
+
+          if (Math.abs(listEl.scrollLeft - scrollLeft) > 0.001) {
+            listEl.scrollLeft = scrollLeft;
+          }
+
+          return;
+        }
+
+        const alignedTop = alignScrollOffset(scrollTop);
+        const alignedLeft = alignScrollOffset(scrollLeft);
 
         if (Math.abs(scrollElement.scrollTop - alignedTop) > 0.001) {
           scrollElement.scrollTop = alignedTop;
@@ -367,20 +400,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       const editorElement = contentRef.current;
-      const verticalScrollbarWidth = editorElement.offsetWidth - editorElement.clientWidth;
-      const horizontalScrollbarHeight = editorElement.offsetHeight - editorElement.clientHeight;
-
-      if (verticalScrollbarWidth <= 0 && horizontalScrollbarHeight <= 0) {
-        return;
-      }
-
-      const rect = editorElement.getBoundingClientRect();
-      const onVerticalScrollbar =
-        verticalScrollbarWidth > 0 && event.clientX >= rect.right - verticalScrollbarWidth;
-      const onHorizontalScrollbar =
-        horizontalScrollbarHeight > 0 && event.clientY >= rect.bottom - horizontalScrollbarHeight;
-
-      if (!onVerticalScrollbar && !onHorizontalScrollbar) {
+      if (!isPointerOnScrollbar(editorElement, event.clientX, event.clientY)) {
         return;
       }
 
@@ -388,8 +408,24 @@ export function Editor({ tab }: { tab: FileTab }) {
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [isHugeEditableMode, isLargeReadOnlyMode]
+    [isLargeReadOnlyMode]
   );
+
+  const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isHugeEditableMode || !scrollContainerRef.current) {
+      return;
+    }
+
+    if (!isPointerOnScrollbar(scrollContainerRef.current, event.clientX, event.clientY)) {
+      return;
+    }
+
+    isScrollbarDragRef.current = true;
+    if (contentRef.current) {
+      contentRef.current.style.userSelect = 'none';
+      contentRef.current.style.webkitUserSelect = 'none';
+    }
+  }, [isHugeEditableMode]);
 
   const handleLargeModePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -403,6 +439,23 @@ export function Editor({ tab }: { tab: FileTab }) {
     },
     [isLargeReadOnlyMode]
   );
+
+  const handleReadOnlyListPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isLargeReadOnlyMode) {
+      return;
+    }
+
+    const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
+    if (!listElement) {
+      return;
+    }
+
+    if (!isPointerOnScrollbar(listElement, event.clientX, event.clientY)) {
+      return;
+    }
+
+    isScrollbarDragRef.current = true;
+  }, [isLargeReadOnlyMode]);
 
   const handleLargeModeEditIntent = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -433,20 +486,6 @@ export function Editor({ tab }: { tab: FileTab }) {
   const handleEnterEditableMode = useCallback(() => {
     largeModePromptOpenRef.current = false;
     setShowLargeModeEditPrompt(false);
-    updateTab(tab.id, { largeFileMode: false });
-  }, [tab.id, updateTab]);
-
-  const endScrollbarDragSelectionGuard = useCallback(() => {
-    if (!isScrollbarDragRef.current) {
-      return;
-    }
-
-    isScrollbarDragRef.current = false;
-
-    if (contentRef.current) {
-      contentRef.current.style.userSelect = 'text';
-      contentRef.current.style.webkitUserSelect = 'text';
-    }
   }, []);
 
   const lineTokens = useMemo(() => {
@@ -561,6 +600,23 @@ export function Editor({ tab }: { tab: FileTab }) {
       usePlainLineRendering,
     ]
   );
+
+  const endScrollbarDragSelectionGuard = useCallback(() => {
+    if (!isScrollbarDragRef.current) {
+      return;
+    }
+
+    isScrollbarDragRef.current = false;
+
+    if (contentRef.current) {
+      contentRef.current.style.userSelect = 'text';
+      contentRef.current.style.webkitUserSelect = 'text';
+    }
+
+    if (isLargeReadOnlyMode) {
+      void syncVisibleTokens(Math.max(1, tab.lineCount));
+    }
+  }, [isLargeReadOnlyMode, syncVisibleTokens, tab.lineCount]);
 
   const releaseHugeEditableWindowLock = useCallback(() => {
     hugeWindowLockedRef.current = false;
@@ -791,6 +847,10 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const onItemsRendered = useCallback(
     ({ visibleStartIndex, visibleStopIndex }) => {
+      if (isLargeReadOnlyMode && isScrollbarDragRef.current) {
+        return;
+      }
+
       if (isHugeEditableMode && (pendingSyncRequestedRef.current || syncInFlightRef.current || isComposingRef.current)) {
         return;
       }
@@ -832,6 +892,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     [
       editableSegment.endLine,
       editableSegment.startLine,
+      isLargeReadOnlyMode,
       isHugeEditableMode,
       isComposingRef,
       largeFetchBuffer,
@@ -1214,10 +1275,6 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
 
   useEffect(() => {
-    if (isLargeReadOnlyMode) {
-      return;
-    }
-
     window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
     window.addEventListener('blur', endScrollbarDragSelectionGuard);
 
@@ -1225,7 +1282,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       window.removeEventListener('pointerup', endScrollbarDragSelectionGuard);
       window.removeEventListener('blur', endScrollbarDragSelectionGuard);
     };
-  }, [endScrollbarDragSelectionGuard, isLargeReadOnlyMode]);
+  }, [endScrollbarDragSelectionGuard]);
 
   useEffect(() => {
     setSearchHighlight(null);
@@ -1332,8 +1389,13 @@ export function Editor({ tab }: { tab: FileTab }) {
       {!isLargeReadOnlyMode && isHugeEditableMode && (
         <div
           ref={scrollContainerRef}
-          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto"
+          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-scroll-stable"
+          style={{
+            overflowX: horizontalOverflowMode,
+            overflowY: 'auto',
+          }}
           onScroll={handleScroll}
+          onPointerDown={handleHugeScrollablePointerDown}
         >
           <div
             className="relative"
@@ -1353,7 +1415,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                paddingLeft: '5rem',
+                paddingLeft: contentPaddingLeft,
                 paddingBottom: hugeEditablePaddingBottom,
                 caretColor: 'black',
               }}
@@ -1372,13 +1434,15 @@ export function Editor({ tab }: { tab: FileTab }) {
           ref={contentRef}
           contentEditable="plaintext-only"
           suppressContentEditableWarning
-          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-input-layer"
+          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-input-layer editor-scroll-stable"
           style={{
+            overflowX: horizontalOverflowMode,
+            overflowY: 'auto',
             fontFamily: settings.fontFamily,
             fontSize: `${renderedFontSizePx}px`,
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-            paddingLeft: '5rem',
+            paddingLeft: contentPaddingLeft,
             caretColor: 'black',
           }}
           onInput={handleInput}
@@ -1405,8 +1469,9 @@ export function Editor({ tab }: { tab: FileTab }) {
             itemSize={itemSize}
             onItemsRendered={onItemsRendered}
             overscanCount={20}
-            style={{ overflowX: wordWrap ? 'hidden' : 'auto' }}
+            style={{ overflowX: horizontalOverflowMode, overflowY: 'auto' }}
             onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
+            onPointerDown={isLargeReadOnlyMode ? handleReadOnlyListPointerDown : undefined}
           >
             {({ index, style }) => {
               const relativeIndex = isHugeEditableMode
@@ -1440,7 +1505,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   className="px-4 hover:bg-muted/5 text-foreground group editor-line"
                 >
                   <span
-                    className="inline-block text-muted-foreground/40 line-number w-12 text-right mr-4 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
+                    className="inline-block text-muted-foreground/40 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
                     style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
                   >
                     {index + 1}

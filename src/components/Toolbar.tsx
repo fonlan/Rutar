@@ -41,7 +41,7 @@ export function Toolbar() {
         updateSettings,
     } = useStore();
     const activeTab = tabs.find(t => t.id === activeTabId);
-    const canEdit = !!activeTab && !activeTab.largeFileMode;
+    const canEdit = !!activeTab;
 
     const saveTab = useCallback(async (tab: FileTab) => {
         if (tab.path) {
@@ -229,7 +229,7 @@ export function Toolbar() {
     }, [activeTab]);
 
     const handleReplace = useCallback(async () => {
-        if (!activeTab || activeTab.largeFileMode) return;
+        if (!activeTab) return;
         dispatchSearchOpen('replace');
     }, [activeTab]);
 

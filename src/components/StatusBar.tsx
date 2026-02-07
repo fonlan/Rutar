@@ -1,6 +1,6 @@
 import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
-import { Globe, FileText, Zap } from 'lucide-react';
+import { Globe, Zap } from 'lucide-react';
 
 export function StatusBar() {
     const { tabs, activeTabId, updateTab } = useStore();
@@ -32,20 +32,15 @@ export function StatusBar() {
     return (
         <div className="h-6 bg-muted/50 border-t flex items-center justify-between px-3 text-[10px] text-muted-foreground select-none">
             <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
-                    {activeTab.largeFileMode ? (
+                {activeTab.largeFileMode && (
+                    <>
                         <span className="flex items-center gap-1 text-orange-500 font-medium">
                             <Zap className="w-3 h-3" />
-                            Large File Mode (Read-Only)
+                            Highlight Off (Large File)
                         </span>
-                    ) : (
-                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <FileText className="w-3 h-3" />
-                            Normal Mode
-                        </span>
-                    )}
-                </div>
-                <div className="w-[1px] h-3 bg-border" />
+                        <div className="w-[1px] h-3 bg-border" />
+                    </>
+                )}
                 <span>Lines: {activeTab.lineCount.toLocaleString()}</span>
             </div>
             

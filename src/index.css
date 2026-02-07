@@ -33,6 +33,10 @@
   color: transparent !important;
 }
 
+.editor-scroll-stable {
+  scrollbar-gutter: stable;
+}
+
 
 /* 语法高亮主题 (GitHub Light 风格) */
 .whitespace-pre {

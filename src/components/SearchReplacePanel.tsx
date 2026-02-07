@@ -808,7 +808,7 @@ export function SearchReplacePanel() {
   );
 
   const handleReplaceCurrent = useCallback(async () => {
-    if (!activeTab || activeTab.largeFileMode) {
+    if (!activeTab) {
       return;
     }
 
@@ -858,7 +858,7 @@ export function SearchReplacePanel() {
   }, [activeTab, caseSensitive, executeSearch, keyword, navigateToMatch, replaceValue, searchMode, updateTab]);
 
   const handleReplaceAll = useCallback(async () => {
-    if (!activeTab || activeTab.largeFileMode) {
+    if (!activeTab) {
       return;
     }
 
@@ -984,7 +984,7 @@ export function SearchReplacePanel() {
     const handleSearchOpen = (event: Event) => {
       const customEvent = event as CustomEvent<SearchOpenEventDetail>;
       const openMode = customEvent.detail?.mode;
-      const shouldOpenReplace = openMode === 'replace' && !activeTab.largeFileMode;
+      const shouldOpenReplace = openMode === 'replace';
 
       setIsOpen(true);
       setIsReplaceMode(shouldOpenReplace);
@@ -1226,7 +1226,7 @@ export function SearchReplacePanel() {
     return `匹配总计 ${displayTotalMatchCount} 项 · 当前 ${Math.min(currentMatchIndex + 1, matches.length)}/${Math.max(displayTotalMatchCount, 1)}`;
   }, [currentMatchIndex, displayTotalMatchCount, errorMessage, isSearching, keyword, matches.length]);
 
-  const canReplace = !!activeTab && !activeTab.largeFileMode;
+  const canReplace = !!activeTab;
   const isResultPanelOpen = isOpen && resultPanelState === 'open';
   const isResultPanelMinimized = isOpen && resultPanelState === 'minimized';
 
@@ -1279,7 +1279,7 @@ export function SearchReplacePanel() {
                   focusSearchInput();
                 }}
                 disabled={!canReplace}
-                title={canReplace ? '切换到替换模式' : 'Large File Mode 不支持替换'}
+                title={canReplace ? '切换到替换模式' : '没有打开的文件'}
               >
                 替换
               </button>
@@ -1461,7 +1461,7 @@ export function SearchReplacePanel() {
                   className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
                   onClick={() => void handleReplaceCurrent()}
                   disabled={!canReplace}
-                  title={canReplace ? '替换当前匹配项' : 'Large File Mode 不支持替换'}
+                  title={canReplace ? '替换当前匹配项' : '没有打开的文件'}
                 >
                   替换
                 </button>
@@ -1470,7 +1470,7 @@ export function SearchReplacePanel() {
                   className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
                   onClick={() => void handleReplaceAll()}
                   disabled={!canReplace}
-                  title={canReplace ? '替换全部匹配项' : 'Large File Mode 不支持替换'}
+                  title={canReplace ? '替换全部匹配项' : '没有打开的文件'}
                 >
                   全部替换
                 </button>
