@@ -5,7 +5,7 @@ import {
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect } from 'react';
-import { isReusableBlankTab } from '@/lib/tabUtils';
+import { openFilePath } from '@/lib/openFile';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 
@@ -37,7 +37,6 @@ export function Toolbar() {
         closeTab,
         updateTab,
         setFolder,
-        setActiveTab,
         settings,
         updateSettings,
     } = useStore();
@@ -83,34 +82,12 @@ export function Toolbar() {
             });
 
             if (selected && typeof selected === 'string') {
-                 const existing = tabs.find((tab) => tab.path === selected);
-                 if (existing) {
-                    setActiveTab(existing.id);
-                    return;
-                 }
-
-                 const currentActiveTab = tabs.find((tab) => tab.id === activeTabId);
-                 const fileInfo = await invoke<FileTab>('open_file', { path: selected });
-                 if (currentActiveTab && isReusableBlankTab(currentActiveTab)) {
-                    updateTab(currentActiveTab.id, {
-                        id: fileInfo.id,
-                        name: fileInfo.name,
-                        path: fileInfo.path,
-                        encoding: fileInfo.encoding,
-                        lineCount: fileInfo.lineCount,
-                        largeFileMode: fileInfo.largeFileMode,
-                        isDirty: false,
-                    });
-                    setActiveTab(fileInfo.id);
-                    await invoke('close_file', { id: currentActiveTab.id });
-                 } else {
-                    addTab(fileInfo);
-                 }
+                await openFilePath(selected);
             }
         } catch (e) {
             console.error('Failed to open file:', e);
         }
-    }, [activeTabId, addTab, setActiveTab, tabs, updateTab]);
+    }, []);
 
     const handleOpenFolder = useCallback(async () => {
         try {

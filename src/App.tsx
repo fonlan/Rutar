@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
@@ -7,6 +8,7 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { Sidebar } from '@/components/Sidebar';
 import { StatusBar } from '@/components/StatusBar';
 import { SearchReplacePanel } from '@/components/SearchReplacePanel';
+import { openFilePaths } from '@/lib/openFile';
 import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
 import { t } from '@/i18n';
 
@@ -49,6 +51,40 @@ function App() {
     };
 
     void ensureStartupTab();
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const preventDefaultDrop = (event: DragEvent) => {
+      event.preventDefault();
+    };
+
+    const setupDragDrop = async () => {
+      try {
+        unlisten = await getCurrentWindow().onDragDropEvent((event) => {
+          if (event.payload.type !== 'drop') {
+            return;
+          }
+
+          void openFilePaths(event.payload.paths);
+        });
+      } catch (error) {
+        console.error('Failed to register drag drop listener:', error);
+      }
+    };
+
+    window.addEventListener('dragover', preventDefaultDrop);
+    window.addEventListener('drop', preventDefaultDrop);
+    void setupDragDrop();
+
+    return () => {
+      window.removeEventListener('dragover', preventDefaultDrop);
+      window.removeEventListener('drop', preventDefaultDrop);
+      if (unlisten) {
+        unlisten();
+      }
+    };
   }, []);
 
   useEffect(() => {

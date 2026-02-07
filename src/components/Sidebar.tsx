@@ -1,8 +1,8 @@
-import { useStore, FileTab } from '@/store/useStore';
+import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { File, Folder, ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isReusableBlankTab } from '@/lib/tabUtils';
+import { openFilePath } from '@/lib/openFile';
 import { useState, useCallback } from 'react';
 import { t } from '@/i18n';
 
@@ -29,7 +29,7 @@ export function Sidebar() {
 function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<any[]>([]);
-    const { addTab, activeTabId, setActiveTab, tabs, updateTab, settings } = useStore();
+    const { activeTabId, setActiveTab, tabs, settings } = useStore();
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     const handleToggle = useCallback(async (e: React.MouseEvent) => {
@@ -56,30 +56,13 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
                 setActiveTab(existing.id);
             } else {
                 try {
-                    const currentActiveTab = tabs.find((tab) => tab.id === activeTabId);
-                    const fileInfo = await invoke<FileTab>('open_file', { path: entry.path });
-
-                    if (currentActiveTab && isReusableBlankTab(currentActiveTab)) {
-                        updateTab(currentActiveTab.id, {
-                            id: fileInfo.id,
-                            name: fileInfo.name,
-                            path: fileInfo.path,
-                            encoding: fileInfo.encoding,
-                            lineCount: fileInfo.lineCount,
-                            largeFileMode: fileInfo.largeFileMode,
-                            isDirty: false,
-                        });
-                        setActiveTab(fileInfo.id);
-                        await invoke('close_file', { id: currentActiveTab.id });
-                    } else {
-                        addTab(fileInfo);
-                    }
+                    await openFilePath(entry.path);
                 } catch (e) {
                     console.error(e);
                 }
             }
         }
-    }, [entry, isOpen, children.length, tabs, activeTabId, addTab, setActiveTab, updateTab]);
+    }, [entry, isOpen, children.length, tabs, setActiveTab]);
 
     return (
         <div>
