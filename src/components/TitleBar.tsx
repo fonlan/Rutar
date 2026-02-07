@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -152,6 +152,32 @@ export function TitleBar() {
         }
     }, [isAlwaysOnTop]);
 
+    const handleTabsWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+        const tabsContainer = event.currentTarget;
+        const maxScrollLeft = tabsContainer.scrollWidth - tabsContainer.clientWidth;
+
+        if (maxScrollLeft <= 0) {
+            return;
+        }
+
+        const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+
+        if (dominantDelta === 0) {
+            return;
+        }
+
+        let normalizedDelta = dominantDelta;
+
+        if (event.deltaMode === 1) {
+            normalizedDelta *= 16;
+        } else if (event.deltaMode === 2) {
+            normalizedDelta *= tabsContainer.clientWidth;
+        }
+
+        event.preventDefault();
+        tabsContainer.scrollLeft = Math.max(0, Math.min(maxScrollLeft, tabsContainer.scrollLeft + normalizedDelta));
+    }, []);
+
     useEffect(() => {
         if (!tabContextMenu) {
             return;
@@ -203,7 +229,10 @@ export function TitleBar() {
             data-layout-region="titlebar"
         >
             {/* Tabs Container */}
-            <div className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10 pointer-events-none">
+            <div
+                onWheel={handleTabsWheel}
+                className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10"
+            >
                 <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border z-10" />
                 {tabs.map((tab) => (
                     <div
