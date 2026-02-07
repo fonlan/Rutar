@@ -39,6 +39,7 @@ interface AppConfig {
   theme: AppTheme;
   fontFamily: string;
   fontSize: number;
+  tabWidth: number;
   wordWrap: boolean;
   highlightCurrentLine: boolean;
 }
@@ -215,6 +216,7 @@ function App() {
           theme: config.theme === 'dark' ? 'dark' : 'light',
           fontFamily: config.fontFamily || 'Consolas, "Courier New", monospace',
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
+          tabWidth: Number.isFinite(config.tabWidth) ? Math.min(8, Math.max(1, config.tabWidth)) : 4,
           wordWrap: !!config.wordWrap,
           highlightCurrentLine: config.highlightCurrentLine !== false,
         });
@@ -251,6 +253,7 @@ function App() {
           theme: settings.theme,
           fontFamily: settings.fontFamily,
           fontSize: settings.fontSize,
+          tabWidth: settings.tabWidth,
           wordWrap: settings.wordWrap,
           highlightCurrentLine: settings.highlightCurrentLine,
         },
@@ -266,6 +269,7 @@ function App() {
     configReady,
     settings.fontFamily,
     settings.fontSize,
+    settings.tabWidth,
     settings.language,
     settings.theme,
     settings.wordWrap,

@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, WrapText, ListTree
+    Undo, Redo, Search, Replace, WrapText, ListTree, WandSparkles, Minimize2
 } from 'lucide-react';
 import { message, open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,8 @@ import { openFilePath } from '@/lib/openFile';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
+import { toolbarFormatMessages } from '@/lib/i18nToolbarFormat';
+import { isStructuredFormatSupported } from '@/lib/structuredFormat';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     window.dispatchEvent(
@@ -38,6 +40,7 @@ export function Toolbar() {
     const updateTab = useStore((state) => state.updateTab);
     const setFolder = useStore((state) => state.setFolder);
     const language = useStore((state) => state.settings.language);
+    const tabWidth = useStore((state) => state.settings.tabWidth);
     const wordWrap = useStore((state) => state.settings.wordWrap);
     const updateSettings = useStore((state) => state.updateSettings);
     const toggleContentTree = useStore((state) => state.toggleContentTree);
@@ -45,7 +48,55 @@ export function Toolbar() {
     const setContentTreeData = useStore((state) => state.setContentTreeData);
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
+    const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
+
+    const formatMessages = toolbarFormatMessages[language];
+
+    const runStructuredFormat = useCallback(async (mode: 'beautify' | 'minify') => {
+        if (!activeTab) {
+            return;
+        }
+
+        if (!isStructuredFormatSupported(activeTab)) {
+            await message(formatMessages.unsupported, {
+                title: tr('titleBar.settings'),
+                kind: 'warning',
+            });
+            return;
+        }
+
+        try {
+            const newLineCount = await invoke<number>('format_document', {
+                id: activeTab.id,
+                mode,
+                filePath: activeTab.path,
+                fileName: activeTab.name,
+                tabWidth,
+            });
+
+            updateTab(activeTab.id, {
+                lineCount: Math.max(1, newLineCount),
+                isDirty: true,
+            });
+
+            dispatchEditorForceRefresh(activeTab.id, newLineCount);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            await message(`${formatMessages.failed} ${errorMessage}`, {
+                title: tr('titleBar.settings'),
+                kind: 'warning',
+            });
+        }
+    }, [activeTab, formatMessages.failed, formatMessages.unsupported, tabWidth, tr, updateTab]);
+
+    const handleFormatBeautify = useCallback(async () => {
+        await runStructuredFormat('beautify');
+    }, [runStructuredFormat]);
+
+    const handleFormatMinify = useCallback(async () => {
+        await runStructuredFormat('minify');
+    }, [runStructuredFormat]);
 
     const saveTab = useCallback(async (tab: FileTab) => {
         if (tab.path) {
@@ -267,9 +318,23 @@ export function Toolbar() {
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             const withPrimaryModifier = event.ctrlKey || event.metaKey;
-            if (!withPrimaryModifier || event.altKey) return;
+            if (!withPrimaryModifier) return;
 
             const key = event.key.toLowerCase();
+
+            if (event.altKey) {
+                if (key === 'f') {
+                    event.preventDefault();
+                    void handleFormatBeautify();
+                }
+
+                if (key === 'm') {
+                    event.preventDefault();
+                    void handleFormatMinify();
+                }
+
+                return;
+            }
 
             if (key === 'n') {
                 event.preventDefault();
@@ -320,7 +385,9 @@ export function Toolbar() {
             if (key === 'h') {
                 event.preventDefault();
                 void handleReplace();
+                return;
             }
+
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -332,6 +399,8 @@ export function Toolbar() {
         handleOpenFile,
         handleRedo,
         handleReplace,
+        handleFormatBeautify,
+        handleFormatMinify,
         handleSave,
         handleSaveAll,
         handleUndo,
@@ -363,7 +432,22 @@ export function Toolbar() {
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleFind} disabled={!activeTab} />
             <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!canEdit} />
-            
+
+            {/* Format Group */}
+            <div className="w-[1px] h-4 bg-border mx-1" />
+            <ToolbarBtn
+                icon={WandSparkles}
+                title={formatMessages.beautify}
+                onClick={() => void handleFormatBeautify()}
+                disabled={!canFormat}
+            />
+            <ToolbarBtn
+                icon={Minimize2}
+                title={formatMessages.minify}
+                onClick={() => void handleFormatMinify()}
+                disabled={!canFormat}
+            />
+
             {/* View Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn

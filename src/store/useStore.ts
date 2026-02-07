@@ -29,6 +29,7 @@ interface SettingsState {
   theme: AppTheme;
   fontFamily: string;
   fontSize: number;
+  tabWidth: number;
   wordWrap: boolean;
   highlightCurrentLine: boolean;
   windowsContextMenuEnabled: boolean;
@@ -78,6 +79,7 @@ export const useStore = create<AppState>((set) => ({
     theme: 'light',
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
+    tabWidth: 4,
     wordWrap: false,
     highlightCurrentLine: true,
     windowsContextMenuEnabled: false,

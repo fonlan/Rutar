@@ -310,6 +310,31 @@ export function SettingsModal() {
                         </span>
                       </div>
                     </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium leading-none">
+                        {settings.language === 'zh-CN' ? '制表符宽度' : 'Tab Width'}
+                      </label>
+                      <div className="relative max-w-[220px]">
+                        <input
+                          type="number"
+                          className={cn(controlClassName, 'pr-10')}
+                          value={settings.tabWidth}
+                          onChange={(e) => {
+                            const value = Number.parseInt(e.target.value, 10);
+                            updateSettings({ tabWidth: Number.isFinite(value) ? Math.min(8, Math.max(1, value)) : 4 });
+                          }}
+                          min={1}
+                          max={8}
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                          sp
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {settings.language === 'zh-CN' ? '用于工具栏格式化按钮的缩进宽度。' : 'Indent width used by toolbar beautify action.'}
+                      </p>
+                    </div>
                   </div>
                 </section>
 

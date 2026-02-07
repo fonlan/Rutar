@@ -231,12 +231,14 @@ export function TitleBar() {
             {/* Tabs Container */}
             <div
                 onWheel={handleTabsWheel}
+                data-tauri-drag-region
                 className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10"
             >
                 <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border z-10" />
                 {tabs.map((tab) => (
                     <div
                         key={tab.id}
+                        data-tauri-drag-region
                         onClick={() => setActiveTab(tab.id)}
                         onContextMenu={(event) => handleTabContextMenu(event, tab)}
                         className={cn(
@@ -248,6 +250,9 @@ export function TitleBar() {
                         <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
                         <button
                             type="button"
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                            }}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 void handleCloseTab(tab);
