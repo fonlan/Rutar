@@ -38,7 +38,9 @@ interface AppState {
   settings: SettingsState;
   
   sidebarOpen: boolean;
+  sidebarWidth: number;
   contentTreeOpen: boolean;
+  contentTreeWidth: number;
   contentTreeType: ContentTreeType;
   contentTreeError: string | null;
   contentTreeNodes: ContentTreeNode[];
@@ -55,7 +57,9 @@ interface AppState {
   
   setFolder: (path: string | null, entries: any[]) => void;
   toggleSidebar: (open?: boolean) => void;
+  setSidebarWidth: (width: number) => void;
   toggleContentTree: (open?: boolean) => void;
+  setContentTreeWidth: (width: number) => void;
   setContentTreeData: (payload: {
     treeType: ContentTreeType;
     nodes: ContentTreeNode[];
@@ -75,7 +79,9 @@ export const useStore = create<AppState>((set) => ({
     wordWrap: false,
   },
   sidebarOpen: false,
+  sidebarWidth: 240,
   contentTreeOpen: false,
+  contentTreeWidth: 288,
   contentTreeType: null,
   contentTreeError: null,
   contentTreeNodes: [],
@@ -106,7 +112,9 @@ export const useStore = create<AppState>((set) => ({
   })),
   setFolder: (path, entries) => set({ folderPath: path, folderEntries: entries, sidebarOpen: !!path }),
   toggleSidebar: (open) => set((state) => ({ sidebarOpen: open ?? !state.sidebarOpen })),
+  setSidebarWidth: (width) => set({ sidebarWidth: width }),
   toggleContentTree: (open) => set((state) => ({ contentTreeOpen: open ?? !state.contentTreeOpen })),
+  setContentTreeWidth: (width) => set({ contentTreeWidth: width }),
   setContentTreeData: ({ treeType, nodes, error }) => set({
     contentTreeType: treeType,
     contentTreeNodes: nodes,

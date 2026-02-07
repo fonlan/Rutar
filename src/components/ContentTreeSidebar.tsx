@@ -4,6 +4,10 @@ import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { ContentTreeNode, ContentTreeType, useStore } from '@/store/useStore';
 import { dispatchNavigateToLineFromContentTree } from '@/lib/contentTree';
+import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
+
+const CONTENT_TREE_MIN_WIDTH = 160;
+const CONTENT_TREE_MAX_WIDTH = 720;
 
 function getNodeIcon(nodeType: string) {
   if (nodeType === 'object' || nodeType === 'array' || nodeType === 'element') {
@@ -22,8 +26,14 @@ export function ContentTreeSidebar({
   activeType: ContentTreeType;
   parseError: string | null;
 }) {
-  const { contentTreeOpen, settings, activeTabId } = useStore();
+  const { contentTreeOpen, settings, activeTabId, contentTreeWidth, setContentTreeWidth } = useStore();
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+  const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
+    width: contentTreeWidth,
+    minWidth: CONTENT_TREE_MIN_WIDTH,
+    maxWidth: CONTENT_TREE_MAX_WIDTH,
+    onWidthChange: setContentTreeWidth,
+  });
 
   const title = useMemo(() => {
     if (!activeType) {
@@ -38,7 +48,11 @@ export function ContentTreeSidebar({
   }
 
   return (
-    <div className="w-72 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden">
+    <div
+      ref={containerRef}
+      className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
+      style={{ width: `${contentTreeWidth}px` }}
+    >
       <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase border-b truncate">
         {title}
       </div>
@@ -59,6 +73,17 @@ export function ContentTreeSidebar({
           ))
         )}
       </div>
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize content tree sidebar"
+        onPointerDown={startResize}
+        className={cn(
+          'absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize touch-none transition-colors',
+          isResizing ? 'bg-primary/40' : 'hover:bg-primary/25'
+        )}
+      />
     </div>
   );
 }

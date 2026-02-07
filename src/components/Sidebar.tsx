@@ -5,14 +5,28 @@ import { cn } from '@/lib/utils';
 import { openFilePath } from '@/lib/openFile';
 import { useState, useCallback } from 'react';
 import { t } from '@/i18n';
+import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
+
+const SIDEBAR_MIN_WIDTH = 140;
+const SIDEBAR_MAX_WIDTH = 600;
 
 export function Sidebar() {
-    const { folderPath, folderEntries, sidebarOpen } = useStore();
+    const { folderPath, folderEntries, sidebarOpen, sidebarWidth, setSidebarWidth } = useStore();
+    const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
+        width: sidebarWidth,
+        minWidth: SIDEBAR_MIN_WIDTH,
+        maxWidth: SIDEBAR_MAX_WIDTH,
+        onWidthChange: setSidebarWidth,
+    });
 
     if (!sidebarOpen || !folderPath) return null;
 
     return (
-        <div className="w-60 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden">
+        <div
+            ref={containerRef}
+            className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
+            style={{ width: `${sidebarWidth}px` }}
+        >
             <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-2 border-b">
                 <FolderOpen className="w-3 h-3" />
                 <span className="truncate">{folderPath.split(/[\\/]/).pop()}</span>
@@ -22,6 +36,16 @@ export function Sidebar() {
                     <FileEntry key={entry.path} entry={entry} />
                 ))}
             </div>
+            <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize file tree sidebar"
+                onPointerDown={startResize}
+                className={cn(
+                    'absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize touch-none transition-colors',
+                    isResizing ? 'bg-primary/40' : 'hover:bg-primary/25'
+                )}
+            />
         </div>
     );
 }
