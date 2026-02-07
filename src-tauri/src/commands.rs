@@ -16,6 +16,7 @@ const DEFAULT_LANGUAGE: &str = "zh-CN";
 const DEFAULT_THEME: &str = "light";
 const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospace";
 const DEFAULT_FONT_SIZE: u32 = 14;
+const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,7 @@ pub struct AppConfig {
     font_family: String,
     font_size: u32,
     word_wrap: bool,
+    highlight_current_line: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -35,6 +37,7 @@ struct PartialAppConfig {
     font_family: Option<String>,
     font_size: Option<u32>,
     word_wrap: Option<bool>,
+    highlight_current_line: Option<bool>,
 }
 
 impl Default for AppConfig {
@@ -45,6 +48,7 @@ impl Default for AppConfig {
             font_family: DEFAULT_FONT_FAMILY.to_string(),
             font_size: DEFAULT_FONT_SIZE,
             word_wrap: false,
+            highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
         }
     }
 }
@@ -426,6 +430,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         },
         font_size: config.font_size.clamp(8, 72),
         word_wrap: config.word_wrap,
+        highlight_current_line: config.highlight_current_line,
     }
 }
 
@@ -472,6 +477,10 @@ pub fn load_config() -> Result<AppConfig, String> {
 
     if let Some(word_wrap) = partial.word_wrap {
         config.word_wrap = word_wrap;
+    }
+
+    if let Some(highlight_current_line) = partial.highlight_current_line {
+        config.highlight_current_line = highlight_current_line;
     }
 
     Ok(config)

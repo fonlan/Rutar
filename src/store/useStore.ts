@@ -30,6 +30,7 @@ interface SettingsState {
   fontFamily: string;
   fontSize: number;
   wordWrap: boolean;
+  highlightCurrentLine: boolean;
 }
 
 interface AppState {
@@ -77,6 +78,7 @@ export const useStore = create<AppState>((set) => ({
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
     wordWrap: false,
+    highlightCurrentLine: true,
   },
   sidebarOpen: false,
   sidebarWidth: 240,

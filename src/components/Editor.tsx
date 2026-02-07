@@ -142,6 +142,25 @@ function setCaretToLineStart(element: HTMLDivElement, line: number) {
   selection.addRange(range);
 }
 
+function getCaretLineInElement(element: HTMLDivElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) {
+    return null;
+  }
+
+  const caretRange = range.cloneRange();
+  caretRange.selectNodeContents(element);
+  caretRange.setEnd(range.startContainer, range.startOffset);
+
+  const textBeforeCaret = caretRange.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return textBeforeCaret.split('\n').length;
+}
+
 function buildCodeUnitDiff(previousText: string, nextText: string): CodeUnitDiff | null {
   if (previousText === nextText) {
     return null;
@@ -260,6 +279,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     endLine: 0,
     text: '',
   });
+  const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
@@ -296,6 +316,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const fontSize = settings.fontSize || 14;
   const wordWrap = !!settings.wordWrap;
+  const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
@@ -773,6 +794,30 @@ export function Editor({ tab }: { tab: FileTab }) {
     syncedTextRef.current = normalized;
     pendingSyncRequestedRef.current = false;
   }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id, tab.lineCount]);
+
+  const updateActiveLineFromSelection = useCallback(() => {
+    if (!highlightCurrentLine || !contentRef.current) {
+      return;
+    }
+
+    const localLine = getCaretLineInElement(contentRef.current);
+    if (localLine === null) {
+      return;
+    }
+
+    const absoluteLine = isHugeEditableMode
+      ? editableSegmentRef.current.startLine + localLine
+      : localLine;
+    const safeLine = Math.max(1, Math.min(Math.max(1, tab.lineCount), Math.floor(absoluteLine)));
+
+    setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
+  }, [highlightCurrentLine, isHugeEditableMode, tab.lineCount]);
+
+  const syncActiveLineAfterInteraction = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      updateActiveLineFromSelection();
+    });
+  }, [updateActiveLineFromSelection]);
 
   const flushPendingSync = useCallback(async () => {
     if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
@@ -1736,6 +1781,26 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [endScrollbarDragSelectionGuard]);
 
   useEffect(() => {
+    const handleSelectionChange = () => {
+      updateActiveLineFromSelection();
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, [updateActiveLineFromSelection]);
+
+  useEffect(() => {
+    if (!highlightCurrentLine) {
+      return;
+    }
+
+    updateActiveLineFromSelection();
+  }, [highlightCurrentLine, updateActiveLineFromSelection]);
+
+  useEffect(() => {
+    setActiveLineNumber(1);
     setSearchHighlight(null);
 
     if (contentTreeFlashTimerRef.current) {
@@ -1765,6 +1830,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
       const shouldMoveCaretToLineStart = detail.source === 'content-tree';
+      setActiveLineNumber(targetLine);
 
       const placeCaretAtTargetLineStart = () => {
         if (!contentRef.current) {
@@ -1927,6 +1993,9 @@ export function Editor({ tab }: { tab: FileTab }) {
               }}
               onInput={handleInput}
               onPointerDown={handleEditorPointerDown}
+              onKeyUp={syncActiveLineAfterInteraction}
+              onPointerUp={syncActiveLineAfterInteraction}
+              onFocus={syncActiveLineAfterInteraction}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
               spellCheck={false}
@@ -1953,6 +2022,9 @@ export function Editor({ tab }: { tab: FileTab }) {
           onInput={handleInput}
           onScroll={handleScroll}
           onPointerDown={handleEditorPointerDown}
+          onKeyUp={syncActiveLineAfterInteraction}
+          onPointerUp={syncActiveLineAfterInteraction}
+          onFocus={syncActiveLineAfterInteraction}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           spellCheck={false}
@@ -2009,7 +2081,11 @@ export function Editor({ tab }: { tab: FileTab }) {
                     lineHeight: `${lineHeightPx}px`,
                   }}
                   className={`px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
-                    contentTreeFlashLine === index + 1 ? 'bg-primary/15 dark:bg-primary/20' : ''
+                    contentTreeFlashLine === index + 1
+                      ? 'bg-primary/15 dark:bg-primary/20'
+                      : highlightCurrentLine && activeLineNumber === index + 1
+                      ? 'bg-accent/45 dark:bg-accent/25'
+                      : ''
                   }`}
                 >
                   <span

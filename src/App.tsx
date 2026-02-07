@@ -22,6 +22,7 @@ interface AppConfig {
   fontFamily: string;
   fontSize: number;
   wordWrap: boolean;
+  highlightCurrentLine: boolean;
 }
 
 function App() {
@@ -123,6 +124,7 @@ function App() {
           fontFamily: config.fontFamily || 'Consolas, "Courier New", monospace',
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
           wordWrap: !!config.wordWrap,
+          highlightCurrentLine: config.highlightCurrentLine !== false,
         });
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -158,6 +160,7 @@ function App() {
           fontFamily: settings.fontFamily,
           fontSize: settings.fontSize,
           wordWrap: settings.wordWrap,
+          highlightCurrentLine: settings.highlightCurrentLine,
         },
       }).catch((error) => {
         console.error('Failed to save config:', error);
@@ -174,6 +177,7 @@ function App() {
     settings.language,
     settings.theme,
     settings.wordWrap,
+    settings.highlightCurrentLine,
   ]);
   
   const activeTab = tabs.find(t => t.id === activeTabId);
