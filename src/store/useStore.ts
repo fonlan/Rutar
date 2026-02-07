@@ -11,10 +11,12 @@ export interface FileTab {
 }
 
 export type AppLanguage = 'zh-CN' | 'en-US';
+export type AppTheme = 'light' | 'dark';
 
 interface SettingsState {
   isOpen: boolean;
   language: AppLanguage;
+  theme: AppTheme;
   fontFamily: string;
   fontSize: number;
   wordWrap: boolean;
@@ -47,6 +49,7 @@ export const useStore = create<AppState>((set) => ({
   settings: {
     isOpen: false,
     language: 'zh-CN',
+    theme: 'light',
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
     wordWrap: false,

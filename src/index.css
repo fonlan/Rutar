@@ -1,4 +1,38 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --scrollbar-thumb: rgba(100, 116, 139, 0.45);
+  --scrollbar-track: rgba(148, 163, 184, 0.18);
+}
+
+.dark {
+  color-scheme: dark;
+  --scrollbar-thumb: rgba(148, 163, 184, 0.4);
+  --scrollbar-track: rgba(15, 23, 42, 0.65);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 
 /* 文本内容允许选择，行号不允许 */
 .editor-line {
@@ -20,6 +54,13 @@
 .editor-input-layer {
   color: transparent !important;
   -webkit-text-fill-color: transparent;
+  caret-color: hsl(var(--foreground));
+}
+
+select,
+option {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--background));
 }
 
 .editor-input-layer::selection {
@@ -58,6 +99,21 @@
 
 /* 修复特殊符号显示 */
 .token-_ { color: #4b5563 !important; opacity: 0.9; }
+
+.dark .token-keyword, .dark .token-lexical_declaration, .dark .token-variable_declaration, .dark .token-function_declaration, .dark .token-export_statement, .dark .token-import_statement, .dark .token-let_declaration, .dark .token-const_item, .dark .token-use_declaration, .dark .token-mod_item, .dark .token-enum_item, .dark .token-struct_item, .dark .token-impl_item, .dark .token-trait_item { color: #ff7ab2 !important; font-weight: 600; }
+.dark .token-string, .dark .token-string_fragment, .dark .token-string_literal, .dark .token-string_content, .dark .token-raw_string_literal { color: #a5d6ff !important; }
+.dark .token-number, .dark .token-number_literal, .dark .token-integer_literal, .dark .token-float_literal { color: #78dce8 !important; }
+.dark .token-comment, .dark .token-line_comment, .dark .token-block_comment { color: #7f8c98 !important; font-style: italic; }
+.dark .token-function, .dark .token-call_expression, .dark .token-function_item, .dark .token-method_definition, .dark .token-function_signature_item, .dark .token-macro_invocation, .dark .token-macro { color: #c39bff !important; }
+.dark .token-identifier, .dark .token-variable_identifier, .dark .token-field_identifier, .dark .token-scoped_identifier, .dark .token-type_identifier { color: #e6edf3 !important; }
+.dark .token-type, .dark .token-primitive_type, .dark .token-generic_type { color: #4fc1ff !important; }
+.dark .token-property, .dark .token-property_identifier, .dark .token-pair_key { color: #ffcb6b !important; }
+.dark .token-punctuation { color: #93a4b8 !important; opacity: 0.9; }
+.dark .token-operator, .dark .token-binary_expression, .dark .token-assignment_expression { color: #ff9e64 !important; }
+.dark .token-boolean, .dark .token-boolean_literal, .dark .token-true, .dark .token-false, .dark .token-null { color: #c792ea !important; }
+.dark .token-attribute_item { color: #9aa5b1 !important; font-style: italic; }
+
+.dark .token-_ { color: #93a4b8 !important; opacity: 0.9; }
 
 @theme {
   --color-border: hsl(var(--border));

@@ -7,13 +7,14 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { Sidebar } from '@/components/Sidebar';
 import { StatusBar } from '@/components/StatusBar';
 import { SearchReplacePanel } from '@/components/SearchReplacePanel';
-import { FileTab, useStore, AppLanguage } from '@/store/useStore';
+import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
 import { t } from '@/i18n';
 
 let hasInitializedStartupTab = false;
 
 interface AppConfig {
   language: AppLanguage;
+  theme: AppTheme;
   fontFamily: string;
   fontSize: number;
   wordWrap: boolean;
@@ -63,6 +64,7 @@ function App() {
 
         updateSettings({
           language: config.language === 'en-US' ? 'en-US' : 'zh-CN',
+          theme: config.theme === 'dark' ? 'dark' : 'light',
           fontFamily: config.fontFamily || 'Consolas, "Courier New", monospace',
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
           wordWrap: !!config.wordWrap,
@@ -84,6 +86,11 @@ function App() {
   }, [updateSettings]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('dark', settings.theme === 'dark');
+  }, [settings.theme]);
+
+  useEffect(() => {
     if (!configReady) {
       return;
     }
@@ -92,6 +99,7 @@ function App() {
       void invoke('save_config', {
         config: {
           language: settings.language,
+          theme: settings.theme,
           fontFamily: settings.fontFamily,
           fontSize: settings.fontSize,
           wordWrap: settings.wordWrap,
@@ -109,6 +117,7 @@ function App() {
     settings.fontFamily,
     settings.fontSize,
     settings.language,
+    settings.theme,
     settings.wordWrap,
   ]);
   
@@ -125,7 +134,7 @@ function App() {
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar />
         
-        <div className="flex-1 flex flex-col overflow-hidden relative bg-green-900/20">
+        <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 relative overflow-hidden">
             {activeTab ? (
                 <Editor key={activeTab.id} tab={activeTab} />

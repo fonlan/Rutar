@@ -28,6 +28,7 @@ use uuid::Uuid;
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
 const ENCODING_DETECT_SAMPLE_BYTES: usize = 1024 * 1024;
 const DEFAULT_LANGUAGE: &str = "zh-CN";
+const DEFAULT_THEME: &str = "light";
 const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospace";
 const DEFAULT_FONT_SIZE: u32 = 14;
 
@@ -35,6 +36,7 @@ const DEFAULT_FONT_SIZE: u32 = 14;
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     language: String,
+    theme: String,
     font_family: String,
     font_size: u32,
     word_wrap: bool,
@@ -44,6 +46,7 @@ pub struct AppConfig {
 #[serde(rename_all = "camelCase")]
 struct PartialAppConfig {
     language: Option<String>,
+    theme: Option<String>,
     font_family: Option<String>,
     font_size: Option<u32>,
     word_wrap: Option<bool>,
@@ -53,6 +56,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             language: DEFAULT_LANGUAGE.to_string(),
+            theme: DEFAULT_THEME.to_string(),
             font_family: DEFAULT_FONT_FAMILY.to_string(),
             font_size: DEFAULT_FONT_SIZE,
             word_wrap: false,
@@ -184,9 +188,17 @@ fn normalize_language(language: Option<&str>) -> String {
     }
 }
 
+fn normalize_theme(theme: Option<&str>) -> String {
+    match theme {
+        Some("dark") => "dark".to_string(),
+        _ => DEFAULT_THEME.to_string(),
+    }
+}
+
 fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: normalize_language(Some(config.language.as_str())),
+        theme: normalize_theme(Some(config.theme.as_str())),
         font_family: if config.font_family.trim().is_empty() {
             DEFAULT_FONT_FAMILY.to_string()
         } else {
@@ -222,6 +234,10 @@ pub fn load_config() -> Result<AppConfig, String> {
 
     if let Some(language) = partial.language {
         config.language = normalize_language(Some(language.as_str()));
+    }
+
+    if let Some(theme) = partial.theme {
+        config.theme = normalize_theme(Some(theme.as_str()));
     }
 
     if let Some(font_family) = partial.font_family {

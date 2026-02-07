@@ -28,6 +28,10 @@ export type I18nKey =
   | 'settings.languageDesc'
   | 'settings.language.zhCN'
   | 'settings.language.enUS'
+  | 'settings.theme'
+  | 'settings.themeDesc'
+  | 'settings.theme.light'
+  | 'settings.theme.dark'
   | 'settings.fontFamily'
   | 'settings.fontFamilyDesc'
   | 'settings.fontSize'
@@ -66,6 +70,10 @@ const zhCN: Messages = {
   'settings.languageDesc': '切换应用界面语言。',
   'settings.language.zhCN': '简体中文',
   'settings.language.enUS': 'English (US)',
+  'settings.theme': '主题',
+  'settings.themeDesc': '切换应用主题。',
+  'settings.theme.light': '浅色',
+  'settings.theme.dark': '深色',
   'settings.fontFamily': '字体族',
   'settings.fontFamilyDesc': '编辑器使用的字体族。',
   'settings.fontSize': '字体大小',
@@ -103,6 +111,10 @@ const enUS: Messages = {
   'settings.languageDesc': 'Switch the application UI language.',
   'settings.language.zhCN': '简体中文',
   'settings.language.enUS': 'English (US)',
+  'settings.theme': 'Theme',
+  'settings.themeDesc': 'Switch the application theme.',
+  'settings.theme.light': 'Light',
+  'settings.theme.dark': 'Dark',
   'settings.fontFamily': 'Font Family',
   'settings.fontFamilyDesc': 'The font family used in the editor.',
   'settings.fontSize': 'Font Size',
@@ -120,4 +132,3 @@ const dictionaries: Record<AppLanguage, Messages> = {
 export function t(language: AppLanguage, key: I18nKey): string {
   return dictionaries[language][key] ?? dictionaries['zh-CN'][key] ?? key;
 }
-

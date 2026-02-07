@@ -69,7 +69,7 @@ export function SettingsModal() {
                     {tr('settings.language')}
                   </label>
                   <select
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     value={settings.language}
                     onChange={(e) => updateSettings({ language: e.target.value as typeof settings.language })}
                   >
@@ -89,6 +89,23 @@ export function SettingsModal() {
 
             {activeTab === 'appearance' && (
               <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    {tr('settings.theme')}
+                  </label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={settings.theme}
+                    onChange={(e) => updateSettings({ theme: e.target.value as typeof settings.theme })}
+                  >
+                    <option value="light">{tr('settings.theme.light')}</option>
+                    <option value="dark">{tr('settings.theme.dark')}</option>
+                  </select>
+                  <p className="text-[0.8rem] text-muted-foreground">
+                    {tr('settings.themeDesc')}
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                     {tr('settings.fontFamily')}

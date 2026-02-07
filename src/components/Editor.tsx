@@ -200,7 +200,7 @@ function dispatchDocumentUpdated(tabId: string) {
 }
 
 export function Editor({ tab }: { tab: FileTab }) {
-  const { settings = { fontSize: 14, fontFamily: 'monospace', wordWrap: false }, updateTab } = useStore();
+  const { settings, updateTab } = useStore();
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);
@@ -1466,7 +1466,6 @@ export function Editor({ tab }: { tab: FileTab }) {
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 paddingLeft: contentPaddingLeft,
                 paddingBottom: hugeEditablePaddingBottom,
-                caretColor: 'black',
               }}
               onInput={handleInput}
               onPointerDown={handleEditorPointerDown}
@@ -1492,7 +1491,6 @@ export function Editor({ tab }: { tab: FileTab }) {
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
             paddingLeft: contentPaddingLeft,
-            caretColor: 'black',
           }}
           onInput={handleInput}
           onScroll={handleScroll}
