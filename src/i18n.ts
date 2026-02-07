@@ -21,6 +21,7 @@ export type I18nKey =
   | 'status.lines'
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
+  | 'sidebar.close'
   | 'contentTree.title'
   | 'contentTree.empty'
   | 'contentTree.unsupportedType'
@@ -68,6 +69,7 @@ const zhCN: Messages = {
   'status.lines': '行数',
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
+  'sidebar.close': '关闭侧边栏',
   'contentTree.title': '内容树',
   'contentTree.empty': '暂无可显示的树结构',
   'contentTree.unsupportedType': '当前标签页不是 JSON / YAML / XML 文件，无法打开内容树。',
@@ -114,6 +116,7 @@ const enUS: Messages = {
   'status.lines': 'Lines',
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
+  'sidebar.close': 'Close Sidebar',
   'contentTree.title': 'Content Tree',
   'contentTree.empty': 'No tree data',
   'contentTree.unsupportedType': 'The active tab is not JSON, YAML, or XML. Cannot open content tree.',
@@ -147,4 +150,3 @@ const dictionaries: Record<AppLanguage, Messages> = {
 export function t(language: AppLanguage, key: I18nKey): string {
   return dictionaries[language][key] ?? dictionaries['zh-CN'][key] ?? key;
 }
-

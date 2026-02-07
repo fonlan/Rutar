@@ -1,6 +1,6 @@
 import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
-import { File, Folder, ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
+import { File, Folder, ChevronRight, ChevronDown, FolderOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { openFilePath } from '@/lib/openFile';
 import { useState, useCallback } from 'react';
@@ -16,6 +16,9 @@ export function Sidebar() {
     const sidebarOpen = useStore((state) => state.sidebarOpen);
     const sidebarWidth = useStore((state) => state.sidebarWidth);
     const setSidebarWidth = useStore((state) => state.setSidebarWidth);
+    const toggleSidebar = useStore((state) => state.toggleSidebar);
+    const language = useStore((state) => state.settings.language);
+    const tr = (key: Parameters<typeof t>[1]) => t(language, key);
     const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
         width: sidebarWidth,
         minWidth: SIDEBAR_MIN_WIDTH,
@@ -34,6 +37,15 @@ export function Sidebar() {
             <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-2 border-b">
                 <FolderOpen className="w-3 h-3" />
                 <span className="truncate">{folderPath.split(/[\\/]/).pop()}</span>
+                <button
+                    type="button"
+                    className="ml-auto inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+                    title={tr('sidebar.close')}
+                    aria-label={tr('sidebar.close')}
+                    onClick={() => toggleSidebar(false)}
+                >
+                    <X className="w-3 h-3" />
+                </button>
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar py-2">
                 {folderEntries.map((entry) => (
