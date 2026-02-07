@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEv
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
+import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 
 const appWindow = getCurrentWindow();
 
@@ -19,6 +20,7 @@ export function TitleBar() {
     const activeTabId = useStore((state) => state.activeTabId);
     const setActiveTab = useStore((state) => state.setActiveTab);
     const closeTab = useStore((state) => state.closeTab);
+    const updateTab = useStore((state) => state.updateTab);
     const toggleSettings = useStore((state) => state.toggleSettings);
     const addTab = useStore((state) => state.addTab);
     const settings = useStore((state) => state.settings);
@@ -53,11 +55,49 @@ export function TitleBar() {
         };
     }, []);
 
-    const closeTabsByIds = useCallback(
-        async (tabIds: string[]) => {
-            if (tabIds.length === 0) {
+    const closeTabs = useCallback(
+        async (tabsToClose: FileTab[], allowAllActions: boolean) => {
+            if (tabsToClose.length === 0) {
                 return;
             }
+
+            const closableTabs: FileTab[] = [];
+            let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
+            for (const tab of tabsToClose) {
+                let decision: TabCloseDecision | null = bulkDecision;
+
+                if (!decision) {
+                    decision = await confirmTabClose(tab, settings.language, allowAllActions);
+                }
+
+                if (decision === 'cancel') {
+                    return;
+                }
+
+                if (decision === 'save_all' || decision === 'discard_all') {
+                    bulkDecision = decision;
+                }
+
+                if (decision === 'save' || decision === 'save_all') {
+                    try {
+                        const saved = await saveTab(tab, updateTab);
+                        if (!saved) {
+                            return;
+                        }
+                    } catch (error) {
+                        console.error('Failed to save file before closing tab:', error);
+                        return;
+                    }
+                }
+
+                closableTabs.push(tab);
+            }
+
+            if (closableTabs.length === 0) {
+                return;
+            }
+
+            const tabIds = closableTabs.map((tab) => tab.id);
 
             tabIds.forEach((id) => closeTab(id));
 
@@ -71,48 +111,49 @@ export function TitleBar() {
                 }
             });
         },
-        [closeTab]
+        [closeTab, settings.language, updateTab]
     );
 
     const handleCloseTab = useCallback(async (tab: FileTab) => {
         const shouldCreateBlankTab = tabs.length === 1;
 
-        closeTab(tab.id);
-
         try {
-            await invoke('close_file', { id: tab.id });
+            await closeTabs([tab], false);
 
-            if (shouldCreateBlankTab) {
+            if (shouldCreateBlankTab && useStore.getState().tabs.length === 0) {
                 const fileInfo = await invoke<FileTab>('new_file');
                 addTab(fileInfo);
             }
         } catch (error) {
             console.error('Failed to close tab:', error);
         }
-    }, [addTab, closeTab, tabs.length]);
+    }, [addTab, closeTabs, tabs.length]);
 
     const handleCloseOtherTabs = useCallback(async (tab: FileTab) => {
-        const tabIdsToClose = tabs
-            .filter((currentTab) => currentTab.id !== tab.id)
-            .map((currentTab) => currentTab.id);
+        const tabsToClose = tabs
+            .filter((currentTab) => currentTab.id !== tab.id);
 
-        if (tabIdsToClose.length === 0) {
+        if (tabsToClose.length === 0) {
             return;
         }
 
         setActiveTab(tab.id);
-        await closeTabsByIds(tabIdsToClose);
+        await closeTabs(tabsToClose, true);
         setActiveTab(tab.id);
-    }, [closeTabsByIds, setActiveTab, tabs]);
+    }, [closeTabs, setActiveTab, tabs]);
 
     const handleCloseAllTabs = useCallback(async () => {
-        const tabIdsToClose = tabs.map((tab) => tab.id);
+        const tabsToClose = tabs;
 
-        if (tabIdsToClose.length === 0) {
+        if (tabsToClose.length === 0) {
             return;
         }
 
-        await closeTabsByIds(tabIdsToClose);
+        await closeTabs(tabsToClose, true);
+
+        if (useStore.getState().tabs.length > 0) {
+            return;
+        }
 
         try {
             const fileInfo = await invoke<FileTab>('new_file');
@@ -120,7 +161,7 @@ export function TitleBar() {
         } catch (error) {
             console.error('Failed to create tab after closing all tabs:', error);
         }
-    }, [addTab, closeTabsByIds, tabs]);
+    }, [addTab, closeTabs, tabs]);
 
     const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();

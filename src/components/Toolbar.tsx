@@ -2,7 +2,7 @@ import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
     Undo, Redo, Search, Replace, WrapText, ListTree, WandSparkles, Minimize2
 } from 'lucide-react';
-import { message, open, save } from '@tauri-apps/plugin-dialog';
+import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect } from 'react';
 import { openFilePath } from '@/lib/openFile';
@@ -11,6 +11,7 @@ import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
 import { toolbarFormatMessages } from '@/lib/i18nToolbarFormat';
 import { isStructuredFormatSupported } from '@/lib/structuredFormat';
+import { confirmTabClose, saveTab } from '@/lib/tabClose';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     window.dispatchEvent(
@@ -98,25 +99,8 @@ export function Toolbar() {
         await runStructuredFormat('minify');
     }, [runStructuredFormat]);
 
-    const saveTab = useCallback(async (tab: FileTab) => {
-        if (tab.path) {
-            await invoke('save_file', { id: tab.id });
-            updateTab(tab.id, { isDirty: false });
-            return true;
-        }
-
-        const selected = await save({
-            defaultPath: tab.name || 'Untitled.txt',
-        });
-
-        if (!selected) {
-            return false;
-        }
-
-        await invoke('save_file_as', { id: tab.id, path: selected });
-        const name = selected.split(/[\\/]/).pop() || selected;
-        updateTab(tab.id, { path: selected, name, isDirty: false });
-        return true;
+    const persistTab = useCallback(async (tab: FileTab) => {
+        return saveTab(tab, updateTab);
     }, [updateTab]);
 
     const handleNewFile = useCallback(async () => {
@@ -167,25 +151,42 @@ export function Toolbar() {
     const handleSave = useCallback(async () => {
         if (!activeTab) return;
         try {
-            await saveTab(activeTab);
+            await persistTab(activeTab);
         } catch (e) {
             console.error('Failed to save file:', e);
         }
-    }, [activeTab, saveTab]);
+    }, [activeTab, persistTab]);
 
     const handleSaveAll = useCallback(async () => {
         const dirtyTabs = tabs.filter(t => t.isDirty);
         for (const tab of dirtyTabs) {
             try {
-                await saveTab(tab);
+                await persistTab(tab);
             } catch (e) {
                 console.error(`Failed to save ${tab.name}:`, e);
             }
         }
-    }, [saveTab, tabs]);
+    }, [persistTab, tabs]);
 
     const handleCloseActiveTab = useCallback(async () => {
         if (!activeTab) return;
+
+        const decision = await confirmTabClose(activeTab, language, false);
+        if (decision === 'cancel') {
+            return;
+        }
+
+        if (decision === 'save') {
+            try {
+                const saved = await persistTab(activeTab);
+                if (!saved) {
+                    return;
+                }
+            } catch (e) {
+                console.error('Failed to save file before closing tab:', e);
+                return;
+            }
+        }
 
         const shouldCreateBlankTab = tabs.length === 1;
 
@@ -201,7 +202,7 @@ export function Toolbar() {
         } catch (e) {
             console.error('Failed to close tab:', e);
         }
-    }, [activeTab, addTab, closeTab, tabs.length]);
+    }, [activeTab, addTab, closeTab, language, persistTab, tabs.length]);
 
     const handleUndo = useCallback(async () => {
         if (!activeTab) return;

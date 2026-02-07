@@ -9,7 +9,9 @@ import { Sidebar } from '@/components/Sidebar';
 import { ContentTreeSidebar } from '@/components/ContentTreeSidebar';
 import { StatusBar } from '@/components/StatusBar';
 import { SearchReplacePanel } from '@/components/SearchReplacePanel';
+import { TabCloseConfirmModal } from '@/components/TabCloseConfirmModal';
 import { openFilePaths } from '@/lib/openFile';
+import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
@@ -201,6 +203,63 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    const setupCloseGuard = async () => {
+      try {
+        const unsubscribe = await getCurrentWindow().onCloseRequested(async (event) => {
+          const state = useStore.getState();
+          const dirtyTabs = state.tabs.filter((tab) => tab.isDirty);
+          let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
+
+          for (const tab of dirtyTabs) {
+            let decision: TabCloseDecision | null = bulkDecision;
+            if (!decision) {
+              decision = await confirmTabClose(tab, state.settings.language, true);
+            }
+
+            if (decision === 'cancel') {
+              event.preventDefault();
+              return;
+            }
+
+            if (decision === 'save_all' || decision === 'discard_all') {
+              bulkDecision = decision;
+            }
+
+            if (decision === 'save' || decision === 'save_all') {
+              const saved = await saveTab(tab, state.updateTab);
+              if (!saved) {
+                event.preventDefault();
+                return;
+              }
+            }
+          }
+        });
+
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+
+        unlisten = unsubscribe;
+      } catch (error) {
+        console.error('Failed to register close guard:', error);
+      }
+    };
+
+    void setupCloseGuard();
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadConfig = async () => {
@@ -364,6 +423,7 @@ function App() {
       <TitleBar />
       <Toolbar />
       <SettingsModal />
+      <TabCloseConfirmModal />
       <SearchReplacePanel />
       
       <div className="flex-1 flex overflow-hidden relative">
