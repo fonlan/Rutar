@@ -339,7 +339,7 @@ export function Toolbar() {
 
     return (
         <div
-            className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden shadow-sm z-40"
+            className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden z-40"
             data-layout-region="toolbar"
         >
             {/* File Group */}
