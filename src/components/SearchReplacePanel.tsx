@@ -72,6 +72,7 @@ interface SearchCountBackendResult {
 }
 
 const SEARCH_CHUNK_SIZE = 300;
+const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 360px)';
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
   window.dispatchEvent(
@@ -192,9 +193,12 @@ export function SearchReplacePanel() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultPanelState, setResultPanelState] = useState<SearchResultPanelState>('closed');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resultListRef = useRef<HTMLDivElement>(null);
+  const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
+  const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
   const runVersionRef = useRef(0);
   const countRunVersionRef = useRef(0);
   const currentMatchIndexRef = useRef(0);
@@ -849,7 +853,7 @@ export function SearchReplacePanel() {
       }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`鏇挎崲澶辫触: ${readableError}`);
+      setErrorMessage(`替换失败: ${readableError}`);
     }
   }, [activeTab, caseSensitive, executeSearch, keyword, navigateToMatch, replaceValue, searchMode, updateTab]);
 
@@ -933,7 +937,7 @@ export function SearchReplacePanel() {
       await executeSearch(true);
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`鍏ㄩ儴鏇挎崲澶辫触: ${readableError}`);
+      setErrorMessage(`全部替换失败: ${readableError}`);
     }
   }, [activeTab, caseSensitive, executeSearch, keyword, replaceValue, searchMode, updateTab]);
 
@@ -1012,6 +1016,61 @@ export function SearchReplacePanel() {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    focusSearchInput();
+  }, [focusSearchInput, isOpen]);
+
+  const updateSearchSidebarBottomOffset = useCallback(() => {
+    if (!isOpen || resultPanelState === 'closed') {
+      setSearchSidebarBottomOffset('0px');
+      return;
+    }
+
+    const targetElement =
+      resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
+    if (!targetElement) {
+      return;
+    }
+
+    const rect = targetElement.getBoundingClientRect();
+    const nextOffset = `${Math.max(0, Math.ceil(window.innerHeight - rect.top))}px`;
+    setSearchSidebarBottomOffset((previousOffset) =>
+      previousOffset === nextOffset ? previousOffset : nextOffset
+    );
+  }, [isOpen, resultPanelState]);
+
+  useEffect(() => {
+    updateSearchSidebarBottomOffset();
+  }, [updateSearchSidebarBottomOffset]);
+
+  useEffect(() => {
+    if (!isOpen || resultPanelState === 'closed') {
+      return;
+    }
+
+    const targetElement =
+      resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
+    if (!targetElement) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateSearchSidebarBottomOffset();
+    });
+
+    observer.observe(targetElement);
+    window.addEventListener('resize', updateSearchSidebarBottomOffset);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateSearchSidebarBottomOffset);
+    };
+  }, [isOpen, resultPanelState, updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
     cachedSearchRef.current = null;
@@ -1177,214 +1236,261 @@ export function SearchReplacePanel() {
 
   return (
     <>
-      {isOpen && (
-        <div className="absolute right-4 top-3 z-40 w-[min(94vw,760px)]">
-          <div className="rounded-lg border border-border bg-background/95 p-3 shadow-2xl backdrop-blur">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                value={keyword}
-                onChange={(event) => {
-                  setKeyword(event.target.value);
-                  setFeedbackMessage(null);
-                  setErrorMessage(null);
-                  setMatches([]);
-                  setTotalMatchCount(null);
-                  setTotalMatchedLineCount(null);
-                  setCurrentMatchIndex(0);
-                  cachedSearchRef.current = null;
-                  countCacheRef.current = null;
-                  chunkCursorRef.current = null;
-                  searchParamsRef.current = null;
-                }}
-                onKeyDown={handleKeywordKeyDown}
-                placeholder="查找内容"
-                className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-              />
+      <div
+        className={cn(
+          'fixed right-0 top-0 z-40 transform-gpu overflow-x-hidden transition-transform duration-200 ease-out',
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        )}
+        style={{ width: SEARCH_SIDEBAR_WIDTH, bottom: searchSidebarBottomOffset }}
+      >
+        <div
+          className={cn(
+            'flex h-full flex-col border-l border-border bg-background/95 p-3 shadow-2xl backdrop-blur',
+            isOpen ? 'pointer-events-auto' : 'pointer-events-none'
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="inline-flex items-center rounded-md border border-border p-0.5">
               <button
                 type="button"
                 className={cn(
-                  'rounded-md border px-2 py-1 text-xs transition-colors',
-                  resultPanelState !== 'closed'
-                    ? 'border-primary text-primary'
-                    : 'border-border text-muted-foreground hover:bg-muted'
+                  'rounded px-2 py-1 text-xs transition-colors',
+                  !isReplaceMode
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
                 onClick={() => {
-                  setResultPanelState((previous) => {
-                    if (previous === 'open') {
-                      return 'minimized';
-                    }
-                    return 'open';
-                  });
-
-                  if (keyword && !isSearching) {
-                    void executeSearch();
-                  }
+                  setIsReplaceMode(false);
+                  focusSearchInput();
                 }}
-                title={isResultPanelOpen ? '收起搜索结果' : '展开搜索结果'}
               >
-                {isResultPanelOpen ? '收起结果' : '结果列表'}
+                查找
               </button>
               <button
                 type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setIsOpen(false)}
-                title="关闭"
+                className={cn(
+                  'rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
+                  isReplaceMode
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                )}
+                onClick={() => {
+                  setIsReplaceMode(true);
+                  focusSearchInput();
+                }}
+                disabled={!canReplace}
+                title={canReplace ? '切换到替换模式' : 'Large File Mode 不支持替换'}
               >
-                <X className="h-4 w-4" />
+                替换
               </button>
             </div>
+
+            <button
+              type="button"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => setIsOpen(false)}
+              title="关闭"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                setFeedbackMessage(null);
+                setErrorMessage(null);
+                setMatches([]);
+                setTotalMatchCount(null);
+                setTotalMatchedLineCount(null);
+                setCurrentMatchIndex(0);
+                cachedSearchRef.current = null;
+                countCacheRef.current = null;
+                chunkCursorRef.current = null;
+                searchParamsRef.current = null;
+              }}
+              onKeyDown={handleKeywordKeyDown}
+              placeholder="查找内容"
+              className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <button
+              type="button"
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs transition-colors',
+                resultPanelState !== 'closed'
+                  ? 'border-primary text-primary'
+                  : 'border-border text-muted-foreground hover:bg-muted'
+              )}
+              onClick={() => {
+                setResultPanelState((previous) => {
+                  if (previous === 'open') {
+                    return 'minimized';
+                  }
+                  return 'open';
+                });
+
+                if (keyword && !isSearching) {
+                  void executeSearch();
+                }
+              }}
+              title={isResultPanelOpen ? '收起搜索结果' : '展开搜索结果'}
+            >
+              {isResultPanelOpen ? '收起' : '结果'}
+            </button>
+          </div>
+
+          {isReplaceMode && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="w-4 text-xs text-muted-foreground">→</span>
+              <input
+                value={replaceValue}
+                onChange={(event) => setReplaceValue(event.target.value)}
+                placeholder="替换为"
+                className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <ModeButton
+              active={searchMode === 'literal'}
+              label="普通"
+              onClick={() => {
+                setSearchMode('literal');
+                setErrorMessage(null);
+                setMatches([]);
+                setTotalMatchCount(null);
+                setTotalMatchedLineCount(null);
+                setCurrentMatchIndex(0);
+                cachedSearchRef.current = null;
+                countCacheRef.current = null;
+                chunkCursorRef.current = null;
+                searchParamsRef.current = null;
+              }}
+            />
+            <ModeButton
+              active={searchMode === 'regex'}
+              label="正则"
+              onClick={() => {
+                setSearchMode('regex');
+                setErrorMessage(null);
+                setMatches([]);
+                setTotalMatchCount(null);
+                setTotalMatchedLineCount(null);
+                setCurrentMatchIndex(0);
+                cachedSearchRef.current = null;
+                countCacheRef.current = null;
+                chunkCursorRef.current = null;
+                searchParamsRef.current = null;
+              }}
+            />
+            <ModeButton
+              active={searchMode === 'wildcard'}
+              label="通配符"
+              onClick={() => {
+                setSearchMode('wildcard');
+                setErrorMessage(null);
+                setMatches([]);
+                setTotalMatchCount(null);
+                setTotalMatchedLineCount(null);
+                setCurrentMatchIndex(0);
+                cachedSearchRef.current = null;
+                countCacheRef.current = null;
+                chunkCursorRef.current = null;
+                searchParamsRef.current = null;
+              }}
+            />
+
+            <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={caseSensitive}
+                onChange={(event) => {
+                  setCaseSensitive(event.target.checked);
+                  setErrorMessage(null);
+                  setMatches([]);
+                  setTotalMatchCount(null);
+                  setTotalMatchedLineCount(null);
+                  setCurrentMatchIndex(0);
+                  cachedSearchRef.current = null;
+                  countCacheRef.current = null;
+                  chunkCursorRef.current = null;
+                  searchParamsRef.current = null;
+                }}
+              />
+              区分大小写
+            </label>
+
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={reverseSearch}
+                onChange={(event) => setReverseSearch(event.target.checked)}
+              />
+              反向搜索
+            </label>
+
+            <button
+              type="button"
+              className="ml-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+              onClick={() => void navigateByStep(-1)}
+              title="上一个匹配"
+            >
+              <ArrowUp className="h-3 w-3" />
+              上一个
+            </button>
+
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+              onClick={() => void navigateByStep(1)}
+              title="下一个匹配"
+            >
+              <ArrowDown className="h-3 w-3" />
+              下一个
+            </button>
 
             {isReplaceMode && (
-              <div className="mt-2 flex items-center gap-2">
-                <span className="w-4 text-xs text-muted-foreground">→</span>
-                <input
-                  value={replaceValue}
-                  onChange={(event) => setReplaceValue(event.target.value)}
-                  placeholder="替换为"
-                  className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                />
-              </div>
+              <>
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
+                  onClick={() => void handleReplaceCurrent()}
+                  disabled={!canReplace}
+                  title={canReplace ? '替换当前匹配项' : 'Large File Mode 不支持替换'}
+                >
+                  替换
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                  onClick={() => void handleReplaceAll()}
+                  disabled={!canReplace}
+                  title={canReplace ? '替换全部匹配项' : 'Large File Mode 不支持替换'}
+                >
+                  全部替换
+                </button>
+              </>
             )}
+          </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <ModeButton
-                active={searchMode === 'literal'}
-                label="普通"
-                onClick={() => {
-                  setSearchMode('literal');
-                  setErrorMessage(null);
-                  setMatches([]);
-                  setTotalMatchCount(null);
-                  setTotalMatchedLineCount(null);
-                  setCurrentMatchIndex(0);
-                  cachedSearchRef.current = null;
-                  countCacheRef.current = null;
-                  chunkCursorRef.current = null;
-                  searchParamsRef.current = null;
-                }}
-              />
-              <ModeButton
-                active={searchMode === 'regex'}
-                label="姝ｅ垯"
-                onClick={() => {
-                  setSearchMode('regex');
-                  setErrorMessage(null);
-                  setMatches([]);
-                  setTotalMatchCount(null);
-                  setTotalMatchedLineCount(null);
-                  setCurrentMatchIndex(0);
-                  cachedSearchRef.current = null;
-                  countCacheRef.current = null;
-                  chunkCursorRef.current = null;
-                  searchParamsRef.current = null;
-                }}
-              />
-              <ModeButton
-                active={searchMode === 'wildcard'}
-                label="通配符"
-                onClick={() => {
-                  setSearchMode('wildcard');
-                  setErrorMessage(null);
-                  setMatches([]);
-                  setTotalMatchCount(null);
-                  setTotalMatchedLineCount(null);
-                  setCurrentMatchIndex(0);
-                  cachedSearchRef.current = null;
-                  countCacheRef.current = null;
-                  chunkCursorRef.current = null;
-                  searchParamsRef.current = null;
-                }}
-              />
-
-              <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={caseSensitive}
-                  onChange={(event) => {
-                    setCaseSensitive(event.target.checked);
-                    setErrorMessage(null);
-                    setMatches([]);
-                    setTotalMatchCount(null);
-                    setTotalMatchedLineCount(null);
-                    setCurrentMatchIndex(0);
-                    cachedSearchRef.current = null;
-                    countCacheRef.current = null;
-                    chunkCursorRef.current = null;
-                    searchParamsRef.current = null;
-                  }}
-                />
-                区分大小写
-              </label>
-
-              <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={reverseSearch}
-                  onChange={(event) => setReverseSearch(event.target.checked)}
-                />
-                反向搜索
-              </label>
-
-              <button
-                type="button"
-                className="ml-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                onClick={() => void navigateByStep(-1)}
-                title="上一个匹配"
-              >
-                <ArrowUp className="h-3 w-3" />
-                上一个
-              </button>
-
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                onClick={() => void navigateByStep(1)}
-                title="下一个匹配"
-              >
-                <ArrowDown className="h-3 w-3" />
-                下一个
-              </button>
-
-              {isReplaceMode && (
-                <>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
-                    onClick={() => void handleReplaceCurrent()}
-                    disabled={!canReplace}
-                    title={canReplace ? '替换当前匹配项' : 'Large File Mode 不支持替换'}
-                  >
-                    替换
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
-                    onClick={() => void handleReplaceAll()}
-                    disabled={!canReplace}
-                    title={canReplace ? '替换全部匹配项' : 'Large File Mode 不支持替换'}
-                  >
-                    全部替换
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div
-              className={cn(
-                'mt-2 text-xs',
-                errorMessage ? 'text-destructive' : 'text-muted-foreground'
-              )}
-            >
-              {feedbackMessage || statusText} · F3 下一个 / Shift+F3 上一个
-            </div>
+          <div
+            className={cn(
+              'mt-2 text-xs',
+              errorMessage ? 'text-destructive' : 'text-muted-foreground'
+            )}
+          >
+            {feedbackMessage || statusText} · F3 下一个 / Shift+F3 上一个
           </div>
         </div>
-      )}
+      </div>
 
       {isOpen && resultPanelState !== 'closed' && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-2 pb-2">
+        <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-2 pb-2">
         <div
           className={cn(
             'pointer-events-auto rounded-lg border border-border bg-background/95 shadow-2xl',
@@ -1449,7 +1555,7 @@ export function SearchReplacePanel() {
       )}
 
       {isResultPanelMinimized && (
-        <div className="pointer-events-none absolute bottom-6 right-2 z-30">
+        <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-30">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow-lg backdrop-blur">
             <span className="text-muted-foreground">结果 总计{displayTotalMatchCountText}处 / {displayTotalMatchedLineCountText}行 · 已加载{matches.length}处</span>
             <button
