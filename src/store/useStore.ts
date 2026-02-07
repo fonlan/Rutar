@@ -14,6 +14,7 @@ interface SettingsState {
   isOpen: boolean;
   fontFamily: string;
   fontSize: number;
+  wordWrap: boolean;
 }
 
 interface AppState {
@@ -44,6 +45,7 @@ export const useStore = create<AppState>((set) => ({
     isOpen: false,
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
+    wordWrap: false,
   },
   sidebarOpen: false,
   folderPath: null,

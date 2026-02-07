@@ -168,7 +168,7 @@ function alignScrollOffset(value: number) {
 }
 
 export function Editor({ tab }: { tab: FileTab }) {
-  const { settings = { fontSize: 14, fontFamily: 'monospace' }, updateTab } = useStore();
+  const { settings = { fontSize: 14, fontFamily: 'monospace', wordWrap: false }, updateTab } = useStore();
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
@@ -209,6 +209,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const syncedTextRef = useRef('');
 
   const fontSize = settings.fontSize || 14;
+  const wordWrap = !!settings.wordWrap;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
@@ -1073,6 +1074,29 @@ export function Editor({ tab }: { tab: FileTab }) {
     };
   }, [endScrollbarDragSelectionGuard, isLargeReadOnlyMode]);
 
+  useEffect(() => {
+    const handleForcedRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId: string; lineCount?: number }>;
+      const detail = customEvent.detail;
+
+      if (!detail || detail.tabId !== tab.id) {
+        return;
+      }
+
+      if (typeof detail.lineCount === 'number' && Number.isFinite(detail.lineCount)) {
+        updateTab(tab.id, { lineCount: Math.max(1, detail.lineCount) });
+      }
+
+      void loadTextFromBackend();
+      void syncVisibleTokens(Math.max(1, detail.lineCount ?? tab.lineCount));
+    };
+
+    window.addEventListener('rutar:force-refresh', handleForcedRefresh as EventListener);
+    return () => {
+      window.removeEventListener('rutar:force-refresh', handleForcedRefresh as EventListener);
+    };
+  }, [loadTextFromBackend, syncVisibleTokens, tab.id, tab.lineCount, updateTab]);
+
   return (
     <div
       ref={containerRef}
@@ -1104,7 +1128,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                 fontFamily: settings.fontFamily,
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
-                whiteSpace: 'pre',
+                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 paddingLeft: '5rem',
                 paddingBottom: hugeEditablePaddingBottom,
                 caretColor: 'black',
@@ -1129,7 +1153,7 @@ export function Editor({ tab }: { tab: FileTab }) {
             fontFamily: settings.fontFamily,
             fontSize: `${renderedFontSizePx}px`,
             lineHeight: `${lineHeightPx}px`,
-            whiteSpace: 'pre',
+            whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
             paddingLeft: '5rem',
             caretColor: 'black',
           }}
@@ -1157,7 +1181,7 @@ export function Editor({ tab }: { tab: FileTab }) {
             itemSize={itemSize}
             onItemsRendered={onItemsRendered}
             overscanCount={20}
-            style={{ overflowX: 'auto' }}
+            style={{ overflowX: wordWrap ? 'hidden' : 'auto' }}
             onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
           >
             {({ index, style }) => {
@@ -1182,12 +1206,12 @@ export function Editor({ tab }: { tab: FileTab }) {
                 <div
                   style={{
                     ...style,
-                    width: 'max-content',
+                    width: wordWrap ? '100%' : 'max-content',
                     minWidth: '100%',
                     fontFamily: settings.fontFamily,
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
-                    whiteSpace: 'pre',
+                    whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                   }}
                   className="px-4 hover:bg-muted/5 text-foreground group editor-line"
                 >
