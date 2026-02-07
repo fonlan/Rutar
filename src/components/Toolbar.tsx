@@ -1,18 +1,24 @@
-import { 
+import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
     Undo, Redo, Search, Replace, WrapText 
 } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useStore, FileTab } from '@/store/useStore';
-
-const MAX_LINE_RANGE = 2147483647;
 
 function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
     window.dispatchEvent(
         new CustomEvent('rutar:force-refresh', {
             detail: { tabId, lineCount },
+        })
+    );
+}
+
+function dispatchSearchOpen(mode: 'find' | 'replace') {
+    window.dispatchEvent(
+        new CustomEvent('rutar:search-open', {
+            detail: { mode },
         })
     );
 }
@@ -34,8 +40,6 @@ export function Toolbar() {
     } = useStore();
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab && !activeTab.largeFileMode;
-    const lastFindRef = useRef('');
-    const lastReplaceRef = useRef('');
 
     const saveTab = useCallback(async (tab: FileTab) => {
         if (tab.path) {
@@ -185,81 +189,13 @@ export function Toolbar() {
 
     const handleFind = useCallback(() => {
         if (!activeTab) return;
-
-        const keyword = window.prompt('Find', lastFindRef.current);
-        if (keyword === null) return;
-
-        const normalizedKeyword = keyword.trim();
-        if (!normalizedKeyword) return;
-        lastFindRef.current = normalizedKeyword;
-
-        const editor = getActiveEditorElement();
-        if (editor && document.activeElement !== editor) {
-            editor.focus();
-        }
-
-        const finder = (window as Window & {
-            find?: (
-                text: string,
-                caseSensitive?: boolean,
-                backwards?: boolean,
-                wrapAround?: boolean,
-                wholeWord?: boolean,
-                searchInFrames?: boolean,
-                showDialog?: boolean,
-            ) => boolean;
-        }).find;
-
-        if (typeof finder === 'function') {
-            const found = finder(normalizedKeyword, false, false, true, false, false, false);
-            if (!found) {
-                finder(normalizedKeyword, false, false, false, false, false, false);
-            }
-        }
+        dispatchSearchOpen('find');
     }, [activeTab]);
 
     const handleReplace = useCallback(async () => {
         if (!activeTab || activeTab.largeFileMode) return;
-
-        const findText = window.prompt('Find text', lastFindRef.current);
-        if (findText === null) return;
-        if (!findText) return;
-
-        const replaceText = window.prompt('Replace with', lastReplaceRef.current);
-        if (replaceText === null) return;
-
-        lastFindRef.current = findText;
-        lastReplaceRef.current = replaceText;
-
-        try {
-            const rawText = await invoke<string>('get_visible_lines', {
-                id: activeTab.id,
-                startLine: 0,
-                endLine: MAX_LINE_RANGE,
-            });
-
-            const sourceText = rawText || '';
-            const replacedText = sourceText.split(findText).join(replaceText);
-            if (replacedText === sourceText) {
-                return;
-            }
-
-            const newLineCount = await invoke<number>('replace_line_range', {
-                id: activeTab.id,
-                startLine: 0,
-                endLine: MAX_LINE_RANGE,
-                newText: replacedText,
-            });
-
-            updateTab(activeTab.id, {
-                lineCount: Math.max(1, newLineCount),
-                isDirty: true,
-            });
-            dispatchEditorForceRefresh(activeTab.id, Math.max(1, newLineCount));
-        } catch (e) {
-            console.error('Replace failed:', e);
-        }
-    }, [activeTab, updateTab]);
+        dispatchSearchOpen('replace');
+    }, [activeTab]);
 
     const handleToggleWordWrap = useCallback(() => {
         updateSettings({ wordWrap: !settings.wordWrap });

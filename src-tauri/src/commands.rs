@@ -2,6 +2,7 @@ use crate::state::{AppState, Document, EditOperation};
 use chardetng::EncodingDetector;
 use encoding_rs::Encoding;
 use memmap2::Mmap;
+use regex::RegexBuilder;
 use ropey::Rope;
 use std::fs::File;
 use std::path::PathBuf;
@@ -48,6 +49,49 @@ pub struct SyntaxToken {
     start_byte: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     end_byte: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchMatchResult {
+    start: usize,
+    end: usize,
+    start_char: usize,
+    end_char: usize,
+    text: String,
+    line: usize,
+    column: usize,
+    line_text: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResultPayload {
+    matches: Vec<SearchMatchResult>,
+    document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFirstResultPayload {
+    first_match: Option<SearchMatchResult>,
+    document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchChunkResultPayload {
+    matches: Vec<SearchMatchResult>,
+    document_version: u64,
+    next_offset: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCountResultPayload {
+    total_matches: usize,
+    matched_lines: usize,
+    document_version: u64,
 }
 
 #[derive(Debug)]
@@ -312,7 +356,745 @@ fn apply_operation(doc: &mut Document, operation: &EditOperation) -> Result<(), 
     }
 
     doc.syntax_dirty = doc.parser.is_some();
+    doc.document_version = doc.document_version.saturating_add(1);
     Ok(())
+}
+
+fn find_line_index_by_offset(line_starts: &[usize], target_offset: usize) -> usize {
+    if line_starts.is_empty() {
+        return 0;
+    }
+
+    let mut low = 0usize;
+    let mut high = line_starts.len() - 1;
+    let mut result = 0usize;
+
+    while low <= high {
+        let middle = low + (high - low) / 2;
+        let line_start = line_starts[middle];
+
+        if line_start <= target_offset {
+            result = middle;
+            low = middle.saturating_add(1);
+        } else {
+            if middle == 0 {
+                break;
+            }
+            high = middle - 1;
+        }
+    }
+
+    result
+}
+
+fn build_line_starts(text: &str) -> Vec<usize> {
+    let mut line_starts = vec![0usize];
+
+    for (index, byte) in text.as_bytes().iter().enumerate() {
+        if *byte == b'\n' {
+            line_starts.push(index + 1);
+        }
+    }
+
+    line_starts
+}
+
+fn build_byte_to_char_map(text: &str) -> Vec<usize> {
+    let mut mapping = vec![0usize; text.len() + 1];
+    let mut char_index = 0usize;
+
+    for (byte_index, ch) in text.char_indices() {
+        let char_len = ch.len_utf8();
+        for offset in 0..char_len {
+            mapping[byte_index + offset] = char_index;
+        }
+        char_index += 1;
+    }
+
+    mapping[text.len()] = char_index;
+    mapping
+}
+
+fn get_line_text(text: &str, line_starts: &[usize], line_index: usize) -> String {
+    if line_starts.is_empty() {
+        return String::new();
+    }
+
+    let line_start = *line_starts.get(line_index).unwrap_or(&0usize);
+    let next_line_start = *line_starts.get(line_index + 1).unwrap_or(&text.len());
+    let line_end = next_line_start.saturating_sub(1).max(line_start);
+
+    text.get(line_start..line_end)
+        .unwrap_or_default()
+        .trim_end_matches('\r')
+        .to_string()
+}
+
+fn escape_regex_literal(keyword: &str) -> String {
+    keyword
+        .chars()
+        .flat_map(|ch| match ch {
+            '.' | '*' | '+' | '?' | '^' | '$' | '{' | '}' | '(' | ')' | '|' | '[' | ']' | '\\' => {
+                vec!['\\', ch]
+            }
+            _ => vec![ch],
+        })
+        .collect()
+}
+
+fn wildcard_to_regex_source(keyword: &str) -> String {
+    let mut source = String::new();
+
+    for ch in keyword.chars() {
+        match ch {
+            '*' => source.push_str(".*"),
+            '?' => source.push('.'),
+            _ => source.push_str(&escape_regex_literal(&ch.to_string())),
+        }
+    }
+
+    source
+}
+
+fn compute_kmp_lps(pattern: &[u8]) -> Vec<usize> {
+    if pattern.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lps = vec![0usize; pattern.len()];
+    let mut len = 0usize;
+    let mut index = 1usize;
+
+    while index < pattern.len() {
+        if pattern[index] == pattern[len] {
+            len += 1;
+            lps[index] = len;
+            index += 1;
+        } else if len != 0 {
+            len = lps[len - 1];
+        } else {
+            lps[index] = 0;
+            index += 1;
+        }
+    }
+
+    lps
+}
+
+fn kmp_find_all(haystack: &str, needle: &str) -> Vec<(usize, usize)> {
+    if needle.is_empty() {
+        return Vec::new();
+    }
+
+    let haystack_bytes = haystack.as_bytes();
+    let needle_bytes = needle.as_bytes();
+
+    let lps = compute_kmp_lps(needle_bytes);
+    let mut matches = Vec::new();
+
+    let mut haystack_index = 0usize;
+    let mut needle_index = 0usize;
+
+    while haystack_index < haystack_bytes.len() {
+        if haystack_bytes[haystack_index] == needle_bytes[needle_index] {
+            haystack_index += 1;
+            needle_index += 1;
+
+            if needle_index == needle_bytes.len() {
+                let start = haystack_index - needle_index;
+                matches.push((start, haystack_index));
+                needle_index = lps[needle_index - 1];
+            }
+        } else if needle_index != 0 {
+            needle_index = lps[needle_index - 1];
+        } else {
+            haystack_index += 1;
+        }
+    }
+
+    matches
+}
+
+fn collect_regex_matches(
+    text: &str,
+    regex: &regex::Regex,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+) -> Vec<SearchMatchResult> {
+    let mut matches = Vec::new();
+
+    for capture in regex.find_iter(text) {
+        let start = capture.start();
+        let end = capture.end();
+        let line_index = find_line_index_by_offset(line_starts, start);
+        let line_start = *line_starts.get(line_index).unwrap_or(&0usize);
+        let start_char = *byte_to_char.get(start).unwrap_or(&0usize);
+        let end_char = *byte_to_char.get(end).unwrap_or(&start_char);
+        let line_start_char = *byte_to_char.get(line_start).unwrap_or(&0usize);
+
+        matches.push(SearchMatchResult {
+            start,
+            end,
+            start_char,
+            end_char,
+            text: capture.as_str().to_string(),
+            line: line_index + 1,
+            column: start_char.saturating_sub(line_start_char) + 1,
+            line_text: get_line_text(text, line_starts, line_index),
+        });
+    }
+
+    matches
+}
+
+fn collect_literal_matches(
+    text: &str,
+    needle: &str,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+) -> Vec<SearchMatchResult> {
+    if needle.is_empty() {
+        return Vec::new();
+    }
+
+    let raw_matches = kmp_find_all(text, needle);
+    let needle_len_bytes = needle.len();
+
+    raw_matches
+        .into_iter()
+        .filter_map(|(start, _)| {
+            let end = start.saturating_add(needle_len_bytes);
+            let matched_text = text.get(start..end)?.to_string();
+            let line_index = find_line_index_by_offset(line_starts, start);
+            let line_start = *line_starts.get(line_index).unwrap_or(&0usize);
+            let start_char = *byte_to_char.get(start).unwrap_or(&0usize);
+            let end_char = *byte_to_char.get(end).unwrap_or(&start_char);
+            let line_start_char = *byte_to_char.get(line_start).unwrap_or(&0usize);
+
+            Some(SearchMatchResult {
+                start,
+                end,
+                start_char,
+                end_char,
+                text: matched_text,
+                line: line_index + 1,
+                column: start_char.saturating_sub(line_start_char) + 1,
+                line_text: get_line_text(text, line_starts, line_index),
+            })
+        })
+        .collect()
+}
+
+fn count_regex_matches(text: &str, regex: &regex::Regex, line_starts: &[usize]) -> (usize, usize) {
+    let mut total_matches = 0usize;
+    let mut matched_lines = 0usize;
+    let mut last_line_index: Option<usize> = None;
+
+    for capture in regex.find_iter(text) {
+        total_matches = total_matches.saturating_add(1);
+
+        let line_index = find_line_index_by_offset(line_starts, capture.start());
+        if last_line_index != Some(line_index) {
+            matched_lines = matched_lines.saturating_add(1);
+            last_line_index = Some(line_index);
+        }
+    }
+
+    (total_matches, matched_lines)
+}
+
+fn count_literal_matches(text: &str, needle: &str, line_starts: &[usize]) -> (usize, usize) {
+    if needle.is_empty() {
+        return (0usize, 0usize);
+    }
+
+    let haystack_bytes = text.as_bytes();
+    let needle_bytes = needle.as_bytes();
+
+    if needle_bytes.is_empty() || haystack_bytes.is_empty() || needle_bytes.len() > haystack_bytes.len() {
+        return (0usize, 0usize);
+    }
+
+    let lps = compute_kmp_lps(needle_bytes);
+    let mut total_matches = 0usize;
+    let mut matched_lines = 0usize;
+    let mut last_line_index: Option<usize> = None;
+
+    let mut haystack_index = 0usize;
+    let mut needle_index = 0usize;
+
+    while haystack_index < haystack_bytes.len() {
+        if haystack_bytes[haystack_index] == needle_bytes[needle_index] {
+            haystack_index += 1;
+            needle_index += 1;
+
+            if needle_index == needle_bytes.len() {
+                let start = haystack_index - needle_index;
+                total_matches = total_matches.saturating_add(1);
+
+                let line_index = find_line_index_by_offset(line_starts, start);
+                if last_line_index != Some(line_index) {
+                    matched_lines = matched_lines.saturating_add(1);
+                    last_line_index = Some(line_index);
+                }
+
+                needle_index = lps[needle_index - 1];
+            }
+        } else if needle_index != 0 {
+            needle_index = lps[needle_index - 1];
+        } else {
+            haystack_index += 1;
+        }
+    }
+
+    (total_matches, matched_lines)
+}
+
+fn normalize_search_offset(text: &str, start_offset: usize) -> usize {
+    let mut offset = start_offset.min(text.len());
+
+    while offset < text.len() && !text.is_char_boundary(offset) {
+        offset += 1;
+    }
+
+    offset
+}
+
+fn build_match_result_from_offsets(
+    text: &str,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start: usize,
+    end: usize,
+) -> Option<SearchMatchResult> {
+    if start >= end || end > text.len() {
+        return None;
+    }
+
+    if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+        return None;
+    }
+
+    let line_index = find_line_index_by_offset(line_starts, start);
+    let line_start = *line_starts.get(line_index).unwrap_or(&0usize);
+    let start_char = *byte_to_char.get(start).unwrap_or(&0usize);
+    let end_char = *byte_to_char.get(end).unwrap_or(&start_char);
+    let line_start_char = *byte_to_char.get(line_start).unwrap_or(&0usize);
+
+    Some(SearchMatchResult {
+        start,
+        end,
+        start_char,
+        end_char,
+        text: text.get(start..end).unwrap_or_default().to_string(),
+        line: line_index + 1,
+        column: start_char.saturating_sub(line_start_char) + 1,
+        line_text: get_line_text(text, line_starts, line_index),
+    })
+}
+
+fn collect_regex_matches_chunk(
+    text: &str,
+    regex: &regex::Regex,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start_offset: usize,
+    max_results: usize,
+) -> (Vec<SearchMatchResult>, Option<usize>) {
+    if max_results == 0 {
+        return (Vec::new(), None);
+    }
+
+    let normalized_offset = normalize_search_offset(text, start_offset);
+    let search_slice = text.get(normalized_offset..).unwrap_or_default();
+
+    let mut results = Vec::new();
+    let mut next_offset = None;
+
+    for capture in regex.find_iter(search_slice) {
+        let absolute_start = normalized_offset + capture.start();
+        let absolute_end = normalized_offset + capture.end();
+
+        if results.len() >= max_results {
+            next_offset = Some(absolute_start);
+            break;
+        }
+
+        if let Some(match_result) =
+            build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
+        {
+            results.push(match_result);
+        }
+    }
+
+    (results, next_offset)
+}
+
+fn collect_literal_matches_chunk(
+    text: &str,
+    needle: &str,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start_offset: usize,
+    max_results: usize,
+) -> (Vec<SearchMatchResult>, Option<usize>) {
+    if needle.is_empty() || max_results == 0 {
+        return (Vec::new(), None);
+    }
+
+    let normalized_offset = normalize_search_offset(text, start_offset);
+    let search_slice = text.get(normalized_offset..).unwrap_or_default();
+
+    let mut results = Vec::new();
+    let mut next_offset = None;
+
+    for (relative_start, _) in search_slice.match_indices(needle) {
+        let absolute_start = normalized_offset + relative_start;
+        let absolute_end = absolute_start + needle.len();
+
+        if results.len() >= max_results {
+            next_offset = Some(absolute_start);
+            break;
+        }
+
+        if let Some(match_result) =
+            build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
+        {
+            results.push(match_result);
+        }
+    }
+
+    (results, next_offset)
+}
+
+fn find_match_edge(
+    text: &str,
+    keyword: &str,
+    mode: &str,
+    case_sensitive: bool,
+    reverse: bool,
+) -> Result<Option<(usize, usize)>, String> {
+    if keyword.is_empty() {
+        return Ok(None);
+    }
+
+    match mode {
+        "literal" => {
+            if case_sensitive {
+                let maybe_start = if reverse {
+                    text.rfind(keyword)
+                } else {
+                    text.find(keyword)
+                };
+
+                Ok(maybe_start.map(|start| (start, start + keyword.len())))
+            } else {
+                let escaped = escape_regex_literal(keyword);
+                let regex = RegexBuilder::new(&escaped)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                if reverse {
+                    Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+                } else {
+                    Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+                }
+            }
+        }
+        "wildcard" => {
+            let regex_source = wildcard_to_regex_source(keyword);
+            let regex = RegexBuilder::new(&regex_source)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            if reverse {
+                Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+            } else {
+                Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+            }
+        }
+        "regex" => {
+            let regex = RegexBuilder::new(keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            if reverse {
+                Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+            } else {
+                Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+            }
+        }
+        _ => Err("Unsupported search mode".to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn search_first_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    reverse: bool,
+) -> Result<SearchFirstResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let source_text: String = doc.rope.chunks().collect();
+        let line_starts = build_line_starts(&source_text);
+        let byte_to_char = build_byte_to_char_map(&source_text);
+
+        let first_match = find_match_edge(&source_text, &keyword, &mode, case_sensitive, reverse)?
+            .and_then(|(start, end)| {
+                build_match_result_from_offsets(&source_text, &line_starts, &byte_to_char, start, end)
+            });
+
+        Ok(SearchFirstResultPayload {
+            first_match,
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn search_in_document_chunk(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    start_offset: usize,
+    max_results: usize,
+) -> Result<SearchChunkResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let source_text: String = doc.rope.chunks().collect();
+        let line_starts = build_line_starts(&source_text);
+        let byte_to_char = build_byte_to_char_map(&source_text);
+
+        if keyword.is_empty() {
+            return Ok(SearchChunkResultPayload {
+                matches: Vec::new(),
+                document_version: doc.document_version,
+                next_offset: None,
+            });
+        }
+
+        let effective_max = max_results.max(1);
+        let (matches, next_offset) = match mode.as_str() {
+            "literal" => {
+                if case_sensitive {
+                    collect_literal_matches_chunk(
+                        &source_text,
+                        &keyword,
+                        &line_starts,
+                        &byte_to_char,
+                        start_offset,
+                        effective_max,
+                    )
+                } else {
+                    let escaped = escape_regex_literal(&keyword);
+                    let regex = RegexBuilder::new(&escaped)
+                        .case_insensitive(true)
+                        .build()
+                        .map_err(|e| e.to_string())?;
+
+                    collect_regex_matches_chunk(
+                        &source_text,
+                        &regex,
+                        &line_starts,
+                        &byte_to_char,
+                        start_offset,
+                        effective_max,
+                    )
+                }
+            }
+            "wildcard" => {
+                let regex_source = wildcard_to_regex_source(&keyword);
+                let regex = RegexBuilder::new(&regex_source)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                collect_regex_matches_chunk(
+                    &source_text,
+                    &regex,
+                    &line_starts,
+                    &byte_to_char,
+                    start_offset,
+                    effective_max,
+                )
+            }
+            "regex" => {
+                let regex = RegexBuilder::new(&keyword)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                collect_regex_matches_chunk(
+                    &source_text,
+                    &regex,
+                    &line_starts,
+                    &byte_to_char,
+                    start_offset,
+                    effective_max,
+                )
+            }
+            _ => {
+                return Err("Unsupported search mode".to_string());
+            }
+        };
+
+        Ok(SearchChunkResultPayload {
+            matches,
+            document_version: doc.document_version,
+            next_offset,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn search_count_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+) -> Result<SearchCountResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let source_text: String = doc.rope.chunks().collect();
+        let line_starts = build_line_starts(&source_text);
+
+        if keyword.is_empty() {
+            return Ok(SearchCountResultPayload {
+                total_matches: 0,
+                matched_lines: 0,
+                document_version: doc.document_version,
+            });
+        }
+
+        let (total_matches, matched_lines) = match mode.as_str() {
+            "literal" => {
+                if case_sensitive {
+                    count_literal_matches(&source_text, &keyword, &line_starts)
+                } else {
+                    let escaped = escape_regex_literal(&keyword);
+                    let regex = RegexBuilder::new(&escaped)
+                        .case_insensitive(true)
+                        .build()
+                        .map_err(|e| e.to_string())?;
+
+                    count_regex_matches(&source_text, &regex, &line_starts)
+                }
+            }
+            "wildcard" => {
+                let regex_source = wildcard_to_regex_source(&keyword);
+                let regex = RegexBuilder::new(&regex_source)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                count_regex_matches(&source_text, &regex, &line_starts)
+            }
+            "regex" => {
+                let regex = RegexBuilder::new(&keyword)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                count_regex_matches(&source_text, &regex, &line_starts)
+            }
+            _ => {
+                return Err("Unsupported search mode".to_string());
+            }
+        };
+
+        Ok(SearchCountResultPayload {
+            total_matches,
+            matched_lines,
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn search_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+) -> Result<SearchResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let source_text: String = doc.rope.chunks().collect();
+        let line_starts = build_line_starts(&source_text);
+        let byte_to_char = build_byte_to_char_map(&source_text);
+
+        if keyword.is_empty() {
+            return Ok(SearchResultPayload {
+                matches: Vec::new(),
+                document_version: doc.document_version,
+            });
+        }
+
+        let matches = match mode.as_str() {
+            "literal" => {
+                if case_sensitive {
+                    collect_literal_matches(&source_text, &keyword, &line_starts, &byte_to_char)
+                } else {
+                    let escaped = escape_regex_literal(&keyword);
+                    let regex = RegexBuilder::new(&escaped)
+                        .case_insensitive(true)
+                        .build()
+                        .map_err(|e| e.to_string())?;
+
+                    collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+                }
+            }
+            "wildcard" => {
+                let regex_source = wildcard_to_regex_source(&keyword);
+                let regex = RegexBuilder::new(&regex_source)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+            }
+            "regex" => {
+                let regex = RegexBuilder::new(&keyword)
+                    .case_insensitive(!case_sensitive)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+            }
+            _ => {
+                return Err("Unsupported search mode".to_string());
+            }
+        };
+
+        Ok(SearchResultPayload {
+            matches,
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_document_version(state: State<'_, AppState>, id: String) -> Result<u64, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        Ok(doc.document_version)
+    } else {
+        Err("Document not found".to_string())
+    }
 }
 
 #[tauri::command]
@@ -393,6 +1175,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
         rope,
         encoding,
         path: Some(path_buf.clone()),
+        document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,
@@ -553,6 +1336,7 @@ pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
         rope: Rope::new(),
         encoding,
         path: None,
+        document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,

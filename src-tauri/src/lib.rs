@@ -30,7 +30,12 @@ pub fn run() {
             commands::undo,
             commands::redo,
             commands::edit_text,
-            commands::replace_line_range
+            commands::replace_line_range,
+            commands::search_first_in_document,
+            commands::search_in_document_chunk,
+            commands::search_count_in_document,
+            commands::search_in_document,
+            commands::get_document_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@ import { Editor } from '@/components/Editor';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Sidebar } from '@/components/Sidebar';
 import { StatusBar } from '@/components/StatusBar';
+import { SearchReplacePanel } from '@/components/SearchReplacePanel';
 import { useStore } from '@/store/useStore';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
       <TitleBar />
       <Toolbar />
       <SettingsModal />
+      <SearchReplacePanel />
       
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar />

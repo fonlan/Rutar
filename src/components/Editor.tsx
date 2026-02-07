@@ -24,6 +24,13 @@ interface EditorSegmentState {
   text: string;
 }
 
+interface SearchHighlightState {
+  line: number;
+  column: number;
+  length: number;
+  id: number;
+}
+
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
@@ -167,6 +174,14 @@ function alignScrollOffset(value: number) {
   return Number((Math.round(value / cssPixelStep) * cssPixelStep).toFixed(4));
 }
 
+function dispatchDocumentUpdated(tabId: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:document-updated', {
+      detail: { tabId },
+    })
+  );
+}
+
 export function Editor({ tab }: { tab: FileTab }) {
   const { settings = { fontSize: 14, fontFamily: 'monospace', wordWrap: false }, updateTab } = useStore();
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
@@ -178,6 +193,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     endLine: 0,
     text: '',
   });
+  const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
@@ -653,6 +669,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         syncedTextRef.current = targetText;
         suppressExternalReloadRef.current = true;
         updateTab(tab.id, { lineCount: newLineCountSafe, isDirty: true });
+        dispatchDocumentUpdated(tab.id);
 
         if (contentRef.current) {
           const alignedTop = alignScrollOffset(currentScrollTop);
@@ -697,6 +714,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       syncedTextRef.current = targetText;
       suppressExternalReloadRef.current = true;
       updateTab(tab.id, { lineCount: newLineCount, isDirty: true });
+      dispatchDocumentUpdated(tab.id);
       await syncVisibleTokens(newLineCount);
     } catch (e) {
       console.error('Edit sync error:', e);
@@ -837,86 +855,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     return tokensArr.map((token, i) => {
       const key = `t-${i}`;
       if (token.text === undefined || token.text === null) return null;
-
-      let typeClass = '';
-      if (token.type) {
-        const cleanType = token.type.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-        typeClass = `token-${cleanType}`;
-
-        if (cleanType.includes('string')) typeClass += ' token-string';
-        if (
-          cleanType.includes('keyword') ||
-          [
-            'fn',
-            'let',
-            'pub',
-            'use',
-            'mod',
-            'struct',
-            'enum',
-            'impl',
-            'trait',
-            'where',
-            'type',
-            'match',
-            'if',
-            'else',
-            'for',
-            'while',
-            'loop',
-            'return',
-            'break',
-            'continue',
-            'as',
-            'move',
-            'ref',
-            'mut',
-            'static',
-            'unsafe',
-            'extern',
-            'crate',
-            'self',
-            'super',
-          ].includes(cleanType)
-        ) {
-          typeClass += ' token-keyword';
-        }
-        if (cleanType.includes('comment')) typeClass += ' token-comment';
-        if (cleanType.includes('number') || cleanType.includes('integer') || cleanType.includes('float')) {
-          typeClass += ' token-number';
-        }
-        if (cleanType.includes('identifier') && !cleanType.includes('property')) {
-          typeClass += ' token-identifier';
-        }
-        if (
-          cleanType.includes('type') ||
-          [
-            'usize',
-            'u8',
-            'u16',
-            'u32',
-            'u64',
-            'u128',
-            'i8',
-            'i16',
-            'i32',
-            'i64',
-            'i128',
-            'f32',
-            'f64',
-            'bool',
-            'char',
-            'str',
-            'string',
-            'option',
-            'result',
-            'vec',
-            'box',
-          ].includes(cleanType)
-        ) {
-          typeClass += ' token-type';
-        }
-      }
+      const typeClass = getTokenTypeClass(token);
 
       return (
         <span key={key} className={typeClass}>
@@ -933,6 +872,220 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     return <span>{text}</span>;
   }, []);
+
+  const getLineHighlightRange = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (!searchHighlight || searchHighlight.length <= 0 || searchHighlight.line !== lineNumber) {
+        return null;
+      }
+
+      const start = Math.max(0, searchHighlight.column - 1);
+      const end = Math.min(lineTextLength, start + searchHighlight.length);
+
+      if (end <= start) {
+        return null;
+      }
+
+      return { start, end };
+    },
+    [searchHighlight]
+  );
+
+  const renderHighlightedPlainLine = useCallback(
+    (text: string, lineNumber: number) => {
+      const safeText = text || '';
+      const range = getLineHighlightRange(lineNumber, safeText.length);
+
+      if (!range) {
+        return renderPlainLine(safeText);
+      }
+
+      const before = safeText.slice(0, range.start);
+      const matchText = safeText.slice(range.start, range.end);
+      const after = safeText.slice(range.end);
+
+      return (
+        <span>
+          {before}
+          <mark className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
+            {matchText}
+          </mark>
+          {after}
+        </span>
+      );
+    },
+    [getLineHighlightRange, renderPlainLine]
+  );
+
+  const getTokenTypeClass = useCallback((token: SyntaxToken) => {
+    let typeClass = '';
+    if (token.type) {
+      const cleanType = token.type.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+      typeClass = `token-${cleanType}`;
+
+      if (cleanType.includes('string')) typeClass += ' token-string';
+      if (
+        cleanType.includes('keyword') ||
+        [
+          'fn',
+          'let',
+          'pub',
+          'use',
+          'mod',
+          'struct',
+          'enum',
+          'impl',
+          'trait',
+          'where',
+          'type',
+          'match',
+          'if',
+          'else',
+          'for',
+          'while',
+          'loop',
+          'return',
+          'break',
+          'continue',
+          'as',
+          'move',
+          'ref',
+          'mut',
+          'static',
+          'unsafe',
+          'extern',
+          'crate',
+          'self',
+          'super',
+        ].includes(cleanType)
+      ) {
+        typeClass += ' token-keyword';
+      }
+      if (cleanType.includes('comment')) typeClass += ' token-comment';
+      if (cleanType.includes('number') || cleanType.includes('integer') || cleanType.includes('float')) {
+        typeClass += ' token-number';
+      }
+      if (cleanType.includes('identifier') && !cleanType.includes('property')) {
+        typeClass += ' token-identifier';
+      }
+      if (
+        cleanType.includes('type') ||
+        [
+          'usize',
+          'u8',
+          'u16',
+          'u32',
+          'u64',
+          'u128',
+          'i8',
+          'i16',
+          'i32',
+          'i64',
+          'i128',
+          'f32',
+          'f64',
+          'bool',
+          'char',
+          'str',
+          'string',
+          'option',
+          'result',
+          'vec',
+          'box',
+        ].includes(cleanType)
+      ) {
+        typeClass += ' token-type';
+      }
+    }
+
+    return typeClass;
+  }, []);
+
+  const renderHighlightedTokens = useCallback(
+    (tokensArr: SyntaxToken[], lineNumber: number) => {
+      if (!tokensArr || tokensArr.length === 0) return null;
+
+      const lineText = tokensArr.map((token) => token.text ?? '').join('');
+      const range = getLineHighlightRange(lineNumber, lineText.length);
+
+      if (!range) {
+        return renderTokens(tokensArr);
+      }
+
+      let cursor = 0;
+      const rendered: React.ReactNode[] = [];
+
+      tokensArr.forEach((token, tokenIndex) => {
+        if (token.text === undefined || token.text === null) {
+          return;
+        }
+
+        const tokenText = token.text;
+        const tokenLength = tokenText.length;
+        const tokenStart = cursor;
+        const tokenEnd = tokenStart + tokenLength;
+        const typeClass = getTokenTypeClass(token);
+
+        if (tokenLength === 0) {
+          rendered.push(
+            <span key={`t-empty-${tokenIndex}`} className={typeClass}>
+              {tokenText}
+            </span>
+          );
+          return;
+        }
+
+        const overlapStart = Math.max(tokenStart, range.start);
+        const overlapEnd = Math.min(tokenEnd, range.end);
+
+        if (overlapStart >= overlapEnd) {
+          rendered.push(
+            <span key={`t-full-${tokenIndex}`} className={typeClass}>
+              {tokenText}
+            </span>
+          );
+          cursor = tokenEnd;
+          return;
+        }
+
+        const beforeLength = overlapStart - tokenStart;
+        const matchLength = overlapEnd - overlapStart;
+        const afterLength = tokenEnd - overlapEnd;
+
+        if (beforeLength > 0) {
+          rendered.push(
+            <span key={`t-before-${tokenIndex}`} className={typeClass}>
+              {tokenText.slice(0, beforeLength)}
+            </span>
+          );
+        }
+
+        rendered.push(
+          <mark
+            key={`t-match-${tokenIndex}`}
+            className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70"
+          >
+            <span className={typeClass}>
+              {tokenText.slice(beforeLength, beforeLength + matchLength)}
+            </span>
+          </mark>
+        );
+
+        if (afterLength > 0) {
+          rendered.push(
+            <span key={`t-after-${tokenIndex}`} className={typeClass}>
+              {tokenText.slice(beforeLength + matchLength)}
+            </span>
+          );
+        }
+
+        cursor = tokenEnd;
+      });
+
+      return rendered;
+    },
+    [getLineHighlightRange, getTokenTypeClass, renderTokens]
+  );
 
   useEffect(() => {
     if (isLargeReadOnlyMode) {
@@ -1073,6 +1226,77 @@ export function Editor({ tab }: { tab: FileTab }) {
       window.removeEventListener('blur', endScrollbarDragSelectionGuard);
     };
   }, [endScrollbarDragSelectionGuard, isLargeReadOnlyMode]);
+
+  useEffect(() => {
+    setSearchHighlight(null);
+  }, [tab.id]);
+
+  useEffect(() => {
+    const handleNavigateToLine = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId?: string; line?: number; column?: number; length?: number }>;
+      const detail = customEvent.detail;
+
+      if (!detail || detail.tabId !== tab.id) {
+        return;
+      }
+
+      const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
+      const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
+      const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
+
+      setSearchHighlight({
+        line: targetLine,
+        column: targetColumn,
+        length: targetLength,
+        id: Date.now(),
+      });
+
+      const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
+      const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
+
+      if (isHugeEditableMode) {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = targetScrollTop;
+        }
+
+        if (contentRef.current) {
+          contentRef.current.scrollTop = targetScrollTop;
+          contentRef.current.focus();
+        }
+
+        if (listElement) {
+          listElement.scrollTop = targetScrollTop;
+        }
+
+        void syncVisibleTokens(Math.max(1, tab.lineCount));
+        return;
+      }
+
+      if (isLargeReadOnlyMode) {
+        if (listElement) {
+          listElement.scrollTop = targetScrollTop;
+        }
+        void syncVisibleTokens(Math.max(1, tab.lineCount));
+        return;
+      }
+
+      if (contentRef.current) {
+        contentRef.current.scrollTop = targetScrollTop;
+        contentRef.current.focus();
+      }
+
+      if (listElement) {
+        listElement.scrollTop = targetScrollTop;
+      }
+
+      void syncVisibleTokens(Math.max(1, tab.lineCount));
+    };
+
+    window.addEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
+    return () => {
+      window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
+    };
+  }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, syncVisibleTokens, tab.id, tab.lineCount]);
 
   useEffect(() => {
     const handleForcedRefresh = (event: Event) => {
@@ -1222,9 +1446,9 @@ export function Editor({ tab }: { tab: FileTab }) {
                     {index + 1}
                   </span>
                   {usePlainLineRendering
-                    ? renderPlainLine(plainLine)
+                    ? renderHighlightedPlainLine(plainLine, index + 1)
                     : lineTokensArr.length > 0
-                    ? renderTokens(lineTokensArr)
+                    ? renderHighlightedTokens(lineTokensArr, index + 1)
                     : <span className="opacity-10 italic">...</span>}
                 </div>
               );

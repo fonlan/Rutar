@@ -25,6 +25,7 @@ pub struct Document {
     pub rope: Rope,
     pub encoding: &'static Encoding,
     pub path: Option<PathBuf>,
+    pub document_version: u64,
     pub undo_stack: Vec<EditOperation>,
     pub redo_stack: Vec<EditOperation>,
     pub parser: Option<Parser>,
