@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Minus, Square, X, Settings } from 'lucide-react';
-import { useCallback } from 'react';
+import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -16,11 +16,34 @@ export function TitleBar() {
     const toggleSettings = useStore((state) => state.toggleSettings);
     const addTab = useStore((state) => state.addTab);
     const settings = useStore((state) => state.settings);
+    const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const alwaysOnTopTitle = isAlwaysOnTop ? 'Disable Always on Top' : 'Enable Always on Top';
 
     const handleMinimize = () => appWindow.minimize();
     const handleMaximize = () => appWindow.toggleMaximize();
     const handleClose = () => appWindow.close();
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const syncAlwaysOnTopState = async () => {
+            try {
+                const pinned = await appWindow.isAlwaysOnTop();
+                if (isMounted) {
+                    setIsAlwaysOnTop(pinned);
+                }
+            } catch (error) {
+                console.error('Failed to query always on top state:', error);
+            }
+        };
+
+        void syncAlwaysOnTopState();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleCloseTab = useCallback(async (tab: FileTab) => {
         const shouldCreateBlankTab = tabs.length === 1;
@@ -38,6 +61,17 @@ export function TitleBar() {
             console.error('Failed to close tab:', error);
         }
     }, [addTab, closeTab, tabs.length]);
+
+    const handleToggleAlwaysOnTop = useCallback(async () => {
+        const nextValue = !isAlwaysOnTop;
+
+        try {
+            await appWindow.setAlwaysOnTop(nextValue);
+            setIsAlwaysOnTop(nextValue);
+        } catch (error) {
+            console.error('Failed to toggle always on top:', error);
+        }
+    }, [isAlwaysOnTop]);
 
     return (
         <div 
@@ -76,6 +110,17 @@ export function TitleBar() {
 
             {/* Window Controls */}
             <div className="flex items-center h-full bg-background border-b border-border relative z-20 px-1">
+                <button
+                    type="button"
+                    onClick={() => void handleToggleAlwaysOnTop()}
+                    className={cn(
+                        'h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors',
+                        isAlwaysOnTop && 'bg-accent text-accent-foreground'
+                    )}
+                    title={alwaysOnTopTitle}
+                >
+                    {isAlwaysOnTop ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                </button>
                 <button 
                     type="button"
                     onClick={() => toggleSettings(true)}
