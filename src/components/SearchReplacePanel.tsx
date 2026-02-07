@@ -237,6 +237,7 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       collapseResults: 'Collapse results',
       expandResults: 'Expand results',
       results: 'Results',
+      all: 'All',
       collapse: 'Collapse',
       replacePlaceholder: 'Replace with',
       modeLiteral: 'Literal',
@@ -353,6 +354,7 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     collapseResults: '收起结果',
     expandResults: '展开结果',
     results: '结果',
+    all: '所有',
     collapse: '收起',
     replacePlaceholder: '替换为',
     modeLiteral: '普通',
@@ -2778,11 +2780,7 @@ export function SearchReplacePanel() {
   const isResultPanelOpen = resultPanelState === 'open';
   const isResultPanelMinimized = resultPanelState === 'minimized';
   const resultToggleTitle = isResultPanelOpen ? messages.collapseResults : messages.expandResults;
-  const resultToggleLabel = isResultPanelOpen
-    ? messages.collapse
-    : isFilterMode
-      ? messages.filterRun
-      : messages.results;
+  const filterToggleLabel = isResultPanelOpen ? messages.collapse : messages.filterRun;
   const isFilterRunReady = isFilterMode && filterRulesPayload.length > 0;
 
   const toggleResultPanelAndRefresh = useCallback(() => {
@@ -2906,19 +2904,6 @@ export function SearchReplacePanel() {
                 placeholder={messages.findPlaceholder}
                 className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
               />
-              <button
-                type="button"
-                className={cn(
-                  'rounded-md border px-2 py-1 text-xs transition-colors',
-                  resultPanelState !== 'closed'
-                    ? 'border-primary text-primary'
-                    : 'border-border text-muted-foreground hover:bg-muted'
-                )}
-                onClick={toggleResultPanelAndRefresh}
-                title={resultToggleTitle}
-              >
-                {resultToggleLabel}
-              </button>
             </div>
           ) : (
             <div className="mt-3 space-y-2">
@@ -2934,17 +2919,13 @@ export function SearchReplacePanel() {
                 <button
                   type="button"
                   className={cn(
-                    'rounded-md border px-3 py-1 text-xs font-semibold transition-colors',
-                    resultPanelState !== 'closed'
-                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                      : isFilterRunReady
-                        ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600'
-                        : 'border-border bg-muted text-muted-foreground'
+                    'rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90',
+                    !isFilterRunReady && resultPanelState === 'closed' && 'opacity-60'
                   )}
                   onClick={toggleResultPanelAndRefresh}
                   title={isFilterMode ? messages.filterRunHint : resultToggleTitle}
                 >
-                  {resultToggleLabel}
+                  {filterToggleLabel}
                 </button>
               </div>
 
@@ -3251,100 +3232,133 @@ export function SearchReplacePanel() {
           )}
 
           {!isFilterMode && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <ModeButton
-              active={searchMode === 'literal'}
-              label={messages.modeLiteral}
-              onClick={() => {
-                setSearchMode('literal');
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-            />
-            <ModeButton
-              active={searchMode === 'regex'}
-              label={messages.modeRegex}
-              onClick={() => {
-                setSearchMode('regex');
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-            />
-            <ModeButton
-              active={searchMode === 'wildcard'}
-              label={messages.modeWildcard}
-              onClick={() => {
-                setSearchMode('wildcard');
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-            />
+            <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <ModeButton
+                  active={searchMode === 'literal'}
+                  label={messages.modeLiteral}
+                  onClick={() => {
+                    setSearchMode('literal');
+                    setErrorMessage(null);
+                    resetSearchState();
+                  }}
+                />
+                <ModeButton
+                  active={searchMode === 'regex'}
+                  label={messages.modeRegex}
+                  onClick={() => {
+                    setSearchMode('regex');
+                    setErrorMessage(null);
+                    resetSearchState();
+                  }}
+                />
+                <ModeButton
+                  active={searchMode === 'wildcard'}
+                  label={messages.modeWildcard}
+                  onClick={() => {
+                    setSearchMode('wildcard');
+                    setErrorMessage(null);
+                    resetSearchState();
+                  }}
+                />
 
-            <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={caseSensitive}
-                onChange={(event) => {
-                  setCaseSensitive(event.target.checked);
-                  setErrorMessage(null);
-                  resetSearchState();
-                }}
-              />
-              {messages.caseSensitive}
-            </label>
+                <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={caseSensitive}
+                    onChange={(event) => {
+                      setCaseSensitive(event.target.checked);
+                      setErrorMessage(null);
+                      resetSearchState();
+                    }}
+                  />
+                  {messages.caseSensitive}
+                </label>
 
-            <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={reverseSearch}
-                onChange={(event) => setReverseSearch(event.target.checked)}
-              />
-              {messages.reverseSearch}
-            </label>
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={reverseSearch}
+                    onChange={(event) => setReverseSearch(event.target.checked)}
+                  />
+                  {messages.reverseSearch}
+                </label>
+              </div>
 
-            <button
-              type="button"
-              className="ml-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-              onClick={() => void navigateByStep(-1)}
-              title={messages.prevMatch}
-            >
-              <ArrowUp className="h-3 w-3" />
-              {messages.previous}
-            </button>
+              {isReplaceMode ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    onClick={() => void navigateByStep(-1)}
+                    title={messages.prevMatch}
+                  >
+                    <ArrowUp className="h-3 w-3" />
+                    {messages.previous}
+                  </button>
 
-            <button
-              type="button"
-              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-              onClick={() => void navigateByStep(1)}
-              title={messages.nextMatch}
-            >
-              <ArrowDown className="h-3 w-3" />
-              {messages.next}
-            </button>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    onClick={() => void navigateByStep(1)}
+                    title={messages.nextMatch}
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                    {messages.next}
+                  </button>
 
-            {isReplaceMode && (
-              <>
-                <button
-                  type="button"
-                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
-                  onClick={() => void handleReplaceCurrent()}
-                  disabled={!canReplace}
-                  title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
-                >
-                  {messages.replace}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
-                  onClick={() => void handleReplaceAll()}
-                  disabled={!canReplace}
-                  title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
-                >
-                  {messages.replaceAll}
-                </button>
-              </>
-            )}
-          </div>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
+                    onClick={() => void handleReplaceCurrent()}
+                    disabled={!canReplace}
+                    title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
+                  >
+                    {messages.replace}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                    onClick={() => void handleReplaceAll()}
+                    disabled={!canReplace}
+                    title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
+                  >
+                    {messages.replaceAll}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    onClick={() => void navigateByStep(-1)}
+                    title={messages.prevMatch}
+                  >
+                    <ArrowUp className="h-3 w-3" />
+                    {messages.previous}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    onClick={() => void navigateByStep(1)}
+                    title={messages.nextMatch}
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                    {messages.next}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90"
+                    onClick={toggleResultPanelAndRefresh}
+                    title={resultToggleTitle}
+                  >
+                    {messages.all}
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           <div
