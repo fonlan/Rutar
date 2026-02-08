@@ -117,6 +117,8 @@ pub struct FileInfo {
     line_ending: String,
     line_count: usize,
     large_file_mode: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    syntax_override: Option<String>,
 }
 
 fn detect_line_ending(text: &str) -> LineEnding {
@@ -644,6 +646,60 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
     }
 
     None
+}
+
+fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
+    match syntax_key {
+        "javascript" => Some(tree_sitter_javascript::LANGUAGE.into()),
+        "typescript" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
+        "python" => Some(tree_sitter_python::LANGUAGE.into()),
+        "json" => Some(tree_sitter_json::LANGUAGE.into()),
+        "html" => Some(tree_sitter_html::LANGUAGE.into()),
+        "css" => Some(tree_sitter_css::LANGUAGE.into()),
+        "bash" => Some(tree_sitter_bash::LANGUAGE.into()),
+        "toml" => Some(tree_sitter_toml_ng::LANGUAGE.into()),
+        "yaml" => Some(tree_sitter_yaml::LANGUAGE.into()),
+        "xml" => Some(tree_sitter_xml::LANGUAGE_XML.into()),
+        "c" => Some(tree_sitter_c::LANGUAGE.into()),
+        "cpp" => Some(tree_sitter_cpp::LANGUAGE.into()),
+        "go" => Some(tree_sitter_go::LANGUAGE.into()),
+        "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        _ => None,
+    }
+}
+
+fn normalize_syntax_override(syntax_override: Option<&str>) -> Result<Option<String>, String> {
+    let Some(raw_value) = syntax_override else {
+        return Ok(None);
+    };
+
+    let normalized = raw_value.trim().to_lowercase();
+    if normalized.is_empty() || normalized == "auto" {
+        return Ok(None);
+    }
+
+    if normalized == "plain_text" {
+        return Ok(Some(normalized));
+    }
+
+    if language_from_syntax_key(normalized.as_str()).is_some() {
+        return Ok(Some(normalized));
+    }
+
+    Err(format!("Unsupported syntax override: {raw_value}"))
+}
+
+fn resolve_document_language(path: &Option<PathBuf>, syntax_override: Option<&str>) -> Option<Language> {
+    if let Some(syntax_key) = syntax_override {
+        if syntax_key == "plain_text" {
+            return None;
+        }
+
+        return language_from_syntax_key(syntax_key);
+    }
+
+    get_language_from_path(path)
 }
 
 fn create_parser(language: Option<Language>) -> Option<Parser> {
@@ -1755,7 +1811,7 @@ fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {
         return;
     }
 
-    doc.language = get_language_from_path(&doc.path);
+    doc.language = resolve_document_language(&doc.path, doc.syntax_override.as_deref());
     doc.parser = create_parser(doc.language.clone());
     doc.tree = None;
     doc.syntax_dirty = doc.parser.is_some();
@@ -3808,6 +3864,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
         encoding,
         line_ending,
         path: Some(path_buf.clone()),
+        syntax_override: None,
         document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
@@ -3833,6 +3890,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
         line_ending: line_ending.label().to_string(),
         line_count,
         large_file_mode,
+        syntax_override: None,
     })
 }
 
@@ -3975,6 +4033,23 @@ pub fn set_line_ending(state: State<'_, AppState>, id: String, new_line_ending: 
 }
 
 #[tauri::command]
+pub fn set_document_syntax(
+    state: State<'_, AppState>,
+    id: String,
+    syntax_override: Option<String>,
+) -> Result<(), String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let normalized = normalize_syntax_override(syntax_override.as_deref())?;
+        doc.syntax_override = normalized;
+        let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
+        configure_document_syntax(&mut doc, enable_syntax);
+        Ok(())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
 pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
     let id = Uuid::new_v4().to_string();
     let encoding = encoding_rs::UTF_8;
@@ -3985,6 +4060,7 @@ pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
         encoding,
         line_ending,
         path: None,
+        syntax_override: None,
         document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
@@ -4006,6 +4082,7 @@ pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
         line_ending: line_ending.label().to_string(),
         line_count: 1,
         large_file_mode: false,
+        syntax_override: None,
     })
 }
 

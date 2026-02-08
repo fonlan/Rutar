@@ -1,0 +1,113 @@
+import { FileTab, SyntaxKey } from '@/store/useStore';
+
+export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
+  { value: 'plain_text', label: 'Plain Text' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'python', label: 'Python' },
+  { value: 'json', label: 'JSON' },
+  { value: 'html', label: 'HTML' },
+  { value: 'css', label: 'CSS' },
+  { value: 'bash', label: 'Bash' },
+  { value: 'toml', label: 'TOML' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'xml', label: 'XML' },
+  { value: 'c', label: 'C' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'go', label: 'Go' },
+  { value: 'java', label: 'Java' },
+];
+
+const syntaxLabelByValue = new Map(SYNTAX_OPTIONS.map((item) => [item.value, item.label]));
+
+function toLowerFileName(input: string) {
+  const trimmed = (input || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.split(/[\\/]/).pop()?.toLowerCase() ?? '';
+}
+
+export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): SyntaxKey {
+  const fileName = toLowerFileName(tab.path || tab.name);
+  if (!fileName) {
+    return 'plain_text';
+  }
+
+  if (fileName === 'dockerfile' || fileName === 'makefile') {
+    return 'bash';
+  }
+
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex === -1 || dotIndex === fileName.length - 1) {
+    return 'plain_text';
+  }
+
+  const extension = fileName.slice(dotIndex + 1);
+  switch (extension) {
+    case 'js':
+    case 'jsx':
+    case 'mjs':
+    case 'cjs':
+      return 'javascript';
+    case 'ts':
+    case 'tsx':
+    case 'mts':
+    case 'cts':
+      return 'typescript';
+    case 'rs':
+      return 'rust';
+    case 'py':
+    case 'pyw':
+      return 'python';
+    case 'json':
+    case 'jsonc':
+      return 'json';
+    case 'html':
+    case 'htm':
+    case 'xhtml':
+      return 'html';
+    case 'css':
+    case 'scss':
+    case 'sass':
+    case 'less':
+      return 'css';
+    case 'sh':
+    case 'bash':
+    case 'zsh':
+      return 'bash';
+    case 'toml':
+      return 'toml';
+    case 'yaml':
+    case 'yml':
+      return 'yaml';
+    case 'xml':
+    case 'svg':
+      return 'xml';
+    case 'c':
+    case 'h':
+      return 'c';
+    case 'cc':
+    case 'cp':
+    case 'cpp':
+    case 'cxx':
+    case 'c++':
+    case 'hh':
+    case 'hpp':
+    case 'hxx':
+      return 'cpp';
+    case 'go':
+      return 'go';
+    case 'java':
+      return 'java';
+    default:
+      return 'plain_text';
+  }
+}
+
+export function getSyntaxLabel(value: SyntaxKey) {
+  return syntaxLabelByValue.get(value) ?? 'Plain Text';
+}
+

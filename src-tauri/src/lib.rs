@@ -69,6 +69,7 @@ pub fn run() {
             commands::save_file_as,
             commands::convert_encoding,
             commands::set_line_ending,
+            commands::set_document_syntax,
             commands::new_file,
             commands::read_dir,
             commands::open_in_file_manager,

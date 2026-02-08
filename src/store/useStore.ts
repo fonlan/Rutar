@@ -8,8 +8,27 @@ export interface FileTab {
   lineEnding: 'CRLF' | 'LF' | 'CR';
   lineCount: number;
   largeFileMode: boolean;
+  syntaxOverride?: SyntaxKey | null;
   isDirty?: boolean;
 }
+
+export type SyntaxKey =
+  | 'plain_text'
+  | 'javascript'
+  | 'typescript'
+  | 'rust'
+  | 'python'
+  | 'json'
+  | 'html'
+  | 'css'
+  | 'bash'
+  | 'toml'
+  | 'yaml'
+  | 'xml'
+  | 'c'
+  | 'cpp'
+  | 'go'
+  | 'java';
 
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';

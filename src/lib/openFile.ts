@@ -13,6 +13,7 @@ function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
     lineEnding: fileInfo.lineEnding,
     lineCount: fileInfo.lineCount,
     largeFileMode: fileInfo.largeFileMode,
+    syntaxOverride: fileInfo.syntaxOverride ?? null,
     isDirty: false,
   });
 }

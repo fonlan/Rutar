@@ -63,6 +63,7 @@ pub struct Document {
     pub encoding: &'static Encoding,
     pub line_ending: LineEnding,
     pub path: Option<PathBuf>,
+    pub syntax_override: Option<String>,
     pub document_version: u64,
     pub undo_stack: Vec<EditOperation>,
     pub redo_stack: Vec<EditOperation>,

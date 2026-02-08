@@ -2,6 +2,8 @@ import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Globe, Zap } from 'lucide-react';
 import { t } from '@/i18n';
+import { detectSyntaxKeyFromTab, getSyntaxLabel, SYNTAX_OPTIONS } from '@/lib/syntax';
+import { SyntaxKey } from '@/store/useStore';
 
 type LineEnding = 'CRLF' | 'LF' | 'CR';
 
@@ -54,6 +56,35 @@ export function StatusBar() {
         }
     };
 
+    const handleSyntaxChange = async (nextSyntax: string) => {
+        try {
+            const syntaxOverride = nextSyntax === 'auto' ? null : (nextSyntax as SyntaxKey);
+            await invoke('set_document_syntax', {
+                id: activeTab.id,
+                syntaxOverride,
+            });
+
+            updateTab(activeTab.id, { syntaxOverride });
+
+            window.dispatchEvent(
+                new CustomEvent('rutar:force-refresh', {
+                    detail: {
+                        tabId: activeTab.id,
+                        lineCount: activeTab.lineCount,
+                        preserveCaret: true,
+                    },
+                })
+            );
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const detectedSyntax = detectSyntaxKeyFromTab(activeTab);
+    const currentSyntax = activeTab.syntaxOverride ?? null;
+    const syntaxSelectValue = currentSyntax ?? 'auto';
+    const autoSyntaxLabel = `Auto (${getSyntaxLabel(detectedSyntax)})`;
+
     return (
         <div
             className="h-6 bg-muted/50 border-t flex items-center justify-between px-3 text-[10px] text-muted-foreground select-none"
@@ -100,7 +131,23 @@ export function StatusBar() {
                     </select>
                 </div>
                 <div className="w-[1px] h-3 bg-border" />
-                <span className="font-medium uppercase">{activeTab.name.split('.').pop() || 'txt'}</span>
+                <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
+                    <select
+                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px]"
+                        value={syntaxSelectValue}
+                        onChange={(e) => handleSyntaxChange(e.target.value)}
+                        title={currentSyntax ? getSyntaxLabel(currentSyntax) : autoSyntaxLabel}
+                    >
+                        <option value="auto" className="bg-background text-foreground">
+                            {autoSyntaxLabel}
+                        </option>
+                        {SYNTAX_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value} className="bg-background text-foreground">
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
             </div>
         </div>
     );
