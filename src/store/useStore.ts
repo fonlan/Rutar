@@ -31,6 +31,7 @@ interface SettingsState {
   fontSize: number;
   tabWidth: number;
   wordWrap: boolean;
+  doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
   windowsContextMenuEnabled: boolean;
   windowsFileAssociationEnabled: boolean;
@@ -83,6 +84,7 @@ export const useStore = create<AppState>((set) => ({
     fontSize: 14,
     tabWidth: 4,
     wordWrap: false,
+    doubleClickCloseTab: true,
     highlightCurrentLine: true,
     windowsContextMenuEnabled: false,
     windowsFileAssociationEnabled: false,

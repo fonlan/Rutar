@@ -32,6 +32,7 @@ const DEFAULT_THEME: &str = "light";
 const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospace";
 const DEFAULT_FONT_SIZE: u32 = 14;
 const DEFAULT_TAB_WIDTH: u8 = 4;
+const DEFAULT_DOUBLE_CLICK_CLOSE_TAB: bool = true;
 const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
 const FILTER_MAX_RANGES_PER_LINE: usize = 256;
@@ -56,6 +57,7 @@ pub struct AppConfig {
     font_size: u32,
     tab_width: u8,
     word_wrap: bool,
+    double_click_close_tab: bool,
     highlight_current_line: bool,
     #[serde(default = "default_windows_file_association_extensions")]
     windows_file_association_extensions: Vec<String>,
@@ -72,6 +74,7 @@ struct PartialAppConfig {
     font_size: Option<u32>,
     tab_width: Option<u8>,
     word_wrap: Option<bool>,
+    double_click_close_tab: Option<bool>,
     highlight_current_line: Option<bool>,
     windows_file_association_extensions: Option<Vec<String>>,
     filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
@@ -86,6 +89,7 @@ impl Default for AppConfig {
             font_size: DEFAULT_FONT_SIZE,
             tab_width: DEFAULT_TAB_WIDTH,
             word_wrap: false,
+            double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
             windows_file_association_extensions: default_windows_file_association_extensions(),
             filter_rule_groups: None,
@@ -983,6 +987,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         font_size: config.font_size.clamp(8, 72),
         tab_width: normalize_tab_width(config.tab_width),
         word_wrap: config.word_wrap,
+        double_click_close_tab: config.double_click_close_tab,
         highlight_current_line: config.highlight_current_line,
         windows_file_association_extensions: normalize_windows_file_association_extensions(
             Some(config.windows_file_association_extensions),
@@ -1545,6 +1550,10 @@ pub fn load_config() -> Result<AppConfig, String> {
 
     if let Some(word_wrap) = partial.word_wrap {
         config.word_wrap = word_wrap;
+    }
+
+    if let Some(double_click_close_tab) = partial.double_click_close_tab {
+        config.double_click_close_tab = double_click_close_tab;
     }
 
     if let Some(highlight_current_line) = partial.highlight_current_line {

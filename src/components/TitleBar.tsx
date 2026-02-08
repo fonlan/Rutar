@@ -129,6 +129,17 @@ export function TitleBar() {
         }
     }, [addTab, closeTabs, tabs.length]);
 
+    const handleTabDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!settings.doubleClickCloseTab) {
+            return;
+        }
+
+        void handleCloseTab(tab);
+    }, [handleCloseTab, settings.doubleClickCloseTab]);
+
     const handleCloseOtherTabs = useCallback(async (tab: FileTab) => {
         const tabsToClose = tabs
             .filter((currentTab) => currentTab.id !== tab.id);
@@ -281,6 +292,7 @@ export function TitleBar() {
                         key={tab.id}
                         data-tauri-drag-region
                         onClick={() => setActiveTab(tab.id)}
+                        onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
                         onContextMenu={(event) => handleTabContextMenu(event, tab)}
                         className={cn(
                             "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer mr-1 relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
@@ -292,6 +304,9 @@ export function TitleBar() {
                         <button
                             type="button"
                             onMouseDown={(e) => {
+                                e.stopPropagation();
+                            }}
+                            onDoubleClick={(e) => {
                                 e.stopPropagation();
                             }}
                             onClick={(e) => {

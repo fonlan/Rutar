@@ -51,6 +51,7 @@ interface AppConfig {
   fontSize: number;
   tabWidth: number;
   wordWrap: boolean;
+  doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
   windowsFileAssociationExtensions: string[];
 }
@@ -344,6 +345,7 @@ function App() {
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
           tabWidth: Number.isFinite(config.tabWidth) ? Math.min(8, Math.max(1, config.tabWidth)) : 4,
           wordWrap: !!config.wordWrap,
+          doubleClickCloseTab: config.doubleClickCloseTab !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
@@ -384,6 +386,7 @@ function App() {
           fontSize: settings.fontSize,
           tabWidth: settings.tabWidth,
           wordWrap: settings.wordWrap,
+          doubleClickCloseTab: settings.doubleClickCloseTab,
           highlightCurrentLine: settings.highlightCurrentLine,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
         },
@@ -403,6 +406,7 @@ function App() {
     settings.language,
     settings.theme,
     settings.wordWrap,
+    settings.doubleClickCloseTab,
     settings.highlightCurrentLine,
     settings.windowsFileAssociationExtensions,
   ]);
