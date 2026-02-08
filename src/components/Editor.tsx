@@ -2,6 +2,7 @@
 import { VariableSizeList as List } from 'react-window';
 import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
@@ -74,6 +75,132 @@ const PAIR_HIGHLIGHT_CLASS =
 const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
 const EMPTY_BOOKMARKS: number[] = [];
+
+function isToggleLineCommentShortcut(event: {
+  key: string;
+  code?: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  isComposing?: boolean;
+}) {
+  if (event.isComposing || event.altKey) {
+    return false;
+  }
+
+  if (!event.ctrlKey && !event.metaKey) {
+    return false;
+  }
+
+  const key = (event.key || '').toLowerCase();
+  const code = event.code || '';
+  return key === '/' || code === 'Slash' || code === 'NumpadDivide';
+}
+
+function resolveSelectionLineRange(
+  text: string,
+  startOffset: number,
+  endOffset: number,
+  isCollapsed: boolean
+) {
+  const safeStart = Math.max(0, Math.min(text.length, Math.floor(startOffset)));
+  const safeEnd = Math.max(0, Math.min(text.length, Math.floor(endOffset)));
+  const selectionStart = Math.min(safeStart, safeEnd);
+  const selectionEnd = Math.max(safeStart, safeEnd);
+
+  const lineStart = text.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
+
+  let effectiveSelectionEnd = selectionEnd;
+  if (!isCollapsed && effectiveSelectionEnd > lineStart && text[effectiveSelectionEnd - 1] === '\n') {
+    effectiveSelectionEnd -= 1;
+  }
+
+  const nextLineBreak = text.indexOf('\n', effectiveSelectionEnd);
+  const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
+
+  return {
+    start: lineStart,
+    end: Math.max(lineStart, lineEnd),
+  };
+}
+
+function splitIndentAndBody(line: string) {
+  const matched = line.match(/^(\s*)(.*)$/);
+  return {
+    indent: matched?.[1] ?? '',
+    body: matched?.[2] ?? line,
+  };
+}
+
+function isLineCommentedByPrefix(line: string, prefix: string) {
+  const { body } = splitIndentAndBody(line);
+  return body === prefix || body.startsWith(`${prefix} `) || body.startsWith(`${prefix}\t`);
+}
+
+function addLineCommentPrefix(line: string, prefix: string) {
+  const { indent, body } = splitIndentAndBody(line);
+
+  if (!body.trim()) {
+    return line;
+  }
+
+  return `${indent}${prefix} ${body}`;
+}
+
+function removeLineCommentPrefix(line: string, prefix: string) {
+  const { indent, body } = splitIndentAndBody(line);
+
+  if (!body.trim()) {
+    return line;
+  }
+
+  if (isLineCommentedByPrefix(line, prefix)) {
+    if (body === prefix) {
+      return indent;
+    }
+
+    if (body.startsWith(prefix)) {
+      const afterPrefix = body.slice(prefix.length);
+      if (afterPrefix.startsWith(' ') || afterPrefix.startsWith('\t')) {
+        return `${indent}${afterPrefix.slice(1)}`;
+      }
+      return `${indent}${afterPrefix}`;
+    }
+  }
+
+  return line;
+}
+
+function mapOffsetAcrossLineTransformation(oldLines: string[], newLines: string[], oldOffset: number) {
+  const safeOffset = Math.max(0, Math.floor(oldOffset));
+
+  let oldCursor = 0;
+  let newCursor = 0;
+
+  for (let index = 0; index < oldLines.length; index += 1) {
+    const oldLine = oldLines[index] ?? '';
+    const newLine = newLines[index] ?? '';
+    const oldLineEnd = oldCursor + oldLine.length;
+
+    if (safeOffset <= oldLineEnd) {
+      return newCursor + Math.min(safeOffset - oldCursor, newLine.length);
+    }
+
+    oldCursor = oldLineEnd;
+    newCursor += newLine.length;
+
+    if (index < oldLines.length - 1) {
+      oldCursor += 1;
+      newCursor += 1;
+
+      if (safeOffset <= oldCursor) {
+        return newCursor;
+      }
+    }
+  }
+
+  return newCursor;
+}
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
@@ -272,6 +399,40 @@ function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
   const range = document.createRange();
   range.setStart(textNode, safeOffset);
   range.collapse(true);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function setSelectionToCodeUnitOffsets(element: HTMLDivElement, startOffset: number, endOffset: number) {
+  const safeStartOffset = Math.max(0, Math.floor(startOffset));
+  const safeEndOffset = Math.max(0, Math.floor(endOffset));
+
+  if (document.activeElement !== element) {
+    element.focus();
+  }
+
+  let textNode = element.firstChild as Text | null;
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+    const content = element.textContent || '';
+    textNode = document.createTextNode(content);
+    element.replaceChildren(textNode);
+  }
+
+  const maxOffset = textNode.textContent?.length ?? 0;
+  const normalizedStart = Math.min(safeStartOffset, maxOffset);
+  const normalizedEnd = Math.min(safeEndOffset, maxOffset);
+  const rangeStart = Math.min(normalizedStart, normalizedEnd);
+  const rangeEnd = Math.max(normalizedStart, normalizedEnd);
+
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(textNode, rangeStart);
+  range.setEnd(textNode, rangeEnd);
 
   selection.removeAllRanges();
   selection.addRange(range);
@@ -1556,8 +1717,104 @@ export function Editor({ tab }: { tab: FileTab }) {
     [handleInput, insertTextAtSelection]
   );
 
+  const toggleSelectedLinesComment = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const element = contentRef.current;
+      if (!element) {
+        return;
+      }
+
+      let selectionOffsets = getSelectionOffsetsInElement(element);
+      if (!selectionOffsets) {
+        const text = getEditableText(element);
+        const layerEndOffset = mapLogicalOffsetToInputLayerOffset(text, text.length);
+        setCaretToCodeUnitOffset(element, layerEndOffset);
+        selectionOffsets = getSelectionOffsetsInElement(element);
+      }
+
+      if (!selectionOffsets) {
+        return;
+      }
+
+      const currentText = getEditableText(element);
+      const syntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
+      const prefix = getLineCommentPrefixForSyntaxKey(syntaxKey);
+      const lineRange = resolveSelectionLineRange(
+        currentText,
+        selectionOffsets.start,
+        selectionOffsets.end,
+        selectionOffsets.isCollapsed
+      );
+
+      const selectedBlock = currentText.slice(lineRange.start, lineRange.end);
+      const selectedLines = selectedBlock.split('\n');
+      const hasNonEmptyLine = selectedLines.some((line) => line.trim().length > 0);
+      if (!hasNonEmptyLine) {
+        return;
+      }
+
+      const shouldUncomment = selectedLines
+        .filter((line) => line.trim().length > 0)
+        .every((line) => isLineCommentedByPrefix(line, prefix));
+
+      const transformedLines = selectedLines.map((line) => {
+        if (!line.trim()) {
+          return line;
+        }
+
+        if (shouldUncomment) {
+          return removeLineCommentPrefix(line, prefix);
+        }
+
+        return addLineCommentPrefix(line, prefix);
+      });
+
+      const transformedBlock = transformedLines.join('\n');
+      if (transformedBlock === selectedBlock) {
+        return;
+      }
+
+      const nextText = `${currentText.slice(0, lineRange.start)}${transformedBlock}${currentText.slice(lineRange.end)}`;
+      element.textContent = toInputLayerText(nextText);
+
+      const nextSelectionStartLogical =
+        lineRange.start +
+        mapOffsetAcrossLineTransformation(
+          selectedLines,
+          transformedLines,
+          selectionOffsets.start - lineRange.start
+        );
+      const nextSelectionEndLogical =
+        lineRange.start +
+        mapOffsetAcrossLineTransformation(
+          selectedLines,
+          transformedLines,
+          selectionOffsets.end - lineRange.start
+        );
+
+      const nextSelectionStartLayer = mapLogicalOffsetToInputLayerOffset(nextText, nextSelectionStartLogical);
+      const nextSelectionEndLayer = mapLogicalOffsetToInputLayerOffset(nextText, nextSelectionEndLogical);
+
+      if (selectionOffsets.isCollapsed) {
+        setCaretToCodeUnitOffset(element, nextSelectionEndLayer);
+      } else {
+        setSelectionToCodeUnitOffsets(element, nextSelectionStartLayer, nextSelectionEndLayer);
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      dispatchEditorInputEvent(element);
+    },
+    [tab]
+  );
+
   const handleEditableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isToggleLineCommentShortcut(event)) {
+        toggleSelectedLinesComment(event);
+        return;
+      }
+
       if (event.key !== 'Enter' || event.isComposing) {
         return;
       }
@@ -1568,7 +1825,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         handleInput();
       }
     },
-    [handleInput, insertTextAtSelection]
+    [handleInput, insertTextAtSelection, toggleSelectedLinesComment]
   );
 
   const handleCompositionStart = useCallback(() => {

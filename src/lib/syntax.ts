@@ -20,6 +20,24 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
 ];
 
 const syntaxLabelByValue = new Map(SYNTAX_OPTIONS.map((item) => [item.value, item.label]));
+const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
+  plain_text: '#',
+  python: '#',
+  bash: '#',
+  toml: '#',
+  yaml: '#',
+  json: '#',
+  javascript: '//',
+  typescript: '//',
+  rust: '//',
+  c: '//',
+  cpp: '//',
+  go: '//',
+  java: '//',
+  css: '//',
+  html: '//',
+  xml: '//',
+};
 
 function toLowerFileName(input: string) {
   const trimmed = (input || '').trim();
@@ -111,3 +129,10 @@ export function getSyntaxLabel(value: SyntaxKey) {
   return syntaxLabelByValue.get(value) ?? 'Plain Text';
 }
 
+export function getLineCommentPrefixForSyntaxKey(syntaxKey?: SyntaxKey | null) {
+  if (!syntaxKey) {
+    return '#';
+  }
+
+  return lineCommentPrefixBySyntax[syntaxKey] ?? '#';
+}
