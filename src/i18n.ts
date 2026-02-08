@@ -18,7 +18,15 @@ export type I18nKey =
   | 'toolbar.find'
   | 'toolbar.replace'
   | 'toolbar.toggleWordWrap'
+  | 'toolbar.bookmarkSidebar'
   | 'toolbar.contentTree'
+  | 'bookmark.menu.title'
+  | 'bookmark.add'
+  | 'bookmark.remove'
+  | 'bookmark.sidebar.title'
+  | 'bookmark.sidebar.empty'
+  | 'bookmark.sidebar.line'
+  | 'bookmark.sidebar.emptyLine'
   | 'status.ready'
   | 'status.lines'
   | 'status.largeFileHighlightOff'
@@ -68,7 +76,15 @@ const zhCN: Messages = {
   'toolbar.find': '查找 (Ctrl+F)',
   'toolbar.replace': '替换 (Ctrl+H)',
   'toolbar.toggleWordWrap': '切换自动换行',
+  'toolbar.bookmarkSidebar': '书签侧边栏',
   'toolbar.contentTree': '内容树',
+  'bookmark.menu.title': '书签',
+  'bookmark.add': '添加书签',
+  'bookmark.remove': '删除书签',
+  'bookmark.sidebar.title': '书签',
+  'bookmark.sidebar.empty': '暂无书签',
+  'bookmark.sidebar.line': '行',
+  'bookmark.sidebar.emptyLine': '(空行)',
   'status.ready': 'Rutar 就绪',
   'status.lines': '行数',
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
@@ -117,7 +133,15 @@ const enUS: Messages = {
   'toolbar.find': 'Find (Ctrl+F)',
   'toolbar.replace': 'Replace (Ctrl+H)',
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
+  'toolbar.bookmarkSidebar': 'Bookmark Sidebar',
   'toolbar.contentTree': 'Content Tree',
+  'bookmark.menu.title': 'Bookmark',
+  'bookmark.add': 'Add Bookmark',
+  'bookmark.remove': 'Remove Bookmark',
+  'bookmark.sidebar.title': 'Bookmarks',
+  'bookmark.sidebar.empty': 'No bookmarks',
+  'bookmark.sidebar.line': 'Line',
+  'bookmark.sidebar.emptyLine': '(empty line)',
   'status.ready': 'Rutar Ready',
   'status.lines': 'Lines',
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',

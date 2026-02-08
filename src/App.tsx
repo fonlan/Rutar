@@ -7,6 +7,7 @@ import { Editor } from '@/components/Editor';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Sidebar } from '@/components/Sidebar';
 import { ContentTreeSidebar } from '@/components/ContentTreeSidebar';
+import { BookmarkSidebar } from '@/components/BookmarkSidebar';
 import { StatusBar } from '@/components/StatusBar';
 import { SearchReplacePanel } from '@/components/SearchReplacePanel';
 import { TabCloseConfirmModal } from '@/components/TabCloseConfirmModal';
@@ -69,11 +70,16 @@ function App() {
   const setFolder = useStore((state) => state.setFolder);
   const sidebarOpen = useStore((state) => state.sidebarOpen);
   const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+  const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
   const contentTreeType = useStore((state) => state.contentTreeType);
   const contentTreeNodes = useStore((state) => state.contentTreeNodes);
   const contentTreeError = useStore((state) => state.contentTreeError);
   const setContentTreeData = useStore((state) => state.setContentTreeData);
-  const tabPanelStateRef = useRef<Record<string, { sidebarOpen: boolean; contentTreeOpen: boolean }>>({});
+  const tabPanelStateRef = useRef<Record<string, {
+    sidebarOpen: boolean;
+    contentTreeOpen: boolean;
+    bookmarkSidebarOpen: boolean;
+  }>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
@@ -420,6 +426,7 @@ function App() {
       tabPanelStateRef.current[previousTabId] = {
         sidebarOpen,
         contentTreeOpen,
+        bookmarkSidebarOpen,
       };
     }
 
@@ -432,6 +439,12 @@ function App() {
     const nextTabState = tabPanelStateRef.current[activeTabId];
     state.toggleSidebar(nextTabState?.sidebarOpen ?? false);
     state.toggleContentTree(nextTabState?.contentTreeOpen ?? false);
+    const toggleBookmarkSidebar = (state as {
+      toggleBookmarkSidebar?: (open?: boolean) => void;
+    }).toggleBookmarkSidebar;
+    if (typeof toggleBookmarkSidebar === 'function') {
+      toggleBookmarkSidebar(nextTabState?.bookmarkSidebarOpen ?? false);
+    }
     previousActiveTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
@@ -443,8 +456,9 @@ function App() {
     tabPanelStateRef.current[activeTabId] = {
       sidebarOpen,
       contentTreeOpen,
+      bookmarkSidebarOpen,
     };
-  }, [activeTabId, contentTreeOpen, sidebarOpen]);
+  }, [activeTabId, bookmarkSidebarOpen, contentTreeOpen, sidebarOpen]);
 
   useEffect(() => {
     if (!activeTab || !contentTreeOpen) {
@@ -536,6 +550,7 @@ function App() {
       
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar />
+        <BookmarkSidebar />
         <ContentTreeSidebar
           nodes={contentTreeNodes}
           activeType={contentTreeType}

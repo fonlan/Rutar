@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -54,6 +54,8 @@ export function Toolbar() {
     const updateSettings = useStore((state) => state.updateSettings);
     const toggleContentTree = useStore((state) => state.toggleContentTree);
     const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+    const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
+    const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
     const setContentTreeData = useStore((state) => state.setContentTreeData);
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
@@ -295,6 +297,14 @@ export function Toolbar() {
         updateSettings({ wordWrap: !wordWrap });
     }, [wordWrap, updateSettings]);
 
+    const handleToggleBookmarkSidebar = useCallback(() => {
+        if (!activeTab) {
+            return;
+        }
+
+        toggleBookmarkSidebar();
+    }, [activeTab, toggleBookmarkSidebar]);
+
     const handleToggleContentTree = useCallback(async () => {
         if (!activeTab) {
             await message(tr('contentTree.unsupportedType'), {
@@ -484,6 +494,13 @@ export function Toolbar() {
                 title={tr('toolbar.toggleWordWrap')}
                 onClick={handleToggleWordWrap}
                 active={!!wordWrap}
+                disabled={!activeTab}
+            />
+            <ToolbarBtn
+                icon={Bookmark}
+                title={tr('toolbar.bookmarkSidebar')}
+                onClick={handleToggleBookmarkSidebar}
+                active={bookmarkSidebarOpen}
                 disabled={!activeTab}
             />
             <ToolbarBtn

@@ -41,6 +41,7 @@ interface EditorContextMenuState {
   x: number;
   y: number;
   hasSelection: boolean;
+  lineNumber: number;
 }
 
 const MAX_LINE_RANGE = 2147483647;
@@ -72,6 +73,7 @@ const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
 const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
+const EMPTY_BOOKMARKS: number[] = [];
 
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
@@ -631,6 +633,14 @@ export function Editor({ tab }: { tab: FileTab }) {
   const isPairHighlightEnabled = !usePlainLineRendering;
   const deleteLabel = settings.language === 'zh-CN' ? '删除' : 'Delete';
   const selectAllLabel = settings.language === 'zh-CN' ? '全选' : 'Select All';
+  const bookmarkMenuLabel = tr('bookmark.menu.title');
+  const addBookmarkLabel = tr('bookmark.add');
+  const removeBookmarkLabel = tr('bookmark.remove');
+
+  const addBookmark = useStore((state) => state.addBookmark);
+  const removeBookmark = useStore((state) => state.removeBookmark);
+  const toggleBookmark = useStore((state) => state.toggleBookmark);
+  const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
     : tab.largeFileMode
@@ -1192,7 +1202,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       contentRef.current.focus();
 
       const menuWidth = 148;
-      const menuHeight = 172;
+      const menuHeight = 238;
       const viewportPadding = 8;
 
       const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
@@ -1202,9 +1212,10 @@ export function Editor({ tab }: { tab: FileTab }) {
         x: Math.max(viewportPadding, boundedX),
         y: Math.max(viewportPadding, boundedY),
         hasSelection: hasSelectionInsideEditor(),
+        lineNumber: activeLineNumber,
       });
     },
-    [hasSelectionInsideEditor]
+    [activeLineNumber, hasSelectionInsideEditor]
   );
 
   const runEditorContextCommand = useCallback((action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
@@ -1320,6 +1331,34 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [isEditorContextMenuActionDisabled, runEditorContextCommand, syncSelectionAfterInteraction, tryPasteTextIntoEditor]
+  );
+
+  const hasContextBookmark =
+    editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber);
+
+  const handleAddBookmarkFromContext = useCallback(() => {
+    if (!editorContextMenu) {
+      return;
+    }
+
+    addBookmark(tab.id, editorContextMenu.lineNumber);
+    setEditorContextMenu(null);
+  }, [addBookmark, editorContextMenu, tab.id]);
+
+  const handleRemoveBookmarkFromContext = useCallback(() => {
+    if (!editorContextMenu) {
+      return;
+    }
+
+    removeBookmark(tab.id, editorContextMenu.lineNumber);
+    setEditorContextMenu(null);
+  }, [editorContextMenu, removeBookmark, tab.id]);
+
+  const handleLineNumberDoubleClick = useCallback(
+    (line: number) => {
+      toggleBookmark(tab.id, line);
+    },
+    [tab.id, toggleBookmark]
   );
 
   const flushPendingSync = useCallback(async () => {
@@ -2829,8 +2868,17 @@ export function Editor({ tab }: { tab: FileTab }) {
                   }`}
                 >
                   <span
-                    className="shrink-0 text-muted-foreground/40 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 group-hover:text-muted-foreground transition-colors"
+                    className={`shrink-0 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 transition-colors ${
+                      bookmarks.includes(index + 1)
+                        ? 'text-amber-500/90 font-semibold group-hover:text-amber-500'
+                        : 'text-muted-foreground/40 group-hover:text-muted-foreground'
+                    } pointer-events-auto cursor-pointer`}
                     style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleLineNumberDoubleClick(index + 1);
+                    }}
                   >
                     {index + 1}
                   </span>
@@ -2909,6 +2957,34 @@ export function Editor({ tab }: { tab: FileTab }) {
           >
             {selectAllLabel}
           </button>
+          <div className="my-1 h-px bg-border" />
+          <div className="group/bookmark relative">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            >
+              <span>{bookmarkMenuLabel}</span>
+              <span className="text-[10px] text-muted-foreground">▶</span>
+            </button>
+            <div className="invisible absolute left-full top-0 z-[95] ml-1 min-w-32 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-all duration-75 group-hover/bookmark:visible group-hover/bookmark:opacity-100">
+              <button
+                type="button"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleAddBookmarkFromContext}
+                disabled={hasContextBookmark}
+              >
+                {addBookmarkLabel}
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleRemoveBookmarkFromContext}
+                disabled={!hasContextBookmark}
+              >
+                {removeBookmarkLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -23,6 +23,8 @@ export interface ContentTreeNode {
   children: ContentTreeNode[];
 }
 
+export type TabBookmarks = Record<string, number[]>;
+
 interface SettingsState {
   isOpen: boolean;
   language: AppLanguage;
@@ -47,9 +49,12 @@ interface AppState {
   sidebarWidth: number;
   contentTreeOpen: boolean;
   contentTreeWidth: number;
+  bookmarkSidebarOpen: boolean;
+  bookmarkSidebarWidth: number;
   contentTreeType: ContentTreeType;
   contentTreeError: string | null;
   contentTreeNodes: ContentTreeNode[];
+  bookmarksByTab: TabBookmarks;
   folderPath: string | null;
   folderEntries: any[];
 
@@ -66,6 +71,11 @@ interface AppState {
   setSidebarWidth: (width: number) => void;
   toggleContentTree: (open?: boolean) => void;
   setContentTreeWidth: (width: number) => void;
+  toggleBookmarkSidebar: (open?: boolean) => void;
+  setBookmarkSidebarWidth: (width: number) => void;
+  addBookmark: (tabId: string, line: number) => void;
+  removeBookmark: (tabId: string, line: number) => void;
+  toggleBookmark: (tabId: string, line: number) => void;
   setContentTreeData: (payload: {
     treeType: ContentTreeType;
     nodes: ContentTreeNode[];
@@ -94,9 +104,12 @@ export const useStore = create<AppState>((set) => ({
   sidebarWidth: 240,
   contentTreeOpen: false,
   contentTreeWidth: 288,
+  bookmarkSidebarOpen: false,
+  bookmarkSidebarWidth: 220,
   contentTreeType: null,
   contentTreeError: null,
   contentTreeNodes: [],
+  bookmarksByTab: {},
   folderPath: null,
   folderEntries: [],
 
@@ -110,7 +123,14 @@ export const useStore = create<AppState>((set) => ({
     if (state.activeTabId === id) {
         newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
     }
-    return { tabs: newTabs, activeTabId: newActiveId };
+    const nextBookmarks = { ...state.bookmarksByTab };
+    delete nextBookmarks[id];
+
+    return {
+      tabs: newTabs,
+      activeTabId: newActiveId,
+      bookmarksByTab: nextBookmarks,
+    };
   }),
   setActiveTab: (id) => set({ activeTabId: id }),
   updateTab: (id, updates) => set((state) => ({
@@ -127,6 +147,65 @@ export const useStore = create<AppState>((set) => ({
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
   toggleContentTree: (open) => set((state) => ({ contentTreeOpen: open ?? !state.contentTreeOpen })),
   setContentTreeWidth: (width) => set({ contentTreeWidth: width }),
+  toggleBookmarkSidebar: (open) => set((state) => ({ bookmarkSidebarOpen: open ?? !state.bookmarkSidebarOpen })),
+  setBookmarkSidebarWidth: (width) => set({ bookmarkSidebarWidth: width }),
+  addBookmark: (tabId, line) => set((state) => {
+    const safeLine = Math.max(1, Math.floor(line));
+    const existing = state.bookmarksByTab[tabId] ?? [];
+
+    if (existing.includes(safeLine)) {
+      return state;
+    }
+
+    const next = [...existing, safeLine].sort((left, right) => left - right);
+    return {
+      bookmarksByTab: {
+        ...state.bookmarksByTab,
+        [tabId]: next,
+      },
+    };
+  }),
+  removeBookmark: (tabId, line) => set((state) => {
+    const safeLine = Math.max(1, Math.floor(line));
+    const existing = state.bookmarksByTab[tabId] ?? [];
+    if (!existing.includes(safeLine)) {
+      return state;
+    }
+
+    const next = existing.filter((item) => item !== safeLine);
+    const nextBookmarks = { ...state.bookmarksByTab };
+
+    if (next.length === 0) {
+      delete nextBookmarks[tabId];
+    } else {
+      nextBookmarks[tabId] = next;
+    }
+
+    return {
+      bookmarksByTab: nextBookmarks,
+    };
+  }),
+  toggleBookmark: (tabId, line) => set((state) => {
+    const safeLine = Math.max(1, Math.floor(line));
+    const existing = state.bookmarksByTab[tabId] ?? [];
+    const hasBookmark = existing.includes(safeLine);
+    const nextBookmarks = { ...state.bookmarksByTab };
+
+    if (hasBookmark) {
+      const next = existing.filter((item) => item !== safeLine);
+      if (next.length === 0) {
+        delete nextBookmarks[tabId];
+      } else {
+        nextBookmarks[tabId] = next;
+      }
+    } else {
+      nextBookmarks[tabId] = [...existing, safeLine].sort((left, right) => left - right);
+    }
+
+    return {
+      bookmarksByTab: nextBookmarks,
+    };
+  }),
   setContentTreeData: ({ treeType, nodes, error }) => set({
     contentTreeType: treeType,
     contentTreeNodes: nodes,
