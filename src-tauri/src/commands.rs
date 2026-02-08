@@ -3797,7 +3797,8 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
 
     let (cow, _, _malformed) = encoding.decode(&mmap);
     let line_ending = detect_line_ending(&cow);
-    let rope = Rope::from_str(&cow);
+    let normalized_content = normalize_to_lf(&cow);
+    let rope = Rope::from_str(&normalized_content);
     let line_count = rope.len_lines();
 
     let id = Uuid::new_v4().to_string();
