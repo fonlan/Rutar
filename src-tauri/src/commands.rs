@@ -1,5 +1,6 @@
 use crate::state::{AppState, Document, EditOperation};
 use chardetng::EncodingDetector;
+use dashmap::DashMap;
 use encoding_rs::Encoding;
 use memmap2::Mmap;
 use quick_xml::events::Event;
@@ -10,6 +11,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
 use uuid::Uuid;
@@ -114,7 +116,7 @@ pub struct SyntaxToken {
     end_byte: Option<usize>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchMatchResult {
     start: usize,
@@ -155,6 +157,17 @@ pub struct SearchCountResultPayload {
     total_matches: usize,
     matched_lines: usize,
     document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResultFilterStepPayload {
+    target_match: Option<SearchMatchResult>,
+    document_version: u64,
+    batch_start_offset: usize,
+    target_index_in_batch: Option<usize>,
+    total_matches: usize,
+    total_matched_lines: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -199,7 +212,7 @@ pub struct FilterMatchRangeResult {
     end_char: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterLineMatchResult {
     line: usize,
@@ -224,6 +237,44 @@ pub struct FilterChunkResultPayload {
 pub struct FilterCountResultPayload {
     matched_lines: usize,
     document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterResultFilterStepPayload {
+    target_match: Option<FilterLineMatchResult>,
+    document_version: u64,
+    batch_start_line: usize,
+    target_index_in_batch: Option<usize>,
+    total_matched_lines: usize,
+}
+
+#[derive(Clone)]
+struct SearchResultFilterStepCacheEntry {
+    document_version: u64,
+    matches: Arc<Vec<SearchMatchResult>>,
+    total_matches: usize,
+    total_matched_lines: usize,
+}
+
+#[derive(Clone)]
+struct FilterResultFilterStepCacheEntry {
+    document_version: u64,
+    matches: Arc<Vec<FilterLineMatchResult>>,
+    total_matched_lines: usize,
+}
+
+static SEARCH_RESULT_FILTER_STEP_CACHE: OnceLock<DashMap<String, SearchResultFilterStepCacheEntry>> =
+    OnceLock::new();
+static FILTER_RESULT_FILTER_STEP_CACHE: OnceLock<DashMap<String, FilterResultFilterStepCacheEntry>> =
+    OnceLock::new();
+
+fn search_result_filter_step_cache() -> &'static DashMap<String, SearchResultFilterStepCacheEntry> {
+    SEARCH_RESULT_FILTER_STEP_CACHE.get_or_init(DashMap::new)
+}
+
+fn filter_result_filter_step_cache() -> &'static DashMap<String, FilterResultFilterStepCacheEntry> {
+    FILTER_RESULT_FILTER_STEP_CACHE.get_or_init(DashMap::new)
 }
 
 #[derive(serde::Serialize)]
@@ -2569,6 +2620,208 @@ fn find_match_edge(
     }
 }
 
+fn build_search_result_filter_step_cache_key(
+    id: &str,
+    document_version: u64,
+    keyword: &str,
+    mode: &str,
+    case_sensitive: bool,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}",
+        id,
+        document_version,
+        mode,
+        case_sensitive,
+        keyword,
+        result_filter_keyword.unwrap_or_default(),
+        result_filter_case_sensitive,
+    )
+}
+
+fn build_filter_result_filter_step_cache_key(
+    id: &str,
+    document_version: u64,
+    rules: &[FilterRuleInput],
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> String {
+    let rules_json = serde_json::to_string(rules).unwrap_or_default();
+
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}",
+        id,
+        document_version,
+        rules_json,
+        result_filter_keyword.unwrap_or_default(),
+        result_filter_case_sensitive,
+    )
+}
+
+fn build_search_step_filtered_matches(
+    doc: &Document,
+    keyword: &str,
+    mode: &str,
+    case_sensitive: bool,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Result<Vec<SearchMatchResult>, String> {
+    if keyword.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let source_text: String = doc.rope.chunks().collect();
+    let line_starts = build_line_starts(&source_text);
+    let byte_to_char = build_byte_to_char_map(&source_text);
+
+    let mut matches = match mode {
+        "literal" => {
+            if case_sensitive {
+                collect_literal_matches(&source_text, keyword, &line_starts, &byte_to_char)
+            } else {
+                let escaped = escape_regex_literal(keyword);
+                let regex = RegexBuilder::new(&escaped)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+            }
+        }
+        "wildcard" => {
+            let regex_source = wildcard_to_regex_source(keyword);
+            let regex = RegexBuilder::new(&regex_source)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+        }
+        "regex" => {
+            let regex = RegexBuilder::new(keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
+        }
+        _ => {
+            return Err("Unsupported search mode".to_string());
+        }
+    };
+
+    if result_filter_keyword.is_some() {
+        matches.retain(|item| {
+            matches_result_filter(
+                &item.line_text,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            )
+        });
+    }
+
+    Ok(matches)
+}
+
+fn build_filter_step_filtered_matches(
+    doc: &Document,
+    rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Result<Vec<FilterLineMatchResult>, String> {
+    let compiled_rules = compile_filter_rules(rules)?;
+    if compiled_rules.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let total_lines = doc.rope.len_lines();
+    let mut results: Vec<FilterLineMatchResult> = Vec::new();
+
+    for line_index in 0..total_lines {
+        let line_number = line_index + 1;
+        let line_slice = doc.rope.line(line_index);
+        let line_text = normalize_rope_line_text(&line_slice.to_string());
+
+        if !matches_result_filter(
+            &line_text,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ) {
+            continue;
+        }
+
+        if let Some(item) = match_line_with_filter_rules(line_number, &line_text, &compiled_rules) {
+            results.push(item);
+        }
+    }
+
+    Ok(results)
+}
+
+fn lower_bound_search_matches(matches: &[SearchMatchResult], target_start: usize) -> usize {
+    let mut left = 0usize;
+    let mut right = matches.len();
+
+    while left < right {
+        let middle = left + (right - left) / 2;
+        if matches[middle].start < target_start {
+            left = middle + 1;
+        } else {
+            right = middle;
+        }
+    }
+
+    left
+}
+
+fn lower_bound_filter_matches(matches: &[FilterLineMatchResult], target_line: usize) -> usize {
+    let mut left = 0usize;
+    let mut right = matches.len();
+
+    while left < right {
+        let middle = left + (right - left) / 2;
+        if matches[middle].line < target_line {
+            left = middle + 1;
+        } else {
+            right = middle;
+        }
+    }
+
+    left
+}
+
+fn find_exact_search_match_index(matches: &[SearchMatchResult], start: usize, end: usize) -> Option<usize> {
+    let mut index = lower_bound_search_matches(matches, start);
+
+    while index < matches.len() && matches[index].start == start {
+        if matches[index].end == end {
+            return Some(index);
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn find_exact_filter_match_index(
+    matches: &[FilterLineMatchResult],
+    line: usize,
+    column: Option<usize>,
+) -> Option<usize> {
+    let mut index = lower_bound_filter_matches(matches, line);
+
+    while index < matches.len() && matches[index].line == line {
+        if column.is_none() || Some(matches[index].column) == column {
+            return Some(index);
+        }
+        index += 1;
+    }
+
+    None
+}
+
 #[tauri::command]
 pub fn search_first_in_document(
     state: State<'_, AppState>,
@@ -2798,6 +3051,209 @@ pub fn search_count_in_document(
 }
 
 #[tauri::command]
+pub fn step_result_filter_search_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    current_start: Option<usize>,
+    current_end: Option<usize>,
+    step: i32,
+    max_results: usize,
+) -> Result<SearchResultFilterStepPayload, String> {
+    if step == 0 {
+        return Err("Step cannot be zero".to_string());
+    }
+
+    let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+    let filter_case_sensitive = result_filter_case_sensitive.unwrap_or(case_sensitive);
+    let _effective_max = max_results.max(1);
+
+    if keyword.is_empty() {
+        let document_version = state
+            .documents
+            .get(&id)
+            .map(|doc| doc.document_version)
+            .ok_or_else(|| "Document not found".to_string())?;
+
+        return Ok(SearchResultFilterStepPayload {
+            target_match: None,
+            document_version,
+            batch_start_offset: 0,
+            target_index_in_batch: None,
+            total_matches: 0,
+            total_matched_lines: 0,
+        });
+    }
+
+    let (document_version, matches_arc, total_matches, total_matched_lines) = {
+        let doc = state
+            .documents
+            .get(&id)
+            .ok_or_else(|| "Document not found".to_string())?;
+        let document_version = doc.document_version;
+        let cache_key = build_search_result_filter_step_cache_key(
+            &id,
+            document_version,
+            &keyword,
+            &mode,
+            case_sensitive,
+            normalized_result_filter_keyword.as_deref(),
+            filter_case_sensitive,
+        );
+
+        if let Some(entry) = search_result_filter_step_cache().get(&cache_key) {
+            if entry.document_version == document_version {
+                (
+                    document_version,
+                    entry.matches.clone(),
+                    entry.total_matches,
+                    entry.total_matched_lines,
+                )
+            } else {
+                let computed_matches = build_search_step_filtered_matches(
+                    &doc,
+                    &keyword,
+                    &mode,
+                    case_sensitive,
+                    normalized_result_filter_keyword.as_deref(),
+                    filter_case_sensitive,
+                )?;
+                let total_matches = computed_matches.len();
+                let total_matched_lines = computed_matches
+                    .iter()
+                    .map(|item| item.line)
+                    .collect::<BTreeSet<_>>()
+                    .len();
+                let matches_arc = Arc::new(computed_matches);
+                search_result_filter_step_cache().insert(
+                    cache_key,
+                    SearchResultFilterStepCacheEntry {
+                        document_version,
+                        matches: matches_arc.clone(),
+                        total_matches,
+                        total_matched_lines,
+                    },
+                );
+                (document_version, matches_arc, total_matches, total_matched_lines)
+            }
+        } else {
+            let computed_matches = build_search_step_filtered_matches(
+                &doc,
+                &keyword,
+                &mode,
+                case_sensitive,
+                normalized_result_filter_keyword.as_deref(),
+                filter_case_sensitive,
+            )?;
+            let total_matches = computed_matches.len();
+            let total_matched_lines = computed_matches
+                .iter()
+                .map(|item| item.line)
+                .collect::<BTreeSet<_>>()
+                .len();
+            let matches_arc = Arc::new(computed_matches);
+            search_result_filter_step_cache().insert(
+                cache_key,
+                SearchResultFilterStepCacheEntry {
+                    document_version,
+                    matches: matches_arc.clone(),
+                    total_matches,
+                    total_matched_lines,
+                },
+            );
+            (document_version, matches_arc, total_matches, total_matched_lines)
+        }
+    };
+
+    let matches = matches_arc.as_ref();
+    if matches.is_empty() {
+        return Ok(SearchResultFilterStepPayload {
+            target_match: None,
+            document_version,
+            batch_start_offset: 0,
+            target_index_in_batch: None,
+            total_matches: 0,
+            total_matched_lines: 0,
+        });
+    }
+
+    let target_index = if step > 0 {
+        if let (Some(start), Some(end)) = (current_start, current_end) {
+            if let Some(current_index) = find_exact_search_match_index(matches, start, end) {
+                Some((current_index + 1) % matches.len())
+            } else {
+                let next_index = lower_bound_search_matches(matches, end);
+                if next_index < matches.len() {
+                    Some(next_index)
+                } else {
+                    Some(0usize)
+                }
+            }
+        } else {
+            let boundary_end = current_end.unwrap_or(0usize);
+            let next_index = lower_bound_search_matches(matches, boundary_end);
+            if next_index < matches.len() {
+                Some(next_index)
+            } else {
+                Some(0usize)
+            }
+        }
+    } else if let (Some(start), Some(end)) = (current_start, current_end) {
+        if let Some(current_index) = find_exact_search_match_index(matches, start, end) {
+            if current_index == 0 {
+                Some(matches.len().saturating_sub(1))
+            } else {
+                Some(current_index - 1)
+            }
+        } else {
+            let first_at_or_after = lower_bound_search_matches(matches, start);
+            if first_at_or_after == 0 {
+                Some(matches.len().saturating_sub(1))
+            } else {
+                Some(first_at_or_after - 1)
+            }
+        }
+    } else {
+        let boundary_start = current_start.unwrap_or(usize::MAX);
+        let first_at_or_after = lower_bound_search_matches(matches, boundary_start);
+        if first_at_or_after == 0 {
+            Some(matches.len().saturating_sub(1))
+        } else {
+            Some(first_at_or_after - 1)
+        }
+    };
+
+    let Some(target_index) = target_index else {
+        return Ok(SearchResultFilterStepPayload {
+            target_match: None,
+            document_version,
+            batch_start_offset: 0,
+            target_index_in_batch: None,
+            total_matches: 0,
+            total_matched_lines: 0,
+        });
+    };
+
+    let target_match = matches.get(target_index).cloned();
+
+    Ok(SearchResultFilterStepPayload {
+        batch_start_offset: target_match
+            .as_ref()
+            .map(|item| item.start)
+            .unwrap_or(0),
+        target_match,
+        document_version,
+        target_index_in_batch: Some(0),
+        total_matches,
+        total_matched_lines,
+    })
+}
+
+#[tauri::command]
 pub fn filter_count_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -2909,6 +3365,167 @@ pub fn filter_in_document_chunk(
     } else {
         Err("Document not found".to_string())
     }
+}
+
+#[tauri::command]
+pub fn step_result_filter_search_in_filter_document(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    current_line: Option<usize>,
+    current_column: Option<usize>,
+    step: i32,
+    max_results: usize,
+) -> Result<FilterResultFilterStepPayload, String> {
+    if step == 0 {
+        return Err("Step cannot be zero".to_string());
+    }
+
+    let _effective_max = max_results.max(1);
+    let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+    let filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
+
+    let (document_version, matches_arc, total_matched_lines) = {
+        let doc = state
+            .documents
+            .get(&id)
+            .ok_or_else(|| "Document not found".to_string())?;
+        let document_version = doc.document_version;
+        let cache_key = build_filter_result_filter_step_cache_key(
+            &id,
+            document_version,
+            &rules,
+            normalized_result_filter_keyword.as_deref(),
+            filter_case_sensitive,
+        );
+
+        if let Some(entry) = filter_result_filter_step_cache().get(&cache_key) {
+            if entry.document_version == document_version {
+                (
+                    document_version,
+                    entry.matches.clone(),
+                    entry.total_matched_lines,
+                )
+            } else {
+                let computed_matches = build_filter_step_filtered_matches(
+                    &doc,
+                    rules.clone(),
+                    normalized_result_filter_keyword.as_deref(),
+                    filter_case_sensitive,
+                )?;
+                let total_matched_lines = computed_matches.len();
+                let matches_arc = Arc::new(computed_matches);
+                filter_result_filter_step_cache().insert(
+                    cache_key,
+                    FilterResultFilterStepCacheEntry {
+                        document_version,
+                        matches: matches_arc.clone(),
+                        total_matched_lines,
+                    },
+                );
+                (document_version, matches_arc, total_matched_lines)
+            }
+        } else {
+            let computed_matches = build_filter_step_filtered_matches(
+                &doc,
+                rules.clone(),
+                normalized_result_filter_keyword.as_deref(),
+                filter_case_sensitive,
+            )?;
+            let total_matched_lines = computed_matches.len();
+            let matches_arc = Arc::new(computed_matches);
+            filter_result_filter_step_cache().insert(
+                cache_key,
+                FilterResultFilterStepCacheEntry {
+                    document_version,
+                    matches: matches_arc.clone(),
+                    total_matched_lines,
+                },
+            );
+            (document_version, matches_arc, total_matched_lines)
+        }
+    };
+
+    let matches = matches_arc.as_ref();
+    if matches.is_empty() {
+        return Ok(FilterResultFilterStepPayload {
+            target_match: None,
+            document_version,
+            batch_start_line: 0,
+            target_index_in_batch: None,
+            total_matched_lines: 0,
+        });
+    }
+
+    let boundary_line = current_line.unwrap_or(usize::MAX);
+    let target_index = if step > 0 {
+        if let Some(line) = current_line {
+            if let Some(current_index) = find_exact_filter_match_index(matches, line, current_column) {
+                Some((current_index + 1) % matches.len())
+            } else {
+                let next_index = lower_bound_filter_matches(matches, line.saturating_add(1));
+                if next_index < matches.len() {
+                    Some(next_index)
+                } else {
+                    Some(0usize)
+                }
+            }
+        } else {
+            let next_index = lower_bound_filter_matches(matches, boundary_line.saturating_add(1));
+            if next_index < matches.len() {
+                Some(next_index)
+            } else {
+                Some(0usize)
+            }
+        }
+    } else if let Some(line) = current_line {
+        if let Some(current_index) = find_exact_filter_match_index(matches, line, current_column) {
+            if current_index == 0 {
+                Some(matches.len().saturating_sub(1))
+            } else {
+                Some(current_index - 1)
+            }
+        } else {
+            let first_at_or_after = lower_bound_filter_matches(matches, line);
+            if first_at_or_after == 0 {
+                Some(matches.len().saturating_sub(1))
+            } else {
+                Some(first_at_or_after - 1)
+            }
+        }
+    } else {
+        let first_at_or_after = lower_bound_filter_matches(matches, boundary_line);
+        if first_at_or_after == 0 {
+            Some(matches.len().saturating_sub(1))
+        } else {
+            Some(first_at_or_after - 1)
+        }
+    };
+
+    let Some(target_index) = target_index else {
+        return Ok(FilterResultFilterStepPayload {
+            target_match: None,
+            document_version,
+            batch_start_line: 0,
+            target_index_in_batch: None,
+            total_matched_lines: 0,
+        });
+    };
+
+    let target_match = matches.get(target_index).cloned();
+
+    Ok(FilterResultFilterStepPayload {
+        batch_start_line: target_match
+            .as_ref()
+            .map(|item| item.line.saturating_sub(1))
+            .unwrap_or(0),
+        target_match,
+        document_version,
+        target_index_in_batch: Some(0),
+        total_matched_lines,
+    })
 }
 
 #[tauri::command]

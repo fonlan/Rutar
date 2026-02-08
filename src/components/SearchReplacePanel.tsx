@@ -21,8 +21,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type UIEvent as ReactUIEvent,
 } from 'react';
@@ -156,10 +158,28 @@ interface SearchCountBackendResult {
   documentVersion: number;
 }
 
+interface SearchResultFilterStepBackendResult {
+  targetMatch: SearchMatch | null;
+  documentVersion: number;
+  batchStartOffset: number;
+  targetIndexInBatch: number | null;
+  totalMatches: number;
+  totalMatchedLines: number;
+}
+
+interface FilterResultFilterStepBackendResult {
+  targetMatch: FilterMatch | null;
+  documentVersion: number;
+  batchStartLine: number;
+  targetIndexInBatch: number | null;
+  totalMatchedLines: number;
+}
+
 interface TabSearchPanelSnapshot {
   isOpen: boolean;
   panelMode: PanelMode;
   resultPanelState: SearchResultPanelState;
+  resultPanelHeight: number;
   keyword: string;
   replaceValue: string;
   searchMode: SearchMode;
@@ -167,10 +187,25 @@ interface TabSearchPanelSnapshot {
   reverseSearch: boolean;
   resultFilterKeyword: string;
   appliedResultFilterKeyword: string;
+  matches: SearchMatch[];
+  filterMatches: FilterMatch[];
+  currentMatchIndex: number;
+  currentFilterMatchIndex: number;
+  totalMatchCount: number | null;
+  totalMatchedLineCount: number | null;
+  totalFilterMatchedLineCount: number | null;
+  searchNextOffset: number | null;
+  filterNextLine: number | null;
+  searchDocumentVersion: number | null;
+  filterDocumentVersion: number | null;
+  filterRulesKey: string;
 }
 
 const SEARCH_CHUNK_SIZE = 300;
 const FILTER_CHUNK_SIZE = 300;
+const RESULT_PANEL_DEFAULT_HEIGHT = 224;
+const RESULT_PANEL_MIN_HEIGHT = 140;
+const RESULT_PANEL_MAX_HEIGHT = 640;
 const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 420px)';
 const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
 const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
@@ -274,9 +309,10 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       refreshResults: 'Refresh search results',
       refreshFilterResults: 'Refresh filter results',
       resultFilterPlaceholder: 'Search in all results',
-      resultFilterSearch: 'Search',
+      resultFilterSearch: 'Filter',
       resultFilterStop: 'Stop',
       resultFilterNoMatches: 'No results match this filter.',
+      resultFilterStepNoMatch: (keyword: string) => `No entries in results contain "${keyword}".`,
       clearResultFilter: 'Clear result filter',
       minimizeResults: 'Minimize results',
       closeResults: 'Close results',
@@ -396,9 +432,10 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     refreshResults: '刷新搜索结果',
     refreshFilterResults: '刷新过滤结果',
     resultFilterPlaceholder: '在全部结果中搜索',
-    resultFilterSearch: '搜索',
+    resultFilterSearch: '过滤',
     resultFilterStop: '停止',
     resultFilterNoMatches: '结果中没有匹配该筛选词的项。',
+    resultFilterStepNoMatch: (keyword: string) => `当前结果列表中没有包含“${keyword}”的项。`,
     clearResultFilter: '清空结果筛选',
     minimizeResults: '最小化结果',
     closeResults: '关闭结果',
@@ -640,48 +677,195 @@ function getUnicodeScalarLength(value: string) {
   return [...value].length;
 }
 
-function renderMatchPreview(match: SearchMatch) {
+function buildResultFilterRanges(lineText: string, keyword: string, caseSensitive: boolean) {
+  const normalizedKeyword = keyword.trim();
+  if (!normalizedKeyword) {
+    return [] as Array<{ start: number; end: number }>;
+  }
+
+  const sourceText = caseSensitive ? lineText : lineText.toLowerCase();
+  const sourceKeyword = caseSensitive ? normalizedKeyword : normalizedKeyword.toLowerCase();
+  const ranges: Array<{ start: number; end: number }> = [];
+  let startIndex = 0;
+
+  while (startIndex <= sourceText.length) {
+    const hitIndex = sourceText.indexOf(sourceKeyword, startIndex);
+    if (hitIndex < 0) {
+      break;
+    }
+
+    const endIndex = hitIndex + sourceKeyword.length;
+    ranges.push({ start: hitIndex, end: endIndex });
+    startIndex = Math.max(endIndex, hitIndex + 1);
+  }
+
+  return ranges;
+}
+
+function buildSegmentBoundaries(lineLength: number, ranges: Array<{ start: number; end: number }>) {
+  const boundarySet = new Set<number>([0, Math.max(0, lineLength)]);
+
+  ranges.forEach((range) => {
+    boundarySet.add(Math.max(0, Math.min(lineLength, range.start)));
+    boundarySet.add(Math.max(0, Math.min(lineLength, range.end)));
+  });
+
+  return [...boundarySet].sort((left, right) => left - right);
+}
+
+function isSegmentInRanges(start: number, end: number, ranges: Array<{ start: number; end: number }>) {
+  return ranges.some((range) => start >= range.start && end <= range.end);
+}
+
+function renderMatchPreview(match: SearchMatch, resultFilterKeyword: string, caseSensitive: boolean) {
   const lineText = match.lineText || '';
   const start = Math.max(0, Math.min(lineText.length, match.column - 1));
   const length = Math.max(0, match.endChar - match.startChar);
   const end = Math.min(lineText.length, start + length);
+  const secondaryRanges = buildResultFilterRanges(lineText, resultFilterKeyword, caseSensitive);
 
   if (end <= start) {
-    return <span>{lineText || ' '}</span>;
+    if (secondaryRanges.length === 0) {
+      return <span>{lineText || ' '}</span>;
+    }
+
+    const boundaries = buildSegmentBoundaries(lineText.length, secondaryRanges);
+    const nodes: ReactNode[] = [];
+
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const segmentStart = boundaries[index];
+      const segmentEnd = boundaries[index + 1];
+      if (segmentEnd <= segmentStart) {
+        continue;
+      }
+
+      const content = lineText.slice(segmentStart, segmentEnd);
+      if (!content) {
+        continue;
+      }
+
+      const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
+      if (isSecondaryMatch) {
+        nodes.push(
+          <mark key={`secondary-${segmentStart}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
+            {content}
+          </mark>
+        );
+      } else {
+        nodes.push(<span key={`plain-${segmentStart}`}>{content}</span>);
+      }
+    }
+
+    return <>{nodes}</>;
   }
 
-  return (
-    <>
-      {lineText.slice(0, start)}
-      <mark className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
-        {lineText.slice(start, end)}
-      </mark>
-      {lineText.slice(end)}
-    </>
-  );
+  const primaryRange = { start, end };
+  const boundaries = buildSegmentBoundaries(lineText.length, [primaryRange, ...secondaryRanges]);
+  const nodes: ReactNode[] = [];
+
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const segmentStart = boundaries[index];
+    const segmentEnd = boundaries[index + 1];
+    if (segmentEnd <= segmentStart) {
+      continue;
+    }
+
+    const content = lineText.slice(segmentStart, segmentEnd);
+    if (!content) {
+      continue;
+    }
+
+    const isPrimaryMatch = isSegmentInRanges(segmentStart, segmentEnd, [primaryRange]);
+    const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
+
+    if (isSecondaryMatch) {
+      nodes.push(
+        <mark key={`secondary-${segmentStart}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
+          {content}
+        </mark>
+      );
+      continue;
+    }
+
+    if (isPrimaryMatch) {
+      nodes.push(
+        <mark key={`primary-${segmentStart}`} className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
+          {content}
+        </mark>
+      );
+      continue;
+    }
+
+    nodes.push(<span key={`plain-${segmentStart}`}>{content}</span>);
+  }
+
+  return <>{nodes}</>;
 }
 
-function renderFilterPreview(match: FilterMatch) {
+function renderFilterPreview(match: FilterMatch, resultFilterKeyword: string, caseSensitive: boolean) {
   const lineText = match.lineText || '';
   const style = match.style;
   const textColor = cssColor(style?.textColor, 'inherit');
   const bgColor = cssColor(style?.backgroundColor, 'transparent');
   const isBold = !!style?.bold;
   const isItalic = !!style?.italic;
+  const secondaryRanges = buildResultFilterRanges(lineText, resultFilterKeyword, caseSensitive);
+  const secondaryHighlightBg = '#bae6fd';
+
+  const applySegmentStyle = (isRuleMatch: boolean, isSecondaryMatch: boolean): CSSProperties => {
+    const nextStyle: CSSProperties = {
+      backgroundColor: isSecondaryMatch ? secondaryHighlightBg : isRuleMatch ? bgColor : 'transparent',
+    };
+
+    if (isRuleMatch) {
+      nextStyle.color = textColor;
+      nextStyle.fontWeight = isBold ? 700 : 400;
+      nextStyle.fontStyle = isItalic ? 'italic' : 'normal';
+    }
+
+    return nextStyle;
+  };
 
   if (!style || style.applyTo === 'line') {
-    return (
-      <span
-        style={{
-          color: textColor,
-          backgroundColor: bgColor,
-          fontWeight: isBold ? 700 : 400,
-          fontStyle: isItalic ? 'italic' : 'normal',
-        }}
-      >
-        {lineText || ' '}
-      </span>
-    );
+    if (secondaryRanges.length === 0) {
+      return (
+        <span
+          style={{
+            color: textColor,
+            backgroundColor: bgColor,
+            fontWeight: isBold ? 700 : 400,
+            fontStyle: isItalic ? 'italic' : 'normal',
+          }}
+        >
+          {lineText || ' '}
+        </span>
+      );
+    }
+
+    const boundaries = buildSegmentBoundaries(lineText.length, secondaryRanges);
+    const nodes: ReactNode[] = [];
+
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const segmentStart = boundaries[index];
+      const segmentEnd = boundaries[index + 1];
+      if (segmentEnd <= segmentStart) {
+        continue;
+      }
+
+      const content = lineText.slice(segmentStart, segmentEnd);
+      if (!content) {
+        continue;
+      }
+
+      const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
+      nodes.push(
+        <span key={`line-segment-${segmentStart}`} style={applySegmentStyle(true, isSecondaryMatch)}>
+          {content}
+        </span>
+      );
+    }
+
+    return <>{nodes}</>;
   }
 
   const ranges = (match.ranges || [])
@@ -707,33 +891,28 @@ function renderFilterPreview(match: FilterMatch) {
     previous.end = Math.max(previous.end, range.end);
   }
 
+  const boundaries = buildSegmentBoundaries(lineText.length, [...mergedRanges, ...secondaryRanges]);
   const nodes: ReactNode[] = [];
-  let cursor = 0;
 
-  mergedRanges.forEach((range, index) => {
-    if (range.start > cursor) {
-      nodes.push(<span key={`plain-${index}-${cursor}`}>{lineText.slice(cursor, range.start)}</span>);
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const segmentStart = boundaries[index];
+    const segmentEnd = boundaries[index + 1];
+    if (segmentEnd <= segmentStart) {
+      continue;
     }
 
+    const content = lineText.slice(segmentStart, segmentEnd);
+    if (!content) {
+      continue;
+    }
+
+    const isRuleMatch = isSegmentInRanges(segmentStart, segmentEnd, mergedRanges);
+    const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
     nodes.push(
-      <span
-        key={`hl-${index}-${range.start}`}
-        style={{
-          color: textColor,
-          backgroundColor: bgColor,
-          fontWeight: isBold ? 700 : 400,
-          fontStyle: isItalic ? 'italic' : 'normal',
-        }}
-      >
-        {lineText.slice(range.start, range.end)}
+      <span key={`segment-${segmentStart}`} style={applySegmentStyle(isRuleMatch, isSecondaryMatch)}>
+        {content}
       </span>
     );
-
-    cursor = range.end;
-  });
-
-  if (cursor < lineText.length) {
-    nodes.push(<span key={`tail-${cursor}`}>{lineText.slice(cursor)}</span>);
   }
 
   return <>{nodes}</>;
@@ -790,6 +969,8 @@ export function SearchReplacePanel() {
   const [resultFilterKeyword, setResultFilterKeyword] = useState('');
   const [appliedResultFilterKeyword, setAppliedResultFilterKeyword] = useState('');
   const [isResultFilterSearching, setIsResultFilterSearching] = useState(false);
+  const [resultFilterStepLoadingDirection, setResultFilterStepLoadingDirection] = useState<'prev' | 'next' | null>(null);
+  const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
@@ -811,6 +992,10 @@ export function SearchReplacePanel() {
   const resultListRef = useRef<HTMLDivElement>(null);
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
+  const resizeDragStateRef = useRef<{
+    startY: number;
+    startHeight: number;
+  } | null>(null);
   const runVersionRef = useRef(0);
   const countRunVersionRef = useRef(0);
   const filterRunVersionRef = useRef(0);
@@ -819,9 +1004,11 @@ export function SearchReplacePanel() {
   const currentFilterMatchIndexRef = useRef(0);
   const loadMoreLockRef = useRef(false);
   const loadMoreDebounceRef = useRef<number | null>(null);
+  const loadMoreSessionRef = useRef(0);
   const chunkCursorRef = useRef<number | null>(null);
   const filterLineCursorRef = useRef<number | null>(null);
   const stopResultFilterSearchRef = useRef(false);
+  const pendingNavigateDispatchRafRef = useRef<number | null>(null);
   const searchParamsRef = useRef<{
     tabId: string;
     keyword: string;
@@ -871,6 +1058,17 @@ export function SearchReplacePanel() {
     filterRunVersionRef.current += 1;
     countRunVersionRef.current += 1;
     filterCountRunVersionRef.current += 1;
+  }, []);
+  const cancelPendingBatchLoad = useCallback(() => {
+    loadMoreSessionRef.current += 1;
+    if (loadMoreDebounceRef.current !== null) {
+      window.clearTimeout(loadMoreDebounceRef.current);
+      loadMoreDebounceRef.current = null;
+    }
+    setResultFilterStepLoadingDirection(null);
+    if (loadMoreLockRef.current) {
+      setIsSearching(false);
+    }
   }, []);
   const filterCountCacheRef = useRef<{
     tabId: string;
@@ -1102,6 +1300,7 @@ export function SearchReplacePanel() {
   const executeSearch = useCallback(
     async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<SearchRunResult | null> => {
       const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+      cancelPendingBatchLoad();
 
     if (!activeTab || isFilterMode) {
       return null;
@@ -1259,6 +1458,7 @@ export function SearchReplacePanel() {
   }, [
     activeTab,
     backendResultFilterKeyword,
+    cancelPendingBatchLoad,
     caseSensitive,
     executeCountSearch,
     isFilterMode,
@@ -1271,6 +1471,7 @@ export function SearchReplacePanel() {
   const executeFilter = useCallback(
     async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<FilterRunResult | null> => {
   const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+  cancelPendingBatchLoad();
 
   if (!activeTab) {
     return null;
@@ -1420,6 +1621,7 @@ export function SearchReplacePanel() {
   }, [
     activeTab,
     backendResultFilterKeyword,
+    cancelPendingBatchLoad,
     caseSensitive,
     executeFilterCountSearch,
     filterRulesKey,
@@ -1454,6 +1656,7 @@ export function SearchReplacePanel() {
       return null;
     }
 
+    const sessionId = loadMoreSessionRef.current;
     loadMoreLockRef.current = true;
     setIsSearching(true);
     try {
@@ -1466,6 +1669,10 @@ export function SearchReplacePanel() {
         startOffset,
         maxResults: SEARCH_CHUNK_SIZE,
       });
+
+      if (sessionId !== loadMoreSessionRef.current) {
+        return null;
+      }
 
       if (backendResult.documentVersion !== params.documentVersion) {
         cachedSearchRef.current = null;
@@ -1506,12 +1713,17 @@ export function SearchReplacePanel() {
 
       return appendedMatches;
     } catch (error) {
+      if (sessionId !== loadMoreSessionRef.current) {
+        return null;
+      }
       const readableError = error instanceof Error ? error.message : String(error);
       setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       return null;
     } finally {
       loadMoreLockRef.current = false;
-      setIsSearching(false);
+      if (sessionId === loadMoreSessionRef.current) {
+        setIsSearching(false);
+      }
     }
   }, [activeTab, backendResultFilterKeyword, caseSensitive, isFilterMode, keyword, messages.searchFailed, searchMode]);
 
@@ -1538,6 +1750,7 @@ export function SearchReplacePanel() {
       return null;
     }
 
+    const sessionId = loadMoreSessionRef.current;
     loadMoreLockRef.current = true;
     setIsSearching(true);
     try {
@@ -1548,6 +1761,10 @@ export function SearchReplacePanel() {
         startLine,
         maxResults: FILTER_CHUNK_SIZE,
       });
+
+      if (sessionId !== loadMoreSessionRef.current) {
+        return null;
+      }
 
       if (backendResult.documentVersion !== params.documentVersion) {
         cachedFilterRef.current = null;
@@ -1586,16 +1803,22 @@ export function SearchReplacePanel() {
 
       return appendedMatches;
     } catch (error) {
+      if (sessionId !== loadMoreSessionRef.current) {
+        return null;
+      }
       const readableError = error instanceof Error ? error.message : String(error);
       setErrorMessage(`${messages.filterFailed}: ${readableError}`);
       return null;
     } finally {
       loadMoreLockRef.current = false;
-      setIsSearching(false);
+      if (sessionId === loadMoreSessionRef.current) {
+        setIsSearching(false);
+      }
     }
   }, [activeTab, backendResultFilterKeyword, filterRulesKey, filterRulesPayload, isFilterMode, messages.filterFailed]);
 
   const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
+    cancelPendingBatchLoad();
     if (!activeTab || !keyword || isFilterMode) {
       return null;
     }
@@ -1713,6 +1936,7 @@ export function SearchReplacePanel() {
   }, [
     activeTab,
     backendResultFilterKeyword,
+    cancelPendingBatchLoad,
     caseSensitive,
     executeSearch,
     isFilterMode,
@@ -1728,7 +1952,16 @@ export function SearchReplacePanel() {
         return;
       }
 
+      if (pendingNavigateDispatchRafRef.current !== null) {
+        window.cancelAnimationFrame(pendingNavigateDispatchRafRef.current);
+        pendingNavigateDispatchRafRef.current = null;
+      }
+
       dispatchNavigateToMatch(activeTab.id, targetMatch);
+      pendingNavigateDispatchRafRef.current = window.requestAnimationFrame(() => {
+        dispatchNavigateToMatch(activeTab.id, targetMatch);
+        pendingNavigateDispatchRafRef.current = null;
+      });
     },
     [activeTab]
   );
@@ -1739,12 +1972,26 @@ export function SearchReplacePanel() {
         return;
       }
 
+      if (pendingNavigateDispatchRafRef.current !== null) {
+        window.cancelAnimationFrame(pendingNavigateDispatchRafRef.current);
+        pendingNavigateDispatchRafRef.current = null;
+      }
+
       dispatchNavigateToLine(
         activeTab.id,
         targetMatch.line,
         Math.max(1, targetMatch.column || 1),
         Math.max(0, targetMatch.length || 0)
       );
+      pendingNavigateDispatchRafRef.current = window.requestAnimationFrame(() => {
+        dispatchNavigateToLine(
+          activeTab.id,
+          targetMatch.line,
+          Math.max(1, targetMatch.column || 1),
+          Math.max(0, targetMatch.length || 0)
+        );
+        pendingNavigateDispatchRafRef.current = null;
+      });
     },
     [activeTab]
   );
@@ -1803,23 +2050,25 @@ export function SearchReplacePanel() {
   const navigateByStep = useCallback(
     async (step: number) => {
       if (isFilterMode) {
-        if (filterMatches.length > 0 && !isSearching) {
+        if (filterMatches.length > 0) {
           const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterMatches.length - 1);
           const candidateIndex = boundedCurrentIndex + step;
 
           if (candidateIndex < 0) {
             const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+            currentFilterMatchIndexRef.current = nextIndex;
             setCurrentFilterMatchIndex(nextIndex);
             setFeedbackMessage(null);
             navigateToFilterMatch(filterMatches[nextIndex]);
             return;
           }
 
-          if (candidateIndex >= filterMatches.length) {
+          if (candidateIndex >= filterMatches.length && !loadMoreLockRef.current) {
             const appended = await loadMoreFilterMatches();
             if (appended && appended.length > 0) {
               const expandedMatches = [...filterMatches, ...appended];
               const nextIndex = candidateIndex;
+              currentFilterMatchIndexRef.current = nextIndex;
               setCurrentFilterMatchIndex(nextIndex);
               setFeedbackMessage(null);
               navigateToFilterMatch(expandedMatches[nextIndex]);
@@ -1828,6 +2077,7 @@ export function SearchReplacePanel() {
           }
 
           const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+          currentFilterMatchIndexRef.current = nextIndex;
           setCurrentFilterMatchIndex(nextIndex);
           setFeedbackMessage(null);
           navigateToFilterMatch(filterMatches[nextIndex]);
@@ -1842,6 +2092,7 @@ export function SearchReplacePanel() {
         const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterResult.matches.length - 1);
         const nextIndex = (boundedCurrentIndex + step + filterResult.matches.length) % filterResult.matches.length;
 
+        currentFilterMatchIndexRef.current = nextIndex;
         setCurrentFilterMatchIndex(nextIndex);
         setFeedbackMessage(null);
         navigateToFilterMatch(filterResult.matches[nextIndex]);
@@ -1849,23 +2100,25 @@ export function SearchReplacePanel() {
         return;
       }
 
-      if (keyword && matches.length > 0 && !isSearching) {
+      if (keyword && matches.length > 0) {
         const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, matches.length - 1);
         const candidateIndex = boundedCurrentIndex + step;
 
         if (candidateIndex < 0) {
           const nextIndex = (candidateIndex + matches.length) % matches.length;
+          currentMatchIndexRef.current = nextIndex;
           setCurrentMatchIndex(nextIndex);
           setFeedbackMessage(null);
           navigateToMatch(matches[nextIndex]);
           return;
         }
 
-        if (candidateIndex >= matches.length) {
+        if (candidateIndex >= matches.length && !loadMoreLockRef.current) {
           const appended = await loadMoreMatches();
           if (appended && appended.length > 0) {
             const expandedMatches = [...matches, ...appended];
             const nextIndex = candidateIndex;
+            currentMatchIndexRef.current = nextIndex;
             setCurrentMatchIndex(nextIndex);
             setFeedbackMessage(null);
             navigateToMatch(expandedMatches[nextIndex]);
@@ -1875,6 +2128,7 @@ export function SearchReplacePanel() {
 
         const nextIndex = (candidateIndex + matches.length) % matches.length;
 
+        currentMatchIndexRef.current = nextIndex;
         setCurrentMatchIndex(nextIndex);
         setFeedbackMessage(null);
         navigateToMatch(matches[nextIndex]);
@@ -1892,6 +2146,7 @@ export function SearchReplacePanel() {
         (boundedCurrentIndex + step + searchResult.matches.length) %
         searchResult.matches.length;
 
+      currentMatchIndexRef.current = nextIndex;
       setCurrentMatchIndex(nextIndex);
       setFeedbackMessage(null);
       navigateToMatch(searchResult.matches[nextIndex]);
@@ -2447,6 +2702,7 @@ export function SearchReplacePanel() {
       setIsOpen(false);
       setPanelMode('find');
       setResultPanelState('closed');
+      setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
       setKeyword('');
       setReplaceValue('');
       setSearchMode('literal');
@@ -2454,10 +2710,21 @@ export function SearchReplacePanel() {
       setReverseSearch(false);
       setResultFilterKeyword('');
       setAppliedResultFilterKeyword('');
+      setMatches([]);
+      setFilterMatches([]);
+      setCurrentMatchIndex(0);
+      setCurrentFilterMatchIndex(0);
+      setTotalMatchCount(null);
+      setTotalMatchedLineCount(null);
+      setTotalFilterMatchedLineCount(null);
       setIsResultFilterSearching(false);
       stopResultFilterSearchRef.current = true;
       resetSearchState();
       resetFilterState();
+      cachedSearchRef.current = null;
+      cachedFilterRef.current = null;
+      countCacheRef.current = null;
+      filterCountCacheRef.current = null;
       setErrorMessage(null);
       setFeedbackMessage(null);
       previousActiveTabIdRef.current = null;
@@ -2469,6 +2736,7 @@ export function SearchReplacePanel() {
       setIsOpen(nextSnapshot.isOpen);
       setPanelMode(nextSnapshot.panelMode);
       setResultPanelState(nextSnapshot.resultPanelState);
+      setResultPanelHeight(nextSnapshot.resultPanelHeight ?? RESULT_PANEL_DEFAULT_HEIGHT);
       setKeyword(nextSnapshot.keyword);
       setReplaceValue(nextSnapshot.replaceValue);
       setSearchMode(nextSnapshot.searchMode);
@@ -2476,10 +2744,114 @@ export function SearchReplacePanel() {
       setReverseSearch(nextSnapshot.reverseSearch);
       setResultFilterKeyword(nextSnapshot.resultFilterKeyword);
       setAppliedResultFilterKeyword(nextSnapshot.appliedResultFilterKeyword);
+
+      const restoredMatches = nextSnapshot.matches || [];
+      const restoredFilterMatches = nextSnapshot.filterMatches || [];
+
+      setMatches(restoredMatches);
+      setFilterMatches(restoredFilterMatches);
+      setCurrentMatchIndex(() => {
+        if (restoredMatches.length === 0) {
+          return 0;
+        }
+
+        return Math.min(nextSnapshot.currentMatchIndex, restoredMatches.length - 1);
+      });
+      setCurrentFilterMatchIndex(() => {
+        if (restoredFilterMatches.length === 0) {
+          return 0;
+        }
+
+        return Math.min(nextSnapshot.currentFilterMatchIndex, restoredFilterMatches.length - 1);
+      });
+
+      setTotalMatchCount(nextSnapshot.totalMatchCount);
+      setTotalMatchedLineCount(nextSnapshot.totalMatchedLineCount);
+      setTotalFilterMatchedLineCount(nextSnapshot.totalFilterMatchedLineCount);
+
+      chunkCursorRef.current = nextSnapshot.searchNextOffset;
+      filterLineCursorRef.current = nextSnapshot.filterNextLine;
+
+      const restoredNormalizedResultFilterKeyword = nextSnapshot.appliedResultFilterKeyword.trim().toLowerCase();
+      const restoredResultFilterKeyword = restoredNormalizedResultFilterKeyword.length
+        ? nextSnapshot.caseSensitive
+          ? nextSnapshot.appliedResultFilterKeyword.trim()
+          : restoredNormalizedResultFilterKeyword
+        : '';
+
+      if (nextSnapshot.searchDocumentVersion !== null && nextSnapshot.keyword) {
+        const restoredSearchParams = {
+          tabId: activeTab.id,
+          keyword: nextSnapshot.keyword,
+          searchMode: nextSnapshot.searchMode,
+          caseSensitive: nextSnapshot.caseSensitive,
+          resultFilterKeyword: restoredResultFilterKeyword,
+          documentVersion: nextSnapshot.searchDocumentVersion,
+        };
+
+        searchParamsRef.current = restoredSearchParams;
+        cachedSearchRef.current = {
+          ...restoredSearchParams,
+          matches: restoredMatches,
+          nextOffset: nextSnapshot.searchNextOffset,
+        };
+
+        if (nextSnapshot.totalMatchCount !== null && nextSnapshot.totalMatchedLineCount !== null) {
+          countCacheRef.current = {
+            tabId: activeTab.id,
+            keyword: nextSnapshot.keyword,
+            searchMode: nextSnapshot.searchMode,
+            caseSensitive: nextSnapshot.caseSensitive,
+            resultFilterKeyword: restoredResultFilterKeyword,
+            documentVersion: nextSnapshot.searchDocumentVersion,
+            totalMatches: nextSnapshot.totalMatchCount,
+            matchedLines: nextSnapshot.totalMatchedLineCount,
+          };
+        } else {
+          countCacheRef.current = null;
+        }
+      } else {
+        searchParamsRef.current = null;
+        cachedSearchRef.current = null;
+        countCacheRef.current = null;
+      }
+
+      if (nextSnapshot.filterDocumentVersion !== null && nextSnapshot.filterRulesKey) {
+        const restoredFilterParams = {
+          tabId: activeTab.id,
+          rulesKey: nextSnapshot.filterRulesKey,
+          resultFilterKeyword: restoredResultFilterKeyword,
+          documentVersion: nextSnapshot.filterDocumentVersion,
+        };
+
+        filterParamsRef.current = restoredFilterParams;
+        cachedFilterRef.current = {
+          ...restoredFilterParams,
+          matches: restoredFilterMatches,
+          nextLine: nextSnapshot.filterNextLine,
+        };
+
+        if (nextSnapshot.totalFilterMatchedLineCount !== null) {
+          filterCountCacheRef.current = {
+            tabId: activeTab.id,
+            rulesKey: nextSnapshot.filterRulesKey,
+            resultFilterKeyword: restoredResultFilterKeyword,
+            documentVersion: nextSnapshot.filterDocumentVersion,
+            matchedLines: nextSnapshot.totalFilterMatchedLineCount,
+          };
+        } else {
+          filterCountCacheRef.current = null;
+        }
+      } else {
+        filterParamsRef.current = null;
+        cachedFilterRef.current = null;
+        filterCountCacheRef.current = null;
+      }
     } else {
       setIsOpen(false);
       setPanelMode('find');
       setResultPanelState('closed');
+      setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
       setKeyword('');
       setReplaceValue('');
       setSearchMode('literal');
@@ -2487,12 +2859,25 @@ export function SearchReplacePanel() {
       setReverseSearch(false);
       setResultFilterKeyword('');
       setAppliedResultFilterKeyword('');
+      setMatches([]);
+      setFilterMatches([]);
+      setCurrentMatchIndex(0);
+      setCurrentFilterMatchIndex(0);
+      setTotalMatchCount(null);
+      setTotalMatchedLineCount(null);
+      setTotalFilterMatchedLineCount(null);
+      chunkCursorRef.current = null;
+      filterLineCursorRef.current = null;
+      searchParamsRef.current = null;
+      filterParamsRef.current = null;
+      cachedSearchRef.current = null;
+      cachedFilterRef.current = null;
+      countCacheRef.current = null;
+      filterCountCacheRef.current = null;
     }
 
     setIsResultFilterSearching(false);
     stopResultFilterSearchRef.current = true;
-    resetSearchState();
-    resetFilterState();
     setErrorMessage(null);
     setFeedbackMessage(null);
     previousActiveTabIdRef.current = activeTab.id;
@@ -2507,6 +2892,7 @@ export function SearchReplacePanel() {
       isOpen,
       panelMode,
       resultPanelState,
+      resultPanelHeight,
       keyword,
       replaceValue,
       searchMode,
@@ -2514,19 +2900,42 @@ export function SearchReplacePanel() {
       reverseSearch,
       resultFilterKeyword,
       appliedResultFilterKeyword,
+      matches,
+      filterMatches,
+      currentMatchIndex,
+      currentFilterMatchIndex,
+      totalMatchCount,
+      totalMatchedLineCount,
+      totalFilterMatchedLineCount,
+      searchNextOffset: chunkCursorRef.current,
+      filterNextLine: filterLineCursorRef.current,
+      searchDocumentVersion:
+        searchParamsRef.current?.documentVersion ?? cachedSearchRef.current?.documentVersion ?? null,
+      filterDocumentVersion:
+        filterParamsRef.current?.documentVersion ?? cachedFilterRef.current?.documentVersion ?? null,
+      filterRulesKey: filterParamsRef.current?.rulesKey ?? filterRulesKey,
     };
   }, [
     activeTabId,
     appliedResultFilterKeyword,
     caseSensitive,
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    filterMatches,
+    filterRulesKey,
     isOpen,
     keyword,
+    matches,
     panelMode,
     replaceValue,
     resultFilterKeyword,
     resultPanelState,
+    resultPanelHeight,
     reverseSearch,
     searchMode,
+    totalFilterMatchedLineCount,
+    totalMatchCount,
+    totalMatchedLineCount,
   ]);
 
   useEffect(() => {
@@ -2676,13 +3085,6 @@ export function SearchReplacePanel() {
   }, [isOpen, resultPanelState, updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
-    stopResultFilterSearchRef.current = true;
-    setIsResultFilterSearching(false);
-    resetSearchState();
-    resetFilterState();
-  }, [activeTab?.id, resetFilterState, resetSearchState]);
-
-  useEffect(() => {
     return () => {
       if (loadMoreDebounceRef.current !== null) {
         window.clearTimeout(loadMoreDebounceRef.current);
@@ -2787,6 +3189,7 @@ export function SearchReplacePanel() {
   }, [activeTab, focusSearchInput, isFilterMode, isOpen, keyword, navigateByStep, reverseSearch]);
 
   const handleApplyResultFilter = useCallback(async () => {
+    cancelPendingBatchLoad();
     const nextKeyword = resultFilterKeyword.trim();
     const nextResultFilterKeyword = nextKeyword
       ? caseSensitive
@@ -2836,6 +3239,7 @@ export function SearchReplacePanel() {
     }
   }, [
     appliedResultFilterKeyword,
+    cancelPendingBatchLoad,
     caseSensitive,
     executeFilter,
     executeSearch,
@@ -2846,18 +3250,274 @@ export function SearchReplacePanel() {
     resultFilterKeyword,
   ]);
 
-  const hasPendingResultFilterChange = useMemo(() => {
-    const normalizeForCompare = (value: string) => {
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return '';
+  const hasAppliedResultFilterKeyword = resultFilterKeyword.trim().length > 0;
+
+  const previewResultFilterKeyword = useMemo(() => {
+    const inputKeyword = resultFilterKeyword.trim();
+    if (inputKeyword) {
+      return inputKeyword;
+    }
+
+    return appliedResultFilterKeyword;
+  }, [appliedResultFilterKeyword, resultFilterKeyword]);
+
+  const scrollResultItemIntoView = useCallback((itemIndex: number) => {
+    const container = resultListRef.current;
+    if (!container || itemIndex < 0) {
+      return;
+    }
+
+    const itemElements = container.querySelectorAll<HTMLButtonElement>('button[data-result-item="true"]');
+    const targetElement = itemElements.item(itemIndex);
+    if (!targetElement) {
+      return;
+    }
+
+    const targetTop = targetElement.offsetTop;
+    const targetBottom = targetTop + targetElement.offsetHeight;
+    const viewTop = container.scrollTop;
+    const viewBottom = viewTop + container.clientHeight;
+    const verticalPadding = Math.max(8, Math.floor(container.clientHeight * 0.2));
+
+    if (targetTop < viewTop) {
+      container.scrollTop = Math.max(0, targetTop - verticalPadding);
+      return;
+    }
+
+    if (targetBottom > viewBottom) {
+      container.scrollTop = Math.max(0, targetTop - verticalPadding);
+    }
+  }, []);
+
+  const navigateResultFilterByStep = useCallback(
+    async (step: number) => {
+      if (!activeTab || isSearching || isResultFilterSearching) {
+        return;
       }
 
-      return caseSensitive ? trimmed : trimmed.toLowerCase();
+      const keywordForJump = resultFilterKeyword.trim();
+      if (!keywordForJump) {
+        return;
+      }
+
+      const normalizedStep = step < 0 ? -1 : 1;
+
+      try {
+        if (isFilterMode) {
+          const currentFilterMatch =
+            currentFilterMatchIndexRef.current >= 0 &&
+            currentFilterMatchIndexRef.current < filterMatches.length
+              ? filterMatches[currentFilterMatchIndexRef.current]
+              : null;
+
+          const stepResult = await invoke<FilterResultFilterStepBackendResult>(
+            'step_result_filter_search_in_filter_document',
+            {
+              id: activeTab.id,
+              rules: filterRulesPayload,
+              resultFilterKeyword: keywordForJump,
+              resultFilterCaseSensitive: caseSensitive,
+              currentLine: currentFilterMatch?.line ?? null,
+              currentColumn: currentFilterMatch?.column ?? null,
+              step: normalizedStep,
+              maxResults: FILTER_CHUNK_SIZE,
+            }
+          );
+
+          const targetMatch = stepResult.targetMatch;
+          if (!targetMatch) {
+            return;
+          }
+
+          let expandedMatches = filterMatches;
+          let targetIndex = expandedMatches.findIndex(
+            (item) =>
+              item.line === targetMatch.line &&
+              item.column === targetMatch.column &&
+              item.ruleIndex === targetMatch.ruleIndex
+          );
+
+          if (targetIndex < 0 && hasMoreFilterMatches) {
+            setResultFilterStepLoadingDirection(normalizedStep > 0 ? 'next' : 'prev');
+          }
+
+          while (targetIndex < 0 && hasMoreFilterMatches) {
+            const appended = await loadMoreFilterMatches();
+            if (!appended || appended.length === 0) {
+              break;
+            }
+
+            expandedMatches = [...expandedMatches, ...appended];
+            targetIndex = expandedMatches.findIndex(
+              (item) =>
+                item.line === targetMatch.line &&
+                item.column === targetMatch.column &&
+                item.ruleIndex === targetMatch.ruleIndex
+            );
+          }
+
+          setResultFilterStepLoadingDirection(null);
+
+          if (targetIndex >= 0) {
+            currentFilterMatchIndexRef.current = targetIndex;
+            setCurrentFilterMatchIndex(targetIndex);
+            setErrorMessage(null);
+            setFeedbackMessage(null);
+            window.requestAnimationFrame(() => {
+              scrollResultItemIntoView(targetIndex);
+            });
+            return;
+          }
+
+          setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+          return;
+        }
+
+        if (!keyword) {
+          return;
+        }
+
+        const currentSearchMatch =
+          currentMatchIndexRef.current >= 0 && currentMatchIndexRef.current < matches.length
+            ? matches[currentMatchIndexRef.current]
+            : null;
+
+        const stepResult = await invoke<SearchResultFilterStepBackendResult>(
+          'step_result_filter_search_in_document',
+          {
+            id: activeTab.id,
+            keyword,
+            mode: getSearchModeValue(searchMode),
+            caseSensitive,
+            resultFilterKeyword: keywordForJump,
+            resultFilterCaseSensitive: caseSensitive,
+            currentStart: currentSearchMatch?.start ?? null,
+            currentEnd: currentSearchMatch?.end ?? null,
+            step: normalizedStep,
+            maxResults: SEARCH_CHUNK_SIZE,
+          }
+        );
+
+        const targetMatch = stepResult.targetMatch;
+        if (!targetMatch) {
+          return;
+        }
+
+        let expandedMatches = matches;
+        let targetIndex = expandedMatches.findIndex(
+          (item) => item.start === targetMatch.start && item.end === targetMatch.end
+        );
+
+        if (targetIndex < 0 && hasMoreMatches) {
+          setResultFilterStepLoadingDirection(normalizedStep > 0 ? 'next' : 'prev');
+        }
+
+        while (targetIndex < 0 && hasMoreMatches) {
+          const appended = await loadMoreMatches();
+          if (!appended || appended.length === 0) {
+            break;
+          }
+
+          expandedMatches = [...expandedMatches, ...appended];
+          targetIndex = expandedMatches.findIndex(
+            (item) => item.start === targetMatch.start && item.end === targetMatch.end
+          );
+        }
+
+        setResultFilterStepLoadingDirection(null);
+
+        if (targetIndex >= 0) {
+          currentMatchIndexRef.current = targetIndex;
+          setCurrentMatchIndex(targetIndex);
+          setErrorMessage(null);
+          setFeedbackMessage(null);
+          window.requestAnimationFrame(() => {
+            scrollResultItemIntoView(targetIndex);
+          });
+          return;
+        }
+
+        setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+      } catch (error) {
+        setResultFilterStepLoadingDirection(null);
+        const readableError = error instanceof Error ? error.message : String(error);
+        setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+      }
+    },
+    [
+      activeTab,
+      caseSensitive,
+      cancelPendingBatchLoad,
+      filterMatches,
+      filterRulesPayload,
+      hasMoreFilterMatches,
+      hasMoreMatches,
+      isFilterMode,
+      isResultFilterSearching,
+      isSearching,
+      keyword,
+      loadMoreFilterMatches,
+      loadMoreMatches,
+      matches,
+      messages.searchFailed,
+      messages.resultFilterStepNoMatch,
+      resultFilterKeyword,
+      scrollResultItemIntoView,
+      searchMode,
+    ]
+  );
+
+  useEffect(() => {
+    if (resultPanelState === 'closed') {
+      cancelPendingBatchLoad();
+    }
+  }, [cancelPendingBatchLoad, resultPanelState]);
+
+  useEffect(() => {
+    return () => {
+      const teardown = () => {
+        resizeDragStateRef.current = null;
+        document.body.style.userSelect = '';
+      };
+
+      teardown();
+    };
+  }, []);
+
+  const handleResultPanelResizeMouseDown = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
+    resizeDragStateRef.current = {
+      startY: event.clientY,
+      startHeight: resultPanelHeight,
     };
 
-    return normalizeForCompare(resultFilterKeyword) !== normalizeForCompare(appliedResultFilterKeyword);
-  }, [appliedResultFilterKeyword, caseSensitive, resultFilterKeyword]);
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const dragState = resizeDragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+
+      const delta = dragState.startY - moveEvent.clientY;
+      const nextHeight = Math.max(
+        RESULT_PANEL_MIN_HEIGHT,
+        Math.min(RESULT_PANEL_MAX_HEIGHT, dragState.startHeight + delta)
+      );
+      setResultPanelHeight(nextHeight);
+    };
+
+    const onMouseUp = () => {
+      resizeDragStateRef.current = null;
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [resultPanelHeight]);
 
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
@@ -2887,6 +3547,7 @@ export function SearchReplacePanel() {
           <button
             key={`filter-${match.line}-${match.ruleIndex}-${index}`}
             type="button"
+            data-result-item="true"
             className={cn(
               'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
               isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
@@ -2908,7 +3569,7 @@ export function SearchReplacePanel() {
               className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
               style={resultListTextStyle}
             >
-              {renderFilterPreview(match)}
+              {renderFilterPreview(match, previewResultFilterKeyword, caseSensitive)}
             </span>
             {isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
           </button>
@@ -2928,6 +3589,7 @@ export function SearchReplacePanel() {
         <button
           key={`${match.start}-${match.end}-${index}`}
           type="button"
+          data-result-item="true"
           className={cn(
             'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
             isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
@@ -2949,7 +3611,7 @@ export function SearchReplacePanel() {
             className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
             style={resultListTextStyle}
           >
-            {renderMatchPreview(match)}
+            {renderMatchPreview(match, previewResultFilterKeyword, caseSensitive)}
           </span>
           {isActive ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
         </button>
@@ -2965,6 +3627,8 @@ export function SearchReplacePanel() {
     keyword,
     matches,
     messages,
+    previewResultFilterKeyword,
+    caseSensitive,
     resultPanelState,
     visibleCurrentFilterMatchIndex,
     visibleCurrentMatchIndex,
@@ -3636,6 +4300,15 @@ export function SearchReplacePanel() {
             resultPanelState === 'open' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           )}
         >
+          <button
+            type="button"
+            className="flex h-2 w-full cursor-row-resize items-center justify-center rounded-t-lg text-muted-foreground/60 hover:bg-muted/40"
+            onMouseDown={handleResultPanelResizeMouseDown}
+            title="Resize results panel"
+            aria-label="Resize results panel"
+          >
+            <span className="h-0.5 w-10 rounded-full bg-border" />
+          </button>
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <div className="shrink-0 text-xs font-medium text-foreground">
@@ -3659,10 +4332,61 @@ export function SearchReplacePanel() {
                 />
                 <button
                   type="button"
-                  className={cn(
-                    'rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 disabled:opacity-40',
-                    !isResultFilterSearching && hasPendingResultFilterChange && 'ring-2 ring-amber-400/80 animate-pulse'
-                  )}
+                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-40"
+                  onClick={() => {
+                    if (resultFilterStepLoadingDirection === 'prev') {
+                      cancelPendingBatchLoad();
+                      return;
+                    }
+
+                    void navigateResultFilterByStep(-1);
+                  }}
+                  title={messages.prevMatch}
+                  disabled={
+                    !hasAppliedResultFilterKeyword ||
+                    isResultFilterSearching ||
+                    (isSearching && resultFilterStepLoadingDirection !== 'prev')
+                  }
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {resultFilterStepLoadingDirection === 'prev' ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ArrowUp className="h-3 w-3" />
+                    )}
+                    {messages.previous}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-40"
+                  onClick={() => {
+                    if (resultFilterStepLoadingDirection === 'next') {
+                      cancelPendingBatchLoad();
+                      return;
+                    }
+
+                    void navigateResultFilterByStep(1);
+                  }}
+                  title={messages.nextMatch}
+                  disabled={
+                    !hasAppliedResultFilterKeyword ||
+                    isResultFilterSearching ||
+                    (isSearching && resultFilterStepLoadingDirection !== 'next')
+                  }
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {resultFilterStepLoadingDirection === 'next' ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3" />
+                    )}
+                    {messages.next}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 disabled:opacity-40"
                   onClick={() => {
                     if (isResultFilterSearching) {
                       requestStopResultFilterSearch();
@@ -3702,6 +4426,7 @@ export function SearchReplacePanel() {
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => {
+                  cancelPendingBatchLoad();
                   if (isFilterMode) {
                     void executeFilter(true);
                     return;
@@ -3724,7 +4449,10 @@ export function SearchReplacePanel() {
               <button
                 type="button"
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setResultPanelState('closed')}
+                onClick={() => {
+                  cancelPendingBatchLoad();
+                  setResultPanelState('closed');
+                }}
                 title={messages.closeResults}
               >
                 <X className="h-3.5 w-3.5" />
@@ -3732,7 +4460,12 @@ export function SearchReplacePanel() {
             </div>
           </div>
 
-          <div ref={resultListRef} className="max-h-56 overflow-y-auto" onScroll={handleResultListScroll}>
+          <div
+            ref={resultListRef}
+            className="overflow-y-auto"
+            style={{ maxHeight: `${resultPanelHeight}px` }}
+            onScroll={handleResultListScroll}
+          >
             {isFilterMode ? (
               <>
                 {filterRulesPayload.length === 0 && (
@@ -3822,7 +4555,10 @@ export function SearchReplacePanel() {
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => setResultPanelState('closed')}
+              onClick={() => {
+                cancelPendingBatchLoad();
+                setResultPanelState('closed');
+              }}
               title={messages.closeResults}
             >
               <X className="h-3.5 w-3.5" />
