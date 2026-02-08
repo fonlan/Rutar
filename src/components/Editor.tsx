@@ -84,6 +84,21 @@ function normalizeSegmentText(value: string) {
   return normalizeEditorText((value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
 }
 
+function toInputLayerText(value: string) {
+  const normalized = (value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, '');
+  if (!normalized.endsWith('\n')) {
+    return normalized;
+  }
+
+  return `${normalized}${EMPTY_LINE_PLACEHOLDER}`;
+}
+
+function mapLogicalOffsetToInputLayerOffset(text: string, logicalOffset: number) {
+  const normalized = (text || '').replaceAll(EMPTY_LINE_PLACEHOLDER, '');
+  const safeOffset = Math.max(0, Math.min(Math.floor(logicalOffset), normalized.length));
+  return safeOffset;
+}
+
 function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
   if (event.isComposing) {
     return false;
@@ -112,13 +127,14 @@ function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
 }
 
 function getEditableText(element: HTMLDivElement) {
-  return normalizeEditorText(element.textContent || "");
+  return normalizeEditorText((element.textContent || "").replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
 }
 
 function setCaretToLineStart(element: HTMLDivElement, line: number) {
   const content = normalizeEditorText(getEditableText(element));
-  if (element.textContent !== content) {
-    element.textContent = content;
+  const layerText = toInputLayerText(content);
+  if (element.textContent !== layerText) {
+    element.textContent = layerText;
   }
 
   const targetLine = Math.max(1, Math.floor(line));
@@ -140,11 +156,12 @@ function setCaretToLineStart(element: HTMLDivElement, line: number) {
 
   let textNode = element.firstChild as Text | null;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-    textNode = document.createTextNode(content);
+    textNode = document.createTextNode(layerText);
     element.replaceChildren(textNode);
   }
 
-  const safeOffset = Math.min(targetOffset, textNode.textContent?.length ?? 0);
+  const layerOffset = mapLogicalOffsetToInputLayerOffset(content, targetOffset);
+  const safeOffset = Math.min(layerOffset, textNode.textContent?.length ?? 0);
 
   if (!textNode) {
     return;
@@ -206,6 +223,34 @@ function getSelectionOffsetsInElement(element: HTMLDivElement) {
     end: normalizeLineText(endRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
     isCollapsed: range.collapsed,
   };
+}
+
+function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
+  const targetOffset = Math.max(0, Math.floor(offset));
+
+  if (document.activeElement !== element) {
+    element.focus();
+  }
+
+  let textNode = element.firstChild as Text | null;
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+    const content = element.textContent || '';
+    textNode = document.createTextNode(content);
+    element.replaceChildren(textNode);
+  }
+
+  const safeOffset = Math.min(targetOffset, textNode.textContent?.length ?? 0);
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(textNode, safeOffset);
+  range.collapse(true);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function isEscapedCharacter(text: string, index: number) {
@@ -634,7 +679,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         }
 
         if (contentRef.current) {
-          contentRef.current.textContent = text;
+          contentRef.current.textContent = toInputLayerText(text);
         }
 
         syncedTextRef.current = text;
@@ -983,7 +1028,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     if (isHugeEditableMode) {
       const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
       const start = 0;
-      const end = Math.max(start + 1, Math.min(tab.lineCount, viewportLines + largeFetchBuffer));
+      const end = Math.max(start + 1, viewportLines + largeFetchBuffer);
       await fetchEditableSegment(start, end);
       return;
     }
@@ -996,12 +1041,12 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const normalized = normalizeEditorText(raw || '');
     if (contentRef.current) {
-      contentRef.current.textContent = normalized;
+      contentRef.current.textContent = toInputLayerText(normalized);
     }
 
     syncedTextRef.current = normalized;
     pendingSyncRequestedRef.current = false;
-  }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id, tab.lineCount]);
+  }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id]);
 
   const updateActiveLineFromSelection = useCallback(() => {
     if (!highlightCurrentLine || !contentRef.current) {
@@ -1224,6 +1269,62 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [tab.id, tab.isDirty, updateTab, queueTextSync, syncSelectionAfterInteraction]
+  );
+
+  const insertTextAtSelection = useCallback((text: string) => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets) {
+      return false;
+    }
+
+    const currentText = getEditableText(element);
+    const nextText = `${currentText.slice(0, selectionOffsets.start)}${text}${currentText.slice(selectionOffsets.end)}`;
+    element.textContent = toInputLayerText(nextText);
+    const logicalNextOffset = selectionOffsets.start + text.length;
+    const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
+    setCaretToCodeUnitOffset(element, layerNextOffset);
+    return true;
+  }, []);
+
+  const handleBeforeInput = useCallback(
+    (event: React.FormEvent<HTMLDivElement>) => {
+      const nativeEvent = event.nativeEvent as InputEvent;
+      if (!nativeEvent || nativeEvent.isComposing) {
+        return;
+      }
+
+      if (nativeEvent.inputType !== 'insertParagraph' && nativeEvent.inputType !== 'insertLineBreak') {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (insertTextAtSelection('\n')) {
+        handleInput();
+      }
+    },
+    [handleInput, insertTextAtSelection]
+  );
+
+  const handleEditableKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' || event.isComposing) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (insertTextAtSelection('\n')) {
+        handleInput();
+      }
+    },
+    [handleInput, insertTextAtSelection]
   );
 
   const handleCompositionStart = useCallback(() => {
@@ -2060,7 +2161,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         hugeWindowUnlockTimerRef.current = null;
       }
     };
-  }, [tab.id, loadTextFromBackend, syncVisibleTokens, tab.lineCount, isLargeReadOnlyMode]);
+  }, [tab.id, loadTextFromBackend, syncVisibleTokens, isLargeReadOnlyMode]);
 
   useEffect(() => {
     if (isLargeReadOnlyMode) {
@@ -2354,6 +2455,8 @@ export function Editor({ tab }: { tab: FileTab }) {
                 paddingBottom: hugeEditablePaddingBottom,
               }}
               onInput={handleInput}
+              onBeforeInput={handleBeforeInput}
+              onKeyDown={handleEditableKeyDown}
               onPointerDown={handleEditorPointerDown}
               onKeyUp={syncSelectionAfterInteraction}
               onPointerUp={syncSelectionAfterInteraction}
@@ -2382,6 +2485,8 @@ export function Editor({ tab }: { tab: FileTab }) {
             paddingLeft: contentPaddingLeft,
           }}
           onInput={handleInput}
+          onBeforeInput={handleBeforeInput}
+          onKeyDown={handleEditableKeyDown}
           onScroll={handleScroll}
           onPointerDown={handleEditorPointerDown}
           onKeyUp={syncSelectionAfterInteraction}
