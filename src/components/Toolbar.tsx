@@ -13,10 +13,18 @@ import { toolbarFormatMessages } from '@/lib/i18nToolbarFormat';
 import { isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 
-function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
+function dispatchEditorForceRefresh(
+    tabId: string,
+    lineCount?: number,
+    options?: { preserveCaret?: boolean }
+) {
     window.dispatchEvent(
         new CustomEvent('rutar:force-refresh', {
-            detail: { tabId, lineCount },
+            detail: {
+                tabId,
+                lineCount,
+                preserveCaret: options?.preserveCaret ?? false,
+            },
         })
     );
 }
@@ -220,7 +228,7 @@ export function Toolbar() {
         try {
             const newLineCount = await invoke<number>('undo', { id: activeTab.id });
             updateTab(activeTab.id, { lineCount: newLineCount, isDirty: true });
-            dispatchEditorForceRefresh(activeTab.id, newLineCount);
+            dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
         } catch (e) {
             console.warn(e);
         }
@@ -231,7 +239,7 @@ export function Toolbar() {
         try {
             const newLineCount = await invoke<number>('redo', { id: activeTab.id });
             updateTab(activeTab.id, { lineCount: newLineCount, isDirty: true });
-            dispatchEditorForceRefresh(activeTab.id, newLineCount);
+            dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
         } catch (e) {
             console.warn(e);
         }

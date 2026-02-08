@@ -2699,19 +2699,41 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     const handleForcedRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId: string; lineCount?: number }>;
+      const customEvent = event as CustomEvent<{
+        tabId: string;
+        lineCount?: number;
+        preserveCaret?: boolean;
+      }>;
       const detail = customEvent.detail;
 
       if (!detail || detail.tabId !== tab.id) {
         return;
       }
 
+      const preserveCaret = detail.preserveCaret === true;
+      const caretOffsets = preserveCaret && contentRef.current
+        ? getSelectionOffsetsInElement(contentRef.current)
+        : null;
+      const caretLogicalOffset = caretOffsets
+        ? Math.max(0, caretOffsets.isCollapsed ? caretOffsets.end : caretOffsets.start)
+        : null;
+
       if (typeof detail.lineCount === 'number' && Number.isFinite(detail.lineCount)) {
         updateTab(tab.id, { lineCount: Math.max(1, detail.lineCount) });
       }
 
-      void loadTextFromBackend();
-      void syncVisibleTokens(Math.max(1, detail.lineCount ?? tab.lineCount));
+      void (async () => {
+        await loadTextFromBackend();
+
+        if (preserveCaret && caretLogicalOffset !== null && contentRef.current) {
+          const editorText = getEditableText(contentRef.current);
+          const safeLogicalOffset = Math.min(caretLogicalOffset, editorText.length);
+          const layerOffset = mapLogicalOffsetToInputLayerOffset(editorText, safeLogicalOffset);
+          setCaretToCodeUnitOffset(contentRef.current, layerOffset);
+        }
+
+        await syncVisibleTokens(Math.max(1, detail.lineCount ?? tab.lineCount));
+      })();
     };
 
     window.addEventListener('rutar:force-refresh', handleForcedRefresh as EventListener);
