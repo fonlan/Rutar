@@ -29,6 +29,14 @@ function dispatchSearchOpen(mode: 'find' | 'replace' | 'filter') {
     );
 }
 
+function dispatchEditorPaste(tabId: string, text: string) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:paste-text', {
+            detail: { tabId, text },
+        })
+    );
+}
+
 function getActiveEditorElement() {
     return document.querySelector('.editor-input-layer') as HTMLDivElement | null;
 }
@@ -251,12 +259,22 @@ export function Toolbar() {
             return;
         }
 
+        if (activeTab && navigator.clipboard?.readText) {
+            try {
+                const clipboardText = await navigator.clipboard.readText();
+                dispatchEditorPaste(activeTab.id, clipboardText);
+                return;
+            } catch (error) {
+                console.warn('Failed to read clipboard text:', error);
+            }
+        }
+
         if (runExecCommand('paste')) {
             return;
         }
 
         console.warn('Paste command blocked. Use Ctrl+V in editor.');
-    }, []);
+    }, [activeTab]);
 
     const handleFind = useCallback(() => {
         if (!activeTab) return;

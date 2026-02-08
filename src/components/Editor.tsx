@@ -37,6 +37,12 @@ interface PairHighlightPosition {
   column: number;
 }
 
+interface EditorContextMenuState {
+  x: number;
+  y: number;
+  hasSelection: boolean;
+}
+
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
@@ -267,6 +273,33 @@ function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
 
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+function dispatchEditorInputEvent(element: HTMLDivElement) {
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function replaceSelectionWithText(element: HTMLDivElement, text: string) {
+  const normalizedText = normalizeLineText(text ?? '');
+  const currentText = getEditableText(element);
+
+  let selectionOffsets = getSelectionOffsetsInElement(element);
+  if (!selectionOffsets) {
+    const layerEndOffset = mapLogicalOffsetToInputLayerOffset(currentText, currentText.length);
+    setCaretToCodeUnitOffset(element, layerEndOffset);
+    selectionOffsets = getSelectionOffsetsInElement(element);
+  }
+
+  if (!selectionOffsets) {
+    return false;
+  }
+
+  const nextText = `${currentText.slice(0, selectionOffsets.start)}${normalizedText}${currentText.slice(selectionOffsets.end)}`;
+  element.textContent = toInputLayerText(nextText);
+  const logicalNextOffset = selectionOffsets.start + normalizedText.length;
+  const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
+  setCaretToCodeUnitOffset(element, layerNextOffset);
+  return true;
 }
 
 function isEscapedCharacter(text: string, index: number) {
@@ -551,6 +584,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
+  const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -561,6 +595,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const editTimeout = useRef<any>(null);
   const isScrollbarDragRef = useRef(false);
   const rowHeightsRef = useRef<Map<number, number>>(new Map());
+  const editorContextMenuRef = useRef<HTMLDivElement>(null);
 
   const currentRequestVersion = useRef(0);
   const isComposingRef = useRef(false);
@@ -594,6 +629,8 @@ export function Editor({ tab }: { tab: FileTab }) {
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isPairHighlightEnabled = !usePlainLineRendering;
+  const deleteLabel = settings.language === 'zh-CN' ? '删除' : 'Delete';
+  const selectAllLabel = settings.language === 'zh-CN' ? '全选' : 'Select All';
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
     : tab.largeFileMode
@@ -1128,6 +1165,162 @@ export function Editor({ tab }: { tab: FileTab }) {
       syncSelectionState();
     });
   }, [syncSelectionState]);
+
+  const hasSelectionInsideEditor = useCallback(() => {
+    if (!contentRef.current) {
+      return false;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    return contentRef.current.contains(range.commonAncestorContainer) && selection.toString().length > 0;
+  }, []);
+
+  const handleEditorContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!contentRef.current) {
+        return;
+      }
+
+      contentRef.current.focus();
+
+      const menuWidth = 148;
+      const menuHeight = 172;
+      const viewportPadding = 8;
+
+      const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
+      const boundedY = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding);
+
+      setEditorContextMenu({
+        x: Math.max(viewportPadding, boundedX),
+        y: Math.max(viewportPadding, boundedY),
+        hasSelection: hasSelectionInsideEditor(),
+      });
+    },
+    [hasSelectionInsideEditor]
+  );
+
+  const runEditorContextCommand = useCallback((action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
+    if (!contentRef.current) {
+      return false;
+    }
+
+    contentRef.current.focus();
+
+    if (action === 'selectAll') {
+      const selection = window.getSelection();
+      if (!selection) {
+        return false;
+      }
+
+      const range = document.createRange();
+      range.selectNodeContents(contentRef.current);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    if (action === 'paste') {
+      return false;
+    }
+
+    const commandSucceeded = document.execCommand(action);
+    if (action === 'delete' && !commandSucceeded) {
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        selection.deleteFromDocument();
+        return true;
+      }
+    }
+
+    return commandSucceeded;
+  }, []);
+
+  const tryPasteTextIntoEditor = useCallback(
+    (text: string) => {
+      if (!contentRef.current) {
+        return false;
+      }
+
+      const inserted = replaceSelectionWithText(contentRef.current, text);
+      if (!inserted) {
+        return false;
+      }
+
+      dispatchEditorInputEvent(contentRef.current);
+      syncSelectionAfterInteraction();
+      return true;
+    },
+    [syncSelectionAfterInteraction]
+  );
+
+  const isEditorContextMenuActionDisabled = useCallback(
+    (action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
+      const hasSelection = !!editorContextMenu?.hasSelection;
+
+      switch (action) {
+        case 'copy':
+          return !hasSelection;
+        case 'cut':
+        case 'delete':
+          return isLargeReadOnlyMode || !hasSelection;
+        case 'paste':
+          return isLargeReadOnlyMode;
+        case 'selectAll':
+          return false;
+        default:
+          return false;
+      }
+    },
+    [editorContextMenu?.hasSelection, isLargeReadOnlyMode]
+  );
+
+  const handleEditorContextMenuAction = useCallback(
+    async (action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
+      if (isEditorContextMenuActionDisabled(action)) {
+        setEditorContextMenu(null);
+        return;
+      }
+
+      if (action === 'paste') {
+        let pasted = false;
+
+        if (navigator.clipboard?.readText) {
+          try {
+            const clipboardText = await navigator.clipboard.readText();
+            pasted = tryPasteTextIntoEditor(clipboardText);
+          } catch (error) {
+            console.warn('Failed to read clipboard text:', error);
+          }
+        }
+
+        if (!pasted) {
+          const commandSucceeded = document.execCommand('paste');
+          if (!commandSucceeded) {
+            console.warn('Paste command blocked. Use Ctrl+V in editor.');
+          }
+        }
+
+        setEditorContextMenu(null);
+        return;
+      }
+
+      const succeeded = runEditorContextCommand(action);
+
+      setEditorContextMenu(null);
+      if (succeeded) {
+        syncSelectionAfterInteraction();
+      }
+    },
+    [isEditorContextMenuActionDisabled, runEditorContextCommand, syncSelectionAfterInteraction, tryPasteTextIntoEditor]
+  );
 
   const flushPendingSync = useCallback(async () => {
     if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
@@ -2270,12 +2463,77 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [syncSelectionState]);
 
   useEffect(() => {
+    if (!editorContextMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (editorContextMenuRef.current && target && !editorContextMenuRef.current.contains(target)) {
+        setEditorContextMenu(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setEditorContextMenu(null);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      setEditorContextMenu(null);
+    };
+
+    const handleScroll = () => {
+      setEditorContextMenu(null);
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('resize', handleWindowBlur);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('resize', handleWindowBlur);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [editorContextMenu]);
+
+  useEffect(() => {
+    setEditorContextMenu(null);
+  }, [tab.id]);
+
+  useEffect(() => {
     if (!highlightCurrentLine) {
       return;
     }
 
     syncSelectionState();
   }, [highlightCurrentLine, syncSelectionState]);
+
+  useEffect(() => {
+    const handleExternalPaste = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId?: string; text?: string }>;
+      const detail = customEvent.detail;
+      if (!detail || detail.tabId !== tab.id) {
+        return;
+      }
+
+      const text = typeof detail.text === 'string' ? detail.text : '';
+      if (!tryPasteTextIntoEditor(text)) {
+        console.warn('Failed to paste text into editor.');
+      }
+    };
+
+    window.addEventListener('rutar:paste-text', handleExternalPaste as EventListener);
+    return () => {
+      window.removeEventListener('rutar:paste-text', handleExternalPaste as EventListener);
+    };
+  }, [tab.id, tryPasteTextIntoEditor]);
 
   useEffect(() => {
     setActiveLineNumber(1);
@@ -2474,6 +2732,7 @@ export function Editor({ tab }: { tab: FileTab }) {
               onKeyUp={syncSelectionAfterInteraction}
               onPointerUp={syncSelectionAfterInteraction}
               onFocus={syncSelectionAfterInteraction}
+              onContextMenu={handleEditorContextMenu}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
               spellCheck={false}
@@ -2505,6 +2764,7 @@ export function Editor({ tab }: { tab: FileTab }) {
           onKeyUp={syncSelectionAfterInteraction}
           onPointerUp={syncSelectionAfterInteraction}
           onFocus={syncSelectionAfterInteraction}
+          onContextMenu={handleEditorContextMenu}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           spellCheck={false}
@@ -2590,6 +2850,65 @@ export function Editor({ tab }: { tab: FileTab }) {
               );
             }}
           </List>
+        </div>
+      )}
+
+      {editorContextMenu && (
+        <div
+          ref={editorContextMenuRef}
+          className="fixed z-[90] min-w-36 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          style={{ left: editorContextMenu.x, top: editorContextMenu.y }}
+        >
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              handleEditorContextMenuAction('copy');
+            }}
+            disabled={isEditorContextMenuActionDisabled('copy')}
+          >
+            {tr('toolbar.copy')}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              handleEditorContextMenuAction('cut');
+            }}
+            disabled={isEditorContextMenuActionDisabled('cut')}
+          >
+            {tr('toolbar.cut')}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              handleEditorContextMenuAction('paste');
+            }}
+            disabled={isEditorContextMenuActionDisabled('paste')}
+          >
+            {tr('toolbar.paste')}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              handleEditorContextMenuAction('delete');
+            }}
+            disabled={isEditorContextMenuActionDisabled('delete')}
+          >
+            {deleteLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              handleEditorContextMenuAction('selectAll');
+            }}
+            disabled={isEditorContextMenuActionDisabled('selectAll')}
+          >
+            {selectAllLabel}
+          </button>
         </div>
       )}
 
