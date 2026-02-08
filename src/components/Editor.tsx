@@ -682,10 +682,6 @@ export function Editor({ tab }: { tab: FileTab }) {
   );
 
   useEffect(() => {
-    if (!wordWrap) {
-      return;
-    }
-
     rowHeightsRef.current.clear();
     listRef.current?.resetAfterIndex?.(0, true);
   }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, width, wordWrap]);
