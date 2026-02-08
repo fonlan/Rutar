@@ -2,11 +2,13 @@ mod state;
 mod commands;
 
 use state::AppState;
+use tauri::{AppHandle, Emitter, Manager};
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let startup_paths = std::env::args()
-        .skip(1)
+fn collect_valid_startup_paths_from_args<I>(args: I) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    args.into_iter()
         .filter(|value| {
             if value.starts_with('-') {
                 return false;
@@ -14,10 +16,48 @@ pub fn run() {
 
             std::path::Path::new(value).exists()
         })
-        .collect::<Vec<String>>();
+        .collect()
+}
 
-    if let Err(err) = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+fn forward_startup_paths_to_main_window(app: &AppHandle, startup_paths: Vec<String>) {
+    if startup_paths.is_empty() {
+        return;
+    }
+
+    let window = match app.get_webview_window("main") {
+        Some(main_window) => main_window,
+        None => return,
+    };
+
+    if let Err(error) = window.emit("rutar://open-paths", startup_paths) {
+        eprintln!("failed to forward startup paths to main window: {error}");
+    }
+
+    if let Err(error) = window.show() {
+        eprintln!("failed to show main window: {error}");
+    }
+
+    if let Err(error) = window.set_focus() {
+        eprintln!("failed to focus main window: {error}");
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let startup_paths = collect_valid_startup_paths_from_args(std::env::args().skip(1));
+
+    let single_instance_mode_enabled = commands::is_single_instance_mode_enabled_in_config();
+
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    if single_instance_mode_enabled {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let startup_paths = collect_valid_startup_paths_from_args(args.into_iter().skip(1));
+            forward_startup_paths_to_main_window(app, startup_paths);
+        }));
+    }
+
+    if let Err(err) = builder
         .manage(AppState::new(startup_paths))
         .invoke_handler(tauri::generate_handler![
             commands::open_file, 

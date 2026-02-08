@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
 import { Editor } from '@/components/Editor';
@@ -54,6 +55,7 @@ interface AppConfig {
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
+  singleInstanceMode: boolean;
   windowsFileAssociationExtensions: string[];
 }
 
@@ -83,6 +85,24 @@ function App() {
   const previousActiveTabIdRef = useRef<string | null>(null);
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
+
+  const openIncomingPaths = useCallback(async (paths: string[]) => {
+    for (const incomingPath of paths) {
+      try {
+        const entries = await invoke<any[]>('read_dir', { path: incomingPath });
+        sortFolderEntries(entries);
+        setFolder(incomingPath, entries);
+        continue;
+      } catch {
+      }
+
+      try {
+        await openFilePaths([incomingPath]);
+      } catch (error) {
+        console.error(`Failed to open incoming path: ${incomingPath}`, error);
+      }
+    }
+  }, [setFolder]);
 
   useEffect(() => {
     if (!isWindows) {
@@ -171,28 +191,9 @@ function App() {
           return;
         }
 
-        for (const startupPath of startupPaths) {
-          if (cancelled) {
-            return;
-          }
-
-          try {
-            const entries = await invoke<any[]>('read_dir', { path: startupPath });
-            if (cancelled) {
-              return;
-            }
-
-            sortFolderEntries(entries);
-            setFolder(startupPath, entries);
-            continue;
-          } catch {
-          }
-
-          try {
-            await openFilePaths([startupPath]);
-          } catch (error) {
-            console.error(`Failed to open startup path: ${startupPath}`, error);
-          }
+        await openIncomingPaths(startupPaths);
+        if (cancelled) {
+          return;
         }
       } catch (error) {
         console.error('Failed to load startup paths:', error);
@@ -204,7 +205,43 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [setFolder]);
+  }, [openIncomingPaths]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    const setupSingleInstanceOpenListener = async () => {
+      try {
+        const unsubscribe = await listen<string[]>('rutar://open-paths', async (event) => {
+          const paths = Array.isArray(event.payload) ? event.payload : [];
+          if (paths.length === 0) {
+            return;
+          }
+
+          await openIncomingPaths(paths);
+        });
+
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+
+        unlisten = unsubscribe;
+      } catch (error) {
+        console.error('Failed to listen single-instance open event:', error);
+      }
+    };
+
+    void setupSingleInstanceOpenListener();
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [openIncomingPaths]);
 
   useEffect(() => {
     if (hasInitializedStartupTab) {
@@ -353,6 +390,7 @@ function App() {
           wordWrap: !!config.wordWrap,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
+          singleInstanceMode: config.singleInstanceMode !== false,
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
             : [],
@@ -394,6 +432,7 @@ function App() {
           wordWrap: settings.wordWrap,
           doubleClickCloseTab: settings.doubleClickCloseTab,
           highlightCurrentLine: settings.highlightCurrentLine,
+          singleInstanceMode: settings.singleInstanceMode,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
         },
       }).catch((error) => {
@@ -414,6 +453,7 @@ function App() {
     settings.wordWrap,
     settings.doubleClickCloseTab,
     settings.highlightCurrentLine,
+    settings.singleInstanceMode,
     settings.windowsFileAssociationExtensions,
   ]);
   

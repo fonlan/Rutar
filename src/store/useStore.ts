@@ -35,6 +35,7 @@ interface SettingsState {
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
+  singleInstanceMode: boolean;
   windowsContextMenuEnabled: boolean;
   windowsFileAssociationEnabled: boolean;
   windowsFileAssociationExtensions: string[];
@@ -96,6 +97,7 @@ export const useStore = create<AppState>((set) => ({
     wordWrap: false,
     doubleClickCloseTab: true,
     highlightCurrentLine: true,
+    singleInstanceMode: true,
     windowsContextMenuEnabled: false,
     windowsFileAssociationEnabled: false,
     windowsFileAssociationExtensions: [],

@@ -1,7 +1,7 @@
 import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -64,6 +64,8 @@ export function SettingsModal() {
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
   const [isUpdatingFileAssociations, setIsUpdatingFileAssociations] = useState(false);
+  const [showRestartToast, setShowRestartToast] = useState(false);
+  const restartToastTimerRef = useRef<number | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const currentLineLabel = settings.language === 'zh-CN' ? '高亮当前行' : 'Highlight Current Line';
   const currentLineDesc =
@@ -106,6 +108,9 @@ export function SettingsModal() {
     ? '勾选常见文本后缀，也可自定义（如 .env、.sql）。'
     : 'Select common text extensions and add custom ones (for example .env, .sql).';
   const addExtensionButtonLabel = settings.language === 'zh-CN' ? '添加' : 'Add';
+  const singleInstanceModeLabel = tr('settings.singleInstanceMode');
+  const singleInstanceModeDesc = tr('settings.singleInstanceModeDesc');
+  const singleInstanceModeRestartToast = tr('settings.singleInstanceModeRestartToast');
 
   const normalizedSelectedExtensions = useMemo(
     () => normalizeWindowsFileAssociationExtensions(settings.windowsFileAssociationExtensions),
@@ -278,6 +283,26 @@ export function SettingsModal() {
       setIsUpdatingFileAssociations(false);
     }
   };
+
+  const showSingleInstanceRestartToast = () => {
+    if (restartToastTimerRef.current !== null) {
+      window.clearTimeout(restartToastTimerRef.current);
+    }
+
+    setShowRestartToast(true);
+    restartToastTimerRef.current = window.setTimeout(() => {
+      setShowRestartToast(false);
+      restartToastTimerRef.current = null;
+    }, 2600);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (restartToastTimerRef.current !== null) {
+        window.clearTimeout(restartToastTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!settings.isOpen) return null;
 
@@ -452,6 +477,53 @@ export function SettingsModal() {
                         className={cn(
                           'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
                           settings.wordWrap
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                    </button>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{singleInstanceModeLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{singleInstanceModeDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateSettings({ singleInstanceMode: !settings.singleInstanceMode });
+                        showSingleInstanceRestartToast();
+                      }}
+                      className={cn(
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.singleInstanceMode
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                      )}
+                      aria-pressed={!!settings.singleInstanceMode}
+                      aria-label={singleInstanceModeLabel}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.singleInstanceMode
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.singleInstanceMode
                             ? 'opacity-95 text-primary-foreground'
                             : 'opacity-0 text-zinc-700 dark:text-zinc-200'
                         )}
@@ -765,6 +837,17 @@ export function SettingsModal() {
             )}
           </div>
         </div>
+      </div>
+
+      <div
+        className={cn(
+          'pointer-events-none fixed bottom-6 right-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 shadow-lg transition-all dark:text-amber-200',
+          showRestartToast ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+        )}
+        role="status"
+        aria-live="polite"
+      >
+        {singleInstanceModeRestartToast}
       </div>
     </div>
   );

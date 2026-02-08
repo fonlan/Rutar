@@ -51,6 +51,9 @@ export type I18nKey =
   | 'settings.fontFamily'
   | 'settings.fontFamilyDesc'
   | 'settings.fontSize'
+  | 'settings.singleInstanceMode'
+  | 'settings.singleInstanceModeDesc'
+  | 'settings.singleInstanceModeRestartToast'
   | 'editor.largeMode.readOnlyTitle'
   | 'editor.largeMode.readOnlyDesc'
   | 'editor.largeMode.keepReadOnly'
@@ -109,6 +112,9 @@ const zhCN: Messages = {
   'settings.fontFamily': '字体族',
   'settings.fontFamilyDesc': '编辑器使用的字体族。',
   'settings.fontSize': '字体大小',
+  'settings.singleInstanceMode': '单实例模式',
+  'settings.singleInstanceModeDesc': '启用后，双击关联文件或“使用 Rutar 打开”会复用当前窗口并新建标签页。更改后重启生效。',
+  'settings.singleInstanceModeRestartToast': '单实例模式设置已变更，重启 Rutar 后生效。',
   'editor.largeMode.readOnlyTitle': '大文件模式当前为只读',
   'editor.largeMode.readOnlyDesc': '检测到你在尝试输入。进入可编辑模式可能导致性能下降，是否继续？',
   'editor.largeMode.keepReadOnly': '保持只读',
@@ -166,6 +172,9 @@ const enUS: Messages = {
   'settings.fontFamily': 'Font Family',
   'settings.fontFamilyDesc': 'The font family used in the editor.',
   'settings.fontSize': 'Font Size',
+  'settings.singleInstanceMode': 'Single Instance Mode',
+  'settings.singleInstanceModeDesc': 'When enabled, file-association and "Open with Rutar" actions reuse this window and open a new tab. Restart required.',
+  'settings.singleInstanceModeRestartToast': 'Single instance setting changed. Restart Rutar to apply it.',
   'editor.largeMode.readOnlyTitle': 'Large File Mode is currently read-only',
   'editor.largeMode.readOnlyDesc': 'Input detected. Editable mode may reduce performance. Continue?',
   'editor.largeMode.keepReadOnly': 'Keep Read-only',

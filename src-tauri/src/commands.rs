@@ -34,6 +34,7 @@ const DEFAULT_FONT_SIZE: u32 = 14;
 const DEFAULT_TAB_WIDTH: u8 = 4;
 const DEFAULT_DOUBLE_CLICK_CLOSE_TAB: bool = true;
 const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
+const DEFAULT_SINGLE_INSTANCE_MODE: bool = true;
 const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
 const FILTER_MAX_RANGES_PER_LINE: usize = 256;
 const DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS: &[&str] = &[
@@ -48,6 +49,10 @@ fn default_windows_file_association_extensions() -> Vec<String> {
         .collect()
 }
 
+fn default_single_instance_mode() -> bool {
+    DEFAULT_SINGLE_INSTANCE_MODE
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -59,6 +64,8 @@ pub struct AppConfig {
     word_wrap: bool,
     double_click_close_tab: bool,
     highlight_current_line: bool,
+    #[serde(default = "default_single_instance_mode")]
+    single_instance_mode: bool,
     #[serde(default = "default_windows_file_association_extensions")]
     windows_file_association_extensions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,6 +83,7 @@ struct PartialAppConfig {
     word_wrap: Option<bool>,
     double_click_close_tab: Option<bool>,
     highlight_current_line: Option<bool>,
+    single_instance_mode: Option<bool>,
     windows_file_association_extensions: Option<Vec<String>>,
     filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -91,6 +99,7 @@ impl Default for AppConfig {
             word_wrap: false,
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
+            single_instance_mode: DEFAULT_SINGLE_INSTANCE_MODE,
             windows_file_association_extensions: default_windows_file_association_extensions(),
             filter_rule_groups: None,
         }
@@ -989,6 +998,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         word_wrap: config.word_wrap,
         double_click_close_tab: config.double_click_close_tab,
         highlight_current_line: config.highlight_current_line,
+        single_instance_mode: config.single_instance_mode,
         windows_file_association_extensions: normalize_windows_file_association_extensions(
             Some(config.windows_file_association_extensions),
         ),
@@ -1560,6 +1570,10 @@ pub fn load_config() -> Result<AppConfig, String> {
         config.highlight_current_line = highlight_current_line;
     }
 
+    if let Some(single_instance_mode) = partial.single_instance_mode {
+        config.single_instance_mode = single_instance_mode;
+    }
+
     if let Some(extensions) = partial.windows_file_association_extensions {
         config.windows_file_association_extensions =
             normalize_windows_file_association_extensions(Some(extensions));
@@ -1568,6 +1582,12 @@ pub fn load_config() -> Result<AppConfig, String> {
     config.filter_rule_groups = normalize_filter_rule_groups(partial.filter_rule_groups);
 
     Ok(config)
+}
+
+pub fn is_single_instance_mode_enabled_in_config() -> bool {
+    load_config()
+        .map(|config| config.single_instance_mode)
+        .unwrap_or(DEFAULT_SINGLE_INSTANCE_MODE)
 }
 
 #[tauri::command]
