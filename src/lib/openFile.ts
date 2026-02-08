@@ -10,6 +10,7 @@ function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
     name: fileInfo.name,
     path: fileInfo.path,
     encoding: fileInfo.encoding,
+    lineEnding: fileInfo.lineEnding,
     lineCount: fileInfo.lineCount,
     largeFileMode: fileInfo.largeFileMode,
     isDirty: false,

@@ -1,4 +1,4 @@
-use crate::state::{AppState, Document, EditOperation};
+use crate::state::{default_line_ending, AppState, Document, EditOperation, LineEnding};
 use chardetng::EncodingDetector;
 use dashmap::DashMap;
 use encoding_rs::Encoding;
@@ -113,8 +113,63 @@ pub struct FileInfo {
     path: String,
     name: String,
     encoding: String,
+    line_ending: String,
     line_count: usize,
     large_file_mode: bool,
+}
+
+fn detect_line_ending(text: &str) -> LineEnding {
+    let bytes = text.as_bytes();
+    let mut crlf_count = 0usize;
+    let mut lf_count = 0usize;
+    let mut cr_count = 0usize;
+
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\r' => {
+                if index + 1 < bytes.len() && bytes[index + 1] == b'\n' {
+                    crlf_count += 1;
+                    index += 2;
+                } else {
+                    cr_count += 1;
+                    index += 1;
+                }
+            }
+            b'\n' => {
+                lf_count += 1;
+                index += 1;
+            }
+            _ => {
+                index += 1;
+            }
+        }
+    }
+
+    if crlf_count >= lf_count && crlf_count >= cr_count && crlf_count > 0 {
+        LineEnding::CrLf
+    } else if lf_count >= cr_count && lf_count > 0 {
+        LineEnding::Lf
+    } else if cr_count > 0 {
+        LineEnding::Cr
+    } else {
+        default_line_ending()
+    }
+}
+
+fn normalize_to_lf(content: &str) -> String {
+    content.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn build_persist_content(doc: &Document) -> String {
+    let utf8_content: String = doc.rope.chunks().collect();
+    let normalized = normalize_to_lf(&utf8_content);
+
+    match doc.line_ending {
+        LineEnding::CrLf => normalized.replace('\n', "\r\n"),
+        LineEnding::Lf => normalized,
+        LineEnding::Cr => normalized.replace('\n', "\r"),
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -3740,6 +3795,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
     };
 
     let (cow, _, _malformed) = encoding.decode(&mmap);
+    let line_ending = detect_line_ending(&cow);
     let rope = Rope::from_str(&cow);
     let line_count = rope.len_lines();
 
@@ -3748,6 +3804,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
     let mut doc = Document {
         rope,
         encoding,
+        line_ending,
         path: Some(path_buf.clone()),
         document_version: 0,
         undo_stack: Vec::new(),
@@ -3771,6 +3828,7 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
             .to_string_lossy()
             .to_string(),
         encoding: encoding.name().to_string(),
+        line_ending: line_ending.label().to_string(),
         line_count,
         large_file_mode,
     })
@@ -3851,8 +3909,8 @@ pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), Str
     if let Some(doc) = state.documents.get(&id) {
         if let Some(path) = &doc.path {
             let mut file = File::create(path).map_err(|e| e.to_string())?;
-            let utf8_content: String = doc.rope.chunks().collect();
-            let (bytes, _, _malformed) = doc.encoding.encode(&utf8_content);
+            let persist_content = build_persist_content(&doc);
+            let (bytes, _, _malformed) = doc.encoding.encode(&persist_content);
 
             use std::io::Write;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
@@ -3872,8 +3930,8 @@ pub async fn save_file_as(state: State<'_, AppState>, id: String, path: String) 
 
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let mut file = File::create(&path_buf).map_err(|e| e.to_string())?;
-        let utf8_content: String = doc.rope.chunks().collect();
-        let (bytes, _, _malformed) = doc.encoding.encode(&utf8_content);
+        let persist_content = build_persist_content(&doc);
+        let (bytes, _, _malformed) = doc.encoding.encode(&persist_content);
 
         use std::io::Write;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
@@ -3902,13 +3960,28 @@ pub fn convert_encoding(state: State<'_, AppState>, id: String, new_encoding: St
 }
 
 #[tauri::command]
+pub fn set_line_ending(state: State<'_, AppState>, id: String, new_line_ending: String) -> Result<(), String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let line_ending = LineEnding::from_label(&new_line_ending)
+            .ok_or_else(|| format!("Unsupported line ending: {}", new_line_ending))?;
+
+        doc.line_ending = line_ending;
+        Ok(())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[tauri::command]
 pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
     let id = Uuid::new_v4().to_string();
     let encoding = encoding_rs::UTF_8;
+    let line_ending = default_line_ending();
 
     let mut doc = Document {
         rope: Rope::new(),
         encoding,
+        line_ending,
         path: None,
         document_version: 0,
         undo_stack: Vec::new(),
@@ -3928,6 +4001,7 @@ pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
         path: String::new(),
         name: "Untitled".to_string(),
         encoding: encoding.name().to_string(),
+        line_ending: line_ending.label().to_string(),
         line_count: 1,
         large_file_mode: false,
     })

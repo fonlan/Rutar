@@ -5,6 +5,7 @@ export interface FileTab {
   name: string;
   path: string;
   encoding: string;
+  lineEnding: 'CRLF' | 'LF' | 'CR';
   lineCount: number;
   largeFileMode: boolean;
   isDirty?: boolean;

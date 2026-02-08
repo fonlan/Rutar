@@ -5,6 +5,42 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tree_sitter::{Language, Parser, Tree};
 
+#[derive(Clone, Copy)]
+pub enum LineEnding {
+    CrLf,
+    Lf,
+    Cr,
+}
+
+impl LineEnding {
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label.to_ascii_uppercase().as_str() {
+            "CRLF" => Some(Self::CrLf),
+            "LF" => Some(Self::Lf),
+            "CR" => Some(Self::Cr),
+            _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CrLf => "CRLF",
+            Self::Lf => "LF",
+            Self::Cr => "CR",
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn default_line_ending() -> LineEnding {
+    LineEnding::CrLf
+}
+
+#[cfg(not(windows))]
+pub fn default_line_ending() -> LineEnding {
+    LineEnding::Lf
+}
+
 #[derive(Clone)]
 pub struct EditOperation {
     pub start_char: usize,
@@ -25,6 +61,7 @@ impl EditOperation {
 pub struct Document {
     pub rope: Rope,
     pub encoding: &'static Encoding,
+    pub line_ending: LineEnding,
     pub path: Option<PathBuf>,
     pub document_version: u64,
     pub undo_stack: Vec<EditOperation>,

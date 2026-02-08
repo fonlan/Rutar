@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Globe, Zap } from 'lucide-react';
 import { t } from '@/i18n';
 
+type LineEnding = 'CRLF' | 'LF' | 'CR';
+
 export function StatusBar() {
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
@@ -28,10 +30,25 @@ export function StatusBar() {
         'ISO-8859-1'
     ];
 
+    const lineEndingOptions: Array<{ value: LineEnding; label: string }> = [
+        { value: 'CRLF', label: 'Win (CRLF)' },
+        { value: 'LF', label: 'Linux (LF)' },
+        { value: 'CR', label: 'Mac (CR)' },
+    ];
+
     const handleEncodingChange = async (newEnc: string) => {
         try {
             await invoke('convert_encoding', { id: activeTab.id, newEncoding: newEnc });
             updateTab(activeTab.id, { encoding: newEnc, isDirty: true });
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleLineEndingChange = async (newLineEnding: LineEnding) => {
+        try {
+            await invoke('set_line_ending', { id: activeTab.id, newLineEnding });
+            updateTab(activeTab.id, { lineEnding: newLineEnding, isDirty: true });
         } catch (e) {
             console.error(e);
         }
@@ -56,6 +73,20 @@ export function StatusBar() {
             </div>
             
             <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
+                    <select
+                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px]"
+                        value={activeTab.lineEnding}
+                        onChange={(e) => handleLineEndingChange(e.target.value as LineEnding)}
+                    >
+                        {lineEndingOptions.map((option) => (
+                            <option key={option.value} value={option.value} className="bg-background text-foreground">
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="w-[1px] h-3 bg-border" />
                 <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
                     <Globe className="w-3 h-3" />
                     <select 
