@@ -7,6 +7,7 @@ import {
   CirclePlus,
   ChevronDown,
   ChevronUp,
+  Copy,
   GripVertical,
   Palette,
   RefreshCw,
@@ -314,6 +315,10 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       resultFilterNoMatches: 'No results match this filter.',
       resultFilterStepNoMatch: (keyword: string) => `No entries in results contain "${keyword}".`,
       clearResultFilter: 'Clear result filter',
+      copyResults: 'Copy results as plain text',
+      copyResultsEmpty: 'No results to copy',
+      copyResultsSuccess: (count: number) => `Copied ${count} results as plain text`,
+      copyResultsFailed: 'Failed to copy results',
       minimizeResults: 'Minimize results',
       closeResults: 'Close results',
       resultsEmptyHint: 'Enter a keyword to list all matches here.',
@@ -437,6 +442,10 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
     resultFilterNoMatches: '结果中没有匹配该筛选词的项。',
     resultFilterStepNoMatch: (keyword: string) => `当前结果列表中没有包含“${keyword}”的项。`,
     clearResultFilter: '清空结果筛选',
+    copyResults: '复制结果为纯文本',
+    copyResultsEmpty: '没有可复制的结果',
+    copyResultsSuccess: (count: number) => `已复制 ${count} 条纯文本结果`,
+    copyResultsFailed: '复制结果失败',
     minimizeResults: '最小化结果',
     closeResults: '关闭结果',
     resultsEmptyHint: '输入关键词后会在这里列出全部匹配项。',
@@ -928,6 +937,29 @@ function matchModeLabel(mode: FilterRuleMatchMode, messages: ReturnType<typeof g
   }
 
   return messages.filterMatchWildcard;
+}
+
+async function writePlainTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', 'true');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textArea);
+
+  if (!copied) {
+    throw new Error('Clipboard copy not supported');
+  }
 }
 
 export function SearchReplacePanel() {
@@ -3529,6 +3561,39 @@ export function SearchReplacePanel() {
   const displayTotalFilterMatchedLineCountText =
     displayTotalFilterMatchedLineCount === null ? messages.counting : `${displayTotalFilterMatchedLineCount}`;
 
+  const plainTextResultEntries = useMemo(() => {
+    if (isFilterMode) {
+      if (filterRulesPayload.length === 0 || visibleFilterMatches.length === 0) {
+        return [] as string[];
+      }
+
+      return visibleFilterMatches.map((match) => match.lineText || '');
+    }
+
+    if (!keyword || visibleMatches.length === 0) {
+      return [] as string[];
+    }
+
+    return visibleMatches.map((match) => match.lineText || '');
+  }, [filterRulesPayload.length, isFilterMode, keyword, visibleFilterMatches, visibleMatches]);
+
+  const copyPlainTextResults = useCallback(async () => {
+    if (plainTextResultEntries.length === 0) {
+      setFeedbackMessage(messages.copyResultsEmpty);
+      setErrorMessage(null);
+      return;
+    }
+
+    try {
+      await writePlainTextToClipboard(plainTextResultEntries.join('\n'));
+      setFeedbackMessage(messages.copyResultsSuccess(plainTextResultEntries.length));
+      setErrorMessage(null);
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : 'Unknown error';
+      setErrorMessage(`${messages.copyResultsFailed}: ${readableError}`);
+    }
+  }, [messages, plainTextResultEntries]);
+
   const renderedResultItems = useMemo(() => {
     if (resultPanelState !== 'open') {
       return null;
@@ -4437,6 +4502,17 @@ export function SearchReplacePanel() {
                 title={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                onClick={() => {
+                  void copyPlainTextResults();
+                }}
+                title={messages.copyResults}
+                disabled={plainTextResultEntries.length === 0}
+              >
+                <Copy className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
