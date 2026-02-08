@@ -130,29 +130,45 @@ function getEditableText(element: HTMLDivElement) {
   return normalizeEditorText((element.textContent || "").replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
 }
 
-function setCaretToLineStart(element: HTMLDivElement, line: number) {
+function getCodeUnitOffsetFromLineColumn(text: string, line: number, column: number) {
+  const targetLine = Math.max(1, Math.floor(line));
+  const targetColumn = Math.max(1, Math.floor(column));
+
+  let lineStartOffset = 0;
+
+  if (targetLine > 1) {
+    let currentLine = 1;
+    let foundTargetLine = false;
+
+    for (let index = 0; index < text.length; index += 1) {
+      if (text[index] === '\n') {
+        currentLine += 1;
+        if (currentLine === targetLine) {
+          lineStartOffset = index + 1;
+          foundTargetLine = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundTargetLine) {
+      return text.length;
+    }
+  }
+
+  const lineEndOffset = text.indexOf('\n', lineStartOffset);
+  const safeLineEndOffset = lineEndOffset === -1 ? text.length : lineEndOffset;
+
+  return Math.min(safeLineEndOffset, lineStartOffset + targetColumn - 1);
+}
+
+function setCaretToLineColumn(element: HTMLDivElement, line: number, column: number) {
   const content = normalizeEditorText(getEditableText(element));
   const layerText = toInputLayerText(content);
   if (element.textContent !== layerText) {
     element.textContent = layerText;
   }
-
-  const targetLine = Math.max(1, Math.floor(line));
-
-  let currentLine = 1;
-  let targetOffset = 0;
-
-  if (targetLine > 1) {
-    for (let index = 0; index < content.length; index += 1) {
-      if (content[index] === '\n') {
-        currentLine += 1;
-        if (currentLine === targetLine) {
-          targetOffset = index + 1;
-          break;
-        }
-      }
-    }
-  }
+  const targetOffset = getCodeUnitOffsetFromLineColumn(content, line, column);
 
   let textNode = element.firstChild as Text | null;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
@@ -2295,7 +2311,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const shouldMoveCaretToLineStart = detail.source === 'content-tree';
       setActiveLineNumber(targetLine);
 
-      const placeCaretAtTargetLineStart = () => {
+      const placeCaretAtTargetPosition = () => {
         if (!contentRef.current) {
           return;
         }
@@ -2303,8 +2319,9 @@ export function Editor({ tab }: { tab: FileTab }) {
         const lineForCaret = isHugeEditableMode
           ? Math.max(1, targetLine - editableSegmentRef.current.startLine)
           : targetLine;
+        const columnForCaret = shouldMoveCaretToLineStart ? 1 : targetColumn;
 
-        setCaretToLineStart(contentRef.current, lineForCaret);
+        setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
       };
 
       if (detail.source === 'content-tree') {
@@ -2339,14 +2356,12 @@ export function Editor({ tab }: { tab: FileTab }) {
           contentRef.current.scrollTop = targetScrollTop;
           contentRef.current.focus();
 
-          if (shouldMoveCaretToLineStart) {
-            window.requestAnimationFrame(() => {
-              placeCaretAtTargetLineStart();
-              window.setTimeout(() => {
-                placeCaretAtTargetLineStart();
-              }, 60);
-            });
-          }
+          window.requestAnimationFrame(() => {
+            placeCaretAtTargetPosition();
+            window.setTimeout(() => {
+              placeCaretAtTargetPosition();
+            }, 60);
+          });
         }
 
         if (listElement) {
@@ -2369,11 +2384,9 @@ export function Editor({ tab }: { tab: FileTab }) {
         contentRef.current.scrollTop = targetScrollTop;
         contentRef.current.focus();
 
-        if (shouldMoveCaretToLineStart) {
-          window.requestAnimationFrame(() => {
-            placeCaretAtTargetLineStart();
-          });
-        }
+        window.requestAnimationFrame(() => {
+          placeCaretAtTargetPosition();
+        });
       }
 
       if (listElement) {
