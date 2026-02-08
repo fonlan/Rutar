@@ -5,6 +5,7 @@ interface UseResizableSidebarWidthOptions {
   minWidth: number;
   maxWidth: number;
   onWidthChange: (nextWidth: number) => void;
+  resizeEdge?: 'right' | 'left';
 }
 
 function clampWidth(value: number, minWidth: number, maxWidth: number) {
@@ -16,6 +17,7 @@ export function useResizableSidebarWidth({
   minWidth,
   maxWidth,
   onWidthChange,
+  resizeEdge = 'right',
 }: UseResizableSidebarWidthOptions) {
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,7 +56,10 @@ export function useResizableSidebarWidth({
     document.body.style.cursor = 'col-resize';
 
     const handlePointerMove = (event: PointerEvent) => {
-      const offsetX = event.clientX - dragStartXRef.current;
+      const offsetX =
+        resizeEdge === 'right'
+          ? event.clientX - dragStartXRef.current
+          : dragStartXRef.current - event.clientX;
       const nextWidth = clampWidth(dragStartWidthRef.current + offsetX, minWidth, maxWidth);
 
       if (nextWidth === pendingWidthRef.current) {
@@ -93,7 +98,7 @@ export function useResizableSidebarWidth({
       window.removeEventListener('pointerup', stopResize);
       window.removeEventListener('pointercancel', stopResize);
     };
-  }, [applyWidthToContainer, isResizing, maxWidth, minWidth, onWidthChange]);
+  }, [applyWidthToContainer, isResizing, maxWidth, minWidth, onWidthChange, resizeEdge]);
 
   const startResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

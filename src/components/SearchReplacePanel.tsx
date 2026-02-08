@@ -31,6 +31,7 @@ import {
 } from 'react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/store/useStore';
+import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
 const MAX_LINE_RANGE = 2147483647;
 
@@ -181,6 +182,7 @@ interface TabSearchPanelSnapshot {
   panelMode: PanelMode;
   resultPanelState: SearchResultPanelState;
   resultPanelHeight: number;
+  searchSidebarWidth: number;
   keyword: string;
   replaceValue: string;
   searchMode: SearchMode;
@@ -207,7 +209,9 @@ const FILTER_CHUNK_SIZE = 300;
 const RESULT_PANEL_DEFAULT_HEIGHT = 224;
 const RESULT_PANEL_MIN_HEIGHT = 140;
 const RESULT_PANEL_MAX_HEIGHT = 640;
-const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 420px)';
+const SEARCH_SIDEBAR_DEFAULT_WIDTH = 420;
+const SEARCH_SIDEBAR_MIN_WIDTH = 280;
+const SEARCH_SIDEBAR_MAX_WIDTH = 900;
 const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
 const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
 
@@ -1003,6 +1007,7 @@ export function SearchReplacePanel() {
   const [isResultFilterSearching, setIsResultFilterSearching] = useState(false);
   const [resultFilterStepLoadingDirection, setResultFilterStepLoadingDirection] = useState<'prev' | 'next' | null>(null);
   const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
+  const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
@@ -1018,6 +1023,17 @@ export function SearchReplacePanel() {
     () => ({ fontFamily, fontSize: `${Math.max(10, fontSize || 14)}px` }),
     [fontFamily, fontSize]
   );
+  const {
+    containerRef: searchSidebarContainerRef,
+    isResizing: isSearchSidebarResizing,
+    startResize: startSearchSidebarResize,
+  } = useResizableSidebarWidth({
+    width: searchSidebarWidth,
+    minWidth: SEARCH_SIDEBAR_MIN_WIDTH,
+    maxWidth: SEARCH_SIDEBAR_MAX_WIDTH,
+    onWidthChange: setSearchSidebarWidth,
+    resizeEdge: 'left',
+  });
   const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -2735,6 +2751,7 @@ export function SearchReplacePanel() {
       setPanelMode('find');
       setResultPanelState('closed');
       setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
+      setSearchSidebarWidth(SEARCH_SIDEBAR_DEFAULT_WIDTH);
       setKeyword('');
       setReplaceValue('');
       setSearchMode('literal');
@@ -2769,6 +2786,7 @@ export function SearchReplacePanel() {
       setPanelMode(nextSnapshot.panelMode);
       setResultPanelState(nextSnapshot.resultPanelState);
       setResultPanelHeight(nextSnapshot.resultPanelHeight ?? RESULT_PANEL_DEFAULT_HEIGHT);
+      setSearchSidebarWidth(nextSnapshot.searchSidebarWidth ?? SEARCH_SIDEBAR_DEFAULT_WIDTH);
       setKeyword(nextSnapshot.keyword);
       setReplaceValue(nextSnapshot.replaceValue);
       setSearchMode(nextSnapshot.searchMode);
@@ -2884,6 +2902,7 @@ export function SearchReplacePanel() {
       setPanelMode('find');
       setResultPanelState('closed');
       setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
+      setSearchSidebarWidth(SEARCH_SIDEBAR_DEFAULT_WIDTH);
       setKeyword('');
       setReplaceValue('');
       setSearchMode('literal');
@@ -2925,6 +2944,7 @@ export function SearchReplacePanel() {
       panelMode,
       resultPanelState,
       resultPanelHeight,
+      searchSidebarWidth,
       keyword,
       replaceValue,
       searchMode,
@@ -2963,6 +2983,7 @@ export function SearchReplacePanel() {
     resultFilterKeyword,
     resultPanelState,
     resultPanelHeight,
+    searchSidebarWidth,
     reverseSearch,
     searchMode,
     totalFilterMatchedLineCount,
@@ -3797,12 +3818,13 @@ export function SearchReplacePanel() {
   return (
     <>
       <div
+        ref={searchSidebarContainerRef}
         className={cn(
           'fixed right-0 z-40 transform-gpu overflow-x-hidden transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
         style={{
-          width: SEARCH_SIDEBAR_WIDTH,
+          width: `${searchSidebarWidth}px`,
           top: searchSidebarTopOffset,
           bottom: searchSidebarBottomOffset,
         }}
@@ -4355,6 +4377,17 @@ export function SearchReplacePanel() {
             {feedbackMessage || statusText} · {messages.shortcutHint}
           </div>
         </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize search sidebar"
+          onPointerDown={startSearchSidebarResize}
+          className={cn(
+            'absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none transition-colors',
+            !isOpen && 'pointer-events-none opacity-0',
+            isSearchSidebarResizing ? 'bg-primary/40' : 'hover:bg-primary/25'
+          )}
+        />
       </div>
 
       {resultPanelState !== 'closed' && (
