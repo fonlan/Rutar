@@ -5,6 +5,10 @@ export type I18nKey =
   | 'titleBar.settings'
   | 'titleBar.closeOtherTabs'
   | 'titleBar.closeAllTabs'
+  | 'titleBar.copyFileName'
+  | 'titleBar.copyDirectory'
+  | 'titleBar.copyPath'
+  | 'titleBar.openContainingFolder'
   | 'toolbar.newFile'
   | 'toolbar.openFile'
   | 'toolbar.openFolder'
@@ -62,6 +66,10 @@ export type I18nKey =
 type Messages = Record<I18nKey, string>;
 
 const zhCN: Messages = {
+  'titleBar.copyFileName': '\u590d\u5236\u6587\u4ef6\u540d',
+  'titleBar.copyDirectory': '\u590d\u5236\u76ee\u5f55',
+  'titleBar.copyPath': '\u590d\u5236\u8def\u5f84',
+  'titleBar.openContainingFolder': '\u6253\u5f00\u6587\u4ef6\u6240\u5728\u6587\u4ef6\u5939',
   'app.readyOpenHint': '就绪：打开文件或文件夹',
   'titleBar.settings': '设置',
   'titleBar.closeOtherTabs': '关闭其他标签页',
@@ -122,6 +130,10 @@ const zhCN: Messages = {
 };
 
 const enUS: Messages = {
+  'titleBar.copyFileName': 'Copy File Name',
+  'titleBar.copyDirectory': 'Copy Directory',
+  'titleBar.copyPath': 'Copy Path',
+  'titleBar.openContainingFolder': 'Open Containing Folder',
   'app.readyOpenHint': 'READY: Open a file or folder',
   'titleBar.settings': 'Settings',
   'titleBar.closeOtherTabs': 'Close Other Tabs',

@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use tauri::State;
 use tree_sitter::{InputEdit, Language, Parser, Point};
@@ -4033,6 +4034,54 @@ pub fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn open_in_file_manager(path: String) -> Result<(), String> {
+    let target_path = PathBuf::from(path);
+
+    if !target_path.exists() {
+        return Err("Path does not exist".to_string());
+    }
+
+    let directory = if target_path.is_dir() {
+        target_path
+    } else {
+        target_path
+            .parent()
+            .map(|value| value.to_path_buf())
+            .ok_or_else(|| "Failed to resolve parent directory".to_string())?
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(&directory)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&directory)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(&directory)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("Opening file manager is not supported on this platform".to_string())
 }
 
 #[tauri::command]

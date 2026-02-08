@@ -15,6 +15,30 @@ interface TabContextMenuState {
     y: number;
 }
 
+function getParentDirectoryPath(filePath: string): string | null {
+    const normalizedPath = filePath.trim();
+
+    if (!normalizedPath) {
+        return null;
+    }
+
+    const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+
+    if (separatorIndex < 0) {
+        return null;
+    }
+
+    if (separatorIndex === 0) {
+        return normalizedPath[0];
+    }
+
+    if (separatorIndex === 2 && /^[a-zA-Z]:[\\/]/.test(normalizedPath)) {
+        return normalizedPath.slice(0, 3);
+    }
+
+    return normalizedPath.slice(0, separatorIndex);
+}
+
 export function TitleBar() {
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
@@ -29,6 +53,24 @@ export function TitleBar() {
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const alwaysOnTopTitle = isAlwaysOnTop ? 'Disable Always on Top' : 'Enable Always on Top';
+    const contextMenuTab = tabContextMenu
+        ? tabs.find((tab) => tab.id === tabContextMenu.tabId) ?? null
+        : null;
+    const contextMenuTabDirectory = contextMenuTab?.path
+        ? getParentDirectoryPath(contextMenuTab.path)
+        : null;
+
+    const copyToClipboard = useCallback(async (text: string) => {
+        if (!navigator.clipboard?.writeText) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            console.error('Failed to write clipboard text:', error);
+        }
+    }, []);
 
     const handleMinimize = () => appWindow.minimize();
     const handleMaximize = () => appWindow.toggleMaximize();
@@ -179,7 +221,7 @@ export function TitleBar() {
         event.stopPropagation();
 
         const menuWidth = 176;
-        const menuHeight = 84;
+        const menuHeight = 212;
         const viewportPadding = 8;
 
         const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
@@ -330,14 +372,82 @@ export function TitleBar() {
                 >
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                         onClick={() => {
-                            const targetTab = tabs.find((tab) => tab.id === tabContextMenu.tabId);
+                            const fileName = contextMenuTab?.name;
                             setTabContextMenu(null);
-                            if (!targetTab) {
+
+                            if (!fileName) {
                                 return;
                             }
-                            void handleCloseOtherTabs(targetTab);
+
+                            void copyToClipboard(fileName);
+                        }}
+                    >
+                        {tr('titleBar.copyFileName')}
+                    </button>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setTabContextMenu(null);
+
+                            if (!contextMenuTabDirectory) {
+                                return;
+                            }
+
+                            void copyToClipboard(contextMenuTabDirectory);
+                        }}
+                        disabled={!contextMenuTabDirectory}
+                    >
+                        {tr('titleBar.copyDirectory')}
+                    </button>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            const filePath = contextMenuTab?.path;
+                            setTabContextMenu(null);
+
+                            if (!filePath) {
+                                return;
+                            }
+
+                            void copyToClipboard(filePath);
+                        }}
+                        disabled={!contextMenuTab?.path}
+                    >
+                        {tr('titleBar.copyPath')}
+                    </button>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            const filePath = contextMenuTab?.path;
+                            setTabContextMenu(null);
+
+                            if (!filePath) {
+                                return;
+                            }
+
+                            void invoke('open_in_file_manager', { path: filePath }).catch((error) => {
+                                console.error('Failed to open file directory:', error);
+                            });
+                        }}
+                        disabled={!contextMenuTab?.path}
+                    >
+                        {tr('titleBar.openContainingFolder')}
+                    </button>
+                    <div className="my-1 h-px bg-border" />
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setTabContextMenu(null);
+                            if (!contextMenuTab) {
+                                return;
+                            }
+                            void handleCloseOtherTabs(contextMenuTab);
                         }}
                         disabled={tabs.length <= 1}
                     >

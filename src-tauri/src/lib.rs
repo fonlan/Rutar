@@ -71,6 +71,7 @@ pub fn run() {
             commands::set_line_ending,
             commands::new_file,
             commands::read_dir,
+            commands::open_in_file_manager,
             commands::undo,
             commands::redo,
             commands::edit_text,
