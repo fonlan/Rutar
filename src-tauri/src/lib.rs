@@ -52,6 +52,10 @@ pub fn run() {
             commands::register_windows_context_menu,
             commands::unregister_windows_context_menu,
             commands::is_windows_context_menu_registered,
+            commands::get_default_windows_file_association_extensions,
+            commands::apply_windows_file_associations,
+            commands::remove_windows_file_associations,
+            commands::get_windows_file_association_status,
             commands::get_startup_paths
         ])
         .run(tauri::generate_context!())

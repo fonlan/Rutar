@@ -36,6 +36,14 @@ function detectWindowsPlatform() {
   return /windows/i.test(navigator.userAgent);
 }
 
+function areStringArraysEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
 interface AppConfig {
   language: AppLanguage;
   theme: AppTheme;
@@ -44,6 +52,12 @@ interface AppConfig {
   tabWidth: number;
   wordWrap: boolean;
   highlightCurrentLine: boolean;
+  windowsFileAssociationExtensions: string[];
+}
+
+interface WindowsFileAssociationStatus {
+  enabled: boolean;
+  extensions: string[];
 }
 
 function App() {
@@ -86,6 +100,56 @@ function App() {
       cancelled = true;
     };
   }, [isWindows, updateSettings]);
+
+  useEffect(() => {
+    if (!isWindows) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadWindowsFileAssociationStatus = async () => {
+      try {
+        const status = await invoke<WindowsFileAssociationStatus>('get_windows_file_association_status', {
+          extensions: settings.windowsFileAssociationExtensions,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const extensionsChanged = !areStringArraysEqual(
+          settings.windowsFileAssociationExtensions,
+          status.extensions,
+        );
+        const enabledChanged = settings.windowsFileAssociationEnabled !== status.enabled;
+
+        if (!extensionsChanged && !enabledChanged) {
+          return;
+        }
+
+        updateSettings({
+          windowsFileAssociationEnabled: status.enabled,
+          ...(extensionsChanged
+            ? { windowsFileAssociationExtensions: status.extensions }
+            : {}),
+        });
+      } catch (error) {
+        console.error('Failed to read Windows file association status:', error);
+      }
+    };
+
+    void loadWindowsFileAssociationStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isWindows,
+    settings.windowsFileAssociationEnabled,
+    settings.windowsFileAssociationExtensions,
+    updateSettings,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,6 +342,9 @@ function App() {
           tabWidth: Number.isFinite(config.tabWidth) ? Math.min(8, Math.max(1, config.tabWidth)) : 4,
           wordWrap: !!config.wordWrap,
           highlightCurrentLine: config.highlightCurrentLine !== false,
+          windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
+            ? config.windowsFileAssociationExtensions
+            : [],
         });
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -315,6 +382,7 @@ function App() {
           tabWidth: settings.tabWidth,
           wordWrap: settings.wordWrap,
           highlightCurrentLine: settings.highlightCurrentLine,
+          windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
         },
       }).catch((error) => {
         console.error('Failed to save config:', error);
@@ -333,6 +401,7 @@ function App() {
     settings.theme,
     settings.wordWrap,
     settings.highlightCurrentLine,
+    settings.windowsFileAssociationExtensions,
   ]);
   
   const activeTab = tabs.find(t => t.id === activeTabId);

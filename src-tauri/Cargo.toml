@@ -52,6 +52,7 @@ regex = "1.11"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell"] }
 
 [profile.release]
 codegen-units = 1 # 最大化优化，牺牲编译速度

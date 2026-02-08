@@ -33,6 +33,8 @@ interface SettingsState {
   wordWrap: boolean;
   highlightCurrentLine: boolean;
   windowsContextMenuEnabled: boolean;
+  windowsFileAssociationEnabled: boolean;
+  windowsFileAssociationExtensions: string[];
 }
 
 interface AppState {
@@ -83,6 +85,8 @@ export const useStore = create<AppState>((set) => ({
     wordWrap: false,
     highlightCurrentLine: true,
     windowsContextMenuEnabled: false,
+    windowsFileAssociationEnabled: false,
+    windowsFileAssociationExtensions: [],
   },
   sidebarOpen: false,
   sidebarWidth: 240,

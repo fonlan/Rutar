@@ -7,6 +7,7 @@ use quick_xml::{Reader, Writer};
 use regex::RegexBuilder;
 use ropey::Rope;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::path::PathBuf;
 use tauri::State;
@@ -17,6 +18,10 @@ use uuid::Uuid;
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
 #[cfg(windows)]
 use winreg::RegKey;
+#[cfg(windows)]
+use windows_sys::Win32::UI::Shell::{
+    SHCNE_ASSOCCHANGED, SHCNF_FLUSHNOWAIT, SHCNF_IDLIST, SHChangeNotify,
+};
 
 const LARGE_FILE_THRESHOLD_BYTES: usize = 50 * 1024 * 1024;
 const ENCODING_DETECT_SAMPLE_BYTES: usize = 1024 * 1024;
@@ -28,6 +33,17 @@ const DEFAULT_TAB_WIDTH: u8 = 4;
 const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
 const FILTER_MAX_RANGES_PER_LINE: usize = 256;
+const DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS: &[&str] = &[
+    ".txt", ".md", ".log", ".json", ".jsonc", ".yaml", ".yml", ".toml", ".xml", ".ini",
+    ".cfg", ".conf", ".csv",
+];
+
+fn default_windows_file_association_extensions() -> Vec<String> {
+    DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect()
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +55,8 @@ pub struct AppConfig {
     tab_width: u8,
     word_wrap: bool,
     highlight_current_line: bool,
+    #[serde(default = "default_windows_file_association_extensions")]
+    windows_file_association_extensions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -53,6 +71,7 @@ struct PartialAppConfig {
     tab_width: Option<u8>,
     word_wrap: Option<bool>,
     highlight_current_line: Option<bool>,
+    windows_file_association_extensions: Option<Vec<String>>,
     filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
 
@@ -66,6 +85,7 @@ impl Default for AppConfig {
             tab_width: DEFAULT_TAB_WIDTH,
             word_wrap: false,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
+            windows_file_association_extensions: default_windows_file_association_extensions(),
             filter_rule_groups: None,
         }
     }
@@ -214,6 +234,13 @@ pub struct ContentTreeNode {
     line: usize,
     column: usize,
     children: Vec<ContentTreeNode>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowsFileAssociationStatus {
+    enabled: bool,
+    extensions: Vec<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -849,6 +876,50 @@ fn normalize_filter_rule_groups(
     }
 }
 
+fn normalize_windows_file_association_extension(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut normalized = trimmed.replace('*', "");
+    if !normalized.starts_with('.') {
+        normalized = format!(".{}", normalized);
+    }
+
+    let normalized = normalized.to_lowercase();
+    if normalized.len() < 2 {
+        return None;
+    }
+
+    let is_valid = normalized
+        .chars()
+        .skip(1)
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '+'));
+
+    if !is_valid {
+        return None;
+    }
+
+    Some(normalized)
+}
+
+fn normalize_windows_file_association_extensions(extensions: Option<Vec<String>>) -> Vec<String> {
+    let mut unique_extensions = BTreeSet::new();
+
+    for extension in extensions.unwrap_or_default() {
+        if let Some(normalized) = normalize_windows_file_association_extension(extension.as_str()) {
+            unique_extensions.insert(normalized);
+        }
+    }
+
+    if unique_extensions.is_empty() {
+        return default_windows_file_association_extensions();
+    }
+
+    unique_extensions.into_iter().collect()
+}
+
 fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: normalize_language(Some(config.language.as_str())),
@@ -862,6 +933,9 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         tab_width: normalize_tab_width(config.tab_width),
         word_wrap: config.word_wrap,
         highlight_current_line: config.highlight_current_line,
+        windows_file_association_extensions: normalize_windows_file_association_extensions(
+            Some(config.windows_file_association_extensions),
+        ),
         filter_rule_groups: normalize_filter_rule_groups(config.filter_rule_groups),
     }
 }
@@ -880,6 +954,12 @@ const WIN_FILE_SHELL_KEY: &str = r"Software\Classes\*\shell\Rutar";
 const WIN_DIR_SHELL_KEY: &str = r"Software\Classes\Directory\shell\Rutar";
 #[cfg(windows)]
 const WIN_DIR_BG_SHELL_KEY: &str = r"Software\Classes\Directory\Background\shell\Rutar";
+#[cfg(windows)]
+const WIN_FILE_ASSOC_PROG_ID: &str = "Rutar.Document";
+#[cfg(windows)]
+const WIN_FILE_ASSOC_PROG_KEY: &str = r"Software\Classes\Rutar.Document";
+#[cfg(windows)]
+const WIN_FILE_ASSOC_BACKUP_KEY: &str = r"Software\Rutar\FileAssociationBackups";
 
 #[cfg(windows)]
 fn executable_path_string() -> Result<String, String> {
@@ -953,6 +1033,255 @@ fn read_registry_command(root: &RegKey, shell_key: &str) -> Option<String> {
 #[cfg(windows)]
 fn expected_registry_command(argument_placeholder: &str) -> Option<String> {
     context_menu_command_line(argument_placeholder).ok()
+}
+
+#[cfg(windows)]
+fn windows_file_association_type_name(language: &str) -> &'static str {
+    match normalize_language(Some(language)) {
+        value if value == "zh-CN" => "Rutar 文本文档",
+        _ => "Rutar Text Document",
+    }
+}
+
+#[cfg(windows)]
+fn windows_document_icon_path_string() -> Result<String, String> {
+    executable_path_string()
+}
+
+#[cfg(windows)]
+fn windows_default_icon_value(icon_path: &str) -> String {
+    format!("{},0", icon_path)
+}
+
+#[cfg(windows)]
+fn windows_file_extension_key(extension: &str) -> String {
+    format!(r"Software\Classes\{}", extension)
+}
+
+#[cfg(windows)]
+fn windows_file_association_backup_key(extension: &str) -> String {
+    format!(r"{}\{}", WIN_FILE_ASSOC_BACKUP_KEY, extension)
+}
+
+#[cfg(windows)]
+fn windows_file_exts_user_choice_key(extension: &str) -> String {
+    format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{}\UserChoice",
+        extension
+    )
+}
+
+#[cfg(windows)]
+fn notify_windows_association_changed() {
+    unsafe {
+        SHChangeNotify(
+            SHCNE_ASSOCCHANGED as i32,
+            SHCNF_IDLIST | SHCNF_FLUSHNOWAIT,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+    }
+}
+
+#[cfg(windows)]
+fn clear_windows_user_choice(root: &RegKey, extension: &str) -> Result<(), String> {
+    let user_choice_key = windows_file_exts_user_choice_key(extension);
+    remove_registry_tree(root, user_choice_key.as_str())
+}
+
+#[cfg(windows)]
+fn read_registry_default_value(root: &RegKey, key_path: &str) -> Result<Option<String>, String> {
+    let key = match root.open_subkey_with_flags(key_path, KEY_READ) {
+        Ok(value) => value,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("Failed to open registry key {}: {}", key_path, err)),
+    };
+
+    match key.get_value::<String, _>("") {
+        Ok(value) => Ok(Some(value)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!("Failed to read registry key {} default value: {}", key_path, err)),
+    }
+}
+
+#[cfg(windows)]
+fn backup_extension_default_value(root: &RegKey, extension: &str) -> Result<(), String> {
+    let backup_key_path = windows_file_association_backup_key(extension);
+    if root.open_subkey_with_flags(&backup_key_path, KEY_READ).is_ok() {
+        return Ok(());
+    }
+
+    let extension_key_path = windows_file_extension_key(extension);
+    let previous_default = read_registry_default_value(root, extension_key_path.as_str())?;
+
+    let (backup_key, _) = root
+        .create_subkey(backup_key_path.as_str())
+        .map_err(|e| format!("Failed to create backup registry key {}: {}", backup_key_path, e))?;
+
+    let has_previous_default: u32 = if previous_default.is_some() { 1 } else { 0 };
+    backup_key
+        .set_value("HasPreviousDefault", &has_previous_default)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(previous) = previous_default {
+        backup_key
+            .set_value("PreviousDefault", &previous)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn write_windows_file_association_progid(
+    root: &RegKey,
+    icon_path: &str,
+    language: &str,
+) -> Result<(), String> {
+    let (prog_key, _) = root
+        .create_subkey(WIN_FILE_ASSOC_PROG_KEY)
+        .map_err(|e| format!("Failed to create registry key {}: {}", WIN_FILE_ASSOC_PROG_KEY, e))?;
+    prog_key
+        .set_value("", &windows_file_association_type_name(language))
+        .map_err(|e| e.to_string())?;
+
+    let (icon_key, _) = prog_key.create_subkey("DefaultIcon").map_err(|e| e.to_string())?;
+    icon_key
+        .set_value("", &windows_default_icon_value(icon_path))
+        .map_err(|e| e.to_string())?;
+
+    let command = context_menu_command_line("%1")?;
+    let (command_key, _) = prog_key
+        .create_subkey(r"shell\open\command")
+        .map_err(|e| e.to_string())?;
+    command_key.set_value("", &command).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn associate_extension_with_rutar(root: &RegKey, extension: &str) -> Result<(), String> {
+    backup_extension_default_value(root, extension)?;
+    clear_windows_user_choice(root, extension)?;
+
+    let extension_key_path = windows_file_extension_key(extension);
+    let (extension_key, _) = root
+        .create_subkey(extension_key_path.as_str())
+        .map_err(|e| format!("Failed to create registry key {}: {}", extension_key_path, e))?;
+
+    extension_key
+        .set_value("", &WIN_FILE_ASSOC_PROG_ID)
+        .map_err(|e| e.to_string())?;
+
+    let (open_with_key, _) = extension_key
+        .create_subkey("OpenWithProgids")
+        .map_err(|e| e.to_string())?;
+    open_with_key
+        .set_value(WIN_FILE_ASSOC_PROG_ID, &"")
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn restore_extension_default_value(root: &RegKey, extension: &str) -> Result<(), String> {
+    let backup_key_path = windows_file_association_backup_key(extension);
+    let backup_key = match root.open_subkey_with_flags(backup_key_path.as_str(), KEY_READ) {
+        Ok(value) => value,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => {
+            return Err(format!(
+                "Failed to open backup registry key {}: {}",
+                backup_key_path, err
+            ))
+        }
+    };
+
+    let has_previous_default = backup_key
+        .get_value::<u32, _>("HasPreviousDefault")
+        .unwrap_or(0)
+        == 1;
+    let previous_default = backup_key.get_value::<String, _>("PreviousDefault").ok();
+
+    let extension_key_path = windows_file_extension_key(extension);
+    let (extension_key, _) = root
+        .create_subkey(extension_key_path.as_str())
+        .map_err(|e| format!("Failed to open registry key {}: {}", extension_key_path, e))?;
+
+    if has_previous_default {
+        if let Some(previous) = previous_default {
+            extension_key.set_value("", &previous).map_err(|e| e.to_string())?;
+        } else {
+            let _ = extension_key.delete_value("");
+        }
+    } else {
+        let _ = extension_key.delete_value("");
+    }
+
+    if let Ok(open_with_key) = extension_key.open_subkey_with_flags("OpenWithProgids", KEY_WRITE) {
+        let _ = open_with_key.delete_value(WIN_FILE_ASSOC_PROG_ID);
+    }
+
+    clear_windows_user_choice(root, extension)?;
+
+    remove_registry_tree(root, backup_key_path.as_str())
+}
+
+#[cfg(windows)]
+fn is_extension_associated_with_rutar(root: &RegKey, extension: &str) -> bool {
+    let extension_key_path = windows_file_extension_key(extension);
+    let extension_default = read_registry_default_value(root, extension_key_path.as_str())
+        .ok()
+        .flatten();
+
+    matches!(extension_default.as_deref(), Some(value) if value == WIN_FILE_ASSOC_PROG_ID)
+}
+
+#[cfg(windows)]
+fn any_extension_associated_with_rutar(root: &RegKey) -> bool {
+    let classes_key = match root.open_subkey_with_flags(r"Software\Classes", KEY_READ) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+
+    for key_name in classes_key.enum_keys().flatten() {
+        if !key_name.starts_with('.') {
+            continue;
+        }
+
+        if is_extension_associated_with_rutar(root, key_name.as_str()) {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(windows)]
+fn is_windows_file_association_registered(extensions: &[String]) -> bool {
+    if extensions.is_empty() {
+        return false;
+    }
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let expected_command = match context_menu_command_line("%1") {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+
+    let command_matches = read_registry_default_value(&hkcu, r"Software\Classes\Rutar.Document\shell\open\command")
+        .ok()
+        .flatten()
+        .map(|value| value == expected_command)
+        .unwrap_or(false);
+
+    if !command_matches {
+        return false;
+    }
+
+    extensions
+        .iter()
+        .all(|extension| is_extension_associated_with_rutar(&hkcu, extension.as_str()))
 }
 
 fn config_file_path() -> Result<PathBuf, String> {
@@ -1040,6 +1369,91 @@ pub fn is_windows_context_menu_registered() -> bool {
 }
 
 #[tauri::command]
+pub fn get_default_windows_file_association_extensions() -> Vec<String> {
+    default_windows_file_association_extensions()
+}
+
+#[tauri::command]
+pub fn apply_windows_file_associations(
+    language: Option<String>,
+    extensions: Vec<String>,
+) -> Result<Vec<String>, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = language;
+        let _ = extensions;
+        Err("Windows file association is only supported on Windows".to_string())
+    }
+
+    #[cfg(windows)]
+    {
+        let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
+        let normalized_language = normalize_language(language.as_deref());
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let icon_path = windows_document_icon_path_string()?;
+
+        write_windows_file_association_progid(&hkcu, icon_path.as_str(), normalized_language.as_str())?;
+
+        for extension in &normalized_extensions {
+            associate_extension_with_rutar(&hkcu, extension.as_str())?;
+        }
+
+        notify_windows_association_changed();
+
+        Ok(normalized_extensions)
+    }
+}
+
+#[tauri::command]
+pub fn remove_windows_file_associations(extensions: Vec<String>) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        let _ = extensions;
+        Err("Windows file association is only supported on Windows".to_string())
+    }
+
+    #[cfg(windows)]
+    {
+        let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+        for extension in &normalized_extensions {
+            restore_extension_default_value(&hkcu, extension.as_str())?;
+        }
+
+        let any_remaining = any_extension_associated_with_rutar(&hkcu);
+        if !any_remaining {
+            remove_registry_tree(&hkcu, WIN_FILE_ASSOC_PROG_KEY)?;
+        }
+
+        notify_windows_association_changed();
+
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn get_windows_file_association_status(extensions: Vec<String>) -> WindowsFileAssociationStatus {
+    let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
+
+    #[cfg(not(windows))]
+    {
+        WindowsFileAssociationStatus {
+            enabled: false,
+            extensions: normalized_extensions,
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        WindowsFileAssociationStatus {
+            enabled: is_windows_file_association_registered(&normalized_extensions),
+            extensions: normalized_extensions,
+        }
+    }
+}
+
+#[tauri::command]
 pub fn load_config() -> Result<AppConfig, String> {
     let path = config_file_path()?;
     if !path.exists() {
@@ -1086,6 +1500,11 @@ pub fn load_config() -> Result<AppConfig, String> {
         config.highlight_current_line = highlight_current_line;
     }
 
+    if let Some(extensions) = partial.windows_file_association_extensions {
+        config.windows_file_association_extensions =
+            normalize_windows_file_association_extensions(Some(extensions));
+    }
+
     config.filter_rule_groups = normalize_filter_rule_groups(partial.filter_rule_groups);
 
     Ok(config)
@@ -1119,6 +1538,17 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
             set_windows_context_shell_display_name(&hkcu, WIN_FILE_SHELL_KEY, display_name)?;
             set_windows_context_shell_display_name(&hkcu, WIN_DIR_SHELL_KEY, display_name)?;
             set_windows_context_shell_display_name(&hkcu, WIN_DIR_BG_SHELL_KEY, display_name)?;
+        }
+
+        if is_windows_file_association_registered(&normalized.windows_file_association_extensions) {
+            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+            let icon_path = windows_document_icon_path_string()?;
+
+            write_windows_file_association_progid(
+                &hkcu,
+                icon_path.as_str(),
+                normalized.language.as_str(),
+            )?;
         }
     }
 

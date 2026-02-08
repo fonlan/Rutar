@@ -1,15 +1,69 @@
-import { X, Type, Monitor, Palette, Languages, SquareTerminal } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
+
+const FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS = [
+  '.txt',
+  '.md',
+  '.log',
+  '.json',
+  '.jsonc',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.xml',
+  '.ini',
+  '.cfg',
+  '.conf',
+  '.csv',
+];
+
+function normalizeWindowsFileAssociationExtension(value: string): string | null {
+  const trimmedValue = value.trim().replace(/\*/g, '');
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const normalized = (trimmedValue.startsWith('.') ? trimmedValue : `.${trimmedValue}`).toLowerCase();
+  if (normalized.length < 2) {
+    return null;
+  }
+
+  if (!/^\.[a-z0-9_+-]+$/.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeWindowsFileAssociationExtensions(values: string[]): string[] {
+  const normalized = values
+    .map((value) => normalizeWindowsFileAssociationExtension(value))
+    .filter((value): value is string => !!value)
+    .sort((left, right) => left.localeCompare(right));
+
+  return Array.from(new Set(normalized));
+}
+
+function areStringListsEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
 
 export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
   const updateSettings = useStore((state) => state.updateSettings);
   const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('appearance');
+  const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
+  const [customExtensionInput, setCustomExtensionInput] = useState('');
+  const [isUpdatingFileAssociations, setIsUpdatingFileAssociations] = useState(false);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const currentLineLabel = settings.language === 'zh-CN' ? '高亮当前行' : 'Highlight Current Line';
   const currentLineDesc =
@@ -39,6 +93,27 @@ export function SettingsModal() {
   const windowsContextDesc = settings.language === 'zh-CN'
     ? '在文件和文件夹右键菜单中显示“使用 Rutar 打开”。'
     : 'Show "Open with Rutar" for files and folders in the context menu.';
+  const windowsFileAssociationLabel = settings.language === 'zh-CN' ? 'Windows 文件关联' : 'Windows File Associations';
+  const windowsFileAssociationDesc = settings.language === 'zh-CN'
+    ? '将 Rutar 设为所选后缀的默认编辑器，支持双击直接打开。图标使用 rutar_document.png。'
+    : 'Set Rutar as the default editor for selected extensions. Supports double-click open with rutar_document.png icon.';
+  const windowsFileAssociationHint = settings.language === 'zh-CN'
+    ? '勾选常见文本后缀，也可自定义（如 .env、.sql）。'
+    : 'Select common text extensions and add custom ones (for example .env, .sql).';
+  const addExtensionButtonLabel = settings.language === 'zh-CN' ? '添加' : 'Add';
+
+  const normalizedSelectedExtensions = useMemo(
+    () => normalizeWindowsFileAssociationExtensions(settings.windowsFileAssociationExtensions),
+    [settings.windowsFileAssociationExtensions],
+  );
+  const effectiveDefaultExtensions = useMemo(
+    () => normalizeWindowsFileAssociationExtensions(defaultExtensions),
+    [defaultExtensions],
+  );
+  const customExtensions = useMemo(
+    () => normalizedSelectedExtensions.filter((extension) => !effectiveDefaultExtensions.includes(extension)),
+    [normalizedSelectedExtensions, effectiveDefaultExtensions],
+  );
 
   const handleToggleWindowsContextMenu = async () => {
     const nextEnabled = !settings.windowsContextMenuEnabled;
@@ -55,6 +130,147 @@ export function SettingsModal() {
       updateSettings({ windowsContextMenuEnabled: nextEnabled });
     } catch (error) {
       console.error('Failed to update Windows context menu:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!isWindows) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDefaultExtensions = async () => {
+      try {
+        const extensions = await invoke<string[]>('get_default_windows_file_association_extensions');
+        if (cancelled) {
+          return;
+        }
+
+        const normalizedDefaults = normalizeWindowsFileAssociationExtensions(extensions);
+        if (normalizedDefaults.length === 0) {
+          return;
+        }
+
+        setDefaultExtensions(normalizedDefaults);
+
+        if (settings.windowsFileAssociationExtensions.length === 0) {
+          updateSettings({
+            windowsFileAssociationExtensions: normalizedDefaults,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load default file association extensions:', error);
+      }
+    };
+
+    void loadDefaultExtensions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isWindows, settings.windowsFileAssociationExtensions.length, updateSettings]);
+
+  const persistWindowsFileAssociationExtensions = async (extensions: string[]) => {
+    const normalizedExtensions = normalizeWindowsFileAssociationExtensions(extensions);
+
+    if (areStringListsEqual(normalizedSelectedExtensions, normalizedExtensions)) {
+      return;
+    }
+
+    updateSettings({ windowsFileAssociationExtensions: normalizedExtensions });
+
+    if (!settings.windowsFileAssociationEnabled) {
+      return;
+    }
+
+    setIsUpdatingFileAssociations(true);
+
+    try {
+      const removedExtensions = normalizedSelectedExtensions.filter(
+        (extension) => !normalizedExtensions.includes(extension),
+      );
+
+      if (removedExtensions.length > 0) {
+        await invoke('remove_windows_file_associations', {
+          extensions: removedExtensions,
+        });
+      }
+
+      const appliedExtensions = await invoke<string[]>('apply_windows_file_associations', {
+        language: settings.language,
+        extensions: normalizedExtensions,
+      });
+
+      updateSettings({
+        windowsFileAssociationEnabled: true,
+        windowsFileAssociationExtensions: normalizeWindowsFileAssociationExtensions(appliedExtensions),
+      });
+    } catch (error) {
+      console.error('Failed to apply Windows file associations:', error);
+    } finally {
+      setIsUpdatingFileAssociations(false);
+    }
+  };
+
+  const handleTogglePresetExtension = (extension: string) => {
+    const nextExtensions = normalizedSelectedExtensions.includes(extension)
+      ? normalizedSelectedExtensions.filter((item) => item !== extension)
+      : [...normalizedSelectedExtensions, extension];
+
+    void persistWindowsFileAssociationExtensions(nextExtensions);
+  };
+
+  const handleAddCustomExtension = () => {
+    const normalizedExtension = normalizeWindowsFileAssociationExtension(customExtensionInput);
+    if (!normalizedExtension) {
+      return;
+    }
+
+    setCustomExtensionInput('');
+    void persistWindowsFileAssociationExtensions([...normalizedSelectedExtensions, normalizedExtension]);
+  };
+
+  const handleRemoveCustomExtension = (extension: string) => {
+    void persistWindowsFileAssociationExtensions(
+      normalizedSelectedExtensions.filter((item) => item !== extension),
+    );
+  };
+
+  const handleToggleWindowsFileAssociations = async () => {
+    const nextEnabled = !settings.windowsFileAssociationEnabled;
+    const candidateExtensions =
+      normalizedSelectedExtensions.length > 0
+        ? normalizedSelectedExtensions
+        : effectiveDefaultExtensions;
+
+    const normalizedCandidateExtensions = normalizeWindowsFileAssociationExtensions(candidateExtensions);
+
+    setIsUpdatingFileAssociations(true);
+
+    try {
+      if (nextEnabled) {
+        const appliedExtensions = await invoke<string[]>('apply_windows_file_associations', {
+          language: settings.language,
+          extensions: normalizedCandidateExtensions,
+        });
+
+        updateSettings({
+          windowsFileAssociationEnabled: true,
+          windowsFileAssociationExtensions: normalizeWindowsFileAssociationExtensions(appliedExtensions),
+        });
+        return;
+      }
+
+      await invoke('remove_windows_file_associations', {
+        extensions: normalizedCandidateExtensions,
+      });
+
+      updateSettings({ windowsFileAssociationEnabled: false });
+    } catch (error) {
+      console.error('Failed to update Windows file associations:', error);
+    } finally {
+      setIsUpdatingFileAssociations(false);
     }
   };
 
@@ -199,52 +415,167 @@ export function SettingsModal() {
                 </section>
 
                 {isWindows && (
-                  <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <SquareTerminal className="w-4 h-4 text-muted-foreground" />
-                          <p className="text-sm font-medium leading-none">{windowsContextLabel}</p>
+                  <>
+                    <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <SquareTerminal className="w-4 h-4 text-muted-foreground" />
+                            <p className="text-sm font-medium leading-none">{windowsContextLabel}</p>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{windowsContextDesc}</p>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{windowsContextDesc}</p>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleWindowsContextMenu()}
+                          className={cn(
+                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                            settings.windowsContextMenuEnabled
+                              ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                              : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                          )}
+                          aria-pressed={!!settings.windowsContextMenuEnabled}
+                          aria-label={windowsContextLabel}
+                        >
+                          <span
+                            className={cn(
+                              'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                              settings.windowsContextMenuEnabled
+                                ? 'opacity-0 text-primary-foreground/80'
+                                : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                            )}
+                          >
+                            {switchOffText}
+                          </span>
+                          <span
+                            className={cn(
+                              'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                              settings.windowsContextMenuEnabled
+                                ? 'opacity-95 text-primary-foreground'
+                                : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                            )}
+                          >
+                            {switchOnText}
+                          </span>
+                          <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleWindowsContextMenu()}
-                        className={cn(
-                          'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                          settings.windowsContextMenuEnabled
-                            ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
-                            : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                    </section>
+
+                    <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <p className="text-sm font-medium leading-none">{windowsFileAssociationLabel}</p>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{windowsFileAssociationDesc}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleWindowsFileAssociations()}
+                          disabled={isUpdatingFileAssociations}
+                          className={cn(
+                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                            settings.windowsFileAssociationEnabled
+                              ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                              : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                          )}
+                          aria-pressed={!!settings.windowsFileAssociationEnabled}
+                          aria-label={windowsFileAssociationLabel}
+                        >
+                          <span
+                            className={cn(
+                              'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                              settings.windowsFileAssociationEnabled
+                                ? 'opacity-0 text-primary-foreground/80'
+                                : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                            )}
+                          >
+                            {switchOffText}
+                          </span>
+                          <span
+                            className={cn(
+                              'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                              settings.windowsFileAssociationEnabled
+                                ? 'opacity-95 text-primary-foreground'
+                                : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                            )}
+                          >
+                            {switchOnText}
+                          </span>
+                          <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                        </button>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        <p className="text-xs text-muted-foreground">{windowsFileAssociationHint}</p>
+
+                        <div className="flex flex-wrap gap-2">
+                          {effectiveDefaultExtensions.map((extension) => {
+                            const selected = normalizedSelectedExtensions.includes(extension);
+
+                            return (
+                              <button
+                                key={extension}
+                                type="button"
+                                onClick={() => handleTogglePresetExtension(extension)}
+                                className={cn(
+                                  'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                                  selected
+                                    ? 'border-emerald-500/80 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                    : 'border-border bg-background/70 hover:bg-muted'
+                                )}
+                              >
+                                {extension}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={cn(controlClassName, 'h-9')}
+                            value={customExtensionInput}
+                            onChange={(event) => setCustomExtensionInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter') {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              handleAddCustomExtension();
+                            }}
+                            placeholder={settings.language === 'zh-CN' ? '输入自定义后缀，如 .env' : 'Custom extension, e.g. .env'}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddCustomExtension()}
+                            className="h-9 rounded-md border border-border px-3 text-xs hover:bg-muted transition-colors"
+                          >
+                            {addExtensionButtonLabel}
+                          </button>
+                        </div>
+
+                        {customExtensions.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {customExtensions.map((extension) => (
+                              <button
+                                key={extension}
+                                type="button"
+                                onClick={() => handleRemoveCustomExtension(extension)}
+                                className="rounded-md border border-border bg-background/70 px-2.5 py-1 text-xs hover:bg-muted transition-colors"
+                              >
+                                {extension} ×
+                              </button>
+                            ))}
+                          </div>
                         )}
-                        aria-pressed={!!settings.windowsContextMenuEnabled}
-                        aria-label={windowsContextLabel}
-                      >
-                        <span
-                          className={cn(
-                            'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
-                            settings.windowsContextMenuEnabled
-                              ? 'opacity-0 text-primary-foreground/80'
-                              : 'opacity-90 text-zinc-700 dark:text-zinc-200'
-                          )}
-                        >
-                          {switchOffText}
-                        </span>
-                        <span
-                          className={cn(
-                            'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
-                            settings.windowsContextMenuEnabled
-                              ? 'opacity-95 text-primary-foreground'
-                              : 'opacity-0 text-zinc-700 dark:text-zinc-200'
-                          )}
-                        >
-                          {switchOnText}
-                        </span>
-                        <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
-                      </button>
-                    </div>
-                  </section>
+                      </div>
+                    </section>
+                  </>
                 )}
               </div>
             )}
