@@ -156,6 +156,19 @@ interface SearchCountBackendResult {
   documentVersion: number;
 }
 
+interface TabSearchPanelSnapshot {
+  isOpen: boolean;
+  panelMode: PanelMode;
+  resultPanelState: SearchResultPanelState;
+  keyword: string;
+  replaceValue: string;
+  searchMode: SearchMode;
+  caseSensitive: boolean;
+  reverseSearch: boolean;
+  resultFilterKeyword: string;
+  appliedResultFilterKeyword: string;
+}
+
 const SEARCH_CHUNK_SIZE = 300;
 const FILTER_CHUNK_SIZE = 300;
 const SEARCH_SIDEBAR_WIDTH = 'min(90vw, 420px)';
@@ -260,6 +273,11 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
         `Filter Results · Total ${totalLinesText} lines · Loaded ${loaded}`,
       refreshResults: 'Refresh search results',
       refreshFilterResults: 'Refresh filter results',
+      resultFilterPlaceholder: 'Search in all results',
+      resultFilterSearch: 'Search',
+      resultFilterStop: 'Stop',
+      resultFilterNoMatches: 'No results match this filter.',
+      clearResultFilter: 'Clear result filter',
       minimizeResults: 'Minimize results',
       closeResults: 'Close results',
       resultsEmptyHint: 'Enter a keyword to list all matches here.',
@@ -377,6 +395,11 @@ function getSearchMessages(language: 'zh-CN' | 'en-US') {
       `过滤结果 · 总计 ${totalLinesText} 行 · 已加载 ${loaded} 行`,
     refreshResults: '刷新搜索结果',
     refreshFilterResults: '刷新过滤结果',
+    resultFilterPlaceholder: '在全部结果中搜索',
+    resultFilterSearch: '搜索',
+    resultFilterStop: '停止',
+    resultFilterNoMatches: '结果中没有匹配该筛选词的项。',
+    clearResultFilter: '清空结果筛选',
     minimizeResults: '最小化结果',
     closeResults: '关闭结果',
     resultsEmptyHint: '输入关键词后会在这里列出全部匹配项。',
@@ -733,6 +756,8 @@ export function SearchReplacePanel() {
   const activeTabId = useStore((state) => state.activeTabId);
   const updateTab = useStore((state) => state.updateTab);
   const language = useStore((state) => state.settings.language);
+  const fontFamily = useStore((state) => state.settings.fontFamily);
+  const fontSize = useStore((state) => state.settings.fontSize);
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [tabs, activeTabId]);
   const messages = useMemo(
     () => getSearchMessages(language === 'en-US' ? 'en-US' : 'zh-CN'),
@@ -762,6 +787,9 @@ export function SearchReplacePanel() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultPanelState, setResultPanelState] = useState<SearchResultPanelState>('closed');
   const [isSearching, setIsSearching] = useState(false);
+  const [resultFilterKeyword, setResultFilterKeyword] = useState('');
+  const [appliedResultFilterKeyword, setAppliedResultFilterKeyword] = useState('');
+  const [isResultFilterSearching, setIsResultFilterSearching] = useState(false);
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
@@ -772,6 +800,10 @@ export function SearchReplacePanel() {
   const normalizedFilterRuleGroups = useMemo(
     () => normalizeFilterRuleGroups(filterRuleGroups),
     [filterRuleGroups]
+  );
+  const resultListTextStyle = useMemo(
+    () => ({ fontFamily, fontSize: `${Math.max(10, fontSize || 14)}px` }),
+    [fontFamily, fontSize]
   );
   const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
@@ -789,16 +821,19 @@ export function SearchReplacePanel() {
   const loadMoreDebounceRef = useRef<number | null>(null);
   const chunkCursorRef = useRef<number | null>(null);
   const filterLineCursorRef = useRef<number | null>(null);
+  const stopResultFilterSearchRef = useRef(false);
   const searchParamsRef = useRef<{
     tabId: string;
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    resultFilterKeyword: string;
     documentVersion: number;
   } | null>(null);
   const filterParamsRef = useRef<{
     tabId: string;
     rulesKey: string;
+    resultFilterKeyword: string;
     documentVersion: number;
   } | null>(null);
   const cachedSearchRef = useRef<{
@@ -806,6 +841,7 @@ export function SearchReplacePanel() {
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    resultFilterKeyword: string;
     documentVersion: number;
     matches: SearchMatch[];
     nextOffset: number | null;
@@ -813,6 +849,7 @@ export function SearchReplacePanel() {
   const cachedFilterRef = useRef<{
     tabId: string;
     rulesKey: string;
+    resultFilterKeyword: string;
     documentVersion: number;
     matches: FilterMatch[];
     nextLine: number | null;
@@ -822,16 +859,28 @@ export function SearchReplacePanel() {
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    resultFilterKeyword: string;
     documentVersion: number;
     totalMatches: number;
     matchedLines: number;
   } | null>(null);
+
+  const requestStopResultFilterSearch = useCallback(() => {
+    stopResultFilterSearchRef.current = true;
+    runVersionRef.current += 1;
+    filterRunVersionRef.current += 1;
+    countRunVersionRef.current += 1;
+    filterCountRunVersionRef.current += 1;
+  }, []);
   const filterCountCacheRef = useRef<{
     tabId: string;
     rulesKey: string;
+    resultFilterKeyword: string;
     documentVersion: number;
     matchedLines: number;
   } | null>(null);
+  const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
+  const previousActiveTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentMatchIndexRef.current = currentMatchIndex;
@@ -868,7 +917,40 @@ export function SearchReplacePanel() {
     }
   }, []);
 
-  const executeCountSearch = useCallback(async (forceRefresh = false) => {
+  const normalizedResultFilterKeyword = appliedResultFilterKeyword.trim().toLowerCase();
+  const isResultFilterActive = normalizedResultFilterKeyword.length > 0;
+
+  const backendResultFilterKeyword = useMemo(() => {
+    if (!isResultFilterActive) {
+      return '';
+    }
+
+    return caseSensitive ? appliedResultFilterKeyword.trim() : normalizedResultFilterKeyword;
+  }, [appliedResultFilterKeyword, caseSensitive, isResultFilterActive, normalizedResultFilterKeyword]);
+
+  const visibleFilterMatches = useMemo(() => filterMatches, [filterMatches]);
+
+  const visibleMatches = useMemo(() => matches, [matches]);
+
+  const visibleCurrentFilterMatchIndex = useMemo(() => {
+    if (visibleFilterMatches.length === 0) {
+      return -1;
+    }
+
+    return Math.min(currentFilterMatchIndex, visibleFilterMatches.length - 1);
+  }, [currentFilterMatchIndex, visibleFilterMatches]);
+
+  const visibleCurrentMatchIndex = useMemo(() => {
+    if (visibleMatches.length === 0) {
+      return -1;
+    }
+
+    return Math.min(currentMatchIndex, visibleMatches.length - 1);
+  }, [currentMatchIndex, visibleMatches]);
+
+  const executeCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
+    const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+
     if (!activeTab || !keyword || isFilterMode) {
       setTotalMatchCount(keyword ? 0 : null);
       setTotalMatchedLineCount(keyword ? 0 : null);
@@ -882,7 +964,8 @@ export function SearchReplacePanel() {
         cached.tabId === activeTab.id &&
         cached.keyword === keyword &&
         cached.searchMode === searchMode &&
-        cached.caseSensitive === caseSensitive
+        cached.caseSensitive === caseSensitive &&
+        cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
           const currentDocumentVersion = await invoke<number>('get_document_version', {
@@ -909,6 +992,7 @@ export function SearchReplacePanel() {
         keyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
+        resultFilterKeyword: effectiveResultFilterKeyword,
       });
 
       if (countRunVersionRef.current !== runId) {
@@ -923,6 +1007,7 @@ export function SearchReplacePanel() {
         keyword,
         searchMode,
         caseSensitive,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion: result.documentVersion ?? 0,
         totalMatches: result.totalMatches ?? 0,
         matchedLines: result.matchedLines ?? 0,
@@ -936,9 +1021,11 @@ export function SearchReplacePanel() {
       setTotalMatchCount(null);
       setTotalMatchedLineCount(null);
     }
-  }, [activeTab, caseSensitive, isFilterMode, keyword, searchMode]);
+  }, [activeTab, backendResultFilterKeyword, caseSensitive, isFilterMode, keyword, searchMode]);
 
-  const executeFilterCountSearch = useCallback(async (forceRefresh = false) => {
+  const executeFilterCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
+    const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+
     if (!activeTab) {
       setTotalFilterMatchedLineCount(null);
       return;
@@ -951,7 +1038,12 @@ export function SearchReplacePanel() {
 
     if (!forceRefresh) {
       const cached = filterCountCacheRef.current;
-      if (cached && cached.tabId === activeTab.id && cached.rulesKey === filterRulesKey) {
+      if (
+        cached &&
+        cached.tabId === activeTab.id &&
+        cached.rulesKey === filterRulesKey &&
+        cached.resultFilterKeyword === effectiveResultFilterKeyword
+      ) {
         try {
           const currentDocumentVersion = await invoke<number>('get_document_version', {
             id: activeTab.id,
@@ -974,6 +1066,8 @@ export function SearchReplacePanel() {
       const result = await invoke<FilterCountBackendResult>('filter_count_in_document', {
         id: activeTab.id,
         rules: filterRulesPayload,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+        resultFilterCaseSensitive: caseSensitive,
       });
 
       if (filterCountRunVersionRef.current !== runId) {
@@ -984,6 +1078,7 @@ export function SearchReplacePanel() {
       filterCountCacheRef.current = {
         tabId: activeTab.id,
         rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion: result.documentVersion ?? 0,
         matchedLines: result.matchedLines ?? 0,
       };
@@ -995,7 +1090,7 @@ export function SearchReplacePanel() {
       console.warn('Filter count failed:', error);
       setTotalFilterMatchedLineCount(null);
     }
-  }, [activeTab, filterRulesKey, filterRulesPayload]);
+  }, [activeTab, backendResultFilterKeyword, caseSensitive, filterRulesKey, filterRulesPayload]);
 
   const focusSearchInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -1004,7 +1099,10 @@ export function SearchReplacePanel() {
     });
   }, []);
 
-  const executeSearch = useCallback(async (forceRefresh = false, silent = false): Promise<SearchRunResult | null> => {
+  const executeSearch = useCallback(
+    async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<SearchRunResult | null> => {
+      const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+
     if (!activeTab || isFilterMode) {
       return null;
     }
@@ -1021,7 +1119,7 @@ export function SearchReplacePanel() {
       };
     }
 
-    void executeCountSearch(forceRefresh);
+    void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
 
     if (!forceRefresh) {
       const cached = cachedSearchRef.current;
@@ -1030,7 +1128,8 @@ export function SearchReplacePanel() {
         cached.tabId === activeTab.id &&
         cached.keyword === keyword &&
         cached.searchMode === searchMode &&
-        cached.caseSensitive === caseSensitive
+        cached.caseSensitive === caseSensitive &&
+        cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
           const currentDocumentVersion = await invoke<number>('get_document_version', {
@@ -1056,6 +1155,7 @@ export function SearchReplacePanel() {
               keyword,
               searchMode,
               caseSensitive,
+              resultFilterKeyword: effectiveResultFilterKeyword,
               documentVersion: cached.documentVersion,
             };
 
@@ -1084,6 +1184,7 @@ export function SearchReplacePanel() {
         keyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         startOffset: 0,
         maxResults: SEARCH_CHUNK_SIZE,
       });
@@ -1113,6 +1214,7 @@ export function SearchReplacePanel() {
         keyword,
         searchMode,
         caseSensitive,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion,
         matches: nextMatches,
         nextOffset,
@@ -1124,6 +1226,7 @@ export function SearchReplacePanel() {
         keyword,
         searchMode,
         caseSensitive,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion,
       };
 
@@ -1153,9 +1256,22 @@ export function SearchReplacePanel() {
         setIsSearching(false);
       }
     }
-  }, [activeTab, caseSensitive, executeCountSearch, isFilterMode, keyword, messages.searchFailed, resetSearchState, searchMode]);
+  }, [
+    activeTab,
+    backendResultFilterKeyword,
+    caseSensitive,
+    executeCountSearch,
+    isFilterMode,
+    keyword,
+    messages.searchFailed,
+    resetSearchState,
+    searchMode,
+  ]);
 
-  const executeFilter = useCallback(async (forceRefresh = false, silent = false): Promise<FilterRunResult | null> => {
+  const executeFilter = useCallback(
+    async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<FilterRunResult | null> => {
+  const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
+
   if (!activeTab) {
     return null;
   }
@@ -1173,11 +1289,16 @@ export function SearchReplacePanel() {
       };
     }
 
-    void executeFilterCountSearch(forceRefresh);
+    void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
 
     if (!forceRefresh) {
       const cached = cachedFilterRef.current;
-      if (cached && cached.tabId === activeTab.id && cached.rulesKey === filterRulesKey) {
+      if (
+        cached &&
+        cached.tabId === activeTab.id &&
+        cached.rulesKey === filterRulesKey &&
+        cached.resultFilterKeyword === effectiveResultFilterKeyword
+      ) {
         try {
           const currentDocumentVersion = await invoke<number>('get_document_version', {
             id: activeTab.id,
@@ -1200,6 +1321,7 @@ export function SearchReplacePanel() {
             filterParamsRef.current = {
               tabId: activeTab.id,
               rulesKey: filterRulesKey,
+              resultFilterKeyword: effectiveResultFilterKeyword,
               documentVersion: cached.documentVersion,
             };
 
@@ -1226,6 +1348,8 @@ export function SearchReplacePanel() {
       const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
         id: activeTab.id,
         rules: filterRulesPayload,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+        resultFilterCaseSensitive: caseSensitive,
         startLine: 0,
         maxResults: FILTER_CHUNK_SIZE,
       });
@@ -1253,6 +1377,7 @@ export function SearchReplacePanel() {
       cachedFilterRef.current = {
         tabId: activeTab.id,
         rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion,
         matches: nextMatches,
         nextLine,
@@ -1262,6 +1387,7 @@ export function SearchReplacePanel() {
       filterParamsRef.current = {
         tabId: activeTab.id,
         rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion,
       };
 
@@ -1293,6 +1419,8 @@ export function SearchReplacePanel() {
     }
   }, [
     activeTab,
+    backendResultFilterKeyword,
+    caseSensitive,
     executeFilterCountSearch,
     filterRulesKey,
     filterRulesPayload,
@@ -1320,7 +1448,8 @@ export function SearchReplacePanel() {
       params.tabId !== activeTab.id ||
       params.keyword !== keyword ||
       params.searchMode !== searchMode ||
-      params.caseSensitive !== caseSensitive
+      params.caseSensitive !== caseSensitive ||
+      params.resultFilterKeyword !== backendResultFilterKeyword
     ) {
       return null;
     }
@@ -1333,6 +1462,7 @@ export function SearchReplacePanel() {
         keyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
         startOffset,
         maxResults: SEARCH_CHUNK_SIZE,
       });
@@ -1364,6 +1494,7 @@ export function SearchReplacePanel() {
             keyword,
             searchMode,
             caseSensitive,
+            resultFilterKeyword: backendResultFilterKeyword,
             documentVersion: params.documentVersion,
             matches: mergedMatches,
             nextOffset,
@@ -1382,7 +1513,7 @@ export function SearchReplacePanel() {
       loadMoreLockRef.current = false;
       setIsSearching(false);
     }
-  }, [activeTab, caseSensitive, isFilterMode, keyword, messages.searchFailed, searchMode]);
+  }, [activeTab, backendResultFilterKeyword, caseSensitive, isFilterMode, keyword, messages.searchFailed, searchMode]);
 
   const loadMoreFilterMatches = useCallback(async (): Promise<FilterMatch[] | null> => {
     if (loadMoreLockRef.current) {
@@ -1399,7 +1530,11 @@ export function SearchReplacePanel() {
       return null;
     }
 
-    if (params.tabId !== activeTab.id || params.rulesKey !== filterRulesKey) {
+    if (
+      params.tabId !== activeTab.id ||
+      params.rulesKey !== filterRulesKey ||
+      params.resultFilterKeyword !== backendResultFilterKeyword
+    ) {
       return null;
     }
 
@@ -1409,6 +1544,7 @@ export function SearchReplacePanel() {
       const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
         id: activeTab.id,
         rules: filterRulesPayload,
+        resultFilterKeyword: backendResultFilterKeyword,
         startLine,
         maxResults: FILTER_CHUNK_SIZE,
       });
@@ -1438,6 +1574,7 @@ export function SearchReplacePanel() {
           cachedFilterRef.current = {
             tabId: activeTab.id,
             rulesKey: filterRulesKey,
+            resultFilterKeyword: backendResultFilterKeyword,
             documentVersion: params.documentVersion,
             matches: mergedMatches,
             nextLine,
@@ -1456,51 +1593,7 @@ export function SearchReplacePanel() {
       loadMoreLockRef.current = false;
       setIsSearching(false);
     }
-  }, [activeTab, filterRulesKey, filterRulesPayload, isFilterMode, messages.filterFailed]);
-
-  const ensureAllMatchesLoaded = useCallback(async (): Promise<SearchMatch[]> => {
-    if (isFilterMode) {
-      return [];
-    }
-
-    let previousCursor = chunkCursorRef.current;
-    while (chunkCursorRef.current !== null) {
-      const appended = await loadMoreMatches();
-      if (appended === null) {
-        break;
-      }
-
-      if (chunkCursorRef.current === previousCursor) {
-        break;
-      }
-
-      previousCursor = chunkCursorRef.current;
-    }
-
-    return cachedSearchRef.current?.matches ?? [];
-  }, [isFilterMode, loadMoreMatches]);
-
-  const ensureAllFilterMatchesLoaded = useCallback(async (): Promise<FilterMatch[]> => {
-    if (!isFilterMode) {
-      return [];
-    }
-
-    let previousCursor = filterLineCursorRef.current;
-    while (filterLineCursorRef.current !== null) {
-      const appended = await loadMoreFilterMatches();
-      if (appended === null) {
-        break;
-      }
-
-      if (filterLineCursorRef.current === previousCursor) {
-        break;
-      }
-
-      previousCursor = filterLineCursorRef.current;
-    }
-
-    return cachedFilterRef.current?.matches ?? [];
-  }, [isFilterMode, loadMoreFilterMatches]);
+  }, [activeTab, backendResultFilterKeyword, filterRulesKey, filterRulesPayload, isFilterMode, messages.filterFailed]);
 
   const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
     if (!activeTab || !keyword || isFilterMode) {
@@ -1536,6 +1629,7 @@ export function SearchReplacePanel() {
           keyword,
           searchMode,
           caseSensitive,
+          resultFilterKeyword: backendResultFilterKeyword,
           documentVersion,
           matches: [],
           nextOffset: null,
@@ -1546,6 +1640,7 @@ export function SearchReplacePanel() {
           keyword,
           searchMode,
           caseSensitive,
+          resultFilterKeyword: backendResultFilterKeyword,
           documentVersion,
         };
         setIsSearching(false);
@@ -1570,6 +1665,7 @@ export function SearchReplacePanel() {
         keyword,
         searchMode,
         caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         matches: immediateMatches,
         nextOffset: 0,
@@ -1580,6 +1676,7 @@ export function SearchReplacePanel() {
         keyword,
         searchMode,
         caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
       };
 
@@ -1588,7 +1685,6 @@ export function SearchReplacePanel() {
         if (!chunkResult) {
           return;
         }
-        await ensureAllMatchesLoaded();
       })();
 
       return {
@@ -1616,8 +1712,8 @@ export function SearchReplacePanel() {
     }
   }, [
     activeTab,
+    backendResultFilterKeyword,
     caseSensitive,
-    ensureAllMatchesLoaded,
     executeSearch,
     isFilterMode,
     keyword,
@@ -1711,15 +1807,12 @@ export function SearchReplacePanel() {
           const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterMatches.length - 1);
           const candidateIndex = boundedCurrentIndex + step;
 
-          if (candidateIndex < 0 && filterLineCursorRef.current !== null) {
-            const allMatches = await ensureAllFilterMatchesLoaded();
-            if (allMatches.length > 0) {
-              const lastIndex = allMatches.length - 1;
-              setCurrentFilterMatchIndex(lastIndex);
-              setFeedbackMessage(null);
-              navigateToFilterMatch(allMatches[lastIndex]);
-              return;
-            }
+          if (candidateIndex < 0) {
+            const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+            setCurrentFilterMatchIndex(nextIndex);
+            setFeedbackMessage(null);
+            navigateToFilterMatch(filterMatches[nextIndex]);
+            return;
           }
 
           if (candidateIndex >= filterMatches.length) {
@@ -1753,14 +1846,6 @@ export function SearchReplacePanel() {
         setFeedbackMessage(null);
         navigateToFilterMatch(filterResult.matches[nextIndex]);
 
-        if (step < 0 && filterResult.nextLine !== null) {
-          const allMatches = await ensureAllFilterMatchesLoaded();
-          if (allMatches.length > 0) {
-            const lastIndex = allMatches.length - 1;
-            setCurrentFilterMatchIndex(lastIndex);
-            navigateToFilterMatch(allMatches[lastIndex]);
-          }
-        }
         return;
       }
 
@@ -1768,15 +1853,12 @@ export function SearchReplacePanel() {
         const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, matches.length - 1);
         const candidateIndex = boundedCurrentIndex + step;
 
-        if (candidateIndex < 0 && chunkCursorRef.current !== null) {
-          const allMatches = await ensureAllMatchesLoaded();
-          if (allMatches.length > 0) {
-            const lastIndex = allMatches.length - 1;
-            setCurrentMatchIndex(lastIndex);
-            setFeedbackMessage(null);
-            navigateToMatch(allMatches[lastIndex]);
-            return;
-          }
+        if (candidateIndex < 0) {
+          const nextIndex = (candidateIndex + matches.length) % matches.length;
+          setCurrentMatchIndex(nextIndex);
+          setFeedbackMessage(null);
+          navigateToMatch(matches[nextIndex]);
+          return;
         }
 
         if (candidateIndex >= matches.length) {
@@ -1814,18 +1896,8 @@ export function SearchReplacePanel() {
       setFeedbackMessage(null);
       navigateToMatch(searchResult.matches[nextIndex]);
 
-      if (step < 0 && searchResult.nextOffset !== null) {
-        const allMatches = await ensureAllMatchesLoaded();
-        if (allMatches.length > 0) {
-          const lastIndex = allMatches.length - 1;
-          setCurrentMatchIndex(lastIndex);
-          navigateToMatch(allMatches[lastIndex]);
-        }
-      }
     },
     [
-      ensureAllFilterMatchesLoaded,
-      ensureAllMatchesLoaded,
       executeFilter,
       executeFirstMatchSearch,
       filterMatches,
@@ -2343,15 +2415,11 @@ export function SearchReplacePanel() {
   }, [messages, normalizedFilterRuleGroups]);
 
   useEffect(() => {
-    if (!activeTab) {
-      setIsOpen(false);
-      resetSearchState();
-      resetFilterState();
-      setErrorMessage(null);
-      return;
-    }
-
     const handleSearchOpen = (event: Event) => {
+      if (!activeTab) {
+        return;
+      }
+
       const customEvent = event as CustomEvent<SearchOpenEventDetail>;
       const openMode = customEvent.detail?.mode;
       const nextMode: PanelMode = openMode === 'replace' ? 'replace' : openMode === 'filter' ? 'filter' : 'find';
@@ -2359,6 +2427,10 @@ export function SearchReplacePanel() {
       setIsOpen(true);
       setPanelMode(nextMode);
       setResultPanelState('closed');
+      setResultFilterKeyword('');
+      setAppliedResultFilterKeyword('');
+      setIsResultFilterSearching(false);
+      stopResultFilterSearchRef.current = true;
       setErrorMessage(null);
       setFeedbackMessage(null);
       focusSearchInput();
@@ -2368,7 +2440,94 @@ export function SearchReplacePanel() {
     return () => {
       window.removeEventListener('rutar:search-open', handleSearchOpen as EventListener);
     };
-  }, [activeTab, focusSearchInput, resetFilterState, resetSearchState]);
+  }, [activeTab, focusSearchInput]);
+
+  useEffect(() => {
+    if (!activeTab) {
+      setIsOpen(false);
+      setPanelMode('find');
+      setResultPanelState('closed');
+      setKeyword('');
+      setReplaceValue('');
+      setSearchMode('literal');
+      setCaseSensitive(false);
+      setReverseSearch(false);
+      setResultFilterKeyword('');
+      setAppliedResultFilterKeyword('');
+      setIsResultFilterSearching(false);
+      stopResultFilterSearchRef.current = true;
+      resetSearchState();
+      resetFilterState();
+      setErrorMessage(null);
+      setFeedbackMessage(null);
+      previousActiveTabIdRef.current = null;
+      return;
+    }
+
+    const nextSnapshot = tabSearchPanelStateRef.current[activeTab.id];
+    if (nextSnapshot) {
+      setIsOpen(nextSnapshot.isOpen);
+      setPanelMode(nextSnapshot.panelMode);
+      setResultPanelState(nextSnapshot.resultPanelState);
+      setKeyword(nextSnapshot.keyword);
+      setReplaceValue(nextSnapshot.replaceValue);
+      setSearchMode(nextSnapshot.searchMode);
+      setCaseSensitive(nextSnapshot.caseSensitive);
+      setReverseSearch(nextSnapshot.reverseSearch);
+      setResultFilterKeyword(nextSnapshot.resultFilterKeyword);
+      setAppliedResultFilterKeyword(nextSnapshot.appliedResultFilterKeyword);
+    } else {
+      setIsOpen(false);
+      setPanelMode('find');
+      setResultPanelState('closed');
+      setKeyword('');
+      setReplaceValue('');
+      setSearchMode('literal');
+      setCaseSensitive(false);
+      setReverseSearch(false);
+      setResultFilterKeyword('');
+      setAppliedResultFilterKeyword('');
+    }
+
+    setIsResultFilterSearching(false);
+    stopResultFilterSearchRef.current = true;
+    resetSearchState();
+    resetFilterState();
+    setErrorMessage(null);
+    setFeedbackMessage(null);
+    previousActiveTabIdRef.current = activeTab.id;
+  }, [activeTab?.id, resetFilterState, resetSearchState]);
+
+  useEffect(() => {
+    if (!activeTabId) {
+      return;
+    }
+
+    tabSearchPanelStateRef.current[activeTabId] = {
+      isOpen,
+      panelMode,
+      resultPanelState,
+      keyword,
+      replaceValue,
+      searchMode,
+      caseSensitive,
+      reverseSearch,
+      resultFilterKeyword,
+      appliedResultFilterKeyword,
+    };
+  }, [
+    activeTabId,
+    appliedResultFilterKeyword,
+    caseSensitive,
+    isOpen,
+    keyword,
+    panelMode,
+    replaceValue,
+    resultFilterKeyword,
+    resultPanelState,
+    reverseSearch,
+    searchMode,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2517,6 +2676,8 @@ export function SearchReplacePanel() {
   }, [isOpen, resultPanelState, updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
+    stopResultFilterSearchRef.current = true;
+    setIsResultFilterSearching(false);
     resetSearchState();
     resetFilterState();
   }, [activeTab?.id, resetFilterState, resetSearchState]);
@@ -2625,6 +2786,79 @@ export function SearchReplacePanel() {
     };
   }, [activeTab, focusSearchInput, isFilterMode, isOpen, keyword, navigateByStep, reverseSearch]);
 
+  const handleApplyResultFilter = useCallback(async () => {
+    const nextKeyword = resultFilterKeyword.trim();
+    const nextResultFilterKeyword = nextKeyword
+      ? caseSensitive
+        ? nextKeyword
+        : nextKeyword.toLowerCase()
+      : '';
+
+    if (nextKeyword.length === 0) {
+      requestStopResultFilterSearch();
+      setAppliedResultFilterKeyword('');
+      void executeSearch(true, true, '');
+      if (isFilterMode) {
+        void executeFilter(true, true, '');
+      }
+      setIsResultFilterSearching(false);
+      return;
+    }
+
+    if (isResultFilterSearching) {
+      return;
+    }
+
+    if (
+      nextKeyword === appliedResultFilterKeyword.trim() &&
+      true
+    ) {
+      return;
+    }
+
+    stopResultFilterSearchRef.current = false;
+    setIsResultFilterSearching(true);
+    setAppliedResultFilterKeyword('');
+
+    try {
+      if (isFilterMode) {
+        await executeFilter(true, true, nextResultFilterKeyword);
+      } else if (keyword) {
+        await executeSearch(true, true, nextResultFilterKeyword);
+      }
+
+      if (!stopResultFilterSearchRef.current) {
+        setAppliedResultFilterKeyword(nextKeyword);
+      }
+    } finally {
+      setIsResultFilterSearching(false);
+      stopResultFilterSearchRef.current = false;
+    }
+  }, [
+    appliedResultFilterKeyword,
+    caseSensitive,
+    executeFilter,
+    executeSearch,
+    isFilterMode,
+    isResultFilterSearching,
+    keyword,
+    requestStopResultFilterSearch,
+    resultFilterKeyword,
+  ]);
+
+  const hasPendingResultFilterChange = useMemo(() => {
+    const normalizeForCompare = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return '';
+      }
+
+      return caseSensitive ? trimmed : trimmed.toLowerCase();
+    };
+
+    return normalizeForCompare(resultFilterKeyword) !== normalizeForCompare(appliedResultFilterKeyword);
+  }, [appliedResultFilterKeyword, caseSensitive, resultFilterKeyword]);
+
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
   const displayTotalFilterMatchedLineCount = totalFilterMatchedLineCount;
@@ -2641,12 +2875,13 @@ export function SearchReplacePanel() {
     }
 
     if (isFilterMode) {
-      if (filterRulesPayload.length === 0 || filterMatches.length === 0) {
+      if (filterRulesPayload.length === 0 || visibleFilterMatches.length === 0) {
         return null;
       }
 
-      return filterMatches.map((match, index) => {
-        const isActive = index === Math.min(currentFilterMatchIndex, filterMatches.length - 1);
+      return visibleFilterMatches.map((match, index) => {
+        const isActive = index === visibleCurrentFilterMatchIndex;
+        const sourceIndex = filterMatches.indexOf(match);
 
         return (
           <button
@@ -2657,12 +2892,22 @@ export function SearchReplacePanel() {
               isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
             )}
             title={messages.lineColTitle(match.line, Math.max(1, match.column || 1))}
-            onClick={() => handleSelectMatch(index)}
+            onClick={() => {
+              if (sourceIndex >= 0) {
+                handleSelectMatch(sourceIndex);
+              }
+            }}
           >
-            <span className="w-16 shrink-0 border-r border-border/70 pr-2 text-right font-mono text-[11px] text-muted-foreground">
+            <span
+              className="w-16 shrink-0 border-r border-border/70 pr-2 text-right text-[11px] text-muted-foreground"
+              style={{ fontFamily }}
+            >
               {match.line}
             </span>
-            <span className="min-w-0 flex-1 pl-2 font-mono text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis">
+            <span
+              className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
+              style={resultListTextStyle}
+            >
               {renderFilterPreview(match)}
             </span>
             {isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
@@ -2671,12 +2916,13 @@ export function SearchReplacePanel() {
       });
     }
 
-    if (!keyword || matches.length === 0) {
+    if (!keyword || visibleMatches.length === 0) {
       return null;
     }
 
-    return matches.map((match, index) => {
-      const isActive = index === Math.min(currentMatchIndex, matches.length - 1);
+    return visibleMatches.map((match, index) => {
+      const isActive = index === visibleCurrentMatchIndex;
+      const sourceIndex = matches.indexOf(match);
 
       return (
         <button
@@ -2687,12 +2933,22 @@ export function SearchReplacePanel() {
             isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
           )}
           title={messages.lineColTitle(match.line, match.column)}
-          onClick={() => handleSelectMatch(index)}
+          onClick={() => {
+            if (sourceIndex >= 0) {
+              handleSelectMatch(sourceIndex);
+            }
+          }}
         >
-          <span className="w-16 shrink-0 border-r border-border/70 pr-2 text-right font-mono text-[11px] text-muted-foreground">
+          <span
+            className="w-16 shrink-0 border-r border-border/70 pr-2 text-right text-[11px] text-muted-foreground"
+            style={{ fontFamily }}
+          >
             {match.line}
           </span>
-          <span className="min-w-0 flex-1 pl-2 font-mono text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis">
+          <span
+            className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
+            style={resultListTextStyle}
+          >
             {renderMatchPreview(match)}
           </span>
           {isActive ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
@@ -2710,6 +2966,10 @@ export function SearchReplacePanel() {
     matches,
     messages,
     resultPanelState,
+    visibleCurrentFilterMatchIndex,
+    visibleCurrentMatchIndex,
+    visibleFilterMatches,
+    visibleMatches,
   ]);
 
   const statusText = useMemo(() => {
@@ -2781,7 +3041,6 @@ export function SearchReplacePanel() {
   const isResultPanelMinimized = resultPanelState === 'minimized';
   const resultToggleTitle = isResultPanelOpen ? messages.collapseResults : messages.expandResults;
   const filterToggleLabel = isResultPanelOpen ? messages.collapse : messages.filterRun;
-  const isFilterRunReady = isFilterMode && filterRulesPayload.length > 0;
 
   const toggleResultPanelAndRefresh = useCallback(() => {
     setResultPanelState((previous) => (previous === 'open' ? 'minimized' : 'open'));
@@ -2918,10 +3177,7 @@ export function SearchReplacePanel() {
                 </button>
                 <button
                   type="button"
-                  className={cn(
-                    'rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90',
-                    !isFilterRunReady && resultPanelState === 'closed' && 'opacity-60'
-                  )}
+                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
                   onClick={toggleResultPanelAndRefresh}
                   title={isFilterMode ? messages.filterRunHint : resultToggleTitle}
                 >
@@ -3380,11 +3636,66 @@ export function SearchReplacePanel() {
             resultPanelState === 'open' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           )}
         >
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <div className="text-xs font-medium text-foreground">
-              {isFilterMode
-                ? messages.filterResultsSummary(displayTotalFilterMatchedLineCountText, filterMatches.length)
-                : messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="shrink-0 text-xs font-medium text-foreground">
+                {isFilterMode
+                  ? messages.filterResultsSummary(displayTotalFilterMatchedLineCountText, visibleFilterMatches.length)
+                  : messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, visibleMatches.length)}
+              </div>
+              <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-input bg-background px-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <input
+                  value={resultFilterKeyword}
+                  onChange={(event) => setResultFilterKeyword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void handleApplyResultFilter();
+                    }
+                  }}
+                  placeholder={messages.resultFilterPlaceholder}
+                  className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none"
+                />
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 disabled:opacity-40',
+                    !isResultFilterSearching && hasPendingResultFilterChange && 'ring-2 ring-amber-400/80 animate-pulse'
+                  )}
+                  onClick={() => {
+                    if (isResultFilterSearching) {
+                      requestStopResultFilterSearch();
+                      return;
+                    }
+
+                    void handleApplyResultFilter();
+                  }}
+                  disabled={isSearching}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {isResultFilterSearching ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Search className="h-3 w-3" />
+                    )}
+                    {isResultFilterSearching ? messages.resultFilterStop : messages.resultFilterSearch}
+                  </span>
+                </button>
+                {resultFilterKeyword && (
+                  <button
+                    type="button"
+                    className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => {
+                      setResultFilterKeyword('');
+                      setAppliedResultFilterKeyword('');
+                    }}
+                    title={messages.clearResultFilter}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -3431,6 +3742,13 @@ export function SearchReplacePanel() {
                 {filterRulesPayload.length > 0 && filterMatches.length === 0 && !isSearching && !errorMessage && (
                   <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noFilterMatchesHint}</div>
                 )}
+
+                {filterRulesPayload.length > 0 &&
+                  filterMatches.length > 0 &&
+                  visibleFilterMatches.length === 0 &&
+                  isResultFilterActive && (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultFilterNoMatches}</div>
+                  )}
               </>
             ) : (
               <>
@@ -3441,12 +3759,19 @@ export function SearchReplacePanel() {
                 {!!keyword && matches.length === 0 && !isSearching && !errorMessage && (
                   <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noMatchesHint}</div>
                 )}
+
+                {!!keyword &&
+                  matches.length > 0 &&
+                  visibleMatches.length === 0 &&
+                  isResultFilterActive && (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultFilterNoMatches}</div>
+                  )}
               </>
             )}
 
             {renderedResultItems}
 
-            {(isFilterMode ? filterMatches.length > 0 : !!keyword && matches.length > 0) && (
+            {(isFilterMode ? visibleFilterMatches.length > 0 : !!keyword && visibleMatches.length > 0) && (
               <div className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">
                 {isFilterMode
                   ? isSearching

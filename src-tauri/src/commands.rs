@@ -1895,6 +1895,29 @@ fn get_line_text(text: &str, line_starts: &[usize], line_index: usize) -> String
         .to_string()
 }
 
+fn normalize_result_filter_keyword(value: Option<String>) -> Option<String> {
+    value.and_then(|keyword| {
+        let trimmed = keyword.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn matches_result_filter(line_text: &str, result_filter_keyword: Option<&str>, case_sensitive: bool) -> bool {
+    let Some(keyword) = result_filter_keyword else {
+        return true;
+    };
+
+    if case_sensitive {
+        return line_text.contains(keyword);
+    }
+
+    line_text.to_lowercase().contains(&keyword.to_lowercase())
+}
+
 fn escape_regex_literal(keyword: &str) -> String {
     keyword
         .chars()
@@ -2249,15 +2272,30 @@ fn collect_literal_matches(
         .collect()
 }
 
-fn count_regex_matches(text: &str, regex: &regex::Regex, line_starts: &[usize]) -> (usize, usize) {
+fn count_regex_matches(
+    text: &str,
+    regex: &regex::Regex,
+    line_starts: &[usize],
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> (usize, usize) {
     let mut total_matches = 0usize;
     let mut matched_lines = 0usize;
     let mut last_line_index: Option<usize> = None;
 
     for capture in regex.find_iter(text) {
+        let line_index = find_line_index_by_offset(line_starts, capture.start());
+        let line_text = get_line_text(text, line_starts, line_index);
+        if !matches_result_filter(
+            &line_text,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ) {
+            continue;
+        }
+
         total_matches = total_matches.saturating_add(1);
 
-        let line_index = find_line_index_by_offset(line_starts, capture.start());
         if last_line_index != Some(line_index) {
             matched_lines = matched_lines.saturating_add(1);
             last_line_index = Some(line_index);
@@ -2267,7 +2305,13 @@ fn count_regex_matches(text: &str, regex: &regex::Regex, line_starts: &[usize]) 
     (total_matches, matched_lines)
 }
 
-fn count_literal_matches(text: &str, needle: &str, line_starts: &[usize]) -> (usize, usize) {
+fn count_literal_matches(
+    text: &str,
+    needle: &str,
+    line_starts: &[usize],
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> (usize, usize) {
     if needle.is_empty() {
         return (0usize, 0usize);
     }
@@ -2294,9 +2338,19 @@ fn count_literal_matches(text: &str, needle: &str, line_starts: &[usize]) -> (us
 
             if needle_index == needle_bytes.len() {
                 let start = haystack_index - needle_index;
+                let line_index = find_line_index_by_offset(line_starts, start);
+                let line_text = get_line_text(text, line_starts, line_index);
+                if !matches_result_filter(
+                    &line_text,
+                    result_filter_keyword,
+                    result_filter_case_sensitive,
+                ) {
+                    needle_index = lps[needle_index - 1];
+                    continue;
+                }
+
                 total_matches = total_matches.saturating_add(1);
 
-                let line_index = find_line_index_by_offset(line_starts, start);
                 if last_line_index != Some(line_index) {
                     matched_lines = matched_lines.saturating_add(1);
                     last_line_index = Some(line_index);
@@ -2364,6 +2418,8 @@ fn collect_regex_matches_chunk(
     byte_to_char: &[usize],
     start_offset: usize,
     max_results: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
 ) -> (Vec<SearchMatchResult>, Option<usize>) {
     if max_results == 0 {
         return (Vec::new(), None);
@@ -2387,6 +2443,14 @@ fn collect_regex_matches_chunk(
         if let Some(match_result) =
             build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
         {
+            if !matches_result_filter(
+                &match_result.line_text,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            ) {
+                continue;
+            }
+
             results.push(match_result);
         }
     }
@@ -2401,6 +2465,8 @@ fn collect_literal_matches_chunk(
     byte_to_char: &[usize],
     start_offset: usize,
     max_results: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
 ) -> (Vec<SearchMatchResult>, Option<usize>) {
     if needle.is_empty() || max_results == 0 {
         return (Vec::new(), None);
@@ -2424,6 +2490,14 @@ fn collect_literal_matches_chunk(
         if let Some(match_result) =
             build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
         {
+            if !matches_result_filter(
+                &match_result.line_text,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            ) {
+                continue;
+            }
+
             results.push(match_result);
         }
     }
@@ -2530,6 +2604,7 @@ pub fn search_in_document_chunk(
     keyword: String,
     mode: String,
     case_sensitive: bool,
+    result_filter_keyword: Option<String>,
     start_offset: usize,
     max_results: usize,
 ) -> Result<SearchChunkResultPayload, String> {
@@ -2547,6 +2622,7 @@ pub fn search_in_document_chunk(
         }
 
         let effective_max = max_results.max(1);
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
         let (matches, next_offset) = match mode.as_str() {
             "literal" => {
                 if case_sensitive {
@@ -2557,6 +2633,8 @@ pub fn search_in_document_chunk(
                         &byte_to_char,
                         start_offset,
                         effective_max,
+                        normalized_result_filter_keyword.as_deref(),
+                        case_sensitive,
                     )
                 } else {
                     let escaped = escape_regex_literal(&keyword);
@@ -2572,6 +2650,8 @@ pub fn search_in_document_chunk(
                         &byte_to_char,
                         start_offset,
                         effective_max,
+                        normalized_result_filter_keyword.as_deref(),
+                        case_sensitive,
                     )
                 }
             }
@@ -2589,6 +2669,8 @@ pub fn search_in_document_chunk(
                     &byte_to_char,
                     start_offset,
                     effective_max,
+                    normalized_result_filter_keyword.as_deref(),
+                    case_sensitive,
                 )
             }
             "regex" => {
@@ -2604,6 +2686,8 @@ pub fn search_in_document_chunk(
                     &byte_to_char,
                     start_offset,
                     effective_max,
+                    normalized_result_filter_keyword.as_deref(),
+                    case_sensitive,
                 )
             }
             _ => {
@@ -2628,6 +2712,7 @@ pub fn search_count_in_document(
     keyword: String,
     mode: String,
     case_sensitive: bool,
+    result_filter_keyword: Option<String>,
 ) -> Result<SearchCountResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
         let source_text: String = doc.rope.chunks().collect();
@@ -2641,10 +2726,17 @@ pub fn search_count_in_document(
             });
         }
 
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
         let (total_matches, matched_lines) = match mode.as_str() {
             "literal" => {
                 if case_sensitive {
-                    count_literal_matches(&source_text, &keyword, &line_starts)
+                    count_literal_matches(
+                        &source_text,
+                        &keyword,
+                        &line_starts,
+                        normalized_result_filter_keyword.as_deref(),
+                        case_sensitive,
+                    )
                 } else {
                     let escaped = escape_regex_literal(&keyword);
                     let regex = RegexBuilder::new(&escaped)
@@ -2652,7 +2744,13 @@ pub fn search_count_in_document(
                         .build()
                         .map_err(|e| e.to_string())?;
 
-                    count_regex_matches(&source_text, &regex, &line_starts)
+                    count_regex_matches(
+                        &source_text,
+                        &regex,
+                        &line_starts,
+                        normalized_result_filter_keyword.as_deref(),
+                        case_sensitive,
+                    )
                 }
             }
             "wildcard" => {
@@ -2662,7 +2760,13 @@ pub fn search_count_in_document(
                     .build()
                     .map_err(|e| e.to_string())?;
 
-                count_regex_matches(&source_text, &regex, &line_starts)
+                count_regex_matches(
+                    &source_text,
+                    &regex,
+                    &line_starts,
+                    normalized_result_filter_keyword.as_deref(),
+                    case_sensitive,
+                )
             }
             "regex" => {
                 let regex = RegexBuilder::new(&keyword)
@@ -2670,7 +2774,13 @@ pub fn search_count_in_document(
                     .build()
                     .map_err(|e| e.to_string())?;
 
-                count_regex_matches(&source_text, &regex, &line_starts)
+                count_regex_matches(
+                    &source_text,
+                    &regex,
+                    &line_starts,
+                    normalized_result_filter_keyword.as_deref(),
+                    case_sensitive,
+                )
             }
             _ => {
                 return Err("Unsupported search mode".to_string());
@@ -2692,6 +2802,8 @@ pub fn filter_count_in_document(
     state: State<'_, AppState>,
     id: String,
     rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
 ) -> Result<FilterCountResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
         let compiled_rules = compile_filter_rules(rules)?;
@@ -2705,10 +2817,20 @@ pub fn filter_count_in_document(
 
         let mut matched_lines = 0usize;
         let total_lines = doc.rope.len_lines();
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
 
         for line_index in 0..total_lines {
             let line_slice = doc.rope.line(line_index);
             let line_text = normalize_rope_line_text(&line_slice.to_string());
+
+            if !matches_result_filter(
+                &line_text,
+                normalized_result_filter_keyword.as_deref(),
+                result_filter_case_sensitive,
+            ) {
+                continue;
+            }
 
             if line_matches_any_filter_rule(&line_text, &compiled_rules) {
                 matched_lines = matched_lines.saturating_add(1);
@@ -2729,6 +2851,8 @@ pub fn filter_in_document_chunk(
     state: State<'_, AppState>,
     id: String,
     rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
     start_line: usize,
     max_results: usize,
 ) -> Result<FilterChunkResultPayload, String> {
@@ -2745,6 +2869,8 @@ pub fn filter_in_document_chunk(
 
         let effective_max = max_results.max(1);
         let total_lines = doc.rope.len_lines();
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let mut line_index = start_line.min(total_lines);
         let mut matches: Vec<FilterLineMatchResult> = Vec::new();
         let mut next_line = None;
@@ -2753,6 +2879,15 @@ pub fn filter_in_document_chunk(
             let line_number = line_index + 1;
             let line_slice = doc.rope.line(line_index);
             let line_text = normalize_rope_line_text(&line_slice.to_string());
+
+            if !matches_result_filter(
+                &line_text,
+                normalized_result_filter_keyword.as_deref(),
+                result_filter_case_sensitive,
+            ) {
+                line_index = line_index.saturating_add(1);
+                continue;
+            }
 
             if let Some(filter_match) = match_line_with_filter_rules(line_number, &line_text, &compiled_rules) {
                 if matches.len() >= effective_max {

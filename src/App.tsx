@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
 import { Editor } from '@/components/Editor';
@@ -66,11 +66,14 @@ function App() {
   const settings = useStore((state) => state.settings);
   const updateSettings = useStore((state) => state.updateSettings);
   const setFolder = useStore((state) => state.setFolder);
+  const sidebarOpen = useStore((state) => state.sidebarOpen);
   const contentTreeOpen = useStore((state) => state.contentTreeOpen);
   const contentTreeType = useStore((state) => state.contentTreeType);
   const contentTreeNodes = useStore((state) => state.contentTreeNodes);
   const contentTreeError = useStore((state) => state.contentTreeError);
   const setContentTreeData = useStore((state) => state.setContentTreeData);
+  const tabPanelStateRef = useRef<Record<string, { sidebarOpen: boolean; contentTreeOpen: boolean }>>({});
+  const previousActiveTabIdRef = useRef<string | null>(null);
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
 
@@ -406,6 +409,38 @@ function App() {
   
   const activeTab = tabs.find(t => t.id === activeTabId);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+
+  useEffect(() => {
+    const previousTabId = previousActiveTabIdRef.current;
+    if (previousTabId) {
+      tabPanelStateRef.current[previousTabId] = {
+        sidebarOpen,
+        contentTreeOpen,
+      };
+    }
+
+    if (!activeTabId) {
+      previousActiveTabIdRef.current = null;
+      return;
+    }
+
+    const state = useStore.getState();
+    const nextTabState = tabPanelStateRef.current[activeTabId];
+    state.toggleSidebar(nextTabState?.sidebarOpen ?? false);
+    state.toggleContentTree(nextTabState?.contentTreeOpen ?? false);
+    previousActiveTabIdRef.current = activeTabId;
+  }, [activeTabId]);
+
+  useEffect(() => {
+    if (!activeTabId) {
+      return;
+    }
+
+    tabPanelStateRef.current[activeTabId] = {
+      sidebarOpen,
+      contentTreeOpen,
+    };
+  }, [activeTabId, contentTreeOpen, sidebarOpen]);
 
   useEffect(() => {
     if (!activeTab || !contentTreeOpen) {

@@ -51,7 +51,7 @@ export function Toolbar() {
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
-    const filterTitle = language === 'en-US' ? 'Filter (Ctrl+Shift+F)' : '过滤 (Ctrl+Shift+F)';
+    const filterTitle = language === 'en-US' ? 'Filter' : '过滤';
 
     const formatMessages = toolbarFormatMessages[language];
 
@@ -328,14 +328,16 @@ export function Toolbar() {
             if (!withPrimaryModifier) return;
 
             const key = event.key.toLowerCase();
+            const code = event.code;
+            const isKey = (letter: string) => key === letter || code === `Key${letter.toUpperCase()}`;
 
             if (event.altKey) {
-                if (key === 'f') {
+                if (isKey('f')) {
                     event.preventDefault();
                     void handleFormatBeautify();
                 }
 
-                if (key === 'm') {
+                if (isKey('m')) {
                     event.preventDefault();
                     void handleFormatMinify();
                 }
@@ -343,19 +345,19 @@ export function Toolbar() {
                 return;
             }
 
-            if (key === 'n') {
+            if (isKey('n')) {
                 event.preventDefault();
                 void handleNewFile();
                 return;
             }
 
-            if (key === 'o') {
+            if (isKey('o')) {
                 event.preventDefault();
                 void handleOpenFile();
                 return;
             }
 
-            if (key === 's') {
+            if (isKey('s')) {
                 event.preventDefault();
                 if (event.shiftKey) {
                     void handleSaveAll();
@@ -365,35 +367,31 @@ export function Toolbar() {
                 return;
             }
 
-            if (key === 'w') {
+            if (isKey('w')) {
                 event.preventDefault();
                 void handleCloseActiveTab();
                 return;
             }
 
-            if (key === 'z' && !event.shiftKey) {
+            if (isKey('z') && !event.shiftKey) {
                 event.preventDefault();
                 void handleUndo();
                 return;
             }
 
-            if (key === 'y' || (key === 'z' && event.shiftKey)) {
+            if (isKey('y') || (isKey('z') && event.shiftKey)) {
                 event.preventDefault();
                 void handleRedo();
                 return;
             }
 
-            if (key === 'f') {
+            if (isKey('f') && !event.shiftKey) {
                 event.preventDefault();
-                if (event.shiftKey) {
-                    handleFilter();
-                    return;
-                }
                 handleFind();
                 return;
             }
 
-            if (key === 'h') {
+            if (isKey('h')) {
                 event.preventDefault();
                 void handleReplace();
                 return;
@@ -401,8 +399,8 @@ export function Toolbar() {
 
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [
         handleFind,
         handleCloseActiveTab,
