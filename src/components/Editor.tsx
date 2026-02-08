@@ -45,6 +45,28 @@ interface EditorContextMenuState {
   lineNumber: number;
 }
 
+interface VerticalSelectionState {
+  baseLine: number;
+  baseColumn: number;
+  focusLine: number;
+}
+
+interface RectangularSelectionState {
+  anchorLine: number;
+  anchorColumn: number;
+  focusLine: number;
+  focusColumn: number;
+}
+
+interface NormalizedRectangularSelection {
+  startLine: number;
+  endLine: number;
+  startColumn: number;
+  endColumn: number;
+  lineCount: number;
+  width: number;
+}
+
 type EditorCleanupAction =
   | 'remove_empty_lines'
   | 'remove_duplicate_lines'
@@ -81,6 +103,10 @@ const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
 const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
+const RECTANGULAR_SELECTION_HIGHLIGHT_CLASS =
+  'rounded-[2px] bg-violet-300/45 text-black ring-1 ring-violet-500/40 dark:bg-violet-400/30 dark:ring-violet-300/40';
+const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
+const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const EMPTY_BOOKMARKS: number[] = [];
 
 function isToggleLineCommentShortcut(event: {
@@ -102,6 +128,30 @@ function isToggleLineCommentShortcut(event: {
   const key = (event.key || '').toLowerCase();
   const code = event.code || '';
   return key === '/' || code === 'Slash' || code === 'NumpadDivide';
+}
+
+function isVerticalSelectionShortcut(event: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  isComposing?: boolean;
+}) {
+  if (event.isComposing) {
+    return false;
+  }
+
+  if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+
+  return (
+    event.key === 'ArrowUp' ||
+    event.key === 'ArrowDown' ||
+    event.key === 'ArrowLeft' ||
+    event.key === 'ArrowRight'
+  );
 }
 
 function resolveSelectionLineRange(
@@ -381,6 +431,123 @@ function getSelectionOffsetsInElement(element: HTMLDivElement) {
     end: normalizeLineText(endRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
     isCollapsed: range.collapsed,
   };
+}
+
+function getSelectionAnchorFocusOffsetsInElement(element: HTMLDivElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const anchorNode = selection.anchorNode;
+  const focusNode = selection.focusNode;
+  if (!anchorNode || !focusNode) {
+    return null;
+  }
+
+  if (!element.contains(anchorNode) || !element.contains(focusNode)) {
+    return null;
+  }
+
+  const anchorRange = document.createRange();
+  anchorRange.selectNodeContents(element);
+  anchorRange.setEnd(anchorNode, selection.anchorOffset);
+
+  const focusRange = document.createRange();
+  focusRange.selectNodeContents(element);
+  focusRange.setEnd(focusNode, selection.focusOffset);
+
+  return {
+    anchor: normalizeLineText(anchorRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
+    focus: normalizeLineText(focusRange.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length,
+  };
+}
+
+function getLogicalOffsetFromDomPoint(element: HTMLDivElement, node: Node, offset: number) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.setEnd(node, offset);
+  return normalizeLineText(range.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length;
+}
+
+function getLogicalOffsetFromPoint(element: HTMLDivElement, clientX: number, clientY: number) {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const position = doc.caretPositionFromPoint(clientX, clientY);
+    if (position && element.contains(position.offsetNode)) {
+      return getLogicalOffsetFromDomPoint(element, position.offsetNode, position.offset);
+    }
+  }
+
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    const range = doc.caretRangeFromPoint(clientX, clientY);
+    if (range && element.contains(range.startContainer)) {
+      return getLogicalOffsetFromDomPoint(element, range.startContainer, range.startOffset);
+    }
+  }
+
+  return null;
+}
+
+function normalizeRectangularSelection(
+  state: RectangularSelectionState | null
+): NormalizedRectangularSelection | null {
+  if (!state) {
+    return null;
+  }
+
+  const startLine = Math.min(state.anchorLine, state.focusLine);
+  const endLine = Math.max(state.anchorLine, state.focusLine);
+  const startColumn = Math.min(state.anchorColumn, state.focusColumn);
+  const endColumn = Math.max(state.anchorColumn, state.focusColumn);
+  const width = endColumn - startColumn;
+
+  if (width < 0) {
+    return null;
+  }
+
+  return {
+    startLine,
+    endLine,
+    startColumn,
+    endColumn,
+    lineCount: endLine - startLine + 1,
+    width,
+  };
+}
+
+function buildLineStartOffsets(text: string) {
+  const starts = [0];
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '\n') {
+      starts.push(index + 1);
+    }
+  }
+  return starts;
+}
+
+function getLineBoundsByLineNumber(text: string, starts: number[], lineNumber: number) {
+  const index = Math.max(0, Math.floor(lineNumber) - 1);
+  if (index >= starts.length) {
+    return null;
+  }
+
+  const start = starts[index];
+  const end = index + 1 < starts.length ? starts[index + 1] - 1 : text.length;
+  return {
+    start,
+    end,
+  };
+}
+
+function getOffsetForColumnInLine(lineStart: number, lineEnd: number, column: number) {
+  const safeColumn = Math.max(1, Math.floor(column));
+  const lineLength = Math.max(0, lineEnd - lineStart);
+  return lineStart + Math.min(lineLength, safeColumn - 1);
 }
 
 function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
@@ -752,6 +919,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
+  const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
@@ -779,6 +947,12 @@ export function Editor({ tab }: { tab: FileTab }) {
   const hugeWindowUnlockTimerRef = useRef<any>(null);
   const contentTreeFlashTimerRef = useRef<any>(null);
   const pendingRestoreScrollTopRef = useRef<number | null>(null);
+  const verticalSelectionRef = useRef<VerticalSelectionState | null>(null);
+  const rectangularSelectionPointerActiveRef = useRef(false);
+  const rectangularSelectionRef = useRef<RectangularSelectionState | null>(null);
+  const rectangularSelectionLastClientPointRef = useRef<{ x: number; y: number } | null>(null);
+  const rectangularSelectionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0);
+  const rectangularSelectionAutoScrollRafRef = useRef<number | null>(null);
   const editableSegmentRef = useRef<EditorSegmentState>({
     startLine: 0,
     endLine: 0,
@@ -1015,6 +1189,46 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      verticalSelectionRef.current = null;
+
+      if (
+        !isLargeReadOnlyMode &&
+        event.altKey &&
+        event.shiftKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        contentRef.current
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        contentRef.current.focus();
+        rectangularSelectionPointerActiveRef.current = true;
+        rectangularSelectionLastClientPointRef.current = { x: event.clientX, y: event.clientY };
+
+        const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, event.clientX, event.clientY);
+        if (logicalOffset !== null) {
+          const text = normalizeSegmentText(getEditableText(contentRef.current));
+          const position = codeUnitOffsetToLineColumn(text, logicalOffset);
+          const line = Math.max(1, position.line);
+          const column = Math.max(1, position.column + 1);
+          const next: RectangularSelectionState = {
+            anchorLine: line,
+            anchorColumn: column,
+            focusLine: line,
+            focusColumn: column,
+          };
+
+          rectangularSelectionRef.current = next;
+          setRectangularSelection(next);
+        }
+        return;
+      }
+
+      rectangularSelectionPointerActiveRef.current = false;
+      rectangularSelectionLastClientPointRef.current = null;
+      rectangularSelectionRef.current = null;
+      setRectangularSelection(null);
+
       if (isLargeReadOnlyMode || !contentRef.current) {
         return;
       }
@@ -1360,6 +1574,339 @@ export function Editor({ tab }: { tab: FileTab }) {
     updatePairHighlightsFromSelection();
   }, [updateActiveLineFromSelection, updatePairHighlightsFromSelection]);
 
+  const clearVerticalSelectionState = useCallback(() => {
+    verticalSelectionRef.current = null;
+  }, []);
+
+  const clearRectangularSelection = useCallback(() => {
+    rectangularSelectionPointerActiveRef.current = false;
+    rectangularSelectionRef.current = null;
+    rectangularSelectionLastClientPointRef.current = null;
+    rectangularSelectionAutoScrollDirectionRef.current = 0;
+    if (rectangularSelectionAutoScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(rectangularSelectionAutoScrollRafRef.current);
+      rectangularSelectionAutoScrollRafRef.current = null;
+    }
+    setRectangularSelection(null);
+  }, []);
+
+  const normalizedRectangularSelection = useMemo(
+    () => normalizeRectangularSelection(rectangularSelection),
+    [rectangularSelection]
+  );
+
+  const getRectangularSelectionText = useCallback(
+    (text: string) => {
+      if (!normalizedRectangularSelection) {
+        return '';
+      }
+
+      const starts = buildLineStartOffsets(text);
+      const lines: string[] = [];
+
+      for (
+        let line = normalizedRectangularSelection.startLine;
+        line <= normalizedRectangularSelection.endLine;
+        line += 1
+      ) {
+        const bounds = getLineBoundsByLineNumber(text, starts, line);
+        if (!bounds) {
+          lines.push('');
+          continue;
+        }
+
+        const segmentStart = getOffsetForColumnInLine(
+          bounds.start,
+          bounds.end,
+          normalizedRectangularSelection.startColumn
+        );
+        const segmentEnd = getOffsetForColumnInLine(
+          bounds.start,
+          bounds.end,
+          normalizedRectangularSelection.endColumn
+        );
+
+        lines.push(text.slice(segmentStart, segmentEnd));
+      }
+
+      return lines.join('\n');
+    },
+    [normalizedRectangularSelection]
+  );
+
+  const replaceRectangularSelection = useCallback(
+    (insertText: string, options?: { collapseToStart?: boolean }) => {
+      const element = contentRef.current;
+      if (!element || !normalizedRectangularSelection) {
+        return false;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const starts = buildLineStartOffsets(text);
+      const rawRows = normalizeLineText(insertText ?? '').split('\n');
+      const rowCount = normalizedRectangularSelection.lineCount;
+      const rows = Array.from({ length: rowCount }, (_, index) => {
+        if (rawRows.length === 0) {
+          return '';
+        }
+        return rawRows[Math.min(index, rawRows.length - 1)] ?? '';
+      });
+
+      const pieces: string[] = [];
+      let cursor = 0;
+      let caretLogicalOffset = 0;
+
+      for (
+        let line = normalizedRectangularSelection.startLine;
+        line <= normalizedRectangularSelection.endLine;
+        line += 1
+      ) {
+        const bounds = getLineBoundsByLineNumber(text, starts, line);
+        if (!bounds) {
+          continue;
+        }
+
+        const segmentStart = getOffsetForColumnInLine(
+          bounds.start,
+          bounds.end,
+          normalizedRectangularSelection.startColumn
+        );
+        const segmentEnd = getOffsetForColumnInLine(
+          bounds.start,
+          bounds.end,
+          normalizedRectangularSelection.endColumn
+        );
+
+        pieces.push(text.slice(cursor, segmentStart));
+        const replacementRow = rows[line - normalizedRectangularSelection.startLine] ?? '';
+        pieces.push(replacementRow);
+        cursor = segmentEnd;
+
+        if (line === normalizedRectangularSelection.endLine) {
+          caretLogicalOffset =
+            pieces.join('').length + (options?.collapseToStart ? 0 : replacementRow.length);
+        }
+      }
+
+      pieces.push(text.slice(cursor));
+      const nextText = pieces.join('');
+
+      element.textContent = toInputLayerText(nextText);
+      const layerCaretOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
+      setCaretToCodeUnitOffset(element, layerCaretOffset);
+      clearRectangularSelection();
+      dispatchEditorInputEvent(element);
+      window.requestAnimationFrame(() => {
+        syncSelectionState();
+      });
+      return true;
+    },
+    [clearRectangularSelection, normalizedRectangularSelection, syncSelectionState]
+  );
+
+  const updateRectangularSelectionFromPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const logicalOffset = getLogicalOffsetFromPoint(element, clientX, clientY);
+      if (logicalOffset === null) {
+        return false;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const position = codeUnitOffsetToLineColumn(text, logicalOffset);
+      const line = Math.max(1, position.line);
+      const column = Math.max(1, position.column + 1);
+      const current = rectangularSelectionRef.current;
+
+      if (!current) {
+        const next: RectangularSelectionState = {
+          anchorLine: line,
+          anchorColumn: column,
+          focusLine: line,
+          focusColumn: column,
+        };
+
+        rectangularSelectionRef.current = next;
+        setRectangularSelection(next);
+        return true;
+      }
+
+      const next: RectangularSelectionState = {
+        ...current,
+        focusLine: line,
+        focusColumn: column,
+      };
+
+      rectangularSelectionRef.current = next;
+      setRectangularSelection(next);
+      return true;
+    },
+    []
+  );
+
+  const getRectangularSelectionScrollElement = useCallback(() => {
+    if (isHugeEditableMode) {
+      return scrollContainerRef.current;
+    }
+
+    if (!isLargeReadOnlyMode) {
+      return contentRef.current;
+    }
+
+    return (listRef.current?._outerRef as HTMLDivElement | null) ?? null;
+  }, [isHugeEditableMode, isLargeReadOnlyMode]);
+
+  const beginRectangularSelectionAtPoint = useCallback((clientX: number, clientY: number) => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const logicalOffset = getLogicalOffsetFromPoint(element, clientX, clientY);
+    if (logicalOffset === null) {
+      return false;
+    }
+
+    const text = normalizeSegmentText(getEditableText(element));
+    const position = codeUnitOffsetToLineColumn(text, logicalOffset);
+    const line = Math.max(1, position.line);
+    const column = Math.max(1, position.column + 1);
+    const next: RectangularSelectionState = {
+      anchorLine: line,
+      anchorColumn: column,
+      focusLine: line,
+      focusColumn: column,
+    };
+
+    rectangularSelectionRef.current = next;
+    setRectangularSelection(next);
+    return true;
+  }, []);
+
+  const beginRectangularSelectionFromCaret = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(element);
+    const resolvedFocusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(element)?.end ?? 0;
+    const text = normalizeSegmentText(getEditableText(element));
+    const position = codeUnitOffsetToLineColumn(text, resolvedFocusOffset);
+    const line = Math.max(1, position.line);
+    const column = Math.max(1, position.column + 1);
+    const next: RectangularSelectionState = {
+      anchorLine: line,
+      anchorColumn: column,
+      focusLine: line,
+      focusColumn: column,
+    };
+
+    rectangularSelectionRef.current = next;
+    setRectangularSelection(next);
+    return true;
+  }, []);
+
+  const nudgeRectangularSelectionByKey = useCallback(
+    (direction: 'up' | 'down' | 'left' | 'right') => {
+      const current = rectangularSelectionRef.current;
+      if (!current) {
+        return false;
+      }
+
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const logicalLineCount = Math.max(1, text.length === 0 ? 1 : text.split('\n').length);
+
+      const nextFocusLine = direction === 'up'
+        ? Math.max(1, current.focusLine - 1)
+        : direction === 'down'
+        ? Math.min(logicalLineCount, current.focusLine + 1)
+        : current.focusLine;
+
+      const nextFocusColumn = direction === 'left'
+        ? Math.max(1, current.focusColumn - 1)
+        : direction === 'right'
+        ? current.focusColumn + 1
+        : current.focusColumn;
+
+      const next: RectangularSelectionState = {
+        ...current,
+        focusLine: nextFocusLine,
+        focusColumn: nextFocusColumn,
+      };
+
+      rectangularSelectionRef.current = next;
+      setRectangularSelection(next);
+      return true;
+    },
+    []
+  );
+
+  const expandVerticalSelection = useCallback(
+    (direction: 'up' | 'down') => {
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const logicalLineCount = Math.max(1, text.length === 0 ? 1 : text.split('\n').length);
+
+      const current = verticalSelectionRef.current;
+      if (!current) {
+        const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(element);
+        const resolvedFocusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(element)?.end ?? 0;
+        const position = codeUnitOffsetToLineColumn(text, resolvedFocusOffset);
+        const initialLine = Math.max(1, Math.min(logicalLineCount, position.line));
+        const initialColumn = Math.max(1, position.column + 1);
+
+        verticalSelectionRef.current = {
+          baseLine: initialLine,
+          baseColumn: initialColumn,
+          focusLine: initialLine,
+        };
+      }
+
+      const state = verticalSelectionRef.current;
+      if (!state) {
+        return false;
+      }
+
+      const nextFocusLine = direction === 'up'
+        ? Math.max(1, state.focusLine - 1)
+        : Math.min(logicalLineCount, state.focusLine + 1);
+
+      if (nextFocusLine === state.focusLine) {
+        return true;
+      }
+
+      state.focusLine = nextFocusLine;
+
+      const startLine = Math.min(state.baseLine, state.focusLine);
+      const endLine = Math.max(state.baseLine, state.focusLine);
+      const startOffset = getCodeUnitOffsetFromLineColumn(text, startLine, state.baseColumn);
+      const endOffset = getCodeUnitOffsetFromLineColumn(text, endLine, state.baseColumn);
+      const layerStartOffset = mapLogicalOffsetToInputLayerOffset(text, startOffset);
+      const layerEndOffset = mapLogicalOffsetToInputLayerOffset(text, endOffset);
+
+      setSelectionToCodeUnitOffsets(element, layerStartOffset, layerEndOffset);
+      window.requestAnimationFrame(() => {
+        syncSelectionState();
+      });
+      return true;
+    },
+    [syncSelectionState]
+  );
+
   const syncSelectionAfterInteraction = useCallback(() => {
     window.requestAnimationFrame(() => {
       syncSelectionState();
@@ -1415,6 +1962,42 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     contentRef.current.focus();
 
+    if (normalizedRectangularSelection) {
+      if (action === 'copy') {
+        const text = normalizeSegmentText(getEditableText(contentRef.current));
+        const content = getRectangularSelectionText(text);
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(content).catch(() => {
+            console.warn('Failed to write rectangular selection to clipboard.');
+          });
+        }
+        return true;
+      }
+
+      if (action === 'cut') {
+        const text = normalizeSegmentText(getEditableText(contentRef.current));
+        const content = getRectangularSelectionText(text);
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(content).catch(() => {
+            console.warn('Failed to write rectangular selection to clipboard.');
+          });
+        }
+        return replaceRectangularSelection('');
+      }
+
+      if (action === 'delete') {
+        return replaceRectangularSelection('');
+      }
+
+      if (action === 'paste') {
+        return false;
+      }
+
+      if (action === 'selectAll') {
+        clearRectangularSelection();
+      }
+    }
+
     if (action === 'selectAll') {
       const selection = window.getSelection();
       if (!selection) {
@@ -1442,7 +2025,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     return commandSucceeded;
-  }, []);
+  }, [clearRectangularSelection, getRectangularSelectionText, normalizedRectangularSelection, replaceRectangularSelection]);
 
   const tryPasteTextIntoEditor = useCallback(
     (text: string) => {
@@ -1738,6 +2321,8 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const handleInput = useCallback(
     () => {
+      clearVerticalSelectionState();
+
       if (!tab.isDirty) {
         updateTab(tab.id, { isDirty: true });
       }
@@ -1748,7 +2333,64 @@ export function Editor({ tab }: { tab: FileTab }) {
         queueTextSync();
       }
     },
-    [tab.id, tab.isDirty, updateTab, queueTextSync, syncSelectionAfterInteraction]
+    [clearVerticalSelectionState, tab.id, tab.isDirty, updateTab, queueTextSync, syncSelectionAfterInteraction]
+  );
+
+  const handleRectangularSelectionInputByKey = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!normalizedRectangularSelection || event.isComposing) {
+        return false;
+      }
+
+      const key = event.key;
+      const lower = key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        if (lower === 'c' || lower === 'x' || lower === 'v') {
+          return false;
+        }
+
+        if (lower === 'a') {
+          event.preventDefault();
+          event.stopPropagation();
+          clearRectangularSelection();
+          return true;
+        }
+
+        return false;
+      }
+
+      if (key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        clearRectangularSelection();
+        return true;
+      }
+
+      if (key === 'Backspace' || key === 'Delete') {
+        event.preventDefault();
+        event.stopPropagation();
+        replaceRectangularSelection('');
+        return true;
+      }
+
+      if (key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        replaceRectangularSelection('\t');
+        return true;
+      }
+
+      if (!event.altKey && !event.ctrlKey && !event.metaKey && key.length === 1) {
+        event.preventDefault();
+        event.stopPropagation();
+        replaceRectangularSelection(key);
+        return true;
+      }
+
+      return false;
+    },
+    [clearRectangularSelection, normalizedRectangularSelection, replaceRectangularSelection]
   );
 
   const insertTextAtSelection = useCallback((text: string) => {
@@ -1778,6 +2420,13 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
+      if (normalizedRectangularSelection && nativeEvent.inputType === 'insertText') {
+        event.preventDefault();
+        event.stopPropagation();
+        replaceRectangularSelection(nativeEvent.data ?? '');
+        return;
+      }
+
       if (nativeEvent.inputType !== 'insertParagraph' && nativeEvent.inputType !== 'insertLineBreak') {
         return;
       }
@@ -1789,7 +2438,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         handleInput();
       }
     },
-    [handleInput, insertTextAtSelection]
+    [handleInput, insertTextAtSelection, normalizedRectangularSelection, replaceRectangularSelection]
   );
 
   const toggleSelectedLinesComment = useCallback(
@@ -1885,22 +2534,70 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const handleEditableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (handleRectangularSelectionInputByKey(event)) {
+        return;
+      }
+
+      if (isVerticalSelectionShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const direction =
+          event.key === 'ArrowUp'
+            ? 'up'
+            : event.key === 'ArrowDown'
+            ? 'down'
+            : event.key === 'ArrowLeft'
+            ? 'left'
+            : 'right';
+
+        if (!rectangularSelectionRef.current) {
+          beginRectangularSelectionFromCaret();
+        }
+
+        void nudgeRectangularSelectionByKey(direction as 'up' | 'down' | 'left' | 'right');
+        return;
+      }
+
       if (isToggleLineCommentShortcut(event)) {
+        clearVerticalSelectionState();
         toggleSelectedLinesComment(event);
         return;
       }
 
       if (event.key !== 'Enter' || event.isComposing) {
+        if (
+          normalizedRectangularSelection &&
+          (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+        ) {
+          clearRectangularSelection();
+        }
+        if (!event.shiftKey || event.key !== 'Shift') {
+          clearVerticalSelectionState();
+        }
         return;
       }
 
+      clearVerticalSelectionState();
+      clearRectangularSelection();
       event.preventDefault();
       event.stopPropagation();
       if (insertTextAtSelection('\n')) {
         handleInput();
       }
     },
-    [handleInput, insertTextAtSelection, toggleSelectedLinesComment]
+    [
+      clearRectangularSelection,
+      clearVerticalSelectionState,
+      beginRectangularSelectionFromCaret,
+      expandVerticalSelection,
+      handleInput,
+      handleRectangularSelectionInputByKey,
+      insertTextAtSelection,
+      nudgeRectangularSelectionByKey,
+      normalizedRectangularSelection,
+      toggleSelectedLinesComment,
+    ]
   );
 
   const handleCompositionStart = useCallback(() => {
@@ -2043,6 +2740,31 @@ export function Editor({ tab }: { tab: FileTab }) {
     [isPairHighlightEnabled, pairHighlights]
   );
 
+  const getRectangularHighlightRangeForLine = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (!normalizedRectangularSelection) {
+        return null;
+      }
+
+      if (
+        lineNumber < normalizedRectangularSelection.startLine ||
+        lineNumber > normalizedRectangularSelection.endLine
+      ) {
+        return null;
+      }
+
+      const start = Math.max(0, Math.min(lineTextLength, normalizedRectangularSelection.startColumn - 1));
+      const end = Math.max(start, Math.min(lineTextLength, normalizedRectangularSelection.endColumn - 1));
+
+      if (end <= start) {
+        return null;
+      }
+
+      return { start, end };
+    },
+    [normalizedRectangularSelection]
+  );
+
   const getInlineHighlightClass = useCallback((isSearchMatch: boolean, isPairMatch: boolean) => {
     if (isSearchMatch && isPairMatch) {
       return SEARCH_AND_PAIR_HIGHLIGHT_CLASS;
@@ -2063,7 +2785,8 @@ export function Editor({ tab }: { tab: FileTab }) {
     (
       lineTextLength: number,
       searchRange: { start: number; end: number } | null,
-      pairColumns: number[]
+      pairColumns: number[],
+      rectangularRange: { start: number; end: number } | null
     ) => {
       const boundaries = new Set<number>([0, lineTextLength]);
 
@@ -2076,6 +2799,11 @@ export function Editor({ tab }: { tab: FileTab }) {
         boundaries.add(column);
         boundaries.add(Math.min(lineTextLength, column + 1));
       });
+
+      if (rectangularRange) {
+        boundaries.add(rectangularRange.start);
+        boundaries.add(rectangularRange.end);
+      }
 
       const sorted = Array.from(boundaries).sort((left, right) => left - right);
       const segments: Array<{ start: number; end: number; className: string }> = [];
@@ -2090,11 +2818,20 @@ export function Editor({ tab }: { tab: FileTab }) {
 
         const isSearchMatch = !!searchRange && start >= searchRange.start && end <= searchRange.end;
         const isPairMatch = pairColumns.some((column) => start >= column && end <= column + 1);
+        const isRectangularMatch =
+          !!rectangularRange && start >= rectangularRange.start && end <= rectangularRange.end;
+
+        let className = getInlineHighlightClass(isSearchMatch, isPairMatch);
+        if (isRectangularMatch) {
+          className = className
+            ? `${className} ${RECTANGULAR_SELECTION_HIGHLIGHT_CLASS}`
+            : RECTANGULAR_SELECTION_HIGHLIGHT_CLASS;
+        }
 
         segments.push({
           start,
           end,
-          className: getInlineHighlightClass(isSearchMatch, isPairMatch),
+          className,
         });
       }
 
@@ -2108,12 +2845,13 @@ export function Editor({ tab }: { tab: FileTab }) {
       const safeText = text || '';
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
+      const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
 
-      if (!range && pairColumns.length === 0) {
+      if (!range && pairColumns.length === 0 && !rectangularRange) {
         return renderPlainLine(safeText);
       }
 
-      const segments = buildLineHighlightSegments(safeText.length, range, pairColumns);
+      const segments = buildLineHighlightSegments(safeText.length, range, pairColumns, rectangularRange);
 
       return (
         <span>
@@ -2132,7 +2870,13 @@ export function Editor({ tab }: { tab: FileTab }) {
         </span>
       );
     },
-    [buildLineHighlightSegments, getLineHighlightRange, getPairHighlightColumnsForLine, renderPlainLine]
+    [
+      buildLineHighlightSegments,
+      getLineHighlightRange,
+      getPairHighlightColumnsForLine,
+      getRectangularHighlightRangeForLine,
+      renderPlainLine,
+    ]
   );
 
   const getTokenTypeClass = useCallback((token: SyntaxToken) => {
@@ -2573,12 +3317,13 @@ export function Editor({ tab }: { tab: FileTab }) {
       const lineText = tokensArr.map((token) => token.text ?? '').join('');
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
+      const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
 
-      if (!range && pairColumns.length === 0) {
+      if (!range && pairColumns.length === 0 && !rectangularRange) {
         return renderTokens(tokensArr);
       }
 
-      const segments = buildLineHighlightSegments(lineText.length, range, pairColumns);
+      const segments = buildLineHighlightSegments(lineText.length, range, pairColumns, rectangularRange);
 
       let cursor = 0;
       let segmentIndex = 0;
@@ -2669,6 +3414,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       buildLineHighlightSegments,
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
+      getRectangularHighlightRangeForLine,
       getTokenTypeClass,
       renderTokens,
     ]
@@ -2811,6 +3557,150 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [endScrollbarDragSelectionGuard]);
 
   useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!rectangularSelectionPointerActiveRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      rectangularSelectionLastClientPointRef.current = { x: event.clientX, y: event.clientY };
+
+      const scrollElement = getRectangularSelectionScrollElement();
+      if (scrollElement) {
+        const rect = scrollElement.getBoundingClientRect();
+        if (event.clientY <= rect.top + RECTANGULAR_AUTO_SCROLL_EDGE_PX) {
+          rectangularSelectionAutoScrollDirectionRef.current = -1;
+        } else if (event.clientY >= rect.bottom - RECTANGULAR_AUTO_SCROLL_EDGE_PX) {
+          rectangularSelectionAutoScrollDirectionRef.current = 1;
+        } else {
+          rectangularSelectionAutoScrollDirectionRef.current = 0;
+        }
+      }
+
+      updateRectangularSelectionFromPoint(event.clientX, event.clientY);
+
+      if (
+        rectangularSelectionAutoScrollDirectionRef.current !== 0 &&
+        rectangularSelectionAutoScrollRafRef.current === null
+      ) {
+        const step = () => {
+          if (!rectangularSelectionPointerActiveRef.current) {
+            rectangularSelectionAutoScrollRafRef.current = null;
+            return;
+          }
+
+          const direction = rectangularSelectionAutoScrollDirectionRef.current;
+          const point = rectangularSelectionLastClientPointRef.current;
+          const scrollElement = getRectangularSelectionScrollElement();
+
+          if (direction !== 0 && point && scrollElement) {
+            const before = scrollElement.scrollTop;
+            const rect = scrollElement.getBoundingClientRect();
+            const distance = direction < 0
+              ? Math.max(0, (rect.top + RECTANGULAR_AUTO_SCROLL_EDGE_PX) - point.y)
+              : Math.max(0, point.y - (rect.bottom - RECTANGULAR_AUTO_SCROLL_EDGE_PX));
+            const ratio = Math.min(1, distance / RECTANGULAR_AUTO_SCROLL_EDGE_PX);
+            const delta = Math.max(1, Math.round(RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX * ratio)) * direction;
+
+            scrollElement.scrollTop = alignScrollOffset(before + delta);
+            handleScroll();
+
+            if (Math.abs(scrollElement.scrollTop - before) > 0.001) {
+              updateRectangularSelectionFromPoint(point.x, point.y);
+            }
+          }
+
+          if (rectangularSelectionPointerActiveRef.current && rectangularSelectionAutoScrollDirectionRef.current !== 0) {
+            rectangularSelectionAutoScrollRafRef.current = window.requestAnimationFrame(step);
+          } else {
+            rectangularSelectionAutoScrollRafRef.current = null;
+          }
+        };
+
+        rectangularSelectionAutoScrollRafRef.current = window.requestAnimationFrame(step);
+      }
+    };
+
+    const handlePointerUp = () => {
+      rectangularSelectionPointerActiveRef.current = false;
+      rectangularSelectionLastClientPointRef.current = null;
+      rectangularSelectionAutoScrollDirectionRef.current = 0;
+      if (rectangularSelectionAutoScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(rectangularSelectionAutoScrollRafRef.current);
+        rectangularSelectionAutoScrollRafRef.current = null;
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
+
+      if (rectangularSelectionAutoScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(rectangularSelectionAutoScrollRafRef.current);
+        rectangularSelectionAutoScrollRafRef.current = null;
+      }
+    };
+  }, [getRectangularSelectionScrollElement, handleScroll, updateRectangularSelectionFromPoint]);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+
+    const handleCopyLike = (event: ClipboardEvent, cut: boolean) => {
+      if (!normalizedRectangularSelection) {
+        return;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const rectangularText = getRectangularSelectionText(text);
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.clipboardData?.setData('text/plain', rectangularText);
+
+      if (cut) {
+        replaceRectangularSelection('');
+      }
+    };
+
+    const handleCopy = (event: ClipboardEvent) => {
+      handleCopyLike(event, false);
+    };
+
+    const handleCut = (event: ClipboardEvent) => {
+      handleCopyLike(event, true);
+    };
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (!normalizedRectangularSelection) {
+        return;
+      }
+
+      const pasted = event.clipboardData?.getData('text/plain') ?? '';
+      event.preventDefault();
+      event.stopPropagation();
+      replaceRectangularSelection(pasted);
+    };
+
+    element.addEventListener('copy', handleCopy);
+    element.addEventListener('cut', handleCut);
+    element.addEventListener('paste', handlePaste);
+
+    return () => {
+      element.removeEventListener('copy', handleCopy);
+      element.removeEventListener('cut', handleCut);
+      element.removeEventListener('paste', handlePaste);
+    };
+  }, [getRectangularSelectionText, normalizedRectangularSelection, replaceRectangularSelection]);
+
+  useEffect(() => {
     if (isPairHighlightEnabled) {
       return;
     }
@@ -2820,6 +3710,9 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     const handleSelectionChange = () => {
+      if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
+        clearVerticalSelectionState();
+      }
       syncSelectionState();
     };
 
@@ -2827,7 +3720,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, [syncSelectionState]);
+  }, [clearVerticalSelectionState, hasSelectionInsideEditor, syncSelectionState]);
 
   useEffect(() => {
     if (!editorContextMenu) {
@@ -2872,6 +3765,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     setEditorContextMenu(null);
+    clearRectangularSelection();
   }, [tab.id]);
 
   useEffect(() => {
