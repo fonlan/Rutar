@@ -77,6 +77,7 @@ pub fn run() {
             commands::redo,
             commands::edit_text,
             commands::replace_line_range,
+            commands::cleanup_document,
             commands::format_document,
             commands::search_first_in_document,
             commands::search_in_document_chunk,

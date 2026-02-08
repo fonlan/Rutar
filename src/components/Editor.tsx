@@ -45,6 +45,13 @@ interface EditorContextMenuState {
   lineNumber: number;
 }
 
+type EditorCleanupAction =
+  | 'remove_empty_lines'
+  | 'remove_duplicate_lines'
+  | 'trim_leading_whitespace'
+  | 'trim_trailing_whitespace'
+  | 'trim_surrounding_whitespace';
+
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
 const LARGE_FILE_FETCH_BUFFER_LINES = 200;
@@ -794,9 +801,35 @@ export function Editor({ tab }: { tab: FileTab }) {
   const isPairHighlightEnabled = !usePlainLineRendering;
   const deleteLabel = settings.language === 'zh-CN' ? '删除' : 'Delete';
   const selectAllLabel = settings.language === 'zh-CN' ? '全选' : 'Select All';
+  const editMenuLabel = settings.language === 'zh-CN' ? '编辑' : 'Edit';
   const bookmarkMenuLabel = tr('bookmark.menu.title');
   const addBookmarkLabel = tr('bookmark.add');
   const removeBookmarkLabel = tr('bookmark.remove');
+  const cleanupMenuItems = useMemo(
+    () => [
+      {
+        action: 'remove_empty_lines' as EditorCleanupAction,
+        label: settings.language === 'zh-CN' ? '移除空行' : 'Remove Empty Lines',
+      },
+      {
+        action: 'remove_duplicate_lines' as EditorCleanupAction,
+        label: settings.language === 'zh-CN' ? '移除重复行' : 'Remove Duplicate Lines',
+      },
+      {
+        action: 'trim_leading_whitespace' as EditorCleanupAction,
+        label: settings.language === 'zh-CN' ? '移除行首空格' : 'Trim Leading Whitespace',
+      },
+      {
+        action: 'trim_trailing_whitespace' as EditorCleanupAction,
+        label: settings.language === 'zh-CN' ? '移除行尾空格' : 'Trim Trailing Whitespace',
+      },
+      {
+        action: 'trim_surrounding_whitespace' as EditorCleanupAction,
+        label: settings.language === 'zh-CN' ? '移除行首行尾空格' : 'Trim Leading/Trailing Whitespace',
+      },
+    ],
+    [settings.language]
+  );
 
   const addBookmark = useStore((state) => state.addBookmark);
   const removeBookmark = useStore((state) => state.removeBookmark);
@@ -1358,8 +1391,8 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       contentRef.current.focus();
 
-      const menuWidth = 148;
-      const menuHeight = 238;
+      const menuWidth = 196;
+      const menuHeight = 320;
       const viewportPadding = 8;
 
       const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
@@ -1636,6 +1669,48 @@ export function Editor({ tab }: { tab: FileTab }) {
     tab.id,
     updateTab,
   ]);
+
+  const handleCleanupDocumentFromContext = useCallback(
+    async (action: EditorCleanupAction) => {
+      if (isLargeReadOnlyMode) {
+        setEditorContextMenu(null);
+        return;
+      }
+
+      setEditorContextMenu(null);
+
+      try {
+        await flushPendingSync();
+
+        const newLineCount = await invoke<number>('cleanup_document', {
+          id: tab.id,
+          action,
+        });
+
+        const safeLineCount = Math.max(1, newLineCount);
+        updateTab(tab.id, {
+          lineCount: safeLineCount,
+          isDirty: true,
+        });
+        dispatchDocumentUpdated(tab.id);
+
+        await loadTextFromBackend();
+        await syncVisibleTokens(safeLineCount);
+        syncSelectionAfterInteraction();
+      } catch (error) {
+        console.error('Failed to cleanup document:', error);
+      }
+    },
+    [
+      flushPendingSync,
+      isLargeReadOnlyMode,
+      loadTextFromBackend,
+      syncSelectionAfterInteraction,
+      syncVisibleTokens,
+      tab.id,
+      updateTab,
+    ]
+  );
 
   const queueTextSync = useCallback(
     () => {
@@ -3232,6 +3307,30 @@ export function Editor({ tab }: { tab: FileTab }) {
           >
             {selectAllLabel}
           </button>
+          <div className="my-1 h-px bg-border" />
+          <div className="group/edit relative">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            >
+              <span>{editMenuLabel}</span>
+              <span className="text-[10px] text-muted-foreground">▶</span>
+            </button>
+            <div className="invisible absolute left-full top-0 z-[95] ml-1 min-w-56 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-all duration-75 group-hover/edit:visible group-hover/edit:opacity-100">
+              {cleanupMenuItems.map((item) => (
+                <button
+                  key={item.action}
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    void handleCleanupDocumentFromContext(item.action);
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="my-1 h-px bg-border" />
           <div className="group/bookmark relative">
             <button

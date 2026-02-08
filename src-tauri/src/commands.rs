@@ -8,7 +8,7 @@ use quick_xml::{Reader, Writer};
 use regex::RegexBuilder;
 use ropey::Rope;
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::process::Command;
@@ -4265,6 +4265,152 @@ pub fn replace_line_range(
         Ok(doc.rope.len_lines())
     } else {
         Err("Document not found".to_string())
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DocumentCleanupAction {
+    RemoveEmptyLines,
+    RemoveDuplicateLines,
+    TrimLeadingWhitespace,
+    TrimTrailingWhitespace,
+    TrimSurroundingWhitespace,
+}
+
+impl DocumentCleanupAction {
+    fn from_value(value: &str) -> Option<Self> {
+        match value {
+            "remove_empty_lines" => Some(Self::RemoveEmptyLines),
+            "remove_duplicate_lines" => Some(Self::RemoveDuplicateLines),
+            "trim_leading_whitespace" => Some(Self::TrimLeadingWhitespace),
+            "trim_trailing_whitespace" => Some(Self::TrimTrailingWhitespace),
+            "trim_surrounding_whitespace" => Some(Self::TrimSurroundingWhitespace),
+            _ => None,
+        }
+    }
+}
+
+fn cleanup_document_lines(source: &str, action: DocumentCleanupAction) -> String {
+    let normalized = normalize_to_lf(source);
+    let had_terminal_newline = normalized.ends_with('\n');
+    let mut lines: Vec<String> = normalized.split('\n').map(|line| line.to_string()).collect();
+
+    if had_terminal_newline {
+        lines.pop();
+    }
+
+    let cleaned_lines = match action {
+        DocumentCleanupAction::RemoveEmptyLines => lines
+            .into_iter()
+            .filter(|line| !line.trim().is_empty())
+            .collect(),
+        DocumentCleanupAction::RemoveDuplicateLines => {
+            let mut seen = HashSet::new();
+            let mut unique_lines = Vec::with_capacity(lines.len());
+
+            for line in lines {
+                if seen.insert(line.clone()) {
+                    unique_lines.push(line);
+                }
+            }
+
+            unique_lines
+        }
+        DocumentCleanupAction::TrimLeadingWhitespace => {
+            lines.into_iter().map(|line| line.trim_start().to_string()).collect()
+        }
+        DocumentCleanupAction::TrimTrailingWhitespace => {
+            lines.into_iter().map(|line| line.trim_end().to_string()).collect()
+        }
+        DocumentCleanupAction::TrimSurroundingWhitespace => {
+            lines.into_iter().map(|line| line.trim().to_string()).collect()
+        }
+    };
+
+    let mut cleaned = cleaned_lines.join("\n");
+    if had_terminal_newline && !cleaned_lines.is_empty() {
+        cleaned.push('\n');
+    }
+
+    cleaned
+}
+
+#[tauri::command]
+pub fn cleanup_document(
+    state: State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<usize, String> {
+    let cleanup_action = DocumentCleanupAction::from_value(action.as_str()).ok_or_else(|| {
+        "Unsupported cleanup action. Use remove_empty_lines, remove_duplicate_lines, trim_leading_whitespace, trim_trailing_whitespace, or trim_surrounding_whitespace".to_string()
+    })?;
+
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let source = doc.rope.to_string();
+        let cleaned = cleanup_document_lines(&source, cleanup_action);
+
+        if source == cleaned {
+            return Ok(doc.rope.len_lines());
+        }
+
+        let operation = EditOperation {
+            start_char: 0,
+            old_text: source,
+            new_text: cleaned,
+        };
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        Ok(doc.rope.len_lines())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cleanup_document_lines, DocumentCleanupAction};
+
+    #[test]
+    fn remove_empty_lines_should_drop_blank_lines_and_keep_terminal_newline() {
+        let source = "alpha\n\n  \n\tbeta\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::RemoveEmptyLines);
+
+        assert_eq!(result, "alpha\n\tbeta\n");
+    }
+
+    #[test]
+    fn remove_duplicate_lines_should_keep_first_occurrence_order() {
+        let source = "a\nb\na\nb\nc\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::RemoveDuplicateLines);
+
+        assert_eq!(result, "a\nb\nc\n");
+    }
+
+    #[test]
+    fn trim_leading_whitespace_should_only_trim_line_prefix() {
+        let source = "  a  \n\tb\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::TrimLeadingWhitespace);
+
+        assert_eq!(result, "a  \nb\n");
+    }
+
+    #[test]
+    fn trim_trailing_whitespace_should_only_trim_line_suffix() {
+        let source = "  a  \n\tb\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::TrimTrailingWhitespace);
+
+        assert_eq!(result, "  a\n\tb\n");
+    }
+
+    #[test]
+    fn trim_surrounding_whitespace_should_trim_both_sides_per_line() {
+        let source = "  a  \n\tb\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::TrimSurroundingWhitespace);
+
+        assert_eq!(result, "a\nb\n");
     }
 }
 
