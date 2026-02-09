@@ -617,7 +617,12 @@ function getLogicalOffsetFromDomPoint(element: EditorInputElement, node: Node, o
 
 function getLogicalOffsetFromPoint(element: EditorInputElement, clientX: number, clientY: number) {
   if (isTextareaInputElement(element)) {
-    return null;
+    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(element);
+    if (anchorFocusOffsets) {
+      return anchorFocusOffsets.focus;
+    }
+
+    return getSelectionOffsetsInElement(element)?.end ?? null;
   }
 
   const doc = document as Document & {
@@ -1573,13 +1578,49 @@ export function Editor({ tab }: { tab: FileTab }) {
         !event.ctrlKey &&
         contentRef.current
       ) {
-        event.preventDefault();
         event.stopPropagation();
+        const isTextarea = isTextareaInputElement(contentRef.current);
+        if (!isTextarea) {
+          event.preventDefault();
+        }
+
+        const clientX = event.clientX;
+        const clientY = event.clientY;
+
         contentRef.current.focus();
         rectangularSelectionPointerActiveRef.current = true;
-        rectangularSelectionLastClientPointRef.current = { x: event.clientX, y: event.clientY };
+        rectangularSelectionLastClientPointRef.current = { x: clientX, y: clientY };
 
-        const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, event.clientX, event.clientY);
+        if (isTextarea) {
+          window.requestAnimationFrame(() => {
+            if (!rectangularSelectionPointerActiveRef.current || !contentRef.current) {
+              return;
+            }
+
+            const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, clientX, clientY);
+            if (logicalOffset === null) {
+              return;
+            }
+
+            const text = normalizeSegmentText(getEditableText(contentRef.current));
+            const position = codeUnitOffsetToLineColumn(text, logicalOffset);
+            const line = Math.max(1, position.line);
+            const column = Math.max(1, position.column + 1);
+            const next: RectangularSelectionState = {
+              anchorLine: line,
+              anchorColumn: column,
+              focusLine: line,
+              focusColumn: column,
+            };
+
+            rectangularSelectionRef.current = next;
+            setRectangularSelection(next);
+          });
+
+          return;
+        }
+
+        const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, clientX, clientY);
         if (logicalOffset !== null) {
           const text = normalizeSegmentText(getEditableText(contentRef.current));
           const position = codeUnitOffsetToLineColumn(text, logicalOffset);
@@ -2333,6 +2374,11 @@ export function Editor({ tab }: { tab: FileTab }) {
       return;
     }
 
+    if (rectangularSelectionRef.current) {
+      setTextSelectionHighlight((prev) => (prev === null ? prev : null));
+      return;
+    }
+
     const offsets = getSelectionOffsetsInElement(element);
     if (!offsets || offsets.isCollapsed) {
       setTextSelectionHighlight((prev) => (prev === null ? prev : null));
@@ -2350,6 +2396,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       return { start, end };
     });
   }, []);
+
+  useEffect(() => {
+    if (!normalizedRectangularSelection) {
+      return;
+    }
+
+    setTextSelectionHighlight((prev) => (prev === null ? prev : null));
+  }, [normalizedRectangularSelection]);
 
   const hasSelectionInsideEditor = useCallback(() => {
     if (!contentRef.current) {
@@ -4241,8 +4295,14 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
-      event.preventDefault();
-      rectangularSelectionLastClientPointRef.current = { x: event.clientX, y: event.clientY };
+      const clientX = event.clientX;
+      const clientY = event.clientY;
+      const element = contentRef.current;
+      if (!isTextareaInputElement(element)) {
+        event.preventDefault();
+      }
+
+      rectangularSelectionLastClientPointRef.current = { x: clientX, y: clientY };
 
       const scrollElement = getRectangularSelectionScrollElement();
       if (scrollElement) {
@@ -4256,7 +4316,16 @@ export function Editor({ tab }: { tab: FileTab }) {
         }
       }
 
-      updateRectangularSelectionFromPoint(event.clientX, event.clientY);
+      if (isTextareaInputElement(element)) {
+        window.requestAnimationFrame(() => {
+          if (!rectangularSelectionPointerActiveRef.current) {
+            return;
+          }
+          updateRectangularSelectionFromPoint(clientX, clientY);
+        });
+      } else {
+        updateRectangularSelectionFromPoint(clientX, clientY);
+      }
 
       if (
         rectangularSelectionAutoScrollDirectionRef.current !== 0 &&
