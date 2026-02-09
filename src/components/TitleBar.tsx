@@ -1,6 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
+import {
+    Braces,
+    FileCode2,
+    FileJson,
+    FileText,
+    Minus,
+    Pin,
+    PinOff,
+    Settings,
+    Square,
+    Terminal,
+    X,
+    type LucideIcon,
+} from 'lucide-react';
 import {
     useCallback,
     useEffect,
@@ -12,10 +25,11 @@ import {
     type PointerEvent as ReactPointerEvent,
     type WheelEvent,
 } from 'react';
-import { FileTab, useStore } from '@/store/useStore';
+import { FileTab, type SyntaxKey, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
+import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 
 const appWindow = getCurrentWindow();
 const noDragStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties;
@@ -32,6 +46,43 @@ interface TabPathTooltipState {
     topY: number;
     bottomY: number;
     placement: 'top' | 'bottom';
+}
+
+interface TabFileIconConfig {
+    Icon: LucideIcon;
+    className: string;
+}
+
+const defaultTabFileIconConfig: TabFileIconConfig = {
+    Icon: FileText,
+    className: 'text-muted-foreground',
+};
+
+const tabFileIconConfigBySyntaxKey: Partial<Record<SyntaxKey, TabFileIconConfig>> = {
+    javascript: { Icon: FileCode2, className: 'text-yellow-500' },
+    typescript: { Icon: FileCode2, className: 'text-blue-500' },
+    rust: { Icon: FileCode2, className: 'text-orange-500' },
+    python: { Icon: FileCode2, className: 'text-sky-500' },
+    json: { Icon: FileJson, className: 'text-amber-500' },
+    html: { Icon: FileCode2, className: 'text-orange-500' },
+    css: { Icon: FileCode2, className: 'text-pink-500' },
+    bash: { Icon: Terminal, className: 'text-green-500' },
+    toml: { Icon: Braces, className: 'text-slate-500' },
+    yaml: { Icon: Braces, className: 'text-purple-500' },
+    xml: { Icon: Braces, className: 'text-teal-500' },
+    c: { Icon: FileCode2, className: 'text-blue-500' },
+    cpp: { Icon: FileCode2, className: 'text-indigo-500' },
+    go: { Icon: FileCode2, className: 'text-cyan-500' },
+    java: { Icon: FileCode2, className: 'text-red-500' },
+    csharp: { Icon: FileCode2, className: 'text-violet-500' },
+    php: { Icon: FileCode2, className: 'text-indigo-400' },
+    kotlin: { Icon: FileCode2, className: 'text-fuchsia-500' },
+    swift: { Icon: FileCode2, className: 'text-orange-500' },
+};
+
+function getTabFileIconConfig(tab: Pick<FileTab, 'name' | 'path' | 'syntaxOverride'>): TabFileIconConfig {
+    const syntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
+    return tabFileIconConfigBySyntaxKey[syntaxKey] ?? defaultTabFileIconConfig;
 }
 
 function getParentDirectoryPath(filePath: string): string | null {
@@ -558,56 +609,64 @@ export function TitleBar() {
                 className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10"
             >
                 <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border z-10" />
-                {tabs.map((tab) => (
-                    <div
-                        key={tab.id}
-                        onPointerDown={handleTabPointerDown}
-                        onClick={() => {
-                            if (suppressNextTabClickRef.current) {
-                                suppressNextTabClickRef.current = false;
-                                return;
-                            }
+                {tabs.map((tab) => {
+                    const tabFileIconConfig = getTabFileIconConfig(tab);
+                    const TabFileIcon = tabFileIconConfig.Icon;
 
-                            setActiveTab(tab.id);
-                        }}
-                        onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
-                        onMouseEnter={(event) => handleTabPathTooltipEnter(event, tab)}
-                        onMouseLeave={handleTabPathTooltipLeave}
-                        onContextMenu={(event) => handleTabContextMenu(event, tab)}
-                        className={cn(
-                            "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer mr-1 relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
-                            activeTabId === tab.id ? "bg-background border-border z-20" : "border-transparent hover:bg-muted/80"
-                        )}
-                        style={noDragStyle}
-                    >
-                        {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
-                        <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
-                        <button
-                            type="button"
+                    return (
+                        <div
+                            key={tab.id}
+                            onPointerDown={handleTabPointerDown}
+                            onClick={() => {
+                                if (suppressNextTabClickRef.current) {
+                                    suppressNextTabClickRef.current = false;
+                                    return;
+                                }
+
+                                setActiveTab(tab.id);
+                            }}
+                            onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
+                            onMouseEnter={(event) => handleTabPathTooltipEnter(event, tab)}
+                            onMouseLeave={handleTabPathTooltipLeave}
+                            onContextMenu={(event) => handleTabContextMenu(event, tab)}
+                            className={cn(
+                                "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
+                                activeTabId === tab.id ? "bg-background border-border z-20" : "border-border dark:border-white/15 hover:bg-muted/80"
+                            )}
                             style={noDragStyle}
-                            draggable={false}
-                            onPointerDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                            }}
-                            onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                            }}
-                            onDoubleClick={(e) => {
-                                e.stopPropagation();
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                void handleCloseTab(tab);
-                            }}
-                            className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
                         >
-                            <X className="w-3 h-3" />
-                        </button>
+                            {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
+                            <TabFileIcon
+                                className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
+                            />
+                            <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
+                            <button
+                                type="button"
+                                style={noDragStyle}
+                                draggable={false}
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleCloseTab(tab);
+                                }}
+                                className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
 
-                    </div>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
 
             {tabPathTooltip && (
