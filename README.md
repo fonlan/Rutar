@@ -10,6 +10,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Modern Tech Stack**: React 19, Tailwind CSS 4, and Zustand on the frontend; Rust with `ropey` and `tree-sitter` on the backend.
 - **Optimized for Windows**: Custom icons and window controls tailored for a native Windows experience.
 - **Multi-language UI**: Supports Simplified Chinese / English and can switch in Settings.
+- **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
 
 ## Configuration
 

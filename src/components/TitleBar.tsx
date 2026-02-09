@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type WheelEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type WheelEvent } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -13,6 +13,14 @@ interface TabContextMenuState {
     tabId: string;
     x: number;
     y: number;
+}
+
+interface TabPathTooltipState {
+    text: string;
+    x: number;
+    topY: number;
+    bottomY: number;
+    placement: 'top' | 'bottom';
 }
 
 function getParentDirectoryPath(filePath: string): string | null {
@@ -50,7 +58,9 @@ export function TitleBar() {
     const settings = useStore((state) => state.settings);
     const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
     const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
+    const [tabPathTooltip, setTabPathTooltip] = useState<TabPathTooltipState | null>(null);
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
+    const tabPathTooltipRef = useRef<HTMLDivElement>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const alwaysOnTopTitle = isAlwaysOnTop
         ? tr('titleBar.disableAlwaysOnTop')
@@ -221,6 +231,7 @@ export function TitleBar() {
     const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();
         event.stopPropagation();
+        setTabPathTooltip(null);
 
         const menuWidth = 176;
         const menuHeight = 212;
@@ -236,6 +247,58 @@ export function TitleBar() {
             y: Math.max(viewportPadding, boundedY),
         });
     }, [setActiveTab]);
+
+    const handleTabPathTooltipEnter = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
+        const normalizedPath = tab.path?.trim();
+
+        if (!normalizedPath) {
+            setTabPathTooltip(null);
+            return;
+        }
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        const viewportPadding = 8;
+        const tooltipOffset = 6;
+        const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+        const availableAbove = rect.top - viewportPadding;
+        const placement = availableBelow >= availableAbove ? 'bottom' : 'top';
+        const centerX = rect.left + rect.width / 2;
+
+        setTabPathTooltip({
+            text: normalizedPath,
+            x: centerX,
+            topY: Math.max(viewportPadding, rect.top - tooltipOffset),
+            bottomY: Math.max(viewportPadding, Math.min(window.innerHeight - viewportPadding, rect.bottom + tooltipOffset)),
+            placement,
+        });
+    }, []);
+
+    const handleTabPathTooltipLeave = useCallback(() => {
+        setTabPathTooltip(null);
+    }, []);
+
+    const adjustTabPathTooltipPosition = useCallback(() => {
+        setTabPathTooltip((previous) => {
+            if (!previous) {
+                return previous;
+            }
+
+            const viewportPadding = 8;
+            const clampedX = Math.max(viewportPadding, Math.min(window.innerWidth - viewportPadding, previous.x));
+            const clampedBottomY = Math.max(
+                viewportPadding,
+                Math.min(window.innerHeight - viewportPadding, previous.bottomY)
+            );
+            const clampedTopY = Math.max(viewportPadding, Math.min(window.innerHeight - viewportPadding, previous.topY));
+
+            return {
+                ...previous,
+                x: clampedX,
+                bottomY: clampedBottomY,
+                topY: clampedTopY,
+            };
+        });
+    }, []);
 
     const handleToggleAlwaysOnTop = useCallback(async () => {
         const nextValue = !isAlwaysOnTop;
@@ -318,6 +381,76 @@ export function TitleBar() {
         }
     }, [tabContextMenu, tabs]);
 
+    useLayoutEffect(() => {
+        if (!tabPathTooltip || !tabPathTooltipRef.current) {
+            return;
+        }
+
+        const viewportPadding = 8;
+        const tooltipRect = tabPathTooltipRef.current.getBoundingClientRect();
+        let nextX = tabPathTooltip.x;
+        let nextPlacement = tabPathTooltip.placement;
+
+        const overflowLeft = viewportPadding - tooltipRect.left;
+        const overflowRight = tooltipRect.right - (window.innerWidth - viewportPadding);
+
+        if (overflowLeft > 0) {
+            nextX += overflowLeft;
+        }
+
+        if (overflowRight > 0) {
+            nextX -= overflowRight;
+        }
+
+        if (
+            nextPlacement === 'bottom'
+            && tooltipRect.bottom > window.innerHeight - viewportPadding
+            && tabPathTooltip.topY > viewportPadding
+        ) {
+            nextPlacement = 'top';
+        } else if (
+            nextPlacement === 'top'
+            && tooltipRect.top < viewportPadding
+            && tabPathTooltip.bottomY < window.innerHeight - viewportPadding
+        ) {
+            nextPlacement = 'bottom';
+        }
+
+        const clampedX = Math.max(viewportPadding, Math.min(window.innerWidth - viewportPadding, nextX));
+
+        if (clampedX !== tabPathTooltip.x || nextPlacement !== tabPathTooltip.placement) {
+            setTabPathTooltip((previous) => {
+                if (!previous) {
+                    return previous;
+                }
+
+                return {
+                    ...previous,
+                    x: clampedX,
+                    placement: nextPlacement,
+                };
+            });
+        }
+    }, [tabPathTooltip]);
+
+    useEffect(() => {
+        if (!tabPathTooltip) {
+            return;
+        }
+
+        const handleViewportChange = () => {
+            adjustTabPathTooltipPosition();
+        };
+
+        window.addEventListener('resize', handleViewportChange);
+        window.addEventListener('scroll', handleViewportChange, true);
+
+        return () => {
+            window.removeEventListener('resize', handleViewportChange);
+            window.removeEventListener('scroll', handleViewportChange, true);
+        };
+    }, [adjustTabPathTooltipPosition, tabPathTooltip]);
+
     return (
         <div
             className="flex h-9 w-full select-none items-stretch bg-background relative"
@@ -336,6 +469,8 @@ export function TitleBar() {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
                         onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
+                        onMouseEnter={(event) => handleTabPathTooltipEnter(event, tab)}
+                        onMouseLeave={handleTabPathTooltipLeave}
                         onContextMenu={(event) => handleTabContextMenu(event, tab)}
                         className={cn(
                             "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer mr-1 relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
@@ -364,6 +499,22 @@ export function TitleBar() {
                     </div>
                 ))}
             </div>
+
+            {tabPathTooltip && (
+                <div
+                    ref={tabPathTooltipRef}
+                    className="pointer-events-none fixed z-[85] max-w-[min(80vw,640px)] rounded-md border border-border bg-background/95 px-2 py-1 text-[11px] leading-4 text-foreground shadow-xl backdrop-blur-sm whitespace-pre-wrap break-all"
+                    style={{
+                        left: tabPathTooltip.x,
+                        top: tabPathTooltip.placement === 'top' ? tabPathTooltip.topY : tabPathTooltip.bottomY,
+                        transform: tabPathTooltip.placement === 'top'
+                            ? 'translate(-50%, -100%)'
+                            : 'translateX(-50%)',
+                    }}
+                >
+                    {tabPathTooltip.text}
+                </div>
+            )}
 
             {tabContextMenu && (
                 <div
