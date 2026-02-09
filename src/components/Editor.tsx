@@ -46,18 +46,20 @@ interface EditorContextMenuState {
   submenuDirection: 'left' | 'right';
 }
 
-type EditorSubmenuKey = 'edit' | 'sort' | 'bookmark';
+type EditorSubmenuKey = 'edit' | 'sort' | 'convert' | 'bookmark';
 type EditorSubmenuVerticalAlign = 'top' | 'bottom';
 
 const DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS: Record<EditorSubmenuKey, EditorSubmenuVerticalAlign> = {
   edit: 'top',
   sort: 'top',
+  convert: 'top',
   bookmark: 'top',
 };
 
 const DEFAULT_SUBMENU_MAX_HEIGHTS: Record<EditorSubmenuKey, number | null> = {
   edit: null,
   sort: null,
+  convert: null,
   bookmark: null,
 };
 
@@ -296,6 +298,44 @@ function normalizeEditableLineText(value: string) {
 
 function normalizeSegmentText(value: string) {
   return normalizeEditorText((value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
+}
+
+function encodeBase64Utf8(value: string) {
+  const bytes = new TextEncoder().encode(value || '');
+  let binary = '';
+
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return btoa(binary);
+}
+
+function decodeBase64Utf8(value: string) {
+  const normalized =
+    (value || '')
+      .replace(/\s+/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+
+  if (!normalized) {
+    return '';
+  }
+
+  const remainder = normalized.length % 4;
+  if (remainder === 1) {
+    return null;
+  }
+
+  const padded = remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
+
+  try {
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 function toInputLayerText(value: string) {
@@ -638,6 +678,29 @@ function dispatchEditorInputEvent(element: HTMLDivElement) {
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+async function writePlainTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', 'true');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textArea);
+
+  if (!copied) {
+    throw new Error('Clipboard copy not supported');
+  }
+}
+
 function replaceSelectionWithText(element: HTMLDivElement, text: string) {
   const normalizedText = normalizeLineText(text ?? '');
   const currentText = getEditableText(element);
@@ -944,6 +1007,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
+  const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
   const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
     Record<EditorSubmenuKey, EditorSubmenuVerticalAlign>
@@ -965,6 +1029,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
     edit: null,
     sort: null,
+    convert: null,
     bookmark: null,
   });
 
@@ -979,6 +1044,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const hugeWindowFollowScrollOnUnlockRef = useRef(false);
   const hugeWindowUnlockTimerRef = useRef<any>(null);
   const contentTreeFlashTimerRef = useRef<any>(null);
+  const base64DecodeErrorToastTimerRef = useRef<number | null>(null);
   const pendingRestoreScrollTopRef = useRef<number | null>(null);
   const verticalSelectionRef = useRef<VerticalSelectionState | null>(null);
   const rectangularSelectionPointerActiveRef = useRef(false);
@@ -1010,6 +1076,12 @@ export function Editor({ tab }: { tab: FileTab }) {
   const selectAllLabel = tr('editor.context.selectAll');
   const editMenuLabel = tr('editor.context.edit');
   const sortMenuLabel = tr('editor.context.sort');
+  const convertMenuLabel = tr('editor.context.convert');
+  const convertBase64EncodeLabel = tr('editor.context.convert.base64Encode');
+  const convertBase64DecodeLabel = tr('editor.context.convert.base64Decode');
+  const copyBase64EncodeResultLabel = tr('editor.context.convert.copyBase64EncodeResult');
+  const copyBase64DecodeResultLabel = tr('editor.context.convert.copyBase64DecodeResult');
+  const base64DecodeFailedToastLabel = tr('editor.context.convert.base64DecodeFailed');
   const bookmarkMenuLabel = tr('bookmark.menu.title');
   const addBookmarkLabel = tr('bookmark.add');
   const removeBookmarkLabel = tr('bookmark.remove');
@@ -1023,6 +1095,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       : `${submenuHorizontalPositionClassName} top-0`;
   const sortSubmenuPositionClassName =
     submenuVerticalAlignments.sort === 'bottom'
+      ? `${submenuHorizontalPositionClassName} bottom-0`
+      : `${submenuHorizontalPositionClassName} top-0`;
+  const convertSubmenuPositionClassName =
+    submenuVerticalAlignments.convert === 'bottom'
       ? `${submenuHorizontalPositionClassName} bottom-0`
       : `${submenuHorizontalPositionClassName} top-0`;
   const bookmarkSubmenuPositionClassName =
@@ -1041,6 +1117,13 @@ export function Editor({ tab }: { tab: FileTab }) {
       ? undefined
       : {
           maxHeight: `${submenuMaxHeights.sort}px`,
+          overflowY: 'auto' as const,
+        };
+  const convertSubmenuStyle =
+    submenuMaxHeights.convert === null
+      ? undefined
+      : {
+          maxHeight: `${submenuMaxHeights.convert}px`,
           overflowY: 'auto' as const,
         };
   const bookmarkSubmenuStyle =
@@ -1734,6 +1817,30 @@ export function Editor({ tab }: { tab: FileTab }) {
     [normalizedRectangularSelection]
   );
 
+  const getSelectedEditorText = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return '';
+    }
+
+    if (normalizedRectangularSelection) {
+      const text = normalizeSegmentText(getEditableText(element));
+      return getRectangularSelectionText(text);
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return '';
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!element.contains(range.commonAncestorContainer)) {
+      return '';
+    }
+
+    return normalizeLineText(selection.toString());
+  }, [getRectangularSelectionText, normalizedRectangularSelection]);
+
   const replaceRectangularSelection = useCallback(
     (insertText: string, options?: { collapseToStart?: boolean }) => {
       const element = contentRef.current;
@@ -2093,7 +2200,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       contentRef.current.focus();
 
       const menuWidth = 160;
-      const menuHeight = 320;
+      const menuHeight = 360;
       const submenuWidth = 192;
       const submenuGap = 4;
       const viewportPadding = 8;
@@ -2110,12 +2217,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       setEditorContextMenu({
         x: safeX,
         y: Math.max(viewportPadding, boundedY),
-        hasSelection: hasSelectionInsideEditor(),
+        hasSelection:
+          hasSelectionInsideEditor() ||
+          ((normalizedRectangularSelection?.width ?? 0) > 0 && normalizedRectangularSelection !== null),
         lineNumber: activeLineNumber,
         submenuDirection: canOpenSubmenuRight ? 'right' : 'left',
       });
     },
-    [activeLineNumber, hasSelectionInsideEditor]
+    [activeLineNumber, hasSelectionInsideEditor, normalizedRectangularSelection]
   );
 
   const runEditorContextCommand = useCallback((action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
@@ -2455,6 +2564,79 @@ export function Editor({ tab }: { tab: FileTab }) {
       syncVisibleTokens,
       tab.id,
       updateTab,
+    ]
+  );
+
+  const triggerBase64DecodeErrorToast = useCallback(() => {
+    if (base64DecodeErrorToastTimerRef.current !== null) {
+      window.clearTimeout(base64DecodeErrorToastTimerRef.current);
+    }
+
+    setShowBase64DecodeErrorToast(true);
+    base64DecodeErrorToastTimerRef.current = window.setTimeout(() => {
+      setShowBase64DecodeErrorToast(false);
+      base64DecodeErrorToastTimerRef.current = null;
+    }, 2200);
+  }, []);
+
+  const handleConvertSelectionFromContext = useCallback(
+    (action: 'base64_encode' | 'base64_decode' | 'copy_base64_encode' | 'copy_base64_decode') => {
+      const shouldCopyResult = action === 'copy_base64_encode' || action === 'copy_base64_decode';
+      const shouldDecode = action === 'base64_decode' || action === 'copy_base64_decode';
+
+      if ((isLargeReadOnlyMode && !shouldCopyResult) || !editorContextMenu?.hasSelection || !contentRef.current) {
+        setEditorContextMenu(null);
+        return;
+      }
+
+      const selectedText = getSelectedEditorText();
+      if (!selectedText) {
+        setEditorContextMenu(null);
+        return;
+      }
+
+      let nextText = '';
+
+      if (!shouldDecode) {
+        nextText = encodeBase64Utf8(selectedText);
+      } else {
+        const decoded = decodeBase64Utf8(selectedText);
+        if (decoded === null) {
+          triggerBase64DecodeErrorToast();
+          setEditorContextMenu(null);
+          return;
+        }
+        nextText = decoded;
+      }
+
+      if (shouldCopyResult) {
+        void writePlainTextToClipboard(nextText).catch((error) => {
+          console.warn('Failed to write conversion result to clipboard:', error);
+        });
+        setEditorContextMenu(null);
+        return;
+      }
+
+      if (normalizedRectangularSelection) {
+        replaceRectangularSelection(nextText);
+      } else {
+        const replaced = replaceSelectionWithText(contentRef.current, nextText);
+        if (replaced) {
+          dispatchEditorInputEvent(contentRef.current);
+          syncSelectionAfterInteraction();
+        }
+      }
+
+      setEditorContextMenu(null);
+    },
+    [
+      editorContextMenu?.hasSelection,
+      getSelectedEditorText,
+      isLargeReadOnlyMode,
+      normalizedRectangularSelection,
+      replaceRectangularSelection,
+      triggerBase64DecodeErrorToast,
+      syncSelectionAfterInteraction,
     ]
   );
 
@@ -3872,6 +4054,14 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [isPairHighlightEnabled]);
 
   useEffect(() => {
+    return () => {
+      if (base64DecodeErrorToastTimerRef.current !== null) {
+        window.clearTimeout(base64DecodeErrorToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const handleSelectionChange = () => {
       if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
         clearVerticalSelectionState();
@@ -4433,6 +4623,67 @@ export function Editor({ tab }: { tab: FileTab }) {
               ))}
             </div>
           </div>
+          {editorContextMenu.hasSelection && (
+            <div
+              className="group/convert relative"
+              onMouseEnter={(event) => {
+                updateSubmenuVerticalAlignment('convert', event.currentTarget);
+              }}
+            >
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+              >
+                <span>{convertMenuLabel}</span>
+                <span className="text-[10px] text-muted-foreground">▶</span>
+              </button>
+              <div
+                ref={(element) => {
+                  submenuPanelRefs.current.convert = element;
+                }}
+                style={convertSubmenuStyle}
+                className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${convertSubmenuPositionClassName} group-hover/convert:pointer-events-auto group-hover/convert:visible group-hover/convert:opacity-100`}
+              >
+                <button
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    handleConvertSelectionFromContext('base64_encode');
+                  }}
+                >
+                  {convertBase64EncodeLabel}
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    handleConvertSelectionFromContext('base64_decode');
+                  }}
+                >
+                  {convertBase64DecodeLabel}
+                </button>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    handleConvertSelectionFromContext('copy_base64_encode');
+                  }}
+                >
+                  {copyBase64EncodeResultLabel}
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    handleConvertSelectionFromContext('copy_base64_decode');
+                  }}
+                >
+                  {copyBase64DecodeResultLabel}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="my-1 h-px bg-border" />
           <div
             className="group/bookmark relative"
@@ -4501,6 +4752,16 @@ export function Editor({ tab }: { tab: FileTab }) {
           </div>
         </div>
       )}
+
+      <div
+        className={`pointer-events-none fixed bottom-6 right-6 z-[100] rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-900 shadow-lg transition-all dark:text-red-200 ${
+          showBase64DecodeErrorToast ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+        }`}
+        role="status"
+        aria-live="polite"
+      >
+        {base64DecodeFailedToastLabel}
+      </div>
     </div>
   );
 }

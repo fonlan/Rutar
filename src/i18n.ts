@@ -105,6 +105,12 @@ export type I18nKey =
   | 'editor.context.selectAll'
   | 'editor.context.edit'
   | 'editor.context.sort'
+  | 'editor.context.convert'
+  | 'editor.context.convert.base64Encode'
+  | 'editor.context.convert.base64Decode'
+  | 'editor.context.convert.copyBase64EncodeResult'
+  | 'editor.context.convert.copyBase64DecodeResult'
+  | 'editor.context.convert.base64DecodeFailed'
   | 'editor.context.sort.ascending'
   | 'editor.context.sort.ascendingIgnoreCase'
   | 'editor.context.sort.descending'
@@ -228,6 +234,12 @@ const zhCN: Messages = {
   'editor.context.selectAll': '全选',
   'editor.context.edit': '编辑',
   'editor.context.sort': '排序',
+  'editor.context.convert': '转换',
+  'editor.context.convert.base64Encode': 'Base64 编码',
+  'editor.context.convert.base64Decode': 'Base64 解码',
+  'editor.context.convert.copyBase64EncodeResult': '复制 Base64 编码结果',
+  'editor.context.convert.copyBase64DecodeResult': '复制 Base64 解码结果',
+  'editor.context.convert.base64DecodeFailed': 'Base64 解码失败：所选内容不是有效的 Base64 文本',
   'editor.context.sort.ascending': '升序排列行',
   'editor.context.sort.ascendingIgnoreCase': '升序排列行（忽略大小写）',
   'editor.context.sort.descending': '降序排列行',
@@ -350,6 +362,12 @@ const enUS: Messages = {
   'editor.context.selectAll': 'Select All',
   'editor.context.edit': 'Edit',
   'editor.context.sort': 'Sort',
+  'editor.context.convert': 'Convert',
+  'editor.context.convert.base64Encode': 'Base64 Encode',
+  'editor.context.convert.base64Decode': 'Base64 Decode',
+  'editor.context.convert.copyBase64EncodeResult': 'Copy Base64 Encode Result',
+  'editor.context.convert.copyBase64DecodeResult': 'Copy Base64 Decode Result',
+  'editor.context.convert.base64DecodeFailed': 'Base64 decode failed: selected text is not valid Base64',
   'editor.context.sort.ascending': 'Sort Lines Ascending',
   'editor.context.sort.ascendingIgnoreCase': 'Sort Lines Ascending (Ignore Case)',
   'editor.context.sort.descending': 'Sort Lines Descending',
