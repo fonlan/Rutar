@@ -56,6 +56,8 @@ interface SettingsState {
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
+  recentFiles: string[];
+  recentFolders: string[];
   windowsContextMenuEnabled: boolean;
   windowsFileAssociationEnabled: boolean;
   windowsFileAssociationExtensions: string[];
@@ -118,6 +120,8 @@ export const useStore = create<AppState>((set) => ({
     doubleClickCloseTab: true,
     highlightCurrentLine: true,
     singleInstanceMode: true,
+    recentFiles: [],
+    recentFolders: [],
     windowsContextMenuEnabled: false,
     windowsFileAssociationEnabled: false,
     windowsFileAssociationExtensions: [],

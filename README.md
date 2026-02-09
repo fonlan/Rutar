@@ -11,11 +11,12 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Optimized for Windows**: Custom icons and window controls tailored for a native Windows experience.
 - **Multi-language UI**: Supports Simplified Chinese / English and can switch in Settings.
 - **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
+- **Recent Quick Access**: The toolbar `Open File` and `Open Folder` actions include dropdown arrows for opening recently used files and folders.
 
 ## Configuration
 
 - User configuration is saved to `%AppData%\Rutar\config.json`.
-- Current fields include `language`, `fontFamily`, `fontSize`, and `wordWrap`.
+- Current fields include `language`, `fontFamily`, `fontSize`, `wordWrap`, `recentFiles`, and `recentFolders`.
 
 ### Windows 11 Context Menu Integration
 

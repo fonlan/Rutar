@@ -1,16 +1,18 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { openFilePath } from '@/lib/openFile';
+import { addRecentFolderPath } from '@/lib/recentPaths';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
 import { isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
+import { cn } from '@/lib/utils';
 
 function dispatchEditorForceRefresh(
     tabId: string,
@@ -48,6 +50,24 @@ function getActiveEditorElement() {
     return document.querySelector('.editor-input-layer') as HTMLDivElement | null;
 }
 
+type RecentMenuKind = 'file' | 'folder' | null;
+
+function sortFolderEntries(entries: any[]) {
+    entries.sort((left, right) => {
+        if (left.is_dir === right.is_dir) {
+            return left.name.localeCompare(right.name);
+        }
+
+        return left.is_dir ? -1 : 1;
+    });
+}
+
+function pathBaseName(path: string) {
+    const normalizedPath = path.trim().replace(/[\\/]+$/, '');
+    const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+    return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
+}
+
 export function Toolbar() {
     const addTab = useStore((state) => state.addTab);
     const tabs = useStore((state) => state.tabs);
@@ -64,15 +84,33 @@ export function Toolbar() {
     const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
     const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
     const setContentTreeData = useStore((state) => state.setContentTreeData);
+    const recentFiles = useStore((state) => state.settings.recentFiles);
+    const recentFolders = useStore((state) => state.settings.recentFolders);
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
+    const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
+    const openFileMenuRef = useRef<HTMLDivElement>(null);
+    const openFolderMenuRef = useRef<HTMLDivElement>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
     const filterTitle = tr('toolbar.filter');
     const formatBeautifyTitle = tr('toolbar.format.beautify');
     const formatMinifyTitle = tr('toolbar.format.minify');
     const formatUnsupportedMessage = tr('toolbar.format.unsupported');
     const formatFailedPrefix = tr('toolbar.format.failed');
+    const noRecentFilesText = language === 'zh-CN' ? '暂无最近文件' : 'No recent files';
+    const noRecentFoldersText = language === 'zh-CN' ? '暂无最近文件夹' : 'No recent folders';
+    const clearRecentFilesText = language === 'zh-CN' ? '清空最近文件' : 'Clear recent files';
+    const clearRecentFoldersText = language === 'zh-CN' ? '清空最近文件夹' : 'Clear recent folders';
+
+    const recentFileItems = useMemo(
+        () => recentFiles.map((path) => ({ path, name: pathBaseName(path) })),
+        [recentFiles]
+    );
+    const recentFolderItems = useMemo(
+        () => recentFolders.map((path) => ({ path, name: pathBaseName(path) })),
+        [recentFolders]
+    );
 
     const runStructuredFormat = useCallback(async (mode: 'beautify' | 'minify') => {
         if (!activeTab) {
@@ -156,17 +194,41 @@ export function Toolbar() {
 
             if (selected && typeof selected === 'string') {
                  const entries = await invoke<any[]>('read_dir', { path: selected });
-                 // Sort entries
-                 entries.sort((a, b) => {
-                    if (a.is_dir === b.is_dir) return a.name.localeCompare(b.name);
-                    return a.is_dir ? -1 : 1;
-                 });
+                 sortFolderEntries(entries);
                  setFolder(selected, entries);
+                 addRecentFolderPath(selected);
             }
         } catch (e) {
             console.error('Failed to open folder:', e);
         }
     }, [setFolder]);
+
+    const handleOpenRecentFile = useCallback(async (path: string) => {
+        try {
+            await openFilePath(path);
+        } catch (error) {
+            console.error('Failed to open recent file:', error);
+        } finally {
+            setRecentMenu(null);
+        }
+    }, []);
+
+    const handleOpenRecentFolder = useCallback(async (path: string) => {
+        try {
+            const entries = await invoke<any[]>('read_dir', { path });
+            sortFolderEntries(entries);
+            setFolder(path, entries);
+            addRecentFolderPath(path);
+        } catch (error) {
+            console.error('Failed to open recent folder:', error);
+        } finally {
+            setRecentMenu(null);
+        }
+    }, [setFolder]);
+
+    const handleToggleRecentMenu = useCallback((kind: Exclude<RecentMenuKind, null>) => {
+        setRecentMenu((current) => (current === kind ? null : kind));
+    }, []);
 
     const handleSave = useCallback(async () => {
         if (!activeTab) return;
@@ -361,6 +423,11 @@ export function Toolbar() {
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && recentMenu) {
+                setRecentMenu(null);
+                return;
+            }
+
             const withPrimaryModifier = event.ctrlKey || event.metaKey;
             if (!withPrimaryModifier) return;
 
@@ -451,7 +518,38 @@ export function Toolbar() {
         handleSave,
         handleSaveAll,
         handleUndo,
+        recentMenu,
     ]);
+
+    useEffect(() => {
+        if (!recentMenu) {
+            return;
+        }
+
+        const handlePointerDown = (event: Event) => {
+            const targetNode = event.target as Node | null;
+            const root = recentMenu === 'file' ? openFileMenuRef.current : openFolderMenuRef.current;
+
+            if (!root) {
+                return;
+            }
+
+            if (!targetNode || !root.contains(targetNode)) {
+                setRecentMenu(null);
+            }
+        };
+
+        const handleTitleBarPointerDown = () => {
+            setRecentMenu(null);
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown, true);
+        window.addEventListener('rutar:titlebar-pointerdown', handleTitleBarPointerDown);
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown, true);
+            window.removeEventListener('rutar:titlebar-pointerdown', handleTitleBarPointerDown);
+        };
+    }, [recentMenu]);
 
     return (
         <div
@@ -460,8 +558,46 @@ export function Toolbar() {
         >
             {/* File Group */}
             <ToolbarBtn icon={FilePlus} title={tr('toolbar.newFile')} onClick={handleNewFile} />
-            <ToolbarBtn icon={FolderOpen} title={tr('toolbar.openFile')} onClick={handleOpenFile} />
-            <ToolbarBtn icon={FileUp} title={tr('toolbar.openFolder')} onClick={handleOpenFolder} />
+            <ToolbarSplitMenu
+                rootRef={openFileMenuRef}
+                icon={FolderOpen}
+                title={tr('toolbar.openFile')}
+                menuTitle={tr('toolbar.openFile')}
+                menuOpen={recentMenu === 'file'}
+                onPrimaryClick={() => {
+                    setRecentMenu(null);
+                    void handleOpenFile();
+                }}
+                onMenuToggle={() => handleToggleRecentMenu('file')}
+                emptyText={noRecentFilesText}
+                clearText={clearRecentFilesText}
+                items={recentFileItems}
+                onItemClick={handleOpenRecentFile}
+                onClear={() => {
+                    updateSettings({ recentFiles: [] });
+                    setRecentMenu(null);
+                }}
+            />
+            <ToolbarSplitMenu
+                rootRef={openFolderMenuRef}
+                icon={FileUp}
+                title={tr('toolbar.openFolder')}
+                menuTitle={tr('toolbar.openFolder')}
+                menuOpen={recentMenu === 'folder'}
+                onPrimaryClick={() => {
+                    setRecentMenu(null);
+                    void handleOpenFolder();
+                }}
+                onMenuToggle={() => handleToggleRecentMenu('folder')}
+                emptyText={noRecentFoldersText}
+                clearText={clearRecentFoldersText}
+                items={recentFolderItems}
+                onItemClick={handleOpenRecentFolder}
+                onClear={() => {
+                    updateSettings({ recentFolders: [] });
+                    setRecentMenu(null);
+                }}
+            />
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn icon={Save} title={tr('toolbar.save')} onClick={handleSave} disabled={!activeTab} />
             <ToolbarBtn icon={SaveAll} title={tr('toolbar.saveAll')} onClick={handleSaveAll} disabled={tabs.length === 0} />
@@ -539,4 +675,144 @@ function ToolbarBtn({ icon: Icon, title, onClick, disabled, active }: { icon: an
             <Icon className="w-4 h-4" />
         </button>
     )
+}
+
+function ToolbarSplitMenu({
+    rootRef,
+    icon: Icon,
+    title,
+    menuTitle,
+    menuOpen,
+    onPrimaryClick,
+    onMenuToggle,
+    emptyText,
+    clearText,
+    items,
+    onItemClick,
+    onClear,
+}: {
+    rootRef: RefObject<HTMLDivElement | null>;
+    icon: any;
+    title: string;
+    menuTitle: string;
+    menuOpen: boolean;
+    onPrimaryClick: () => void;
+    onMenuToggle: () => void;
+    emptyText: string;
+    clearText: string;
+    items: Array<{ path: string; name: string }>;
+    onItemClick: (path: string) => void;
+    onClear: () => void;
+}) {
+    const [menuStyle, setMenuStyle] = useState<CSSProperties>({
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        minWidth: 288,
+        visibility: 'hidden',
+    });
+
+    useLayoutEffect(() => {
+        if (!menuOpen) {
+            setMenuStyle((currentStyle) => {
+                if (currentStyle.visibility === 'hidden') {
+                    return currentStyle;
+                }
+
+                return {
+                    ...currentStyle,
+                    visibility: 'hidden',
+                };
+            });
+            return;
+        }
+
+        const updateMenuPosition = () => {
+            const rootElement = rootRef.current;
+            if (!rootElement) {
+                return;
+            }
+
+            const rect = rootElement.getBoundingClientRect();
+            setMenuStyle({
+                position: 'fixed',
+                left: rect.left,
+                top: rect.bottom + 4,
+                minWidth: Math.max(288, rect.width),
+                visibility: 'visible',
+            });
+        };
+
+        updateMenuPosition();
+        window.addEventListener('resize', updateMenuPosition);
+        window.addEventListener('scroll', updateMenuPosition, true);
+
+        return () => {
+            window.removeEventListener('resize', updateMenuPosition);
+            window.removeEventListener('scroll', updateMenuPosition, true);
+        };
+    }, [menuOpen, rootRef]);
+
+    return (
+        <div ref={rootRef} className="relative flex items-center flex-shrink-0">
+            <button
+                type="button"
+                className="py-2 pl-2 pr-1.5 rounded-l-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                title={title}
+                onMouseDown={(event) => {
+                    event.preventDefault();
+                }}
+                onClick={onPrimaryClick}
+            >
+                <Icon className="w-4 h-4" />
+            </button>
+            <button
+                type="button"
+                className={cn(
+                    'py-2 pl-0.5 pr-1 -ml-0.5 rounded-r-md hover:bg-accent hover:text-accent-foreground transition-colors',
+                    menuOpen && 'bg-accent text-accent-foreground'
+                )}
+                title={menuTitle}
+                onMouseDown={(event) => {
+                    event.preventDefault();
+                }}
+                onClick={onMenuToggle}
+            >
+                <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {menuOpen && (
+                <div style={menuStyle} className="z-50 rounded-md border border-border bg-popover p-1 shadow-lg">
+                    {items.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">{emptyText}</div>
+                    ) : (
+                        <>
+                            {items.map((item) => (
+                                <button
+                                    key={item.path}
+                                    type="button"
+                                    className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                                    onClick={() => {
+                                        void onItemClick(item.path);
+                                    }}
+                                    title={item.path}
+                                >
+                                    <span className="max-w-40 truncate text-foreground">{item.name}</span>
+                                    <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
+                                </button>
+                            ))}
+                            <div className="my-1 h-px bg-border" />
+                            <button
+                                type="button"
+                                className="w-full rounded-sm px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                onClick={onClear}
+                            >
+                                {clearText}
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }

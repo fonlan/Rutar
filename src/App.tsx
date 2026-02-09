@@ -17,6 +17,7 @@ import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose'
 import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
+import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
 let hasInitializedStartupTab = false;
 
@@ -56,6 +57,8 @@ interface AppConfig {
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
+  recentFiles?: string[];
+  recentFolders?: string[];
   windowsFileAssociationExtensions: string[];
 }
 
@@ -92,6 +95,7 @@ function App() {
         const entries = await invoke<any[]>('read_dir', { path: incomingPath });
         sortFolderEntries(entries);
         setFolder(incomingPath, entries);
+        addRecentFolderPath(incomingPath);
         continue;
       } catch {
       }
@@ -391,6 +395,8 @@ function App() {
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
           singleInstanceMode: config.singleInstanceMode !== false,
+          recentFiles: sanitizeRecentPathList(config.recentFiles),
+          recentFolders: sanitizeRecentPathList(config.recentFolders),
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
             : [],
@@ -433,6 +439,8 @@ function App() {
           doubleClickCloseTab: settings.doubleClickCloseTab,
           highlightCurrentLine: settings.highlightCurrentLine,
           singleInstanceMode: settings.singleInstanceMode,
+          recentFiles: settings.recentFiles,
+          recentFolders: settings.recentFolders,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
         },
       }).catch((error) => {
@@ -454,6 +462,8 @@ function App() {
     settings.doubleClickCloseTab,
     settings.highlightCurrentLine,
     settings.singleInstanceMode,
+    settings.recentFiles,
+    settings.recentFolders,
     settings.windowsFileAssociationExtensions,
   ]);
   

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isReusableBlankTab } from '@/lib/tabUtils';
+import { addRecentFilePath } from '@/lib/recentPaths';
 import { FileTab, useStore } from '@/store/useStore';
 
 const openingPaths = new Set<string>();
@@ -30,6 +31,7 @@ export async function openFilePath(path: string) {
   const existing = state.tabs.find((tab) => tab.path === path);
   if (existing) {
     state.setActiveTab(existing.id);
+    addRecentFilePath(path);
     return;
   }
 
@@ -41,10 +43,12 @@ export async function openFilePath(path: string) {
     patchTabWithFileInfo(activeTab.id, fileInfo);
     latestState.setActiveTab(fileInfo.id);
     await invoke('close_file', { id: activeTab.id });
+    addRecentFilePath(path);
     return;
   }
 
   latestState.addTab(fileInfo);
+  addRecentFilePath(path);
   } finally {
     openingPaths.delete(path);
   }

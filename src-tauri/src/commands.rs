@@ -36,6 +36,7 @@ const DEFAULT_TAB_WIDTH: u8 = 4;
 const DEFAULT_DOUBLE_CLICK_CLOSE_TAB: bool = true;
 const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 const DEFAULT_SINGLE_INSTANCE_MODE: bool = true;
+const MAX_RECENT_PATHS: usize = 12;
 const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
 const FILTER_MAX_RANGES_PER_LINE: usize = 256;
 const DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS: &[&str] = &[
@@ -54,6 +55,10 @@ fn default_single_instance_mode() -> bool {
     DEFAULT_SINGLE_INSTANCE_MODE
 }
 
+fn default_recent_paths() -> Vec<String> {
+    Vec::new()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -67,6 +72,10 @@ pub struct AppConfig {
     highlight_current_line: bool,
     #[serde(default = "default_single_instance_mode")]
     single_instance_mode: bool,
+    #[serde(default = "default_recent_paths")]
+    recent_files: Vec<String>,
+    #[serde(default = "default_recent_paths")]
+    recent_folders: Vec<String>,
     #[serde(default = "default_windows_file_association_extensions")]
     windows_file_association_extensions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -85,6 +94,8 @@ struct PartialAppConfig {
     double_click_close_tab: Option<bool>,
     highlight_current_line: Option<bool>,
     single_instance_mode: Option<bool>,
+    recent_files: Option<Vec<String>>,
+    recent_folders: Option<Vec<String>>,
     windows_file_association_extensions: Option<Vec<String>>,
     filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -101,6 +112,8 @@ impl Default for AppConfig {
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
             single_instance_mode: DEFAULT_SINGLE_INSTANCE_MODE,
+            recent_files: default_recent_paths(),
+            recent_folders: default_recent_paths(),
             windows_file_association_extensions: default_windows_file_association_extensions(),
             filter_rule_groups: None,
         }
@@ -1096,6 +1109,29 @@ fn normalize_windows_file_association_extensions(extensions: Option<Vec<String>>
     unique_extensions.into_iter().collect()
 }
 
+fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
+    let mut normalized_paths: Vec<String> = Vec::new();
+
+    for path in paths.unwrap_or_default() {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if normalized_paths.iter().any(|item| item == trimmed) {
+            continue;
+        }
+
+        normalized_paths.push(trimmed.to_string());
+
+        if normalized_paths.len() >= MAX_RECENT_PATHS {
+            break;
+        }
+    }
+
+    normalized_paths
+}
+
 fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: normalize_language(Some(config.language.as_str())),
@@ -1111,6 +1147,8 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         double_click_close_tab: config.double_click_close_tab,
         highlight_current_line: config.highlight_current_line,
         single_instance_mode: config.single_instance_mode,
+        recent_files: normalize_recent_paths(Some(config.recent_files)),
+        recent_folders: normalize_recent_paths(Some(config.recent_folders)),
         windows_file_association_extensions: normalize_windows_file_association_extensions(
             Some(config.windows_file_association_extensions),
         ),
@@ -1684,6 +1722,14 @@ pub fn load_config() -> Result<AppConfig, String> {
 
     if let Some(single_instance_mode) = partial.single_instance_mode {
         config.single_instance_mode = single_instance_mode;
+    }
+
+    if let Some(recent_files) = partial.recent_files {
+        config.recent_files = normalize_recent_paths(Some(recent_files));
+    }
+
+    if let Some(recent_folders) = partial.recent_folders {
+        config.recent_folders = normalize_recent_paths(Some(recent_folders));
     }
 
     if let Some(extensions) = partial.windows_file_association_extensions {

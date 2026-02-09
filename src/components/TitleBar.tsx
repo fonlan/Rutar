@@ -1,13 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type WheelEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type WheelEvent } from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 
 const appWindow = getCurrentWindow();
+const noDragStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties;
 
 interface TabContextMenuState {
     tabId: string;
@@ -381,6 +382,19 @@ export function TitleBar() {
         }
     }, [tabContextMenu, tabs]);
 
+    useEffect(() => {
+        if (!tabPathTooltip) {
+            return;
+        }
+
+        const tooltipPath = tabPathTooltip.text.trim();
+        const hasMatchingTab = tabs.some((tab) => tab.path.trim() === tooltipPath);
+
+        if (!hasMatchingTab) {
+            setTabPathTooltip(null);
+        }
+    }, [tabPathTooltip, tabs]);
+
     useLayoutEffect(() => {
         if (!tabPathTooltip || !tabPathTooltipRef.current) {
             return;
@@ -456,6 +470,9 @@ export function TitleBar() {
             className="flex h-9 w-full select-none items-stretch bg-background relative"
             data-tauri-drag-region
             data-layout-region="titlebar"
+            onPointerDown={() => {
+                window.dispatchEvent(new Event('rutar:titlebar-pointerdown'));
+            }}
         >
             {/* Tabs Container */}
             <div
@@ -476,12 +493,20 @@ export function TitleBar() {
                             "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer mr-1 relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
                             activeTabId === tab.id ? "bg-background border-border z-20" : "border-transparent hover:bg-muted/80"
                         )}
+                        style={noDragStyle}
                     >
                         {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
                         <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
                         <button
                             type="button"
+                            style={noDragStyle}
+                            draggable={false}
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
                             onMouseDown={(e) => {
+                                e.preventDefault();
                                 e.stopPropagation();
                             }}
                             onDoubleClick={(e) => {
