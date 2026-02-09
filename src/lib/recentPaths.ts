@@ -20,6 +20,20 @@ export function appendRecentPath(paths: string[], path: string): string[] {
   return nextPaths;
 }
 
+export function removeRecentPath(paths: string[], path: string): string[] {
+  const normalizedPath = path.trim();
+  if (!normalizedPath) {
+    return paths;
+  }
+
+  const nextPaths = paths.filter((item) => item !== normalizedPath);
+  if (nextPaths.length === paths.length) {
+    return paths;
+  }
+
+  return nextPaths;
+}
+
 export function sanitizeRecentPathList(paths: unknown): string[] {
   if (!Array.isArray(paths)) {
     return [];
@@ -56,6 +70,24 @@ export function addRecentFilePath(path: string) {
 export function addRecentFolderPath(path: string) {
   const state = useStore.getState();
   const nextPaths = appendRecentPath(state.settings.recentFolders, path);
+
+  if (nextPaths !== state.settings.recentFolders) {
+    state.updateSettings({ recentFolders: nextPaths });
+  }
+}
+
+export function removeRecentFilePath(path: string) {
+  const state = useStore.getState();
+  const nextPaths = removeRecentPath(state.settings.recentFiles, path);
+
+  if (nextPaths !== state.settings.recentFiles) {
+    state.updateSettings({ recentFiles: nextPaths });
+  }
+}
+
+export function removeRecentFolderPath(path: string) {
+  const state = useStore.getState();
+  const nextPaths = removeRecentPath(state.settings.recentFolders, path);
 
   if (nextPaths !== state.settings.recentFolders) {
     state.updateSettings({ recentFolders: nextPaths });

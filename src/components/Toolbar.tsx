@@ -1,12 +1,12 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { openFilePath } from '@/lib/openFile';
-import { addRecentFolderPath } from '@/lib/recentPaths';
+import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from '@/lib/recentPaths';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
@@ -102,6 +102,7 @@ export function Toolbar() {
     const noRecentFoldersText = language === 'zh-CN' ? '暂无最近文件夹' : 'No recent folders';
     const clearRecentFilesText = language === 'zh-CN' ? '清空最近文件' : 'Clear recent files';
     const clearRecentFoldersText = language === 'zh-CN' ? '清空最近文件夹' : 'Clear recent folders';
+    const removeRecentItemText = tr('bookmark.remove');
 
     const recentFileItems = useMemo(
         () => recentFiles.map((path) => ({ path, name: pathBaseName(path) })),
@@ -228,6 +229,14 @@ export function Toolbar() {
 
     const handleToggleRecentMenu = useCallback((kind: Exclude<RecentMenuKind, null>) => {
         setRecentMenu((current) => (current === kind ? null : kind));
+    }, []);
+
+    const handleRemoveRecentFile = useCallback((path: string) => {
+        removeRecentFilePath(path);
+    }, []);
+
+    const handleRemoveRecentFolder = useCallback((path: string) => {
+        removeRecentFolderPath(path);
     }, []);
 
     const handleSave = useCallback(async () => {
@@ -571,8 +580,10 @@ export function Toolbar() {
                 onMenuToggle={() => handleToggleRecentMenu('file')}
                 emptyText={noRecentFilesText}
                 clearText={clearRecentFilesText}
+                removeItemText={removeRecentItemText}
                 items={recentFileItems}
                 onItemClick={handleOpenRecentFile}
+                onItemRemove={handleRemoveRecentFile}
                 onClear={() => {
                     updateSettings({ recentFiles: [] });
                     setRecentMenu(null);
@@ -591,8 +602,10 @@ export function Toolbar() {
                 onMenuToggle={() => handleToggleRecentMenu('folder')}
                 emptyText={noRecentFoldersText}
                 clearText={clearRecentFoldersText}
+                removeItemText={removeRecentItemText}
                 items={recentFolderItems}
                 onItemClick={handleOpenRecentFolder}
+                onItemRemove={handleRemoveRecentFolder}
                 onClear={() => {
                     updateSettings({ recentFolders: [] });
                     setRecentMenu(null);
@@ -687,8 +700,10 @@ function ToolbarSplitMenu({
     onMenuToggle,
     emptyText,
     clearText,
+    removeItemText,
     items,
     onItemClick,
+    onItemRemove,
     onClear,
 }: {
     rootRef: RefObject<HTMLDivElement | null>;
@@ -700,8 +715,10 @@ function ToolbarSplitMenu({
     onMenuToggle: () => void;
     emptyText: string;
     clearText: string;
+    removeItemText: string;
     items: Array<{ path: string; name: string }>;
     onItemClick: (path: string) => void;
+    onItemRemove: (path: string) => void;
     onClear: () => void;
 }) {
     const [menuStyle, setMenuStyle] = useState<CSSProperties>({
@@ -788,18 +805,33 @@ function ToolbarSplitMenu({
                     ) : (
                         <>
                             {items.map((item) => (
-                                <button
+                                <div
                                     key={item.path}
-                                    type="button"
-                                    className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
-                                    onClick={() => {
-                                        void onItemClick(item.path);
-                                    }}
+                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                                     title={item.path}
                                 >
-                                    <span className="max-w-40 truncate text-foreground">{item.name}</span>
-                                    <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
-                                </button>
+                                    <button
+                                        type="button"
+                                        className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                                        onClick={() => {
+                                            void onItemClick(item.path);
+                                        }}
+                                    >
+                                        <span className="max-w-40 truncate text-foreground">{item.name}</span>
+                                        <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                                        title={removeItemText}
+                                        aria-label={removeItemText}
+                                        onClick={() => {
+                                            onItemRemove(item.path);
+                                        }}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </div>
                             ))}
                             <div className="my-1 h-px bg-border" />
                             <button
