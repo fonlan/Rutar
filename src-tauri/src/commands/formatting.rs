@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use serde::Serialize;
+use tree_sitter::{Language, Parser};
 
 #[derive(Clone, Copy)]
 enum StructuredFormat {
@@ -15,6 +16,80 @@ enum StructuredFormat {
 enum FormatMode {
     Beautify,
     Minify,
+}
+
+fn comment_detection_language(file_format: StructuredFormat) -> Option<Language> {
+    match file_format {
+        StructuredFormat::Yaml => Some(tree_sitter_yaml::LANGUAGE.into()),
+        StructuredFormat::Toml => Some(tree_sitter_toml_ng::LANGUAGE.into()),
+        _ => None,
+    }
+}
+
+fn has_comment_nodes(source: &str, language: Language) -> bool {
+    let mut parser = Parser::new();
+    if parser.set_language(&language).is_err() {
+        return false;
+    }
+
+    let Some(tree) = parser.parse(source, None) else {
+        return false;
+    };
+
+    let mut stack = vec![tree.root_node()];
+    while let Some(node) = stack.pop() {
+        if node.kind().contains("comment") {
+            return true;
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    false
+}
+
+fn format_preserving_comments(source: &str, mode: FormatMode, tab_width: usize) -> String {
+    let cleaned = trim_trailing_whitespace(source);
+
+    match mode {
+        FormatMode::Beautify => reindent_text(&cleaned, tab_width),
+        FormatMode::Minify => cleaned,
+    }
+}
+
+fn trim_trailing_whitespace(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+
+    for segment in source.split_inclusive('\n') {
+        let has_newline = segment.ends_with('\n');
+        let line = if has_newline {
+            &segment[..segment.len().saturating_sub(1)]
+        } else {
+            segment
+        };
+
+        result.push_str(line.trim_end_matches([' ', '\t', '\r']));
+        if has_newline {
+            result.push('\n');
+        }
+    }
+
+    result
+}
+
+fn should_preserve_comments(source: &str, file_format: StructuredFormat) -> bool {
+    let Some(language) = comment_detection_language(file_format) else {
+        return false;
+    };
+
+    if has_comment_nodes(source, language) {
+        return true;
+    }
+
+    false
 }
 
 fn normalize_tab_width(tab_width: u8) -> u8 {
@@ -263,14 +338,27 @@ fn format_structured_text(
     file_format: StructuredFormat,
     mode: FormatMode,
     tab_width: u8,
+    preserve_comments: bool,
 ) -> Result<String, String> {
     let indent_width = normalize_tab_width(tab_width) as usize;
 
     match file_format {
         StructuredFormat::Json => format_json(source, mode, indent_width),
-        StructuredFormat::Yaml => format_yaml(source, mode, indent_width),
+        StructuredFormat::Yaml => {
+            if preserve_comments {
+                Ok(format_preserving_comments(source, mode, indent_width))
+            } else {
+                format_yaml(source, mode, indent_width)
+            }
+        }
         StructuredFormat::Xml => format_xml(source, mode, indent_width),
-        StructuredFormat::Toml => format_toml(source, mode, indent_width),
+        StructuredFormat::Toml => {
+            if preserve_comments {
+                Ok(format_preserving_comments(source, mode, indent_width))
+            } else {
+                format_toml(source, mode, indent_width)
+            }
+        }
     }
 }
 
@@ -286,6 +374,38 @@ pub(super) fn format_document_text(
         parse_format_mode(mode).ok_or_else(|| "Unsupported format mode. Use beautify or minify".to_string())?;
     let file_format = resolve_structured_format(file_path, file_name, document_path)
         .ok_or_else(|| "Only JSON, YAML, XML, and TOML files are supported".to_string())?;
+    let preserve_comments = should_preserve_comments(source, file_format);
 
-    format_structured_text(source, file_format, format_mode, tab_width)
+    format_structured_text(source, file_format, format_mode, tab_width, preserve_comments)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_document_text;
+
+    #[test]
+    fn format_yaml_should_preserve_comments_and_succeed() {
+        let source = "name: app\n# keep this comment\nenabled: true\n";
+        let result = format_document_text(source, "beautify", None, Some("config.yaml"), &None, 2);
+
+        let formatted = result.expect("expected formatting to succeed");
+        assert!(formatted.contains("# keep this comment"));
+    }
+
+    #[test]
+    fn format_toml_should_preserve_comments_and_succeed() {
+        let source = "title = \"Rutar\"\n# keep this comment\nversion = \"1.0.0\"\n";
+        let result = format_document_text(source, "beautify", None, Some("Cargo.toml"), &None, 2);
+
+        let formatted = result.expect("expected formatting to succeed");
+        assert!(formatted.contains("# keep this comment"));
+    }
+
+    #[test]
+    fn format_yaml_should_keep_working_without_comments() {
+        let source = "name: app\nfeatures:\n  - editor\n";
+        let result = format_document_text(source, "beautify", None, Some("config.yaml"), &None, 2);
+
+        assert!(result.is_ok());
+    }
 }
