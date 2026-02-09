@@ -56,8 +56,13 @@ pub fn get_default_windows_file_association_extensions() -> Vec<String> {
 pub fn apply_windows_file_associations(
     language: Option<String>,
     extensions: Vec<String>,
+    open_settings_page: Option<bool>,
 ) -> Result<Vec<String>, String> {
-    config::apply_windows_file_associations_impl(language, extensions)
+    config::apply_windows_file_associations_impl(
+        language,
+        extensions,
+        open_settings_page.unwrap_or(false),
+    )
 }
 
 #[tauri::command]

@@ -259,6 +259,7 @@ export function SettingsModal() {
         const appliedExtensions = await invoke<string[]>('apply_windows_file_associations', {
           language: settings.language,
           extensions: normalizedCandidateExtensions,
+          openSettingsPage: true,
         });
 
         updateSettings({

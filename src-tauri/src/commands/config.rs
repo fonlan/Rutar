@@ -525,6 +525,15 @@ pub(super) fn get_startup_paths_impl(state: State<'_, AppState>) -> Vec<String> 
     state.take_startup_paths()
 }
 
+#[cfg(windows)]
+fn open_windows_default_apps_settings_page() -> Result<(), String> {
+    Command::new("explorer")
+        .arg("ms-settings:defaultapps")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open Windows default apps settings page: {}", e))
+}
+
 pub(super) fn register_windows_context_menu_impl(language: Option<String>) -> Result<(), String> {
     #[cfg(not(windows))]
     {
@@ -602,11 +611,13 @@ pub(super) fn get_default_windows_file_association_extensions_impl() -> Vec<Stri
 pub(super) fn apply_windows_file_associations_impl(
     language: Option<String>,
     extensions: Vec<String>,
+    open_settings_page: bool,
 ) -> Result<Vec<String>, String> {
     #[cfg(not(windows))]
     {
         let _ = language;
         let _ = extensions;
+        let _ = open_settings_page;
         Err("Windows file association is only supported on Windows".to_string())
     }
 
@@ -624,6 +635,12 @@ pub(super) fn apply_windows_file_associations_impl(
         }
 
         notify_windows_association_changed();
+
+        if open_settings_page {
+            if let Err(error) = open_windows_default_apps_settings_page() {
+                eprintln!("{error}");
+            }
+        }
 
         Ok(normalized_extensions)
     }
