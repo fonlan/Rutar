@@ -3,6 +3,7 @@ use chardetng::EncodingDetector;
 use dashmap::DashMap;
 use encoding_rs::Encoding;
 use memmap2::Mmap;
+use pinyin::ToPinyin;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use regex::RegexBuilder;
@@ -4321,6 +4322,12 @@ enum DocumentCleanupAction {
     TrimLeadingWhitespace,
     TrimTrailingWhitespace,
     TrimSurroundingWhitespace,
+    SortLinesAscending,
+    SortLinesAscendingIgnoreCase,
+    SortLinesDescending,
+    SortLinesDescendingIgnoreCase,
+    SortLinesByPinyinAscending,
+    SortLinesByPinyinDescending,
 }
 
 impl DocumentCleanupAction {
@@ -4331,9 +4338,31 @@ impl DocumentCleanupAction {
             "trim_leading_whitespace" => Some(Self::TrimLeadingWhitespace),
             "trim_trailing_whitespace" => Some(Self::TrimTrailingWhitespace),
             "trim_surrounding_whitespace" => Some(Self::TrimSurroundingWhitespace),
+            "sort_lines_ascending" => Some(Self::SortLinesAscending),
+            "sort_lines_ascending_ignore_case" => Some(Self::SortLinesAscendingIgnoreCase),
+            "sort_lines_descending" => Some(Self::SortLinesDescending),
+            "sort_lines_descending_ignore_case" => Some(Self::SortLinesDescendingIgnoreCase),
+            "sort_lines_pinyin_ascending" => Some(Self::SortLinesByPinyinAscending),
+            "sort_lines_pinyin_descending" => Some(Self::SortLinesByPinyinDescending),
             _ => None,
         }
     }
+}
+
+fn build_pinyin_sort_key(line: &str) -> String {
+    let mut key = String::with_capacity(line.len() * 2);
+
+    for character in line.chars() {
+        if let Some(pinyin) = character.to_pinyin() {
+            key.push_str(pinyin.plain());
+        } else {
+            key.push(character);
+        }
+
+        key.push('\u{0001}');
+    }
+
+    key
 }
 
 fn cleanup_document_lines(source: &str, action: DocumentCleanupAction) -> String {
@@ -4371,6 +4400,32 @@ fn cleanup_document_lines(source: &str, action: DocumentCleanupAction) -> String
         DocumentCleanupAction::TrimSurroundingWhitespace => {
             lines.into_iter().map(|line| line.trim().to_string()).collect()
         }
+        DocumentCleanupAction::SortLinesAscending => {
+            lines.sort();
+            lines
+        }
+        DocumentCleanupAction::SortLinesAscendingIgnoreCase => {
+            lines.sort_by_cached_key(|line| line.to_lowercase());
+            lines
+        }
+        DocumentCleanupAction::SortLinesDescending => {
+            lines.sort_by(|left, right| right.cmp(left));
+            lines
+        }
+        DocumentCleanupAction::SortLinesDescendingIgnoreCase => {
+            lines.sort_by_cached_key(|line| line.to_lowercase());
+            lines.reverse();
+            lines
+        }
+        DocumentCleanupAction::SortLinesByPinyinAscending => {
+            lines.sort_by_cached_key(|line| (build_pinyin_sort_key(line), line.clone()));
+            lines
+        }
+        DocumentCleanupAction::SortLinesByPinyinDescending => {
+            lines.sort_by_cached_key(|line| (build_pinyin_sort_key(line), line.clone()));
+            lines.reverse();
+            lines
+        }
     };
 
     let mut cleaned = cleaned_lines.join("\n");
@@ -4388,7 +4443,7 @@ pub fn cleanup_document(
     action: String,
 ) -> Result<usize, String> {
     let cleanup_action = DocumentCleanupAction::from_value(action.as_str()).ok_or_else(|| {
-        "Unsupported cleanup action. Use remove_empty_lines, remove_duplicate_lines, trim_leading_whitespace, trim_trailing_whitespace, or trim_surrounding_whitespace".to_string()
+        "Unsupported cleanup action. Use remove_empty_lines, remove_duplicate_lines, trim_leading_whitespace, trim_trailing_whitespace, trim_surrounding_whitespace, sort_lines_ascending, sort_lines_ascending_ignore_case, sort_lines_descending, sort_lines_descending_ignore_case, sort_lines_pinyin_ascending, or sort_lines_pinyin_descending".to_string()
     })?;
 
     if let Some(mut doc) = state.documents.get_mut(&id) {
@@ -4457,6 +4512,56 @@ mod tests {
         let result = cleanup_document_lines(source, DocumentCleanupAction::TrimSurroundingWhitespace);
 
         assert_eq!(result, "a\nb\n");
+    }
+
+    #[test]
+    fn sort_lines_ascending_should_sort_lines_lexicographically() {
+        let source = "beta\nAlpha\nalpha\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesAscending);
+
+        assert_eq!(result, "Alpha\nalpha\nbeta\n");
+    }
+
+    #[test]
+    fn sort_lines_ascending_ignore_case_should_sort_without_case_distinction() {
+        let source = "beta\nAlpha\nalpha\n";
+        let result =
+            cleanup_document_lines(source, DocumentCleanupAction::SortLinesAscendingIgnoreCase);
+
+        assert_eq!(result, "Alpha\nalpha\nbeta\n");
+    }
+
+    #[test]
+    fn sort_lines_descending_should_sort_lines_reverse_lexicographically() {
+        let source = "beta\nAlpha\nalpha\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesDescending);
+
+        assert_eq!(result, "beta\nalpha\nAlpha\n");
+    }
+
+    #[test]
+    fn sort_lines_descending_ignore_case_should_sort_reverse_without_case_distinction() {
+        let source = "beta\nAlpha\nalpha\n";
+        let result =
+            cleanup_document_lines(source, DocumentCleanupAction::SortLinesDescendingIgnoreCase);
+
+        assert_eq!(result, "beta\nalpha\nAlpha\n");
+    }
+
+    #[test]
+    fn sort_lines_by_pinyin_ascending_should_sort_chinese_lines_by_pinyin() {
+        let source = "赵\n李\n王\n张\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinAscending);
+
+        assert_eq!(result, "李\n王\n张\n赵\n");
+    }
+
+    #[test]
+    fn sort_lines_by_pinyin_descending_should_sort_chinese_lines_by_pinyin_reverse() {
+        let source = "赵\n李\n王\n张\n";
+        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinDescending);
+
+        assert_eq!(result, "赵\n张\n王\n李\n");
     }
 }
 

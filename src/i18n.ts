@@ -104,6 +104,13 @@ export type I18nKey =
   | 'editor.context.delete'
   | 'editor.context.selectAll'
   | 'editor.context.edit'
+  | 'editor.context.sort'
+  | 'editor.context.sort.ascending'
+  | 'editor.context.sort.ascendingIgnoreCase'
+  | 'editor.context.sort.descending'
+  | 'editor.context.sort.descendingIgnoreCase'
+  | 'editor.context.sort.pinyinAscending'
+  | 'editor.context.sort.pinyinDescending'
   | 'editor.context.cleanup.removeEmptyLines'
   | 'editor.context.cleanup.removeDuplicateLines'
   | 'editor.context.cleanup.trimLeadingWhitespace'
@@ -220,6 +227,13 @@ const zhCN: Messages = {
   'editor.context.delete': '删除',
   'editor.context.selectAll': '全选',
   'editor.context.edit': '编辑',
+  'editor.context.sort': '排序',
+  'editor.context.sort.ascending': '升序排列行',
+  'editor.context.sort.ascendingIgnoreCase': '升序排列行（忽略大小写）',
+  'editor.context.sort.descending': '降序排列行',
+  'editor.context.sort.descendingIgnoreCase': '降序排列行（忽略大小写）',
+  'editor.context.sort.pinyinAscending': '按拼音升序排列行',
+  'editor.context.sort.pinyinDescending': '按拼音降序排列行',
   'editor.context.cleanup.removeEmptyLines': '移除空行',
   'editor.context.cleanup.removeDuplicateLines': '移除重复行',
   'editor.context.cleanup.trimLeadingWhitespace': '移除行首空格',
@@ -335,6 +349,13 @@ const enUS: Messages = {
   'editor.context.delete': 'Delete',
   'editor.context.selectAll': 'Select All',
   'editor.context.edit': 'Edit',
+  'editor.context.sort': 'Sort',
+  'editor.context.sort.ascending': 'Sort Lines Ascending',
+  'editor.context.sort.ascendingIgnoreCase': 'Sort Lines Ascending (Ignore Case)',
+  'editor.context.sort.descending': 'Sort Lines Descending',
+  'editor.context.sort.descendingIgnoreCase': 'Sort Lines Descending (Ignore Case)',
+  'editor.context.sort.pinyinAscending': 'Sort Lines by Pinyin Ascending',
+  'editor.context.sort.pinyinDescending': 'Sort Lines by Pinyin Descending',
   'editor.context.cleanup.removeEmptyLines': 'Remove Empty Lines',
   'editor.context.cleanup.removeDuplicateLines': 'Remove Duplicate Lines',
   'editor.context.cleanup.trimLeadingWhitespace': 'Trim Leading Whitespace',

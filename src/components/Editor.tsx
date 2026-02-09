@@ -43,7 +43,23 @@ interface EditorContextMenuState {
   y: number;
   hasSelection: boolean;
   lineNumber: number;
+  submenuDirection: 'left' | 'right';
 }
+
+type EditorSubmenuKey = 'edit' | 'sort' | 'bookmark';
+type EditorSubmenuVerticalAlign = 'top' | 'bottom';
+
+const DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS: Record<EditorSubmenuKey, EditorSubmenuVerticalAlign> = {
+  edit: 'top',
+  sort: 'top',
+  bookmark: 'top',
+};
+
+const DEFAULT_SUBMENU_MAX_HEIGHTS: Record<EditorSubmenuKey, number | null> = {
+  edit: null,
+  sort: null,
+  bookmark: null,
+};
 
 interface VerticalSelectionState {
   baseLine: number;
@@ -72,7 +88,13 @@ type EditorCleanupAction =
   | 'remove_duplicate_lines'
   | 'trim_leading_whitespace'
   | 'trim_trailing_whitespace'
-  | 'trim_surrounding_whitespace';
+  | 'trim_surrounding_whitespace'
+  | 'sort_lines_ascending'
+  | 'sort_lines_ascending_ignore_case'
+  | 'sort_lines_descending'
+  | 'sort_lines_descending_ignore_case'
+  | 'sort_lines_pinyin_ascending'
+  | 'sort_lines_pinyin_descending';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -923,6 +945,12 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
+  const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
+    Record<EditorSubmenuKey, EditorSubmenuVerticalAlign>
+  >(() => ({ ...DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS }));
+  const [submenuMaxHeights, setSubmenuMaxHeights] = useState<
+    Record<EditorSubmenuKey, number | null>
+  >(() => ({ ...DEFAULT_SUBMENU_MAX_HEIGHTS }));
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -934,6 +962,11 @@ export function Editor({ tab }: { tab: FileTab }) {
   const isScrollbarDragRef = useRef(false);
   const rowHeightsRef = useRef<Map<number, number>>(new Map());
   const editorContextMenuRef = useRef<HTMLDivElement>(null);
+  const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
+    edit: null,
+    sort: null,
+    bookmark: null,
+  });
 
   const currentRequestVersion = useRef(0);
   const isComposingRef = useRef(false);
@@ -976,9 +1009,47 @@ export function Editor({ tab }: { tab: FileTab }) {
   const deleteLabel = tr('editor.context.delete');
   const selectAllLabel = tr('editor.context.selectAll');
   const editMenuLabel = tr('editor.context.edit');
+  const sortMenuLabel = tr('editor.context.sort');
   const bookmarkMenuLabel = tr('bookmark.menu.title');
   const addBookmarkLabel = tr('bookmark.add');
   const removeBookmarkLabel = tr('bookmark.remove');
+  const submenuHorizontalPositionClassName =
+    editorContextMenu?.submenuDirection === 'left'
+      ? 'right-full mr-1 before:-right-2'
+      : 'left-full ml-1 before:-left-2';
+  const editSubmenuPositionClassName =
+    submenuVerticalAlignments.edit === 'bottom'
+      ? `${submenuHorizontalPositionClassName} bottom-0`
+      : `${submenuHorizontalPositionClassName} top-0`;
+  const sortSubmenuPositionClassName =
+    submenuVerticalAlignments.sort === 'bottom'
+      ? `${submenuHorizontalPositionClassName} bottom-0`
+      : `${submenuHorizontalPositionClassName} top-0`;
+  const bookmarkSubmenuPositionClassName =
+    submenuVerticalAlignments.bookmark === 'bottom'
+      ? `${submenuHorizontalPositionClassName} bottom-0`
+      : `${submenuHorizontalPositionClassName} top-0`;
+  const editSubmenuStyle =
+    submenuMaxHeights.edit === null
+      ? undefined
+      : {
+          maxHeight: `${submenuMaxHeights.edit}px`,
+          overflowY: 'auto' as const,
+        };
+  const sortSubmenuStyle =
+    submenuMaxHeights.sort === null
+      ? undefined
+      : {
+          maxHeight: `${submenuMaxHeights.sort}px`,
+          overflowY: 'auto' as const,
+        };
+  const bookmarkSubmenuStyle =
+    submenuMaxHeights.bookmark === null
+      ? undefined
+      : {
+          maxHeight: `${submenuMaxHeights.bookmark}px`,
+          overflowY: 'auto' as const,
+        };
   const cleanupMenuItems = useMemo(
     () => [
       {
@@ -1000,6 +1071,35 @@ export function Editor({ tab }: { tab: FileTab }) {
       {
         action: 'trim_surrounding_whitespace' as EditorCleanupAction,
         label: tr('editor.context.cleanup.trimSurroundingWhitespace'),
+      },
+    ],
+    [tr]
+  );
+  const sortMenuItems = useMemo(
+    () => [
+      {
+        action: 'sort_lines_ascending' as EditorCleanupAction,
+        label: tr('editor.context.sort.ascending'),
+      },
+      {
+        action: 'sort_lines_ascending_ignore_case' as EditorCleanupAction,
+        label: tr('editor.context.sort.ascendingIgnoreCase'),
+      },
+      {
+        action: 'sort_lines_descending' as EditorCleanupAction,
+        label: tr('editor.context.sort.descending'),
+      },
+      {
+        action: 'sort_lines_descending_ignore_case' as EditorCleanupAction,
+        label: tr('editor.context.sort.descendingIgnoreCase'),
+      },
+      {
+        action: 'sort_lines_pinyin_ascending' as EditorCleanupAction,
+        label: tr('editor.context.sort.pinyinAscending'),
+      },
+      {
+        action: 'sort_lines_pinyin_descending' as EditorCleanupAction,
+        label: tr('editor.context.sort.pinyinDescending'),
       },
     ],
     [tr]
@@ -1927,6 +2027,60 @@ export function Editor({ tab }: { tab: FileTab }) {
     return contentRef.current.contains(range.commonAncestorContainer) && selection.toString().length > 0;
   }, []);
 
+  const updateSubmenuVerticalAlignment = useCallback(
+    (submenuKey: EditorSubmenuKey, anchorElement: HTMLDivElement) => {
+      const submenuElement = submenuPanelRefs.current[submenuKey];
+      if (!submenuElement) {
+        return;
+      }
+
+      const viewportPadding = 8;
+      const submenuHeight = submenuElement.scrollHeight;
+      if (submenuHeight <= 0) {
+        return;
+      }
+
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const availableBelow = Math.max(0, Math.floor(window.innerHeight - viewportPadding - anchorRect.top));
+      const availableAbove = Math.max(0, Math.floor(anchorRect.bottom - viewportPadding));
+      const topAlignedBottom = anchorRect.top + submenuHeight;
+      const bottomAlignedTop = anchorRect.bottom - submenuHeight;
+      let nextAlign: EditorSubmenuVerticalAlign = 'top';
+
+      if (topAlignedBottom > window.innerHeight - viewportPadding) {
+        if (bottomAlignedTop >= viewportPadding) {
+          nextAlign = 'bottom';
+        } else {
+          nextAlign = availableAbove > availableBelow ? 'bottom' : 'top';
+        }
+      }
+
+      const availableForCurrentAlign = nextAlign === 'bottom' ? availableAbove : availableBelow;
+      const nextMaxHeight =
+        submenuHeight > availableForCurrentAlign && availableForCurrentAlign > 0
+          ? availableForCurrentAlign
+          : null;
+
+      setSubmenuVerticalAlignments((current) =>
+        current[submenuKey] === nextAlign
+          ? current
+          : {
+              ...current,
+              [submenuKey]: nextAlign,
+            }
+      );
+      setSubmenuMaxHeights((current) =>
+        current[submenuKey] === nextMaxHeight
+          ? current
+          : {
+              ...current,
+              [submenuKey]: nextMaxHeight,
+            }
+      );
+    },
+    []
+  );
+
   const handleEditorContextMenu = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -1938,18 +2092,27 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       contentRef.current.focus();
 
-      const menuWidth = 196;
+      const menuWidth = 160;
       const menuHeight = 320;
+      const submenuWidth = 192;
+      const submenuGap = 4;
       const viewportPadding = 8;
 
       const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
       const boundedY = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding);
+      const safeX = Math.max(viewportPadding, boundedX);
+      const canOpenSubmenuRight =
+        safeX + menuWidth + submenuGap + submenuWidth + viewportPadding <= window.innerWidth;
+
+      setSubmenuVerticalAlignments({ ...DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS });
+      setSubmenuMaxHeights({ ...DEFAULT_SUBMENU_MAX_HEIGHTS });
 
       setEditorContextMenu({
-        x: Math.max(viewportPadding, boundedX),
+        x: safeX,
         y: Math.max(viewportPadding, boundedY),
         hasSelection: hasSelectionInsideEditor(),
         lineNumber: activeLineNumber,
+        submenuDirection: canOpenSubmenuRight ? 'right' : 'left',
       });
     },
     [activeLineNumber, hasSelectionInsideEditor]
@@ -4148,7 +4311,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       {editorContextMenu && (
         <div
           ref={editorContextMenuRef}
-          className="fixed z-[90] min-w-36 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          className="fixed z-[90] w-40 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
           style={{ left: editorContextMenu.x, top: editorContextMenu.y }}
         >
           <button
@@ -4202,7 +4365,12 @@ export function Editor({ tab }: { tab: FileTab }) {
             {selectAllLabel}
           </button>
           <div className="my-1 h-px bg-border" />
-          <div className="group/edit relative">
+          <div
+            className="group/edit relative"
+            onMouseEnter={(event) => {
+              updateSubmenuVerticalAlignment('edit', event.currentTarget);
+            }}
+          >
             <button
               type="button"
               className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
@@ -4210,7 +4378,13 @@ export function Editor({ tab }: { tab: FileTab }) {
               <span>{editMenuLabel}</span>
               <span className="text-[10px] text-muted-foreground">▶</span>
             </button>
-            <div className="invisible absolute left-full top-0 z-[95] ml-1 min-w-56 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-all duration-75 group-hover/edit:visible group-hover/edit:opacity-100">
+            <div
+              ref={(element) => {
+                submenuPanelRefs.current.edit = element;
+              }}
+              style={editSubmenuStyle}
+              className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${editSubmenuPositionClassName} group-hover/edit:pointer-events-auto group-hover/edit:visible group-hover/edit:opacity-100`}
+            >
               {cleanupMenuItems.map((item) => (
                 <button
                   key={item.action}
@@ -4225,8 +4399,47 @@ export function Editor({ tab }: { tab: FileTab }) {
               ))}
             </div>
           </div>
+          <div
+            className="group/sort relative"
+            onMouseEnter={(event) => {
+              updateSubmenuVerticalAlignment('sort', event.currentTarget);
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            >
+              <span>{sortMenuLabel}</span>
+              <span className="text-[10px] text-muted-foreground">▶</span>
+            </button>
+            <div
+              ref={(element) => {
+                submenuPanelRefs.current.sort = element;
+              }}
+              style={sortSubmenuStyle}
+              className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${sortSubmenuPositionClassName} group-hover/sort:pointer-events-auto group-hover/sort:visible group-hover/sort:opacity-100`}
+            >
+              {sortMenuItems.map((item) => (
+                <button
+                  key={item.action}
+                  type="button"
+                  className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    void handleCleanupDocumentFromContext(item.action);
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="my-1 h-px bg-border" />
-          <div className="group/bookmark relative">
+          <div
+            className="group/bookmark relative"
+            onMouseEnter={(event) => {
+              updateSubmenuVerticalAlignment('bookmark', event.currentTarget);
+            }}
+          >
             <button
               type="button"
               className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
@@ -4234,7 +4447,13 @@ export function Editor({ tab }: { tab: FileTab }) {
               <span>{bookmarkMenuLabel}</span>
               <span className="text-[10px] text-muted-foreground">▶</span>
             </button>
-            <div className="invisible absolute left-full top-0 z-[95] ml-1 min-w-32 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-all duration-75 group-hover/bookmark:visible group-hover/bookmark:opacity-100">
+            <div
+              ref={(element) => {
+                submenuPanelRefs.current.bookmark = element;
+              }}
+              style={bookmarkSubmenuStyle}
+              className={`pointer-events-none invisible absolute z-[95] w-28 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${bookmarkSubmenuPositionClassName} group-hover/bookmark:pointer-events-auto group-hover/bookmark:visible group-hover/bookmark:opacity-100`}
+            >
               <button
                 type="button"
                 className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
