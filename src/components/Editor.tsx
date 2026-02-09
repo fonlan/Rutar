@@ -1005,7 +1005,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
   const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
-  const [contentTreeFlashLine, setContentTreeFlashLine] = useState<number | null>(null);
+  const [outlineFlashLine, setOutlineFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
@@ -1043,7 +1043,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const hugeWindowLockedRef = useRef(false);
   const hugeWindowFollowScrollOnUnlockRef = useRef(false);
   const hugeWindowUnlockTimerRef = useRef<any>(null);
-  const contentTreeFlashTimerRef = useRef<any>(null);
+  const outlineFlashTimerRef = useRef<any>(null);
   const base64DecodeErrorToastTimerRef = useRef<number | null>(null);
   const pendingRestoreScrollTopRef = useRef<number | null>(null);
   const verticalSelectionRef = useRef<VerticalSelectionState | null>(null);
@@ -4154,12 +4154,12 @@ export function Editor({ tab }: { tab: FileTab }) {
     setSearchHighlight(null);
     setPairHighlights([]);
 
-    if (contentTreeFlashTimerRef.current) {
-      window.clearTimeout(contentTreeFlashTimerRef.current);
-      contentTreeFlashTimerRef.current = null;
+    if (outlineFlashTimerRef.current) {
+      window.clearTimeout(outlineFlashTimerRef.current);
+      outlineFlashTimerRef.current = null;
     }
 
-    setContentTreeFlashLine(null);
+    setOutlineFlashLine(null);
   }, [tab.id]);
 
   useEffect(() => {
@@ -4180,7 +4180,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
-      const shouldMoveCaretToLineStart = detail.source === 'content-tree';
+      const shouldMoveCaretToLineStart = detail.source === 'outline';
       setActiveLineNumber(targetLine);
 
       const placeCaretAtTargetPosition = () => {
@@ -4196,16 +4196,16 @@ export function Editor({ tab }: { tab: FileTab }) {
         setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
       };
 
-      if (detail.source === 'content-tree') {
-        if (contentTreeFlashTimerRef.current) {
-          window.clearTimeout(contentTreeFlashTimerRef.current);
-          contentTreeFlashTimerRef.current = null;
+      if (detail.source === 'outline') {
+        if (outlineFlashTimerRef.current) {
+          window.clearTimeout(outlineFlashTimerRef.current);
+          outlineFlashTimerRef.current = null;
         }
 
-        setContentTreeFlashLine(targetLine);
-        contentTreeFlashTimerRef.current = window.setTimeout(() => {
-          setContentTreeFlashLine(null);
-          contentTreeFlashTimerRef.current = null;
+        setOutlineFlashLine(targetLine);
+        outlineFlashTimerRef.current = window.setTimeout(() => {
+          setOutlineFlashLine(null);
+          outlineFlashTimerRef.current = null;
         }, 1000);
       }
 
@@ -4269,10 +4269,10 @@ export function Editor({ tab }: { tab: FileTab }) {
     };
 
     window.addEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
-    window.addEventListener('rutar:navigate-to-content-tree', handleNavigateToLine as EventListener);
+    window.addEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
     return () => {
       window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
-      window.removeEventListener('rutar:navigate-to-content-tree', handleNavigateToLine as EventListener);
+      window.removeEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
     };
   }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, syncVisibleTokens, tab.id, tab.lineCount]);
 
@@ -4457,7 +4457,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                     lineHeight: `${lineHeightPx}px`,
                   }}
                   className={`px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
-                    contentTreeFlashLine === index + 1
+                    outlineFlashLine === index + 1
                       ? 'bg-primary/15 dark:bg-primary/20'
                       : highlightCurrentLine && activeLineNumber === index + 1
                       ? 'bg-accent/45 dark:bg-accent/25'

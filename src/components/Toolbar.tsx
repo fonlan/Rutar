@@ -9,7 +9,7 @@ import { openFilePath } from '@/lib/openFile';
 import { addRecentFolderPath } from '@/lib/recentPaths';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
-import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
+import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
@@ -79,11 +79,11 @@ export function Toolbar() {
     const tabWidth = useStore((state) => state.settings.tabWidth);
     const wordWrap = useStore((state) => state.settings.wordWrap);
     const updateSettings = useStore((state) => state.updateSettings);
-    const toggleContentTree = useStore((state) => state.toggleContentTree);
-    const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+    const toggleOutline = useStore((state) => state.toggleOutline);
+    const outlineOpen = useStore((state) => state.outlineOpen);
     const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
     const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
-    const setContentTreeData = useStore((state) => state.setContentTreeData);
+    const setOutlineData = useStore((state) => state.setOutlineData);
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
     const activeTab = tabs.find(t => t.id === activeTabId);
@@ -376,50 +376,50 @@ export function Toolbar() {
         toggleBookmarkSidebar();
     }, [activeTab, toggleBookmarkSidebar]);
 
-    const handleToggleContentTree = useCallback(async () => {
+    const handleToggleOutline = useCallback(async () => {
         if (!activeTab) {
-            await message(tr('contentTree.unsupportedType'), {
-                title: tr('contentTree.title'),
+            await message(tr('outline.unsupportedType'), {
+                title: tr('outline.title'),
                 kind: 'warning',
             });
             return;
         }
 
-        const treeType = detectContentTreeType(activeTab);
-        if (!treeType) {
-            await message(tr('contentTree.unsupportedType'), {
-                title: tr('contentTree.title'),
+        const outlineType = detectOutlineType(activeTab);
+        if (!outlineType) {
+            await message(tr('outline.unsupportedType'), {
+                title: tr('outline.title'),
                 kind: 'warning',
             });
             return;
         }
 
-        if (contentTreeOpen) {
-            toggleContentTree(false);
+        if (outlineOpen) {
+            toggleOutline(false);
             return;
         }
 
         try {
-            const nodes = await loadContentTree(activeTab, treeType);
-            setContentTreeData({
-                treeType,
+            const nodes = await loadOutline(activeTab, outlineType);
+            setOutlineData({
+                outlineType,
                 nodes,
                 error: null,
             });
-            toggleContentTree(true);
+            toggleOutline(true);
         } catch (error) {
             const messageText = error instanceof Error ? error.message : String(error);
-            await message(`${tr('contentTree.parseFailed')} ${messageText}`, {
-                title: tr('contentTree.title'),
+            await message(`${tr('outline.parseFailed')} ${messageText}`, {
+                title: tr('outline.title'),
                 kind: 'warning',
             });
-            setContentTreeData({
-                treeType,
+            setOutlineData({
+                outlineType,
                 nodes: [],
                 error: messageText,
             });
         }
-    }, [activeTab, contentTreeOpen, setContentTreeData, toggleContentTree, tr]);
+    }, [activeTab, outlineOpen, setOutlineData, toggleOutline, tr]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -650,9 +650,9 @@ export function Toolbar() {
             />
             <ToolbarBtn
                 icon={ListTree}
-                title={tr('toolbar.contentTree')}
-                onClick={() => void handleToggleContentTree()}
-                active={contentTreeOpen}
+                title={tr('toolbar.outline')}
+                onClick={() => void handleToggleOutline()}
+                active={outlineOpen}
             />
         </div>
     )

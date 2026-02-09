@@ -33,14 +33,14 @@ export type SyntaxKey =
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';
 
-export type ContentTreeType = 'json' | 'yaml' | 'xml' | null;
+export type OutlineType = 'json' | 'yaml' | 'xml' | null;
 
-export interface ContentTreeNode {
+export interface OutlineNode {
   label: string;
   nodeType: string;
   line: number;
   column: number;
-  children: ContentTreeNode[];
+  children: OutlineNode[];
 }
 
 export type TabBookmarks = Record<string, number[]>;
@@ -70,13 +70,13 @@ interface AppState {
   
   sidebarOpen: boolean;
   sidebarWidth: number;
-  contentTreeOpen: boolean;
-  contentTreeWidth: number;
+  outlineOpen: boolean;
+  outlineWidth: number;
   bookmarkSidebarOpen: boolean;
   bookmarkSidebarWidth: number;
-  contentTreeType: ContentTreeType;
-  contentTreeError: string | null;
-  contentTreeNodes: ContentTreeNode[];
+  outlineType: OutlineType;
+  outlineError: string | null;
+  outlineNodes: OutlineNode[];
   bookmarksByTab: TabBookmarks;
   folderPath: string | null;
   folderEntries: any[];
@@ -92,16 +92,16 @@ interface AppState {
   setFolder: (path: string | null, entries: any[]) => void;
   toggleSidebar: (open?: boolean) => void;
   setSidebarWidth: (width: number) => void;
-  toggleContentTree: (open?: boolean) => void;
-  setContentTreeWidth: (width: number) => void;
+  toggleOutline: (open?: boolean) => void;
+  setOutlineWidth: (width: number) => void;
   toggleBookmarkSidebar: (open?: boolean) => void;
   setBookmarkSidebarWidth: (width: number) => void;
   addBookmark: (tabId: string, line: number) => void;
   removeBookmark: (tabId: string, line: number) => void;
   toggleBookmark: (tabId: string, line: number) => void;
-  setContentTreeData: (payload: {
-    treeType: ContentTreeType;
-    nodes: ContentTreeNode[];
+  setOutlineData: (payload: {
+    outlineType: OutlineType;
+    nodes: OutlineNode[];
     error?: string | null;
   }) => void;
 }
@@ -128,13 +128,13 @@ export const useStore = create<AppState>((set) => ({
   },
   sidebarOpen: false,
   sidebarWidth: 240,
-  contentTreeOpen: false,
-  contentTreeWidth: 288,
+  outlineOpen: false,
+  outlineWidth: 288,
   bookmarkSidebarOpen: false,
   bookmarkSidebarWidth: 220,
-  contentTreeType: null,
-  contentTreeError: null,
-  contentTreeNodes: [],
+  outlineType: null,
+  outlineError: null,
+  outlineNodes: [],
   bookmarksByTab: {},
   folderPath: null,
   folderEntries: [],
@@ -171,8 +171,8 @@ export const useStore = create<AppState>((set) => ({
   setFolder: (path, entries) => set({ folderPath: path, folderEntries: entries, sidebarOpen: !!path }),
   toggleSidebar: (open) => set((state) => ({ sidebarOpen: open ?? !state.sidebarOpen })),
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
-  toggleContentTree: (open) => set((state) => ({ contentTreeOpen: open ?? !state.contentTreeOpen })),
-  setContentTreeWidth: (width) => set({ contentTreeWidth: width }),
+  toggleOutline: (open) => set((state) => ({ outlineOpen: open ?? !state.outlineOpen })),
+  setOutlineWidth: (width) => set({ outlineWidth: width }),
   toggleBookmarkSidebar: (open) => set((state) => ({ bookmarkSidebarOpen: open ?? !state.bookmarkSidebarOpen })),
   setBookmarkSidebarWidth: (width) => set({ bookmarkSidebarWidth: width }),
   addBookmark: (tabId, line) => set((state) => {
@@ -232,9 +232,9 @@ export const useStore = create<AppState>((set) => ({
       bookmarksByTab: nextBookmarks,
     };
   }),
-  setContentTreeData: ({ treeType, nodes, error }) => set({
-    contentTreeType: treeType,
-    contentTreeNodes: nodes,
-    contentTreeError: error ?? null,
+  setOutlineData: ({ outlineType, nodes, error }) => set({
+    outlineType: outlineType,
+    outlineNodes: nodes,
+    outlineError: error ?? null,
   }),
 }));

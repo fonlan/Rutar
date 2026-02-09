@@ -364,12 +364,12 @@ fn filter_result_filter_step_cache() -> &'static DashMap<String, FilterResultFil
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ContentTreeNode {
+pub struct OutlineNode {
     label: String,
     node_type: String,
     line: usize,
     column: usize,
-    children: Vec<ContentTreeNode>,
+    children: Vec<OutlineNode>,
 }
 
 #[derive(serde::Serialize)]
@@ -380,7 +380,7 @@ pub struct WindowsFileAssociationStatus {
 }
 
 #[derive(Clone, Copy)]
-enum ContentTreeFileType {
+enum OutlineFileType {
     Json,
     Yaml,
     Xml,
@@ -417,20 +417,20 @@ fn truncate_preview(value: &str, max_len: usize) -> String {
     preview
 }
 
-fn parse_content_tree_file_type(file_type: &str) -> Option<ContentTreeFileType> {
+fn parse_outline_file_type(file_type: &str) -> Option<OutlineFileType> {
     match file_type.trim().to_lowercase().as_str() {
-        "json" => Some(ContentTreeFileType::Json),
-        "yaml" | "yml" => Some(ContentTreeFileType::Yaml),
-        "xml" => Some(ContentTreeFileType::Xml),
+        "json" => Some(OutlineFileType::Json),
+        "yaml" | "yml" => Some(OutlineFileType::Yaml),
+        "xml" => Some(OutlineFileType::Xml),
         _ => None,
     }
 }
 
-fn get_content_tree_language(file_type: ContentTreeFileType) -> Language {
+fn get_outline_language(file_type: OutlineFileType) -> Language {
     match file_type {
-        ContentTreeFileType::Json => tree_sitter_json::LANGUAGE.into(),
-        ContentTreeFileType::Yaml => tree_sitter_yaml::LANGUAGE.into(),
-        ContentTreeFileType::Xml => tree_sitter_xml::LANGUAGE_XML.into(),
+        OutlineFileType::Json => tree_sitter_json::LANGUAGE.into(),
+        OutlineFileType::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+        OutlineFileType::Xml => tree_sitter_xml::LANGUAGE_XML.into(),
     }
 }
 
@@ -475,33 +475,33 @@ fn is_pair_kind(kind: &str) -> bool {
     kind == "pair" || kind.contains("pair")
 }
 
-fn is_container_kind(file_type: ContentTreeFileType, kind: &str) -> bool {
+fn is_container_kind(file_type: OutlineFileType, kind: &str) -> bool {
     match file_type {
-        ContentTreeFileType::Json => kind == "object" || kind == "array",
-        ContentTreeFileType::Yaml => {
+        OutlineFileType::Json => kind == "object" || kind == "array",
+        OutlineFileType::Yaml => {
             kind == "document"
                 || kind == "stream"
                 || kind.contains("mapping")
                 || kind.contains("sequence")
         }
-        ContentTreeFileType::Xml => kind == "document" || kind == "element",
+        OutlineFileType::Xml => kind == "document" || kind == "element",
     }
 }
 
-fn is_scalar_value_kind(file_type: ContentTreeFileType, kind: &str) -> bool {
+fn is_scalar_value_kind(file_type: OutlineFileType, kind: &str) -> bool {
     !is_pair_kind(kind) && !is_container_kind(file_type, kind)
 }
 
-fn format_content_tree_label(
+fn format_outline_label(
     node: tree_sitter::Node<'_>,
     source: &str,
-    file_type: ContentTreeFileType,
+    file_type: OutlineFileType,
     has_named_children: bool,
 ) -> String {
     let kind = node.kind();
 
     match file_type {
-        ContentTreeFileType::Json => match kind {
+        OutlineFileType::Json => match kind {
             "object" => "{}".to_string(),
             "array" => "[]".to_string(),
             "pair" => {
@@ -530,7 +530,7 @@ fn format_content_tree_label(
                 }
             }
         },
-        ContentTreeFileType::Yaml => {
+        OutlineFileType::Yaml => {
             if kind.contains("mapping") {
                 return "{}".to_string();
             }
@@ -559,7 +559,7 @@ fn format_content_tree_label(
                 get_node_text_preview(node, source, 80)
             }
         }
-        ContentTreeFileType::Xml => {
+        OutlineFileType::Xml => {
             if kind == "element" {
                 let preview = get_node_text_preview(node, source, 80);
                 if let Some(raw_name) = preview
@@ -589,34 +589,34 @@ fn format_content_tree_label(
     }
 }
 
-fn build_tree_sitter_content_node(
+fn build_tree_sitter_outline_node(
     node: tree_sitter::Node<'_>,
     source: &str,
-    file_type: ContentTreeFileType,
-) -> ContentTreeNode {
+    file_type: OutlineFileType,
+) -> OutlineNode {
     let mut children = Vec::new();
     let kind = node.kind();
 
     if is_pair_kind(kind) {
         if let Some(value_node) = second_named_child(node) {
             if !is_scalar_value_kind(file_type, value_node.kind()) {
-                children.push(build_tree_sitter_content_node(value_node, source, file_type));
+                children.push(build_tree_sitter_outline_node(value_node, source, file_type));
             }
         }
     } else if is_container_kind(file_type, kind) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.is_named() {
-                children.push(build_tree_sitter_content_node(child, source, file_type));
+                children.push(build_tree_sitter_outline_node(child, source, file_type));
             }
         }
     }
 
     let has_named_children = !children.is_empty();
-    let label = format_content_tree_label(node, source, file_type, has_named_children);
+    let label = format_outline_label(node, source, file_type, has_named_children);
     let start = node.start_position();
 
-    ContentTreeNode {
+    OutlineNode {
         label,
         node_type: node.kind().to_string(),
         line: start.row + 1,
@@ -3791,24 +3791,24 @@ pub fn get_document_version(state: State<'_, AppState>, id: String) -> Result<u6
 }
 
 #[tauri::command]
-pub fn get_content_tree(
+pub fn get_outline(
     state: State<'_, AppState>,
     id: String,
     file_type: String,
-) -> Result<Vec<ContentTreeNode>, String> {
+) -> Result<Vec<OutlineNode>, String> {
     if let Some(doc) = state.documents.get(&id) {
         let source = doc.rope.to_string();
-        let content_type = parse_content_tree_file_type(&file_type)
-            .ok_or_else(|| "Unsupported content type".to_string())?;
+        let outline_type = parse_outline_file_type(&file_type)
+            .ok_or_else(|| "Unsupported outline type".to_string())?;
 
         let mut parser = Parser::new();
         parser
-            .set_language(&get_content_tree_language(content_type))
-            .map_err(|error| format!("Failed to configure content parser: {}", error))?;
+            .set_language(&get_outline_language(outline_type))
+            .map_err(|error| format!("Failed to configure outline parser: {}", error))?;
 
         let tree = parser
             .parse(&source, None)
-            .ok_or_else(|| "Failed to parse content tree".to_string())?;
+            .ok_or_else(|| "Failed to parse outline".to_string())?;
 
         let root_node = tree.root_node();
         let mut cursor = root_node.walk();
@@ -3820,10 +3820,10 @@ pub fn get_content_tree(
             root_node
         };
 
-        Ok(vec![build_tree_sitter_content_node(
+        Ok(vec![build_tree_sitter_outline_node(
             start_node,
             &source,
-            content_type,
+            outline_type,
         )])
     } else {
         Err("Document not found".to_string())

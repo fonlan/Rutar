@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FileCode2, FileJson } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
-import { ContentTreeNode, ContentTreeType, useStore } from '@/store/useStore';
-import { dispatchNavigateToLineFromContentTree } from '@/lib/contentTree';
+import { OutlineNode, OutlineType, useStore } from '@/store/useStore';
+import { dispatchNavigateToLineFromOutline } from '@/lib/outline';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
-const CONTENT_TREE_MIN_WIDTH = 160;
-const CONTENT_TREE_MAX_WIDTH = 720;
+const OUTLINE_MIN_WIDTH = 160;
+const OUTLINE_MAX_WIDTH = 720;
 
 function getNodeIcon(nodeType: string) {
   if (nodeType === 'object' || nodeType === 'array' || nodeType === 'element') {
@@ -17,37 +17,37 @@ function getNodeIcon(nodeType: string) {
   return <FileCode2 className="w-3.5 h-3.5 text-muted-foreground/70" />;
 }
 
-export function ContentTreeSidebar({
+export function OutlineSidebar({
   nodes,
   activeType,
   parseError,
 }: {
-  nodes: ContentTreeNode[];
-  activeType: ContentTreeType;
+  nodes: OutlineNode[];
+  activeType: OutlineType;
   parseError: string | null;
 }) {
-  const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+  const outlineOpen = useStore((state) => state.outlineOpen);
   const language = useStore((state) => state.settings.language);
   const activeTabId = useStore((state) => state.activeTabId);
-  const contentTreeWidth = useStore((state) => state.contentTreeWidth);
-  const setContentTreeWidth = useStore((state) => state.setContentTreeWidth);
+  const outlineWidth = useStore((state) => state.outlineWidth);
+  const setOutlineWidth = useStore((state) => state.setOutlineWidth);
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
-    width: contentTreeWidth,
-    minWidth: CONTENT_TREE_MIN_WIDTH,
-    maxWidth: CONTENT_TREE_MAX_WIDTH,
-    onWidthChange: setContentTreeWidth,
+    width: outlineWidth,
+    minWidth: OUTLINE_MIN_WIDTH,
+    maxWidth: OUTLINE_MAX_WIDTH,
+    onWidthChange: setOutlineWidth,
   });
 
   const title = useMemo(() => {
     if (!activeType) {
-      return tr('contentTree.title');
+      return tr('outline.title');
     }
 
-    return `${tr('contentTree.title')} - ${activeType.toUpperCase()}`;
+    return `${tr('outline.title')} - ${activeType.toUpperCase()}`;
   }, [activeType, language]);
 
-  if (!contentTreeOpen) {
+  if (!outlineOpen) {
     return null;
   }
 
@@ -55,7 +55,7 @@ export function ContentTreeSidebar({
     <div
       ref={containerRef}
       className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
-      style={{ width: `${contentTreeWidth}px` }}
+      style={{ width: `${outlineWidth}px` }}
     >
       <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase border-b truncate">
         {title}
@@ -65,7 +65,7 @@ export function ContentTreeSidebar({
         {parseError ? (
           <div className="px-3 py-2 text-xs text-destructive/90 break-words">{parseError}</div>
         ) : nodes.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-muted-foreground">{tr('contentTree.empty')}</div>
+          <div className="px-3 py-2 text-xs text-muted-foreground">{tr('outline.empty')}</div>
         ) : (
           nodes.map((node, index) => (
             <TreeNodeItem
@@ -81,7 +81,7 @@ export function ContentTreeSidebar({
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize content tree sidebar"
+        aria-label="Resize outline sidebar"
         onPointerDown={startResize}
         className={cn(
           'absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize touch-none transition-colors',
@@ -97,7 +97,7 @@ function TreeNodeItem({
   level,
   activeTabId,
 }: {
-  node: ContentTreeNode;
+  node: OutlineNode;
   level: number;
   activeTabId: string | null;
 }) {
@@ -106,7 +106,7 @@ function TreeNodeItem({
 
   const handleSelectNode = () => {
     if (activeTabId) {
-      dispatchNavigateToLineFromContentTree(activeTabId, node.line, node.column);
+      dispatchNavigateToLineFromOutline(activeTabId, node.line, node.column);
     }
   };
 

@@ -90,7 +90,7 @@ pub fn run() {
             commands::filter_count_in_document,
             commands::search_in_document,
             commands::get_document_version,
-            commands::get_content_tree,
+            commands::get_outline,
             commands::load_config,
             commands::save_config,
             commands::load_filter_rule_groups_config,

@@ -32,7 +32,7 @@ export type I18nKey =
   | 'toolbar.replace'
   | 'toolbar.toggleWordWrap'
   | 'toolbar.bookmarkSidebar'
-  | 'toolbar.contentTree'
+  | 'toolbar.outline'
   | 'toolbar.filter'
   | 'toolbar.format.beautify'
   | 'toolbar.format.minify'
@@ -50,10 +50,10 @@ export type I18nKey =
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
   | 'sidebar.close'
-  | 'contentTree.title'
-  | 'contentTree.empty'
-  | 'contentTree.unsupportedType'
-  | 'contentTree.parseFailed'
+  | 'outline.title'
+  | 'outline.empty'
+  | 'outline.unsupportedType'
+  | 'outline.parseFailed'
   | 'settings.title'
   | 'settings.general'
   | 'settings.appearance'
@@ -161,7 +161,7 @@ const zhCN: Messages = {
   'toolbar.replace': '替换 (Ctrl+H)',
   'toolbar.toggleWordWrap': '切换自动换行',
   'toolbar.bookmarkSidebar': '书签侧边栏',
-  'toolbar.contentTree': '内容树',
+  'toolbar.outline': '大纲',
   'toolbar.filter': '过滤',
   'toolbar.format.beautify': '格式化文档 (Ctrl+Alt+F)',
   'toolbar.format.minify': '最小化文档 (Ctrl+Alt+M)',
@@ -179,10 +179,10 @@ const zhCN: Messages = {
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
   'sidebar.close': '关闭侧边栏',
-  'contentTree.title': '内容树',
-  'contentTree.empty': '暂无可显示的树结构',
-  'contentTree.unsupportedType': '当前标签页不是 JSON / YAML / XML 文件，无法打开内容树。',
-  'contentTree.parseFailed': '无法解析当前文件：',
+  'outline.title': '大纲',
+  'outline.empty': '暂无可显示的大纲',
+  'outline.unsupportedType': '当前标签页不是 JSON / YAML / XML 文件，无法打开大纲。',
+  'outline.parseFailed': '无法解析当前文件：',
   'settings.title': '设置',
   'settings.general': '通用',
   'settings.appearance': '外观',
@@ -289,7 +289,7 @@ const enUS: Messages = {
   'toolbar.replace': 'Replace (Ctrl+H)',
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
   'toolbar.bookmarkSidebar': 'Bookmark Sidebar',
-  'toolbar.contentTree': 'Content Tree',
+  'toolbar.outline': 'Outline',
   'toolbar.filter': 'Filter',
   'toolbar.format.beautify': 'Beautify (Ctrl+Alt+F)',
   'toolbar.format.minify': 'Minify (Ctrl+Alt+M)',
@@ -307,10 +307,10 @@ const enUS: Messages = {
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
   'sidebar.close': 'Close Sidebar',
-  'contentTree.title': 'Content Tree',
-  'contentTree.empty': 'No tree data',
-  'contentTree.unsupportedType': 'The active tab is not JSON, YAML, or XML. Cannot open content tree.',
-  'contentTree.parseFailed': 'Failed to parse active file:',
+  'outline.title': 'Outline',
+  'outline.empty': 'No outline data',
+  'outline.unsupportedType': 'The active tab is not JSON, YAML, or XML. Cannot open outline.',
+  'outline.parseFailed': 'Failed to parse active file:',
   'settings.title': 'Settings',
   'settings.general': 'General',
   'settings.appearance': 'Appearance',

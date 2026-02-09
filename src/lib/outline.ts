@@ -1,14 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import { FileTab, ContentTreeNode, ContentTreeType } from '@/store/useStore';
+import { FileTab, OutlineNode, OutlineType } from '@/store/useStore';
 
-const CONTENT_TREE_TYPE_BY_EXTENSION: Record<string, Exclude<ContentTreeType, null>> = {
+const OUTLINE_TYPE_BY_EXTENSION: Record<string, Exclude<OutlineType, null>> = {
   json: 'json',
   yaml: 'yaml',
   yml: 'yaml',
   xml: 'xml',
 };
 
-export function detectContentTreeType(tab: FileTab | null | undefined): ContentTreeType {
+export function detectOutlineType(tab: FileTab | null | undefined): OutlineType {
   if (!tab) {
     return null;
   }
@@ -23,10 +23,10 @@ export function detectContentTreeType(tab: FileTab | null | undefined): ContentT
     return null;
   }
 
-  return CONTENT_TREE_TYPE_BY_EXTENSION[extension] ?? null;
+  return OUTLINE_TYPE_BY_EXTENSION[extension] ?? null;
 }
 
-export function dispatchNavigateToLineFromContentTree(tabId: string, line: number, column: number) {
+export function dispatchNavigateToLineFromOutline(tabId: string, line: number, column: number) {
   const safeLine = Number.isFinite(line) ? Math.max(1, Math.floor(line)) : 1;
   const safeColumn = Number.isFinite(column) ? Math.max(1, Math.floor(column)) : 1;
 
@@ -38,19 +38,19 @@ export function dispatchNavigateToLineFromContentTree(tabId: string, line: numbe
         line: safeLine,
         column: safeColumn,
         length: 0,
-        source: 'content-tree',
+        source: 'outline',
       },
     })
   );
 
     window.dispatchEvent(
-      new CustomEvent('rutar:navigate-to-content-tree', {
+      new CustomEvent('rutar:navigate-to-outline', {
         detail: {
         tabId,
         line: safeLine,
         column: safeColumn,
         length: 0,
-        source: 'content-tree',
+        source: 'outline',
       },
     })
   );
@@ -69,12 +69,12 @@ export function dispatchNavigateToLineFromContentTree(tabId: string, line: numbe
   }
 }
 
-export async function loadContentTree(
+export async function loadOutline(
   tab: FileTab,
-  treeType: Exclude<ContentTreeType, null>
-): Promise<ContentTreeNode[]> {
-  return invoke<ContentTreeNode[]>('get_content_tree', {
+  outlineType: Exclude<OutlineType, null>
+): Promise<OutlineNode[]> {
+  return invoke<OutlineNode[]>('get_outline', {
     id: tab.id,
-    fileType: treeType,
+    fileType: outlineType,
   });
 }

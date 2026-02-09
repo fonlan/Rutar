@@ -7,7 +7,7 @@ import { Toolbar } from '@/components/Toolbar';
 import { Editor } from '@/components/Editor';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Sidebar } from '@/components/Sidebar';
-import { ContentTreeSidebar } from '@/components/ContentTreeSidebar';
+import { OutlineSidebar } from '@/components/OutlineSidebar';
 import { BookmarkSidebar } from '@/components/BookmarkSidebar';
 import { StatusBar } from '@/components/StatusBar';
 import { SearchReplacePanel } from '@/components/SearchReplacePanel';
@@ -16,7 +16,7 @@ import { openFilePaths } from '@/lib/openFile';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
 import { t } from '@/i18n';
-import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
+import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
 let hasInitializedStartupTab = false;
@@ -74,15 +74,15 @@ function App() {
   const updateSettings = useStore((state) => state.updateSettings);
   const setFolder = useStore((state) => state.setFolder);
   const sidebarOpen = useStore((state) => state.sidebarOpen);
-  const contentTreeOpen = useStore((state) => state.contentTreeOpen);
+  const outlineOpen = useStore((state) => state.outlineOpen);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
-  const contentTreeType = useStore((state) => state.contentTreeType);
-  const contentTreeNodes = useStore((state) => state.contentTreeNodes);
-  const contentTreeError = useStore((state) => state.contentTreeError);
-  const setContentTreeData = useStore((state) => state.setContentTreeData);
+  const outlineType = useStore((state) => state.outlineType);
+  const outlineNodes = useStore((state) => state.outlineNodes);
+  const outlineError = useStore((state) => state.outlineError);
+  const setOutlineData = useStore((state) => state.setOutlineData);
   const tabPanelStateRef = useRef<Record<string, {
     sidebarOpen: boolean;
-    contentTreeOpen: boolean;
+    outlineOpen: boolean;
     bookmarkSidebarOpen: boolean;
   }>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
@@ -475,7 +475,7 @@ function App() {
     if (previousTabId) {
       tabPanelStateRef.current[previousTabId] = {
         sidebarOpen,
-        contentTreeOpen,
+        outlineOpen,
         bookmarkSidebarOpen,
       };
     }
@@ -488,7 +488,7 @@ function App() {
     const state = useStore.getState();
     const nextTabState = tabPanelStateRef.current[activeTabId];
     state.toggleSidebar(nextTabState?.sidebarOpen ?? false);
-    state.toggleContentTree(nextTabState?.contentTreeOpen ?? false);
+    state.toggleOutline(nextTabState?.outlineOpen ?? false);
     const toggleBookmarkSidebar = (state as {
       toggleBookmarkSidebar?: (open?: boolean) => void;
     }).toggleBookmarkSidebar;
@@ -505,38 +505,38 @@ function App() {
 
     tabPanelStateRef.current[activeTabId] = {
       sidebarOpen,
-      contentTreeOpen,
+      outlineOpen,
       bookmarkSidebarOpen,
     };
-  }, [activeTabId, bookmarkSidebarOpen, contentTreeOpen, sidebarOpen]);
+  }, [activeTabId, bookmarkSidebarOpen, outlineOpen, sidebarOpen]);
 
   useEffect(() => {
-    if (!activeTab || !contentTreeOpen) {
+    if (!activeTab || !outlineOpen) {
       return;
     }
 
-    const treeType = detectContentTreeType(activeTab);
-    if (treeType) {
+    const outlineType = detectOutlineType(activeTab);
+    if (outlineType) {
       return;
     }
 
-    useStore.getState().toggleContentTree(false);
-    setContentTreeData({
-      treeType: null,
+    useStore.getState().toggleOutline(false);
+    setOutlineData({
+      outlineType: null,
       nodes: [],
       error: null,
     });
-  }, [activeTab, contentTreeOpen, setContentTreeData]);
+  }, [activeTab, outlineOpen, setOutlineData]);
 
   useEffect(() => {
-    if (!contentTreeOpen || !activeTab) {
+    if (!outlineOpen || !activeTab) {
       return;
     }
 
-    const treeType = detectContentTreeType(activeTab);
-    if (!treeType) {
-      setContentTreeData({
-        treeType: null,
+    const outlineType = detectOutlineType(activeTab);
+    if (!outlineType) {
+      setOutlineData({
+        outlineType: null,
         nodes: [],
         error: null,
       });
@@ -547,13 +547,13 @@ function App() {
 
     const refreshTree = async () => {
       try {
-        const nodes = await loadContentTree(activeTab, treeType);
+        const nodes = await loadOutline(activeTab, outlineType);
         if (cancelled) {
           return;
         }
 
-        setContentTreeData({
-          treeType,
+        setOutlineData({
+          outlineType,
           nodes,
           error: null,
         });
@@ -563,8 +563,8 @@ function App() {
         }
 
         const messageText = error instanceof Error ? error.message : String(error);
-        setContentTreeData({
-          treeType,
+        setOutlineData({
+          outlineType,
           nodes: [],
           error: messageText,
         });
@@ -588,7 +588,7 @@ function App() {
       cancelled = true;
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [activeTab, contentTreeOpen, setContentTreeData]);
+  }, [activeTab, outlineOpen, setOutlineData]);
 
     return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
@@ -601,10 +601,10 @@ function App() {
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar />
         <BookmarkSidebar />
-        <ContentTreeSidebar
-          nodes={contentTreeNodes}
-          activeType={contentTreeType}
-          parseError={contentTreeError}
+        <OutlineSidebar
+          nodes={outlineNodes}
+          activeType={outlineType}
+          parseError={outlineError}
         />
         
         <div className="flex-1 flex flex-col overflow-hidden relative">
