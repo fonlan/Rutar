@@ -7,6 +7,19 @@ struct LeafToken {
     end_byte: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LeafTokenContext {
+    Key,
+    Value,
+}
+
+fn contextualize_leaf_kind(kind: &str, context: Option<LeafTokenContext>) -> String {
+    match context {
+        Some(LeafTokenContext::Key) => format!("key_{kind}"),
+        _ => kind.to_string(),
+    }
+}
+
 pub(super) fn ensure_document_tree(doc: &mut Document) {
     if doc.parser.is_none() {
         doc.tree = None;
@@ -31,6 +44,7 @@ fn collect_leaf_tokens(
     node: tree_sitter::Node,
     range_start_byte: usize,
     range_end_byte: usize,
+    context: Option<LeafTokenContext>,
     out: &mut Vec<LeafToken>,
 ) {
     if node.end_byte() <= range_start_byte || node.start_byte() >= range_end_byte {
@@ -43,7 +57,7 @@ fn collect_leaf_tokens(
 
         if start < end {
             out.push(LeafToken {
-                kind: node.kind().to_string(),
+                kind: contextualize_leaf_kind(node.kind(), context),
                 start_byte: start,
                 end_byte: end,
             });
@@ -55,7 +69,19 @@ fn collect_leaf_tokens(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            collect_leaf_tokens(cursor.node(), range_start_byte, range_end_byte, out);
+            let next_context = match cursor.field_name() {
+                Some("key") => Some(LeafTokenContext::Key),
+                Some("value") => Some(LeafTokenContext::Value),
+                _ => context,
+            };
+
+            collect_leaf_tokens(
+                cursor.node(),
+                range_start_byte,
+                range_end_byte,
+                next_context,
+                out,
+            );
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -170,7 +196,7 @@ pub(super) fn get_syntax_tokens_impl(
 
         if let Some(tree) = doc.tree.as_ref() {
             let mut leaves = Vec::new();
-            collect_leaf_tokens(tree.root_node(), start_byte, end_byte, &mut leaves);
+            collect_leaf_tokens(tree.root_node(), start_byte, end_byte, None, &mut leaves);
             Ok(build_tokens_with_gaps(&doc.rope, leaves, start_byte, end_byte))
         } else {
             Ok(vec![SyntaxToken {

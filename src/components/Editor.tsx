@@ -1127,6 +1127,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+  const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
@@ -3057,8 +3058,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       const currentText = getEditableText(element);
-      const syntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
-      const prefix = getLineCommentPrefixForSyntaxKey(syntaxKey);
+      const prefix = getLineCommentPrefixForSyntaxKey(activeSyntaxKey);
       const lineRange = resolveSelectionLineRange(
         currentText,
         selectionOffsets.start,
@@ -3125,7 +3125,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       event.stopPropagation();
       dispatchEditorInputEvent(element);
     },
-    [tab]
+    [activeSyntaxKey]
   );
 
   const handleEditableKeyDown = useCallback(
@@ -3961,12 +3961,20 @@ export function Editor({ tab }: { tab: FileTab }) {
         } else {
           typeClass += ' token-punctuation';
         }
+
+        if (text === ':') {
+          typeClass += ' token-pair_separator';
+        }
       }
 
       if (/^_+[a-z]+$/.test(cleanType) && text.length > 0 && !typeClass.includes('token-preprocessor')) {
         if (/^#/.test(text)) {
           typeClass += ' token-preprocessor';
         }
+      }
+
+      if (/^key_+$/.test(normalizedType) && /^['"]$/.test(text)) {
+        typeClass += ' token-key_quote token-punctuation';
       }
     }
 
@@ -4659,7 +4667,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   return (
     <div
       ref={containerRef}
-      className="flex-1 w-full h-full overflow-hidden bg-background relative"
+      className={`flex-1 w-full h-full overflow-hidden bg-background relative editor-syntax-${activeSyntaxKey}`}
       tabIndex={isLargeReadOnlyMode ? 0 : -1}
       onPointerDown={handleLargeModePointerDown}
       onKeyDown={handleLargeModeEditIntent}

@@ -144,6 +144,45 @@ option {
 .token-local_date, .token-local_time, .token-local_date_time, .token-offset_date_time { color: #0e7490 !important; }
 .token-__, .token-___, .token-____ { color: #4b5563 !important; opacity: 0.9; }
 
+.editor-syntax-json .token-string,
+.editor-syntax-json .token-string_content,
+.editor-syntax-json .token-escape_sequence,
+.editor-syntax-yaml .token-string,
+.editor-syntax-yaml .token-string_scalar,
+.editor-syntax-yaml .token-double_quote_scalar,
+.editor-syntax-yaml .token-single_quote_scalar {
+  color: #1f2328 !important;
+}
+
+.editor-syntax-json .token-property,
+.editor-syntax-json .token-key_string_content,
+.editor-syntax-json .token-key_escape_sequence,
+.editor-syntax-yaml .token-property,
+.editor-syntax-yaml .token-key_string_scalar,
+.editor-syntax-yaml .token-key_double_quote_scalar,
+.editor-syntax-yaml .token-key_single_quote_scalar,
+.editor-syntax-yaml .token-key_plain_scalar,
+.editor-syntax-yaml .token-key_integer_scalar,
+.editor-syntax-yaml .token-key_float_scalar,
+.editor-syntax-yaml .token-key_boolean_scalar,
+.editor-syntax-yaml .token-key_null_scalar,
+.editor-syntax-yaml .token-key_timestamp_scalar {
+  color: #a15c00 !important;
+  font-weight: 600;
+}
+
+.editor-syntax-json .token-key_quote,
+.editor-syntax-yaml .token-key_quote {
+  color: #4b5563 !important;
+  font-weight: 400 !important;
+}
+
+.editor-syntax-json .token-pair_separator,
+.editor-syntax-yaml .token-pair_separator {
+  color: #6b7280 !important;
+  opacity: 0.8;
+}
+
 /* 修复特殊符号显示 */
 .token-_ { color: #4b5563 !important; opacity: 0.9; }
 
@@ -180,6 +219,45 @@ option {
 .dark .token-bare_key, .dark .token-quoted_key, .dark .token-dotted_key { color: #ffcb6b !important; font-weight: 600; }
 .dark .token-local_date, .dark .token-local_time, .dark .token-local_date_time, .dark .token-offset_date_time { color: #4fc1ff !important; }
 .dark .token-__, .dark .token-___, .dark .token-____ { color: #93a4b8 !important; opacity: 0.9; }
+
+.dark .editor-syntax-json .token-string,
+.dark .editor-syntax-json .token-string_content,
+.dark .editor-syntax-json .token-escape_sequence,
+.dark .editor-syntax-yaml .token-string,
+.dark .editor-syntax-yaml .token-string_scalar,
+.dark .editor-syntax-yaml .token-double_quote_scalar,
+.dark .editor-syntax-yaml .token-single_quote_scalar {
+  color: #e6edf3 !important;
+}
+
+.dark .editor-syntax-json .token-property,
+.dark .editor-syntax-json .token-key_string_content,
+.dark .editor-syntax-json .token-key_escape_sequence,
+.dark .editor-syntax-yaml .token-property,
+.dark .editor-syntax-yaml .token-key_string_scalar,
+.dark .editor-syntax-yaml .token-key_double_quote_scalar,
+.dark .editor-syntax-yaml .token-key_single_quote_scalar,
+.dark .editor-syntax-yaml .token-key_plain_scalar,
+.dark .editor-syntax-yaml .token-key_integer_scalar,
+.dark .editor-syntax-yaml .token-key_float_scalar,
+.dark .editor-syntax-yaml .token-key_boolean_scalar,
+.dark .editor-syntax-yaml .token-key_null_scalar,
+.dark .editor-syntax-yaml .token-key_timestamp_scalar {
+  color: #ffcb6b !important;
+  font-weight: 600;
+}
+
+.dark .editor-syntax-json .token-key_quote,
+.dark .editor-syntax-yaml .token-key_quote {
+  color: #93a4b8 !important;
+  font-weight: 400 !important;
+}
+
+.dark .editor-syntax-json .token-pair_separator,
+.dark .editor-syntax-yaml .token-pair_separator {
+  color: #7f8ea3 !important;
+  opacity: 0.8;
+}
 
 .dark .token-_ { color: #93a4b8 !important; opacity: 0.9; }
 
