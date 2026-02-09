@@ -1,9 +1,11 @@
-import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import rutarDocumentLogo from '../../rutar_document.svg';
 
 const FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS = [
   '.txt',
@@ -60,57 +62,51 @@ export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
   const updateSettings = useStore((state) => state.updateSettings);
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('appearance');
+  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'about'>('appearance');
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
   const [isUpdatingFileAssociations, setIsUpdatingFileAssociations] = useState(false);
   const [showRestartToast, setShowRestartToast] = useState(false);
   const restartToastTimerRef = useRef<number | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
-  const currentLineLabel = settings.language === 'zh-CN' ? '高亮当前行' : 'Highlight Current Line';
-  const currentLineDesc =
-    settings.language === 'zh-CN'
-      ? '在编辑器中突出显示光标所在行。'
-      : 'Highlight the line where the caret is currently placed.';
-  const doubleClickCloseTabLabel = settings.language === 'zh-CN' ? '双击关闭标签页' : 'Double-click to Close Tab';
-  const doubleClickCloseTabDesc =
-    settings.language === 'zh-CN'
-      ? '双击顶部标签页可直接关闭。'
-      : 'Double-click a tab in the title bar to close it.';
-  const wordWrapDesc =
-    settings.language === 'zh-CN'
-      ? '超过容器宽度时自动换行，减少横向滚动。'
-      : 'Wrap long lines to avoid horizontal scrolling.';
-  const appearanceTabDesc =
-    settings.language === 'zh-CN'
-      ? '主题、字体与编辑器显示'
-      : 'Theme, fonts, and editor visuals';
-  const generalTabDesc =
-    settings.language === 'zh-CN'
-      ? '语言与基础偏好'
-      : 'Language and basic preferences';
+  const currentLineLabel = tr('settings.highlightCurrentLine');
+  const currentLineDesc = tr('settings.highlightCurrentLineDesc');
+  const doubleClickCloseTabLabel = tr('settings.doubleClickCloseTab');
+  const doubleClickCloseTabDesc = tr('settings.doubleClickCloseTabDesc');
+  const wordWrapDesc = tr('settings.wordWrapDesc');
+  const appearanceTabDesc = tr('settings.appearanceTabDesc');
+  const generalTabDesc = tr('settings.generalTabDesc');
+  const aboutTabTitle = tr('settings.about');
+  const aboutTabDesc = tr('settings.aboutDesc');
+  const aboutPanelDesc = tr('settings.aboutPanelDesc');
+  const projectHomeLabel = tr('settings.about.projectUrl');
+  const projectHomeOpenLabel = tr('settings.about.openLink');
+  const projectHomeValue = 'https://github.com/fonlan/Rutar';
+  const aboutSummary = tr('settings.about.summary');
 
   const controlClassName =
     'flex h-10 w-full rounded-lg border border-input bg-background/70 text-foreground px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
-  const switchOnText = settings.language === 'zh-CN' ? '开' : 'ON';
-  const switchOffText = settings.language === 'zh-CN' ? '关' : 'OFF';
+  const switchOnText = tr('settings.switchOn');
+  const switchOffText = tr('settings.switchOff');
   const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
 
-  const windowsContextLabel = settings.language === 'zh-CN' ? 'Windows 11 右键菜单' : 'Windows 11 Context Menu';
-  const windowsContextDesc = settings.language === 'zh-CN'
-    ? '在文件和文件夹右键菜单中显示“使用 Rutar 打开”。'
-    : 'Show "Open with Rutar" for files and folders in the context menu.';
-  const windowsFileAssociationLabel = settings.language === 'zh-CN' ? 'Windows 文件关联' : 'Windows File Associations';
-  const windowsFileAssociationDesc = settings.language === 'zh-CN'
-    ? '将 Rutar 设为所选后缀的默认编辑器，支持双击直接打开。图标使用 rutar_document.png。'
-    : 'Set Rutar as the default editor for selected extensions. Supports double-click open with rutar_document.png icon.';
-  const windowsFileAssociationHint = settings.language === 'zh-CN'
-    ? '勾选常见文本后缀，也可自定义（如 .env、.sql）。'
-    : 'Select common text extensions and add custom ones (for example .env, .sql).';
-  const addExtensionButtonLabel = settings.language === 'zh-CN' ? '添加' : 'Add';
+  const windowsContextLabel = tr('settings.windowsContextMenu');
+  const windowsContextDesc = tr('settings.windowsContextMenuDesc');
+  const windowsFileAssociationLabel = tr('settings.windowsFileAssociations');
+  const windowsFileAssociationDesc = tr('settings.windowsFileAssociationsDesc');
+  const windowsFileAssociationHint = tr('settings.windowsFileAssociationsHint');
+  const addExtensionButtonLabel = tr('settings.add');
   const singleInstanceModeLabel = tr('settings.singleInstanceMode');
   const singleInstanceModeDesc = tr('settings.singleInstanceModeDesc');
   const singleInstanceModeRestartToast = tr('settings.singleInstanceModeRestartToast');
+
+  const handleOpenProjectHome = async () => {
+    try {
+      await openUrl(projectHomeValue);
+    } catch (error) {
+      console.error('Failed to open project URL:', error);
+    }
+  };
 
   const normalizedSelectedExtensions = useMemo(
     () => normalizeWindowsFileAssociationExtensions(settings.windowsFileAssociationExtensions),
@@ -319,7 +315,7 @@ export function SettingsModal() {
           <div className="px-2 py-2 mb-2">
             <div className="text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">{tr('settings.title')}</div>
             <div className="mt-1 text-xs text-muted-foreground/80">
-              {settings.language === 'zh-CN' ? '编辑器偏好与体验' : 'Editor preferences and experience'}
+              {tr('settings.editorPrefsDesc')}
             </div>
           </div>
 
@@ -354,24 +350,38 @@ export function SettingsModal() {
               <span className="block text-xs text-muted-foreground mt-1">{appearanceTabDesc}</span>
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('about')}
+            className={cn(
+              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              activeTab === 'about'
+                ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
+                : 'hover:bg-muted/70 border-transparent'
+            )}
+          >
+            <Info className="w-4 h-4 mt-0.5" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-tight">{aboutTabTitle}</span>
+              <span className="block text-xs text-muted-foreground mt-1">{aboutTabDesc}</span>
+            </span>
+          </button>
         </div>
 
         <div className="flex-1 flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b bg-background/70">
             <div>
               <h2 className="font-semibold text-base">
-                {activeTab === 'general' ? tr('settings.general') : tr('settings.appearance')}
+                {activeTab === 'general' ? tr('settings.general') : activeTab === 'appearance' ? tr('settings.appearance') : aboutTabTitle}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {activeTab === 'general'
-                  ? (settings.language === 'zh-CN' ? '配置应用基础行为与语言。' : 'Configure language and base behavior.')
-                  : (settings.language === 'zh-CN' ? '调整编辑器观感、排版与阅读体验。' : 'Tune editor visuals, typography, and readability.')}
+                {activeTab === 'about' ? aboutPanelDesc : activeTab === 'general' ? tr('settings.generalPanelDesc') : tr('settings.appearancePanelDesc')}
               </p>
             </div>
             <button 
                 onClick={() => toggleSettings(false)}
                 className="hover:bg-destructive/10 hover:text-destructive rounded-md p-1.5 transition-colors"
-                aria-label="Close settings"
+                aria-label={tr('settings.close')}
             >
                 <X className="w-4 h-4" />
             </button>
@@ -669,7 +679,7 @@ export function SettingsModal() {
                               event.preventDefault();
                               handleAddCustomExtension();
                             }}
-                            placeholder={settings.language === 'zh-CN' ? '输入自定义后缀，如 .env' : 'Custom extension, e.g. .env'}
+                            placeholder={tr('settings.customExtensionPlaceholder')}
                           />
                           <button
                             type="button"
@@ -726,7 +736,7 @@ export function SettingsModal() {
                 <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
                   <div className="flex items-center gap-2 text-sm font-medium mb-3">
                     <Type className="w-4 h-4 text-muted-foreground" />
-                    {settings.language === 'zh-CN' ? '排版' : 'Typography'}
+                    {tr('settings.typography')}
                   </div>
                   <div className="grid gap-4 md:grid-cols-[1fr_160px]">
                     <div className="space-y-2">
@@ -765,7 +775,7 @@ export function SettingsModal() {
 
                     <div className="space-y-2 md:col-span-2">
                       <label className="text-sm font-medium leading-none">
-                        {settings.language === 'zh-CN' ? '制表符宽度' : 'Tab Width'}
+                        {tr('settings.tabWidth')}
                       </label>
                       <div className="relative max-w-[220px]">
                         <input
@@ -784,7 +794,7 @@ export function SettingsModal() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {settings.language === 'zh-CN' ? '用于工具栏格式化按钮的缩进宽度。' : 'Indent width used by toolbar beautify action.'}
+                        {tr('settings.tabWidthDesc')}
                       </p>
                     </div>
                   </div>
@@ -831,6 +841,46 @@ export function SettingsModal() {
                       </span>
                       <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
                     </button>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {activeTab === 'about' && (
+              <div className="max-w-3xl">
+                <section className="rounded-xl border border-border/70 bg-card/80 p-6 shadow-sm">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="group relative">
+                      <div className="pointer-events-none absolute -inset-3 rounded-3xl bg-primary/10 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
+                      <img
+                        src={rutarDocumentLogo}
+                        alt="Rutar logo"
+                        className="relative h-28 w-28 rounded-2xl border border-border/70 bg-background/85 p-3 shadow-sm transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:rotate-[2deg] group-hover:scale-105 group-hover:shadow-lg"
+                      />
+                    </div>
+
+                    <div className="mt-5 max-w-2xl">
+                      <h3 className="text-xl font-semibold tracking-tight">Rutar</h3>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{aboutSummary}</p>
+                    </div>
+
+                    <div className="mt-7 w-full max-w-xl rounded-lg border border-border/70 bg-background/70 p-4 text-left">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        {projectHomeLabel}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <code className="max-w-full truncate rounded-md border border-border bg-muted/50 px-2 py-1 text-xs">
+                          {projectHomeValue}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenProjectHome()}
+                          className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted"
+                        >
+                          {projectHomeOpenLabel}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </section>
               </div>

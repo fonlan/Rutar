@@ -9,6 +9,15 @@ export type I18nKey =
   | 'titleBar.copyDirectory'
   | 'titleBar.copyPath'
   | 'titleBar.openContainingFolder'
+  | 'titleBar.enableAlwaysOnTop'
+  | 'titleBar.disableAlwaysOnTop'
+  | 'tabCloseConfirm.title'
+  | 'tabCloseConfirm.message'
+  | 'tabCloseConfirm.save'
+  | 'tabCloseConfirm.discard'
+  | 'tabCloseConfirm.cancel'
+  | 'tabCloseConfirm.saveAll'
+  | 'tabCloseConfirm.discardAll'
   | 'toolbar.newFile'
   | 'toolbar.openFile'
   | 'toolbar.openFolder'
@@ -24,6 +33,11 @@ export type I18nKey =
   | 'toolbar.toggleWordWrap'
   | 'toolbar.bookmarkSidebar'
   | 'toolbar.contentTree'
+  | 'toolbar.filter'
+  | 'toolbar.format.beautify'
+  | 'toolbar.format.minify'
+  | 'toolbar.format.unsupported'
+  | 'toolbar.format.failed'
   | 'bookmark.menu.title'
   | 'bookmark.add'
   | 'bookmark.remove'
@@ -58,6 +72,43 @@ export type I18nKey =
   | 'settings.singleInstanceMode'
   | 'settings.singleInstanceModeDesc'
   | 'settings.singleInstanceModeRestartToast'
+  | 'settings.about'
+  | 'settings.aboutDesc'
+  | 'settings.aboutPanelDesc'
+  | 'settings.about.projectUrl'
+  | 'settings.about.openLink'
+  | 'settings.about.summary'
+  | 'settings.editorPrefsDesc'
+  | 'settings.generalTabDesc'
+  | 'settings.appearanceTabDesc'
+  | 'settings.generalPanelDesc'
+  | 'settings.appearancePanelDesc'
+  | 'settings.close'
+  | 'settings.highlightCurrentLine'
+  | 'settings.highlightCurrentLineDesc'
+  | 'settings.doubleClickCloseTab'
+  | 'settings.doubleClickCloseTabDesc'
+  | 'settings.wordWrapDesc'
+  | 'settings.switchOn'
+  | 'settings.switchOff'
+  | 'settings.windowsContextMenu'
+  | 'settings.windowsContextMenuDesc'
+  | 'settings.windowsFileAssociations'
+  | 'settings.windowsFileAssociationsDesc'
+  | 'settings.windowsFileAssociationsHint'
+  | 'settings.add'
+  | 'settings.customExtensionPlaceholder'
+  | 'settings.typography'
+  | 'settings.tabWidth'
+  | 'settings.tabWidthDesc'
+  | 'editor.context.delete'
+  | 'editor.context.selectAll'
+  | 'editor.context.edit'
+  | 'editor.context.cleanup.removeEmptyLines'
+  | 'editor.context.cleanup.removeDuplicateLines'
+  | 'editor.context.cleanup.trimLeadingWhitespace'
+  | 'editor.context.cleanup.trimTrailingWhitespace'
+  | 'editor.context.cleanup.trimSurroundingWhitespace'
   | 'editor.largeMode.readOnlyTitle'
   | 'editor.largeMode.readOnlyDesc'
   | 'editor.largeMode.keepReadOnly'
@@ -66,14 +117,23 @@ export type I18nKey =
 type Messages = Record<I18nKey, string>;
 
 const zhCN: Messages = {
-  'titleBar.copyFileName': '\u590d\u5236\u6587\u4ef6\u540d',
-  'titleBar.copyDirectory': '\u590d\u5236\u76ee\u5f55',
-  'titleBar.copyPath': '\u590d\u5236\u8def\u5f84',
-  'titleBar.openContainingFolder': '\u6253\u5f00\u6587\u4ef6\u6240\u5728\u6587\u4ef6\u5939',
   'app.readyOpenHint': '就绪：打开文件或文件夹',
   'titleBar.settings': '设置',
   'titleBar.closeOtherTabs': '关闭其他标签页',
   'titleBar.closeAllTabs': '关闭所有标签页',
+  'titleBar.copyFileName': '复制文件名',
+  'titleBar.copyDirectory': '复制目录',
+  'titleBar.copyPath': '复制路径',
+  'titleBar.openContainingFolder': '打开文件所在文件夹',
+  'titleBar.enableAlwaysOnTop': '置顶窗口',
+  'titleBar.disableAlwaysOnTop': '取消置顶窗口',
+  'tabCloseConfirm.title': '未保存更改',
+  'tabCloseConfirm.message': '标签页“{tabName}”有未保存修改，是否保存后关闭？',
+  'tabCloseConfirm.save': '是',
+  'tabCloseConfirm.discard': '否',
+  'tabCloseConfirm.cancel': '取消',
+  'tabCloseConfirm.saveAll': '是（全部）',
+  'tabCloseConfirm.discardAll': '否（全部）',
   'toolbar.newFile': '新建文件 (Ctrl+N)',
   'toolbar.openFile': '打开文件 (Ctrl+O)',
   'toolbar.openFolder': '打开文件夹',
@@ -89,6 +149,11 @@ const zhCN: Messages = {
   'toolbar.toggleWordWrap': '切换自动换行',
   'toolbar.bookmarkSidebar': '书签侧边栏',
   'toolbar.contentTree': '内容树',
+  'toolbar.filter': '过滤',
+  'toolbar.format.beautify': '格式化文档 (Ctrl+Alt+F)',
+  'toolbar.format.minify': '最小化文档 (Ctrl+Alt+M)',
+  'toolbar.format.unsupported': '仅支持 JSON / YAML / XML / TOML 文件格式化。',
+  'toolbar.format.failed': '格式化失败：',
   'bookmark.menu.title': '书签',
   'bookmark.add': '添加书签',
   'bookmark.remove': '删除书签',
@@ -123,21 +188,67 @@ const zhCN: Messages = {
   'settings.singleInstanceMode': '单实例模式',
   'settings.singleInstanceModeDesc': '启用后，双击关联文件或“使用 Rutar 打开”会复用当前窗口并新建标签页。更改后重启生效。',
   'settings.singleInstanceModeRestartToast': '单实例模式设置已变更，重启 Rutar 后生效。',
+  'settings.about': '关于',
+  'settings.aboutDesc': '项目信息与开源地址',
+  'settings.aboutPanelDesc': '查看 Rutar 项目信息与源码地址。',
+  'settings.about.projectUrl': '项目地址',
+  'settings.about.openLink': '打开链接',
+  'settings.about.summary': 'Rutar 是一个基于 Tauri、React 和 Rust 构建的高性能代码编辑器。',
+  'settings.editorPrefsDesc': '编辑器偏好与体验',
+  'settings.generalTabDesc': '语言与基础偏好',
+  'settings.appearanceTabDesc': '主题、字体与编辑器显示',
+  'settings.generalPanelDesc': '配置应用基础行为与语言。',
+  'settings.appearancePanelDesc': '调整编辑器观感、排版与阅读体验。',
+  'settings.close': '关闭设置',
+  'settings.highlightCurrentLine': '高亮当前行',
+  'settings.highlightCurrentLineDesc': '在编辑器中突出显示光标所在行。',
+  'settings.doubleClickCloseTab': '双击关闭标签页',
+  'settings.doubleClickCloseTabDesc': '双击顶部标签页可直接关闭。',
+  'settings.wordWrapDesc': '超过容器宽度时自动换行，减少横向滚动。',
+  'settings.switchOn': '开',
+  'settings.switchOff': '关',
+  'settings.windowsContextMenu': 'Windows 11 右键菜单',
+  'settings.windowsContextMenuDesc': '在文件和文件夹右键菜单中显示“使用 Rutar 打开”。',
+  'settings.windowsFileAssociations': 'Windows 文件关联',
+  'settings.windowsFileAssociationsDesc': '将 Rutar 设为所选后缀的默认编辑器，支持双击直接打开。图标使用 rutar_document.png。',
+  'settings.windowsFileAssociationsHint': '勾选常见文本后缀，也可自定义（如 .env、.sql）。',
+  'settings.add': '添加',
+  'settings.customExtensionPlaceholder': '输入自定义后缀，如 .env',
+  'settings.typography': '排版',
+  'settings.tabWidth': '制表符宽度',
+  'settings.tabWidthDesc': '用于工具栏格式化按钮的缩进宽度。',
+  'editor.context.delete': '删除',
+  'editor.context.selectAll': '全选',
+  'editor.context.edit': '编辑',
+  'editor.context.cleanup.removeEmptyLines': '移除空行',
+  'editor.context.cleanup.removeDuplicateLines': '移除重复行',
+  'editor.context.cleanup.trimLeadingWhitespace': '移除行首空格',
+  'editor.context.cleanup.trimTrailingWhitespace': '移除行尾空格',
+  'editor.context.cleanup.trimSurroundingWhitespace': '移除行首行尾空格',
   'editor.largeMode.readOnlyTitle': '大文件模式当前为只读',
-  'editor.largeMode.readOnlyDesc': '检测到你在尝试输入。进入可编辑模式可能导致性能下降，是否继续？',
+  'editor.largeMode.readOnlyDesc': '检测到你在尝试输入。进入可编辑模式可能导致性能下降。是否继续？',
   'editor.largeMode.keepReadOnly': '保持只读',
   'editor.largeMode.enterEditable': '进入编辑模式',
 };
 
 const enUS: Messages = {
-  'titleBar.copyFileName': 'Copy File Name',
-  'titleBar.copyDirectory': 'Copy Directory',
-  'titleBar.copyPath': 'Copy Path',
-  'titleBar.openContainingFolder': 'Open Containing Folder',
   'app.readyOpenHint': 'READY: Open a file or folder',
   'titleBar.settings': 'Settings',
   'titleBar.closeOtherTabs': 'Close Other Tabs',
   'titleBar.closeAllTabs': 'Close All Tabs',
+  'titleBar.copyFileName': 'Copy File Name',
+  'titleBar.copyDirectory': 'Copy Directory',
+  'titleBar.copyPath': 'Copy Path',
+  'titleBar.openContainingFolder': 'Open Containing Folder',
+  'titleBar.enableAlwaysOnTop': 'Enable Always on Top',
+  'titleBar.disableAlwaysOnTop': 'Disable Always on Top',
+  'tabCloseConfirm.title': 'Unsaved Changes',
+  'tabCloseConfirm.message': 'Tab "{tabName}" has unsaved changes. Close with saving?',
+  'tabCloseConfirm.save': 'Yes',
+  'tabCloseConfirm.discard': 'No',
+  'tabCloseConfirm.cancel': 'Cancel',
+  'tabCloseConfirm.saveAll': 'Yes (All)',
+  'tabCloseConfirm.discardAll': 'No (All)',
   'toolbar.newFile': 'New File (Ctrl+N)',
   'toolbar.openFile': 'Open File (Ctrl+O)',
   'toolbar.openFolder': 'Open Folder',
@@ -153,6 +264,11 @@ const enUS: Messages = {
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
   'toolbar.bookmarkSidebar': 'Bookmark Sidebar',
   'toolbar.contentTree': 'Content Tree',
+  'toolbar.filter': 'Filter',
+  'toolbar.format.beautify': 'Beautify (Ctrl+Alt+F)',
+  'toolbar.format.minify': 'Minify (Ctrl+Alt+M)',
+  'toolbar.format.unsupported': 'Only JSON, YAML, XML, and TOML are supported.',
+  'toolbar.format.failed': 'Format failed:',
   'bookmark.menu.title': 'Bookmark',
   'bookmark.add': 'Add Bookmark',
   'bookmark.remove': 'Remove Bookmark',
@@ -187,6 +303,43 @@ const enUS: Messages = {
   'settings.singleInstanceMode': 'Single Instance Mode',
   'settings.singleInstanceModeDesc': 'When enabled, file-association and "Open with Rutar" actions reuse this window and open a new tab. Restart required.',
   'settings.singleInstanceModeRestartToast': 'Single instance setting changed. Restart Rutar to apply it.',
+  'settings.about': 'About',
+  'settings.aboutDesc': 'Project info and repository',
+  'settings.aboutPanelDesc': 'View project information and source repository for Rutar.',
+  'settings.about.projectUrl': 'Project URL',
+  'settings.about.openLink': 'Open link',
+  'settings.about.summary': 'Rutar is a high-performance code editor built with Tauri, React, and Rust.',
+  'settings.editorPrefsDesc': 'Editor preferences and experience',
+  'settings.generalTabDesc': 'Language and basic preferences',
+  'settings.appearanceTabDesc': 'Theme, fonts, and editor visuals',
+  'settings.generalPanelDesc': 'Configure language and base behavior.',
+  'settings.appearancePanelDesc': 'Tune editor visuals, typography, and readability.',
+  'settings.close': 'Close settings',
+  'settings.highlightCurrentLine': 'Highlight Current Line',
+  'settings.highlightCurrentLineDesc': 'Highlight the line where the caret is currently placed.',
+  'settings.doubleClickCloseTab': 'Double-click to Close Tab',
+  'settings.doubleClickCloseTabDesc': 'Double-click a tab in the title bar to close it.',
+  'settings.wordWrapDesc': 'Wrap long lines to avoid horizontal scrolling.',
+  'settings.switchOn': 'ON',
+  'settings.switchOff': 'OFF',
+  'settings.windowsContextMenu': 'Windows 11 Context Menu',
+  'settings.windowsContextMenuDesc': 'Show "Open with Rutar" for files and folders in the context menu.',
+  'settings.windowsFileAssociations': 'Windows File Associations',
+  'settings.windowsFileAssociationsDesc': 'Set Rutar as the default editor for selected extensions. Supports double-click open with rutar_document.png icon.',
+  'settings.windowsFileAssociationsHint': 'Select common text extensions and add custom ones (for example .env, .sql).',
+  'settings.add': 'Add',
+  'settings.customExtensionPlaceholder': 'Custom extension, e.g. .env',
+  'settings.typography': 'Typography',
+  'settings.tabWidth': 'Tab Width',
+  'settings.tabWidthDesc': 'Indent width used by toolbar beautify action.',
+  'editor.context.delete': 'Delete',
+  'editor.context.selectAll': 'Select All',
+  'editor.context.edit': 'Edit',
+  'editor.context.cleanup.removeEmptyLines': 'Remove Empty Lines',
+  'editor.context.cleanup.removeDuplicateLines': 'Remove Duplicate Lines',
+  'editor.context.cleanup.trimLeadingWhitespace': 'Trim Leading Whitespace',
+  'editor.context.cleanup.trimTrailingWhitespace': 'Trim Trailing Whitespace',
+  'editor.context.cleanup.trimSurroundingWhitespace': 'Trim Leading/Trailing Whitespace',
   'editor.largeMode.readOnlyTitle': 'Large File Mode is currently read-only',
   'editor.largeMode.readOnlyDesc': 'Input detected. Editable mode may reduce performance. Continue?',
   'editor.largeMode.keepReadOnly': 'Keep Read-only',
@@ -200,4 +353,260 @@ const dictionaries: Record<AppLanguage, Messages> = {
 
 export function t(language: AppLanguage, key: I18nKey): string {
   return dictionaries[language][key] ?? dictionaries['zh-CN'][key] ?? key;
+}
+
+export function getSearchPanelMessages(language: AppLanguage) {
+  if (language === 'en-US') {
+    return {
+      counting: 'Counting…',
+      invalidRegex: 'Invalid regular expression',
+      searchFailed: 'Search failed',
+      filterFailed: 'Filter failed',
+      replaceFailed: 'Replace failed',
+      replaceAllFailed: 'Replace all failed',
+      noReplaceMatches: 'No matches to replace',
+      replacedCurrent: 'Replaced current match',
+      textUnchanged: 'Text unchanged',
+      replacedAll: (count: number) => `Replaced all ${count} matches`,
+      statusEnterToSearch: 'Enter keyword and press Enter to search',
+      statusSearching: 'Searching...',
+      statusNoMatches: 'No matches found',
+      statusTotalPending: (current: number) => `Total matches counting… · Current ${current}/?`,
+      statusTotalReady: (total: number, current: number) => `Total ${total} matches · Current ${current}/${Math.max(total, 1)}`,
+      statusEnterToFilter: 'Add filter rules and press Enter to run filter',
+      statusFiltering: 'Filtering...',
+      statusFilterNoMatches: 'No lines matched filters',
+      statusFilterTotalPending: (current: number) => `Matched lines counting… · Current ${current}/?`,
+      statusFilterTotalReady: (total: number, current: number) => `Matched lines ${total} · Current ${current}/${Math.max(total, 1)}`,
+      find: 'Find',
+      replace: 'Replace',
+      filter: 'Filter',
+      switchToReplaceMode: 'Switch to replace mode',
+      switchToFilterMode: 'Switch to filter mode',
+      noFileOpen: 'No file opened',
+      close: 'Close',
+      findPlaceholder: 'Find text',
+      filterAddRule: 'Add Rule',
+      filterRuleKeywordPlaceholder: 'Filter keyword',
+      filterMatchContains: 'Contains',
+      filterMatchRegex: 'Regex',
+      filterMatchWildcard: 'Wildcard',
+      filterApplyLine: 'Whole line',
+      filterApplyMatch: 'Match only',
+      filterStyleBold: 'Bold',
+      filterStyleItalic: 'Italic',
+      filterBackground: 'Bg',
+      filterNoBackground: 'No Bg',
+      filterTextColor: 'Text',
+      filterMoveUp: 'Move up',
+      filterMoveDown: 'Move down',
+      filterDeleteRule: 'Delete',
+      filterPriority: 'Priority',
+      filterDragPriorityHint: 'Drag to reorder priority',
+      filterRuleEmptyHint: 'Add at least one non-empty rule.',
+      filterRun: 'Filter',
+      filterRunHint: 'Click Filter to run current rules',
+      filterGroupNamePlaceholder: 'Rule group name',
+      filterSaveGroup: 'Save Group',
+      filterLoadGroup: 'Load Group',
+      filterDeleteGroup: 'Delete Group',
+      filterGroupSelectPlaceholder: 'Select rule group',
+      filterGroupsEmptyHint: 'No saved rule groups yet.',
+      filterImportGroups: 'Import Groups',
+      filterExportGroups: 'Export Groups',
+      filterGroupNameRequired: 'Please enter a rule group name',
+      filterGroupRuleRequired: 'Add at least one non-empty rule before saving',
+      filterGroupSelectRequired: 'Please select a rule group',
+      filterGroupsExportEmpty: 'No rule groups to export',
+      filterGroupSaved: (name: string) => `Saved rule group: ${name}`,
+      filterGroupLoaded: (name: string) => `Loaded rule group: ${name}`,
+      filterGroupDeleted: (name: string) => `Deleted rule group: ${name}`,
+      filterGroupsImported: (count: number) => `Imported ${count} rule groups`,
+      filterGroupsExported: (count: number) => `Exported ${count} rule groups`,
+      filterGroupLoadFailed: 'Failed to load rule groups',
+      filterGroupSaveFailed: 'Failed to save rule groups',
+      filterGroupImportFailed: 'Failed to import rule groups',
+      filterGroupExportFailed: 'Failed to export rule groups',
+      collapseResults: 'Collapse results',
+      expandResults: 'Expand results',
+      results: 'Results',
+      all: 'All',
+      collapse: 'Collapse',
+      replacePlaceholder: 'Replace with',
+      modeLiteral: 'Literal',
+      modeRegex: 'Regex',
+      modeWildcard: 'Wildcard',
+      caseSensitive: 'Case Sensitive',
+      reverseSearch: 'Reverse Search',
+      prevMatch: 'Previous match',
+      previous: 'Previous',
+      nextMatch: 'Next match',
+      next: 'Next',
+      replaceCurrentMatch: 'Replace current match',
+      replaceAllMatches: 'Replace all matches',
+      replaceAll: 'Replace All',
+      shortcutHint: 'F3 Next / Shift+F3 Previous',
+      lineColTitle: (line: number, col: number) => `Line ${line}, Col ${col}`,
+      resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+        `Search Results · Total ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      filterResultsSummary: (totalLinesText: string, loaded: number) =>
+        `Filter Results · Total ${totalLinesText} lines · Loaded ${loaded}`,
+      refreshResults: 'Refresh search results',
+      refreshFilterResults: 'Refresh filter results',
+      resultFilterPlaceholder: 'Search in all results',
+      resultFilterSearch: 'Filter',
+      resultFilterStop: 'Stop',
+      resultFilterNoMatches: 'No results match this filter.',
+      resultFilterStepNoMatch: (keyword: string) => `No entries in results contain "${keyword}".`,
+      clearResultFilter: 'Clear result filter',
+      copyResults: 'Copy results as plain text',
+      copyResultsEmpty: 'No results to copy',
+      copyResultsSuccess: (count: number) => `Copied ${count} results as plain text`,
+      copyResultsFailed: 'Failed to copy results',
+      minimizeResults: 'Minimize results',
+      closeResults: 'Close results',
+      resultsEmptyHint: 'Enter a keyword to list all matches here.',
+      noMatchesHint: 'No matches found.',
+      filterResultsEmptyHint: 'Add rules and run filter to list matching lines here.',
+      noFilterMatchesHint: 'No lines matched current filter rules.',
+      loadingMore: 'Loading more results...',
+      scrollToLoadMore: 'Scroll to bottom to load more',
+      loadedAll: (totalMatchesText: string) => `All results loaded (${totalMatchesText})`,
+      filterLoadingMore: 'Loading more filtered lines...',
+      filterScrollToLoadMore: 'Scroll to bottom to load more filtered lines',
+      filterLoadedAll: (totalLinesText: string) => `All filtered lines loaded (${totalLinesText})`,
+      minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+        `Results ${totalMatchesText} / ${totalLinesText} lines · Loaded ${loaded}`,
+      filterMinimizedSummary: (totalLinesText: string, loaded: number) =>
+        `Filtered ${totalLinesText} lines · Loaded ${loaded}`,
+      openResults: 'Open search results',
+      openFilterResults: 'Open filter results',
+    };
+  }
+
+  return {
+    counting: '统计中…',
+    invalidRegex: '正则表达式无效',
+    searchFailed: '搜索失败',
+    filterFailed: '过滤失败',
+    replaceFailed: '替换失败',
+    replaceAllFailed: '全部替换失败',
+    noReplaceMatches: '没有可替换的匹配项',
+    replacedCurrent: '已替换当前匹配项',
+    textUnchanged: '文本未发生变化',
+    replacedAll: (count: number) => `已全部替换 ${count} 处`,
+    statusEnterToSearch: '输入关键词后按 Enter 开始搜索',
+    statusSearching: '正在搜索...',
+    statusNoMatches: '未找到匹配项',
+    statusTotalPending: (current: number) => `匹配总计 统计中… · 当前 ${current}/?`,
+    statusTotalReady: (total: number, current: number) => `匹配总计 ${total} 项 · 当前 ${current}/${Math.max(total, 1)}`,
+    statusEnterToFilter: '添加规则后按 Enter 开始过滤',
+    statusFiltering: '正在过滤...',
+    statusFilterNoMatches: '没有行匹配当前过滤规则',
+    statusFilterTotalPending: (current: number) => `匹配行总计统计中… · 当前 ${current}/?`,
+    statusFilterTotalReady: (total: number, current: number) => `匹配行总计 ${total} 行 · 当前 ${current}/${Math.max(total, 1)}`,
+    find: '查找',
+    replace: '替换',
+    filter: '过滤',
+    switchToReplaceMode: '切换到替换模式',
+    switchToFilterMode: '切换到过滤模式',
+    noFileOpen: '没有打开的文件',
+    close: '关闭',
+    findPlaceholder: '查找内容',
+    filterAddRule: '新增规则',
+    filterRuleKeywordPlaceholder: '过滤关键字',
+    filterMatchContains: '存在',
+    filterMatchRegex: '正则',
+    filterMatchWildcard: '通配符',
+    filterApplyLine: '整行',
+    filterApplyMatch: '仅匹配项',
+    filterStyleBold: '粗体',
+    filterStyleItalic: '斜体',
+    filterBackground: '底色',
+    filterNoBackground: '无底色',
+    filterTextColor: '字体色',
+    filterMoveUp: '上移',
+    filterMoveDown: '下移',
+    filterDeleteRule: '删除',
+    filterPriority: '优先级',
+    filterDragPriorityHint: '拖拽可调整优先级',
+    filterRuleEmptyHint: '请至少添加一条非空规则。',
+    filterRun: '过滤',
+    filterRunHint: '点击“过滤”按钮后开始按规则过滤',
+    filterGroupNamePlaceholder: '规则组名称',
+    filterSaveGroup: '保存规则组',
+    filterLoadGroup: '加载规则组',
+    filterDeleteGroup: '删除规则组',
+    filterGroupSelectPlaceholder: '选择规则组',
+    filterGroupsEmptyHint: '暂无已保存规则组。',
+    filterImportGroups: '导入规则组',
+    filterExportGroups: '导出规则组',
+    filterGroupNameRequired: '请输入规则组名称',
+    filterGroupRuleRequired: '请至少添加一条非空规则再保存',
+    filterGroupSelectRequired: '请先选择规则组',
+    filterGroupsExportEmpty: '暂无可导出的规则组',
+    filterGroupSaved: (name: string) => `已保存规则组：${name}`,
+    filterGroupLoaded: (name: string) => `已加载规则组：${name}`,
+    filterGroupDeleted: (name: string) => `已删除规则组：${name}`,
+    filterGroupsImported: (count: number) => `已导入 ${count} 个规则组`,
+    filterGroupsExported: (count: number) => `已导出 ${count} 个规则组`,
+    filterGroupLoadFailed: '加载规则组失败',
+    filterGroupSaveFailed: '保存规则组失败',
+    filterGroupImportFailed: '导入规则组失败',
+    filterGroupExportFailed: '导出规则组失败',
+    collapseResults: '收起结果',
+    expandResults: '展开结果',
+    results: '结果',
+    all: '所有',
+    collapse: '收起',
+    replacePlaceholder: '替换为',
+    modeLiteral: '普通',
+    modeRegex: '正则',
+    modeWildcard: '通配符',
+    caseSensitive: '区分大小写',
+    reverseSearch: '反向搜索',
+    prevMatch: '上一个匹配',
+    previous: '上一个',
+    nextMatch: '下一个匹配',
+    next: '下一个',
+    replaceCurrentMatch: '替换当前匹配项',
+    replaceAllMatches: '替换全部匹配项',
+    replaceAll: '全部替换',
+    shortcutHint: 'F3 下一个 / Shift+F3 上一个',
+    lineColTitle: (line: number, col: number) => `行 ${line}，列 ${col}`,
+    resultsSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+      `搜索结果 · 总计 ${totalMatchesText} 处 / ${totalLinesText} 行 · 已加载 ${loaded} 处`,
+    filterResultsSummary: (totalLinesText: string, loaded: number) =>
+      `过滤结果 · 总计 ${totalLinesText} 行 · 已加载 ${loaded} 行`,
+    refreshResults: '刷新搜索结果',
+    refreshFilterResults: '刷新过滤结果',
+    resultFilterPlaceholder: '在全部结果中搜索',
+    resultFilterSearch: '过滤',
+    resultFilterStop: '停止',
+    resultFilterNoMatches: '结果中没有匹配该筛选词的项。',
+    resultFilterStepNoMatch: (keyword: string) => `当前结果列表中没有包含“${keyword}”的项。`,
+    clearResultFilter: '清空结果筛选',
+    copyResults: '复制结果为纯文本',
+    copyResultsEmpty: '没有可复制的结果',
+    copyResultsSuccess: (count: number) => `已复制 ${count} 条纯文本结果`,
+    copyResultsFailed: '复制结果失败',
+    minimizeResults: '最小化结果',
+    closeResults: '关闭结果',
+    resultsEmptyHint: '输入关键词后会在这里列出全部匹配项。',
+    noMatchesHint: '没有找到任何匹配项。',
+    filterResultsEmptyHint: '添加规则并开始过滤后，这里会列出匹配行。',
+    noFilterMatchesHint: '没有行匹配当前过滤规则。',
+    loadingMore: '正在加载更多结果...',
+    scrollToLoadMore: '滚动到底部自动加载更多结果',
+    loadedAll: (totalMatchesText: string) => `已加载全部搜索结果（共 ${totalMatchesText} 处）`,
+    filterLoadingMore: '正在加载更多过滤结果...',
+    filterScrollToLoadMore: '滚动到底部自动加载更多过滤结果',
+    filterLoadedAll: (totalLinesText: string) => `已加载全部过滤结果（共 ${totalLinesText} 行）`,
+    minimizedSummary: (totalMatchesText: string, totalLinesText: string, loaded: number) =>
+      `结果 总计${totalMatchesText}处 / ${totalLinesText}行 · 已加载${loaded}处`,
+    filterMinimizedSummary: (totalLinesText: string, loaded: number) =>
+      `过滤结果 ${totalLinesText}行 · 已加载${loaded}行`,
+    openResults: '展开搜索结果',
+    openFilterResults: '展开过滤结果',
+  };
 }

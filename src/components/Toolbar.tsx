@@ -9,7 +9,6 @@ import { openFilePath } from '@/lib/openFile';
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectContentTreeType, loadContentTree } from '@/lib/contentTree';
-import { toolbarFormatMessages } from '@/lib/i18nToolbarFormat';
 import { isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 
@@ -69,9 +68,11 @@ export function Toolbar() {
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
-    const filterTitle = language === 'en-US' ? 'Filter' : '过滤';
-
-    const formatMessages = toolbarFormatMessages[language];
+    const filterTitle = tr('toolbar.filter');
+    const formatBeautifyTitle = tr('toolbar.format.beautify');
+    const formatMinifyTitle = tr('toolbar.format.minify');
+    const formatUnsupportedMessage = tr('toolbar.format.unsupported');
+    const formatFailedPrefix = tr('toolbar.format.failed');
 
     const runStructuredFormat = useCallback(async (mode: 'beautify' | 'minify') => {
         if (!activeTab) {
@@ -79,7 +80,7 @@ export function Toolbar() {
         }
 
         if (!isStructuredFormatSupported(activeTab)) {
-            await message(formatMessages.unsupported, {
+            await message(formatUnsupportedMessage, {
                 title: tr('titleBar.settings'),
                 kind: 'warning',
             });
@@ -103,12 +104,12 @@ export function Toolbar() {
             dispatchEditorForceRefresh(activeTab.id, newLineCount);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            await message(`${formatMessages.failed} ${errorMessage}`, {
+            await message(`${formatFailedPrefix} ${errorMessage}`, {
                 title: tr('titleBar.settings'),
                 kind: 'warning',
             });
         }
-    }, [activeTab, formatMessages.failed, formatMessages.unsupported, tabWidth, tr, updateTab]);
+    }, [activeTab, formatFailedPrefix, formatUnsupportedMessage, tabWidth, tr, updateTab]);
 
     const handleFormatBeautify = useCallback(async () => {
         await runStructuredFormat('beautify');
@@ -484,13 +485,13 @@ export function Toolbar() {
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn
                 icon={WandSparkles}
-                title={formatMessages.beautify}
+                title={formatBeautifyTitle}
                 onClick={() => void handleFormatBeautify()}
                 disabled={!canFormat}
             />
             <ToolbarBtn
                 icon={Minimize2}
-                title={formatMessages.minify}
+                title={formatMinifyTitle}
                 onClick={() => void handleFormatMinify()}
                 disabled={!canFormat}
             />

@@ -973,9 +973,9 @@ export function Editor({ tab }: { tab: FileTab }) {
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isPairHighlightEnabled = !usePlainLineRendering;
-  const deleteLabel = settings.language === 'zh-CN' ? '删除' : 'Delete';
-  const selectAllLabel = settings.language === 'zh-CN' ? '全选' : 'Select All';
-  const editMenuLabel = settings.language === 'zh-CN' ? '编辑' : 'Edit';
+  const deleteLabel = tr('editor.context.delete');
+  const selectAllLabel = tr('editor.context.selectAll');
+  const editMenuLabel = tr('editor.context.edit');
   const bookmarkMenuLabel = tr('bookmark.menu.title');
   const addBookmarkLabel = tr('bookmark.add');
   const removeBookmarkLabel = tr('bookmark.remove');
@@ -983,26 +983,26 @@ export function Editor({ tab }: { tab: FileTab }) {
     () => [
       {
         action: 'remove_empty_lines' as EditorCleanupAction,
-        label: settings.language === 'zh-CN' ? '移除空行' : 'Remove Empty Lines',
+        label: tr('editor.context.cleanup.removeEmptyLines'),
       },
       {
         action: 'remove_duplicate_lines' as EditorCleanupAction,
-        label: settings.language === 'zh-CN' ? '移除重复行' : 'Remove Duplicate Lines',
+        label: tr('editor.context.cleanup.removeDuplicateLines'),
       },
       {
         action: 'trim_leading_whitespace' as EditorCleanupAction,
-        label: settings.language === 'zh-CN' ? '移除行首空格' : 'Trim Leading Whitespace',
+        label: tr('editor.context.cleanup.trimLeadingWhitespace'),
       },
       {
         action: 'trim_trailing_whitespace' as EditorCleanupAction,
-        label: settings.language === 'zh-CN' ? '移除行尾空格' : 'Trim Trailing Whitespace',
+        label: tr('editor.context.cleanup.trimTrailingWhitespace'),
       },
       {
         action: 'trim_surrounding_whitespace' as EditorCleanupAction,
-        label: settings.language === 'zh-CN' ? '移除行首行尾空格' : 'Trim Leading/Trailing Whitespace',
+        label: tr('editor.context.cleanup.trimSurroundingWhitespace'),
       },
     ],
-    [settings.language]
+    [tr]
   );
 
   const addBookmark = useStore((state) => state.addBookmark);

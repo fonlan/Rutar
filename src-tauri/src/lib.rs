@@ -48,7 +48,9 @@ pub fn run() {
 
     let single_instance_mode_enabled = commands::is_single_instance_mode_enabled_in_config();
 
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init());
 
     if single_instance_mode_enabled {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {

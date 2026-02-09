@@ -52,7 +52,9 @@ export function TitleBar() {
     const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
-    const alwaysOnTopTitle = isAlwaysOnTop ? 'Disable Always on Top' : 'Enable Always on Top';
+    const alwaysOnTopTitle = isAlwaysOnTop
+        ? tr('titleBar.disableAlwaysOnTop')
+        : tr('titleBar.enableAlwaysOnTop');
     const contextMenuTab = tabContextMenu
         ? tabs.find((tab) => tab.id === tabContextMenu.tabId) ?? null
         : null;
@@ -332,7 +334,6 @@ export function TitleBar() {
                 {tabs.map((tab) => (
                     <div
                         key={tab.id}
-                        data-tauri-drag-region
                         onClick={() => setActiveTab(tab.id)}
                         onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
                         onContextMenu={(event) => handleTabContextMenu(event, tab)}

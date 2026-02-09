@@ -5,29 +5,9 @@ import {
   TabCloseConfirmAction,
   TabCloseConfirmRequest,
 } from '@/lib/closeConfirm';
+import { t } from '@/i18n';
 
 interface DialogState extends TabCloseConfirmRequest {}
-
-const labels = {
-  'zh-CN': {
-    title: '未保存更改',
-    message: (tabName: string) => `标签页“${tabName}”有未保存修改，是否保存后关闭？`,
-    save: '是',
-    discard: '否',
-    cancel: '取消',
-    saveAll: '是（全部）',
-    discardAll: '否（全部）',
-  },
-  'en-US': {
-    title: 'Unsaved Changes',
-    message: (tabName: string) => `Tab "${tabName}" has unsaved changes. Close with saving?`,
-    save: 'Yes',
-    discard: 'No',
-    cancel: 'Cancel',
-    saveAll: 'Yes (All)',
-    discardAll: 'No (All)',
-  },
-} as const;
 
 export function TabCloseConfirmModal() {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -49,11 +29,18 @@ export function TabCloseConfirmModal() {
   }, []);
 
   const text = useMemo(() => {
-    if (!dialog) {
-      return labels['zh-CN'];
-    }
+    const language = dialog?.language ?? 'zh-CN';
+    const messageTemplate = t(language, 'tabCloseConfirm.message');
 
-    return dialog.language === 'en-US' ? labels['en-US'] : labels['zh-CN'];
+    return {
+      title: t(language, 'tabCloseConfirm.title'),
+      message: (tabName: string) => messageTemplate.replace('{tabName}', tabName),
+      save: t(language, 'tabCloseConfirm.save'),
+      discard: t(language, 'tabCloseConfirm.discard'),
+      cancel: t(language, 'tabCloseConfirm.cancel'),
+      saveAll: t(language, 'tabCloseConfirm.saveAll'),
+      discardAll: t(language, 'tabCloseConfirm.discardAll'),
+    };
   }, [dialog]);
 
   const submit = (action: TabCloseConfirmAction) => {
@@ -127,4 +114,3 @@ export function TabCloseConfirmModal() {
     </div>
   );
 }
-
