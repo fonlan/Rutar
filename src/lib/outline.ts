@@ -1,16 +1,78 @@
 import { invoke } from '@tauri-apps/api/core';
 import { FileTab, OutlineNode, OutlineType } from '@/store/useStore';
 
+const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
+  json: 'json',
+  yaml: 'yaml',
+  xml: 'xml',
+  toml: 'toml',
+  python: 'python',
+  javascript: 'javascript',
+  typescript: 'typescript',
+  c: 'c',
+  cpp: 'cpp',
+  go: 'go',
+  java: 'java',
+  rust: 'rust',
+  csharp: 'csharp',
+  php: 'php',
+  kotlin: 'kotlin',
+  swift: 'swift',
+};
+
 const OUTLINE_TYPE_BY_EXTENSION: Record<string, Exclude<OutlineType, null>> = {
   json: 'json',
   yaml: 'yaml',
   yml: 'yaml',
   xml: 'xml',
+  toml: 'toml',
+  ini: 'ini',
+  cfg: 'ini',
+  conf: 'ini',
+  cnf: 'ini',
+  properties: 'ini',
+  py: 'python',
+  pyw: 'python',
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  mts: 'typescript',
+  cts: 'typescript',
+  c: 'c',
+  h: 'c',
+  cc: 'cpp',
+  cp: 'cpp',
+  cpp: 'cpp',
+  cxx: 'cpp',
+  'c++': 'cpp',
+  hh: 'cpp',
+  hpp: 'cpp',
+  hxx: 'cpp',
+  go: 'go',
+  java: 'java',
+  rs: 'rust',
+  cs: 'csharp',
+  php: 'php',
+  phtml: 'php',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  swift: 'swift',
 };
 
 export function detectOutlineType(tab: FileTab | null | undefined): OutlineType {
   if (!tab) {
     return null;
+  }
+
+  const syntaxOverride = tab.syntaxOverride?.trim().toLowerCase();
+  if (syntaxOverride) {
+    const mappedBySyntax = OUTLINE_TYPE_BY_SYNTAX_KEY[syntaxOverride];
+    if (mappedBySyntax) {
+      return mappedBySyntax;
+    }
   }
 
   const target = (tab.path || tab.name || '').trim().toLowerCase();

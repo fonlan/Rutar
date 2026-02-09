@@ -28,12 +28,34 @@ export type SyntaxKey =
   | 'c'
   | 'cpp'
   | 'go'
-  | 'java';
+  | 'java'
+  | 'csharp'
+  | 'php'
+  | 'kotlin'
+  | 'swift';
 
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';
 
-export type OutlineType = 'json' | 'yaml' | 'xml' | null;
+export type OutlineType =
+  | 'json'
+  | 'yaml'
+  | 'xml'
+  | 'toml'
+  | 'ini'
+  | 'python'
+  | 'javascript'
+  | 'typescript'
+  | 'c'
+  | 'cpp'
+  | 'go'
+  | 'java'
+  | 'rust'
+  | 'csharp'
+  | 'php'
+  | 'kotlin'
+  | 'swift'
+  | null;
 
 export interface OutlineNode {
   label: string;

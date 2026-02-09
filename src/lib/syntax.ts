@@ -17,6 +17,10 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'cpp', label: 'C++' },
   { value: 'go', label: 'Go' },
   { value: 'java', label: 'Java' },
+  { value: 'csharp', label: 'C#' },
+  { value: 'php', label: 'PHP' },
+  { value: 'kotlin', label: 'Kotlin' },
+  { value: 'swift', label: 'Swift' },
 ];
 
 const syntaxLabelByValue = new Map(SYNTAX_OPTIONS.map((item) => [item.value, item.label]));
@@ -34,6 +38,10 @@ const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   cpp: '//',
   go: '//',
   java: '//',
+  csharp: '//',
+  php: '//',
+  kotlin: '//',
+  swift: '//',
   css: '//',
   html: '//',
   xml: '//',
@@ -120,6 +128,16 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
       return 'go';
     case 'java':
       return 'java';
+    case 'cs':
+      return 'csharp';
+    case 'php':
+    case 'phtml':
+      return 'php';
+    case 'kt':
+    case 'kts':
+      return 'kotlin';
+    case 'swift':
+      return 'swift';
     default:
       return 'plain_text';
   }
