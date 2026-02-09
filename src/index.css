@@ -48,10 +48,34 @@
 .editor-line .token {
   user-select: text !important;
   -webkit-user-select: text !important;
+  line-height: inherit;
+}
+
+.editor-line mark,
+.editor-line mark > span {
+  line-height: inherit;
 }
 
 /* Editable input layer: keep glyphs hidden while preserving native selection */
 .editor-input-layer {
+  display: block;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+  text-decoration: none;
+  text-indent: 0;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 4;
+  field-sizing: fixed;
+  overflow-anchor: none;
   color: transparent !important;
   -webkit-text-fill-color: transparent;
   caret-color: hsl(var(--foreground));
@@ -64,13 +88,13 @@ option {
 }
 
 .editor-input-layer::selection {
-  background: rgba(59, 130, 246, 0.28) !important;
+  background: transparent !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
 }
 
 .editor-input-layer::-moz-selection {
-  background: rgba(59, 130, 246, 0.28) !important;
+  background: transparent !important;
   color: transparent !important;
 }
 

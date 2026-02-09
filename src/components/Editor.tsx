@@ -85,6 +85,13 @@ interface NormalizedRectangularSelection {
   width: number;
 }
 
+interface TextSelectionState {
+  start: number;
+  end: number;
+}
+
+type EditorInputElement = HTMLDivElement | HTMLTextAreaElement;
+
 type EditorCleanupAction =
   | 'remove_empty_lines'
   | 'remove_duplicate_lines'
@@ -129,6 +136,8 @@ const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
 const RECTANGULAR_SELECTION_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-violet-300/45 text-black ring-1 ring-violet-500/40 dark:bg-violet-400/30 dark:ring-violet-300/40';
+const TEXT_SELECTION_HIGHLIGHT_CLASS =
+  'rounded-[2px] bg-blue-400/35 ring-1 ring-blue-500/30 dark:bg-blue-500/30 dark:ring-blue-300/30';
 const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const EMPTY_BOOKMARKS: number[] = [];
@@ -353,7 +362,7 @@ function mapLogicalOffsetToInputLayerOffset(text: string, logicalOffset: number)
   return safeOffset;
 }
 
-function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
+function isLargeModeEditIntent(event: React.KeyboardEvent<EditorInputElement>) {
   if (event.isComposing) {
     return false;
   }
@@ -380,8 +389,25 @@ function isLargeModeEditIntent(event: React.KeyboardEvent<HTMLDivElement>) {
   return false;
 }
 
-function getEditableText(element: HTMLDivElement) {
-  return normalizeEditorText((element.textContent || "").replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
+function isTextareaInputElement(element: EditorInputElement | null): element is HTMLTextAreaElement {
+  return !!element && element.tagName === 'TEXTAREA';
+}
+
+function setInputLayerText(element: EditorInputElement, text: string) {
+  if (isTextareaInputElement(element)) {
+    element.value = normalizeEditorText((text || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
+    return;
+  }
+
+  element.textContent = toInputLayerText(text);
+}
+
+function getEditableText(element: EditorInputElement) {
+  if (isTextareaInputElement(element)) {
+    return normalizeEditorText((element.value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
+  }
+
+  return normalizeEditorText((element.textContent || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
 }
 
 function getCodeUnitOffsetFromLineColumn(text: string, line: number, column: number) {
@@ -416,13 +442,28 @@ function getCodeUnitOffsetFromLineColumn(text: string, line: number, column: num
   return Math.min(safeLineEndOffset, lineStartOffset + targetColumn - 1);
 }
 
-function setCaretToLineColumn(element: HTMLDivElement, line: number, column: number) {
+function setCaretToLineColumn(element: EditorInputElement, line: number, column: number) {
   const content = normalizeEditorText(getEditableText(element));
   const layerText = toInputLayerText(content);
+  const targetOffset = getCodeUnitOffsetFromLineColumn(content, line, column);
+
+  if (isTextareaInputElement(element)) {
+    if (element.value !== content) {
+      element.value = content;
+    }
+
+    const layerOffset = mapLogicalOffsetToInputLayerOffset(content, targetOffset);
+    const safeOffset = Math.min(layerOffset, content.length);
+    if (document.activeElement !== element) {
+      element.focus();
+    }
+    element.setSelectionRange(safeOffset, safeOffset);
+    return;
+  }
+
   if (element.textContent !== layerText) {
     element.textContent = layerText;
   }
-  const targetOffset = getCodeUnitOffsetFromLineColumn(content, line, column);
 
   let textNode = element.firstChild as Text | null;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
@@ -450,7 +491,14 @@ function setCaretToLineColumn(element: HTMLDivElement, line: number, column: num
   selection.addRange(range);
 }
 
-function getCaretLineInElement(element: HTMLDivElement) {
+function getCaretLineInElement(element: EditorInputElement) {
+  if (isTextareaInputElement(element)) {
+    const text = getEditableText(element);
+    const safeOffset = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
+    const textBeforeCaret = normalizeLineText(text.slice(0, safeOffset));
+    return textBeforeCaret.split('\n').length;
+  }
+
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) {
     return null;
@@ -469,7 +517,21 @@ function getCaretLineInElement(element: HTMLDivElement) {
   return textBeforeCaret.split('\n').length;
 }
 
-function getSelectionOffsetsInElement(element: HTMLDivElement) {
+function getSelectionOffsetsInElement(element: EditorInputElement) {
+  if (isTextareaInputElement(element)) {
+    const text = getEditableText(element);
+    const rawStart = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
+    const rawEnd = Math.max(0, Math.min(element.selectionEnd ?? rawStart, text.length));
+    const start = Math.min(rawStart, rawEnd);
+    const end = Math.max(rawStart, rawEnd);
+
+    return {
+      start,
+      end,
+      isCollapsed: start === end,
+    };
+  }
+
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) {
     return null;
@@ -495,7 +557,24 @@ function getSelectionOffsetsInElement(element: HTMLDivElement) {
   };
 }
 
-function getSelectionAnchorFocusOffsetsInElement(element: HTMLDivElement) {
+function getSelectionAnchorFocusOffsetsInElement(element: EditorInputElement) {
+  if (isTextareaInputElement(element)) {
+    const text = getEditableText(element);
+    const start = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
+    const end = Math.max(0, Math.min(element.selectionEnd ?? start, text.length));
+    const isBackward = element.selectionDirection === 'backward';
+
+    return isBackward
+      ? {
+          anchor: end,
+          focus: start,
+        }
+      : {
+          anchor: start,
+          focus: end,
+        };
+  }
+
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) {
     return null;
@@ -525,14 +604,22 @@ function getSelectionAnchorFocusOffsetsInElement(element: HTMLDivElement) {
   };
 }
 
-function getLogicalOffsetFromDomPoint(element: HTMLDivElement, node: Node, offset: number) {
+function getLogicalOffsetFromDomPoint(element: EditorInputElement, node: Node, offset: number) {
+  if (isTextareaInputElement(element)) {
+    return null;
+  }
+
   const range = document.createRange();
   range.selectNodeContents(element);
   range.setEnd(node, offset);
   return normalizeLineText(range.toString()).replaceAll(EMPTY_LINE_PLACEHOLDER, '').length;
 }
 
-function getLogicalOffsetFromPoint(element: HTMLDivElement, clientX: number, clientY: number) {
+function getLogicalOffsetFromPoint(element: EditorInputElement, clientX: number, clientY: number) {
+  if (isTextareaInputElement(element)) {
+    return null;
+  }
+
   const doc = document as Document & {
     caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
     caretRangeFromPoint?: (x: number, y: number) => Range | null;
@@ -612,8 +699,19 @@ function getOffsetForColumnInLine(lineStart: number, lineEnd: number, column: nu
   return lineStart + Math.min(lineLength, safeColumn - 1);
 }
 
-function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
+function setCaretToCodeUnitOffset(element: EditorInputElement, offset: number) {
   const targetOffset = Math.max(0, Math.floor(offset));
+
+  if (isTextareaInputElement(element)) {
+    if (document.activeElement !== element) {
+      element.focus();
+    }
+
+    const maxOffset = getEditableText(element).length;
+    const safeOffset = Math.min(targetOffset, maxOffset);
+    element.setSelectionRange(safeOffset, safeOffset);
+    return;
+  }
 
   if (document.activeElement !== element) {
     element.focus();
@@ -640,9 +738,23 @@ function setCaretToCodeUnitOffset(element: HTMLDivElement, offset: number) {
   selection.addRange(range);
 }
 
-function setSelectionToCodeUnitOffsets(element: HTMLDivElement, startOffset: number, endOffset: number) {
+function setSelectionToCodeUnitOffsets(element: EditorInputElement, startOffset: number, endOffset: number) {
   const safeStartOffset = Math.max(0, Math.floor(startOffset));
   const safeEndOffset = Math.max(0, Math.floor(endOffset));
+
+  if (isTextareaInputElement(element)) {
+    if (document.activeElement !== element) {
+      element.focus();
+    }
+
+    const maxOffset = getEditableText(element).length;
+    const normalizedStart = Math.min(safeStartOffset, maxOffset);
+    const normalizedEnd = Math.min(safeEndOffset, maxOffset);
+    const rangeStart = Math.min(normalizedStart, normalizedEnd);
+    const rangeEnd = Math.max(normalizedStart, normalizedEnd);
+    element.setSelectionRange(rangeStart, rangeEnd);
+    return;
+  }
 
   if (document.activeElement !== element) {
     element.focus();
@@ -674,8 +786,37 @@ function setSelectionToCodeUnitOffsets(element: HTMLDivElement, startOffset: num
   selection.addRange(range);
 }
 
-function dispatchEditorInputEvent(element: HTMLDivElement) {
+function dispatchEditorInputEvent(element: EditorInputElement) {
   element.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function normalizeInputLayerDom(element: EditorInputElement) {
+  if (isTextareaInputElement(element)) {
+    return;
+  }
+
+  const hasSingleTextNode =
+    element.childNodes.length === 1 &&
+    element.firstChild !== null &&
+    element.firstChild.nodeType === Node.TEXT_NODE;
+
+  if (hasSingleTextNode) {
+    return;
+  }
+
+  const selectionOffsets = getSelectionOffsetsInElement(element);
+  const normalizedText = getEditableText(element);
+  const nextLayerText = toInputLayerText(normalizedText);
+
+  element.textContent = nextLayerText;
+
+  if (!selectionOffsets) {
+    return;
+  }
+
+  const nextStartOffset = mapLogicalOffsetToInputLayerOffset(normalizedText, selectionOffsets.start);
+  const nextEndOffset = mapLogicalOffsetToInputLayerOffset(normalizedText, selectionOffsets.end);
+  setSelectionToCodeUnitOffsets(element, nextStartOffset, nextEndOffset);
 }
 
 async function writePlainTextToClipboard(text: string) {
@@ -701,7 +842,7 @@ async function writePlainTextToClipboard(text: string) {
   }
 }
 
-function replaceSelectionWithText(element: HTMLDivElement, text: string) {
+function replaceSelectionWithText(element: EditorInputElement, text: string) {
   const normalizedText = normalizeLineText(text ?? '');
   const currentText = getEditableText(element);
 
@@ -717,7 +858,7 @@ function replaceSelectionWithText(element: HTMLDivElement, text: string) {
   }
 
   const nextText = `${currentText.slice(0, selectionOffsets.start)}${normalizedText}${currentText.slice(selectionOffsets.end)}`;
-  element.textContent = toInputLayerText(nextText);
+  setInputLayerText(element, nextText);
   const logicalNextOffset = selectionOffsets.start + normalizedText.length;
   const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
   setCaretToCodeUnitOffset(element, layerNextOffset);
@@ -955,13 +1096,7 @@ function alignScrollOffset(value: number) {
     return 0;
   }
 
-  if (typeof window === 'undefined') {
-    return Math.round(value);
-  }
-
-  const dpr = window.devicePixelRatio || 1;
-  const cssPixelStep = 1 / dpr;
-  return Number((Math.round(value / cssPixelStep) * cssPixelStep).toFixed(4));
+  return Math.round(value);
 }
 
 function isPointerOnScrollbar(element: HTMLElement, clientX: number, clientY: number) {
@@ -1003,6 +1138,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   });
   const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
+  const [textSelectionHighlight, setTextSelectionHighlight] = useState<TextSelectionState | null>(null);
   const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
   const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
   const [outlineFlashLine, setOutlineFlashLine] = useState<number | null>(null);
@@ -1017,7 +1153,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   >(() => ({ ...DEFAULT_SUBMENU_MAX_HEIGHTS }));
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
 
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -1064,7 +1200,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const wordWrap = !!settings.wordWrap;
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
-  const lineHeightPx = useMemo(() => alignToDevicePixel(renderedFontSizePx * 1.5), [renderedFontSizePx]);
+  const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
   const contentPaddingLeft = '4.5rem';
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
@@ -1198,8 +1334,8 @@ export function Editor({ tab }: { tab: FileTab }) {
     ? LARGE_FILE_FETCH_BUFFER_LINES
     : DEFAULT_FETCH_BUFFER_LINES;
   const hugeEditablePaddingTop = `${alignScrollOffset(Math.max(0, editableSegment.startLine) * itemSize)}px`;
-  const hugeEditablePaddingBottom = `${alignScrollOffset(
-    Math.max(0, tab.lineCount - editableSegment.endLine) * itemSize
+  const hugeEditableSegmentHeightPx = `${alignScrollOffset(
+    Math.max(1, editableSegment.endLine - editableSegment.startLine) * itemSize
   )}px`;
 
   const getListItemSize = useCallback(
@@ -1219,7 +1355,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
-      const measuredHeight = Math.max(itemSize, alignToDevicePixel(element.scrollHeight));
+      const measuredHeight = Math.max(itemSize, Math.round(element.scrollHeight));
       const previousHeight = rowHeightsRef.current.get(index);
 
       if (previousHeight !== undefined && Math.abs(previousHeight - measuredHeight) < 0.5) {
@@ -1235,7 +1371,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   useEffect(() => {
     rowHeightsRef.current.clear();
     listRef.current?.resetAfterIndex?.(0, true);
-  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, width, wordWrap]);
+  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, tab.lineCount, width, wordWrap]);
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -1289,7 +1425,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         }
 
         if (contentRef.current) {
-          contentRef.current.textContent = toInputLayerText(text);
+          setInputLayerText(contentRef.current, text);
         }
 
         syncedTextRef.current = text;
@@ -1327,7 +1463,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     });
   }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
 
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
 
     if (!isLargeReadOnlyMode && scrollElement && listRef.current) {
@@ -1335,40 +1471,94 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (listEl) {
         const scrollTop = scrollElement.scrollTop;
         const scrollLeft = scrollElement.scrollLeft;
+        const listMaxTop = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+        const listMaxLeft = Math.max(0, listEl.scrollWidth - listEl.clientWidth);
+        const targetTop = Math.min(scrollTop, listMaxTop);
+        const targetLeft = Math.min(scrollLeft, listMaxLeft);
 
         if (isScrollbarDragRef.current) {
-          if (Math.abs(listEl.scrollTop - scrollTop) > 0.001) {
-            listEl.scrollTop = scrollTop;
+          if (Math.abs(listEl.scrollTop - targetTop) > 0.001) {
+            listEl.scrollTop = targetTop;
           }
 
-          if (Math.abs(listEl.scrollLeft - scrollLeft) > 0.001) {
-            listEl.scrollLeft = scrollLeft;
+          if (Math.abs(listEl.scrollLeft - targetLeft) > 0.001) {
+            listEl.scrollLeft = targetLeft;
           }
 
           return;
         }
 
-        const alignedTop = alignScrollOffset(scrollTop);
-        const alignedLeft = alignScrollOffset(scrollLeft);
-
-        if (Math.abs(scrollElement.scrollTop - alignedTop) > 0.001) {
-          scrollElement.scrollTop = alignedTop;
+        if (Math.abs(listEl.scrollTop - targetTop) > 0.001) {
+          listEl.scrollTop = targetTop;
         }
 
-        if (Math.abs(scrollElement.scrollLeft - alignedLeft) > 0.001) {
-          scrollElement.scrollLeft = alignedLeft;
+        if (Math.abs(listEl.scrollLeft - targetLeft) > 0.001) {
+          listEl.scrollLeft = targetLeft;
         }
 
-        if (Math.abs(listEl.scrollTop - alignedTop) > 0.001) {
-          listEl.scrollTop = alignedTop;
+        if (Math.abs(scrollElement.scrollTop - targetTop) > 0.001) {
+          scrollElement.scrollTop = targetTop;
         }
 
-        if (Math.abs(listEl.scrollLeft - alignedLeft) > 0.001) {
-          listEl.scrollLeft = alignedLeft;
+        if (Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
+          scrollElement.scrollLeft = targetLeft;
         }
       }
     }
-  };
+  }, [isHugeEditableMode, isLargeReadOnlyMode]);
+
+  useEffect(() => {
+    const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+    if (!scrollElement || isLargeReadOnlyMode) {
+      return;
+    }
+
+    let rafId = 0;
+    const onNativeScroll = () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+
+      rafId = window.requestAnimationFrame(() => {
+        handleScroll();
+      });
+    };
+
+    scrollElement.addEventListener('scroll', onNativeScroll, { passive: true });
+
+    return () => {
+      scrollElement.removeEventListener('scroll', onNativeScroll);
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [handleScroll, isHugeEditableMode, isLargeReadOnlyMode]);
+
+  useEffect(() => {
+    if (isLargeReadOnlyMode) {
+      return;
+    }
+
+    let firstRafId = 0;
+    let secondRafId = 0;
+
+    firstRafId = window.requestAnimationFrame(() => {
+      handleScroll();
+      secondRafId = window.requestAnimationFrame(() => {
+        handleScroll();
+      });
+    });
+
+    return () => {
+      if (firstRafId) {
+        window.cancelAnimationFrame(firstRafId);
+      }
+
+      if (secondRafId) {
+        window.cancelAnimationFrame(secondRafId);
+      }
+    };
+  }, [handleScroll, isLargeReadOnlyMode, tab.lineCount]);
 
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1691,7 +1881,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const normalized = normalizeEditorText(raw || '');
     if (contentRef.current) {
-      contentRef.current.textContent = toInputLayerText(normalized);
+      setInputLayerText(contentRef.current, normalized);
     }
 
     syncedTextRef.current = normalized;
@@ -1828,6 +2018,16 @@ export function Editor({ tab }: { tab: FileTab }) {
       return getRectangularSelectionText(text);
     }
 
+    if (isTextareaInputElement(element)) {
+      const start = Math.max(0, Math.min(element.selectionStart ?? 0, element.value.length));
+      const end = Math.max(0, Math.min(element.selectionEnd ?? start, element.value.length));
+      if (end <= start) {
+        return '';
+      }
+
+      return normalizeLineText(element.value.slice(start, end));
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       return '';
@@ -1898,7 +2098,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       pieces.push(text.slice(cursor));
       const nextText = pieces.join('');
 
-      element.textContent = toInputLayerText(nextText);
+      setInputLayerText(element, nextText);
       const layerCaretOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
       setCaretToCodeUnitOffset(element, layerCaretOffset);
       clearRectangularSelection();
@@ -2116,13 +2316,49 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const syncSelectionAfterInteraction = useCallback(() => {
     window.requestAnimationFrame(() => {
+      handleScroll();
       syncSelectionState();
+
+      window.requestAnimationFrame(() => {
+        handleScroll();
+      });
     });
-  }, [syncSelectionState]);
+  }, [handleScroll, syncSelectionState]);
+
+  const syncTextSelectionHighlight = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      setTextSelectionHighlight(null);
+      return;
+    }
+
+    const offsets = getSelectionOffsetsInElement(element);
+    if (!offsets || offsets.isCollapsed) {
+      setTextSelectionHighlight((prev) => (prev === null ? prev : null));
+      return;
+    }
+
+    const start = Math.min(offsets.start, offsets.end);
+    const end = Math.max(offsets.start, offsets.end);
+
+    setTextSelectionHighlight((prev) => {
+      if (prev && prev.start === start && prev.end === end) {
+        return prev;
+      }
+
+      return { start, end };
+    });
+  }, []);
 
   const hasSelectionInsideEditor = useCallback(() => {
     if (!contentRef.current) {
       return false;
+    }
+
+    if (isTextareaInputElement(contentRef.current)) {
+      const start = contentRef.current.selectionStart ?? 0;
+      const end = contentRef.current.selectionEnd ?? 0;
+      return end > start;
     }
 
     const selection = window.getSelection();
@@ -2189,7 +2425,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   );
 
   const handleEditorContextMenu = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<EditorInputElement>) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -2271,15 +2507,8 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     if (action === 'selectAll') {
-      const selection = window.getSelection();
-      if (!selection) {
-        return false;
-      }
-
-      const range = document.createRange();
-      range.selectNodeContents(contentRef.current);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      const text = getEditableText(contentRef.current);
+      setSelectionToCodeUnitOffsets(contentRef.current, 0, text.length);
       return true;
     }
 
@@ -2287,17 +2516,37 @@ export function Editor({ tab }: { tab: FileTab }) {
       return false;
     }
 
-    const commandSucceeded = document.execCommand(action);
-    if (action === 'delete' && !commandSucceeded) {
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed) {
-        selection.deleteFromDocument();
-        return true;
-      }
+    if (action === 'delete') {
+      return replaceSelectionWithText(contentRef.current, '');
     }
 
-    return commandSucceeded;
-  }, [clearRectangularSelection, getRectangularSelectionText, normalizedRectangularSelection, replaceRectangularSelection]);
+    if (action === 'copy' || action === 'cut') {
+      const selected = getSelectedEditorText();
+      if (!selected) {
+        return false;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(selected).catch(() => {
+          console.warn('Failed to write selection to clipboard.');
+        });
+      }
+
+      if (action === 'cut') {
+        return replaceSelectionWithText(contentRef.current, '');
+      }
+
+      return true;
+    }
+
+    return false;
+  }, [
+    clearRectangularSelection,
+    getRectangularSelectionText,
+    getSelectedEditorText,
+    normalizedRectangularSelection,
+    replaceRectangularSelection,
+  ]);
 
   const tryPasteTextIntoEditor = useCallback(
     (text: string) => {
@@ -2312,9 +2561,15 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       dispatchEditorInputEvent(contentRef.current);
       syncSelectionAfterInteraction();
+      window.requestAnimationFrame(() => {
+        handleScroll();
+        window.requestAnimationFrame(() => {
+          handleScroll();
+        });
+      });
       return true;
     },
-    [syncSelectionAfterInteraction]
+    [handleScroll, syncSelectionAfterInteraction]
   );
 
   const isEditorContextMenuActionDisabled = useCallback(
@@ -2668,17 +2923,30 @@ export function Editor({ tab }: { tab: FileTab }) {
     () => {
       clearVerticalSelectionState();
 
+      if (contentRef.current && !isComposingRef.current) {
+        normalizeInputLayerDom(contentRef.current);
+      }
+
       if (!tab.isDirty) {
         updateTab(tab.id, { isDirty: true });
       }
 
       syncSelectionAfterInteraction();
+      window.requestAnimationFrame(handleScroll);
 
       if (!isComposingRef.current) {
         queueTextSync();
       }
     },
-    [clearVerticalSelectionState, tab.id, tab.isDirty, updateTab, queueTextSync, syncSelectionAfterInteraction]
+    [
+      clearVerticalSelectionState,
+      handleScroll,
+      tab.id,
+      tab.isDirty,
+      updateTab,
+      queueTextSync,
+      syncSelectionAfterInteraction,
+    ]
   );
 
   const handleRectangularSelectionInputByKey = useCallback(
@@ -2749,42 +3017,25 @@ export function Editor({ tab }: { tab: FileTab }) {
       return false;
     }
 
+    if (isTextareaInputElement(element)) {
+      const start = selectionOffsets.start;
+      const end = selectionOffsets.end;
+      const nextText = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
+      element.setRangeText(text, start, end, 'end');
+      if (element.value !== nextText) {
+        element.value = nextText;
+      }
+      return true;
+    }
+
     const currentText = getEditableText(element);
     const nextText = `${currentText.slice(0, selectionOffsets.start)}${text}${currentText.slice(selectionOffsets.end)}`;
-    element.textContent = toInputLayerText(nextText);
+    setInputLayerText(element, nextText);
     const logicalNextOffset = selectionOffsets.start + text.length;
     const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
     setCaretToCodeUnitOffset(element, layerNextOffset);
     return true;
   }, []);
-
-  const handleBeforeInput = useCallback(
-    (event: React.FormEvent<HTMLDivElement>) => {
-      const nativeEvent = event.nativeEvent as InputEvent;
-      if (!nativeEvent || nativeEvent.isComposing) {
-        return;
-      }
-
-      if (normalizedRectangularSelection && nativeEvent.inputType === 'insertText') {
-        event.preventDefault();
-        event.stopPropagation();
-        replaceRectangularSelection(nativeEvent.data ?? '');
-        return;
-      }
-
-      if (nativeEvent.inputType !== 'insertParagraph' && nativeEvent.inputType !== 'insertLineBreak') {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (insertTextAtSelection('\n')) {
-        handleInput();
-      }
-    },
-    [handleInput, insertTextAtSelection, normalizedRectangularSelection, replaceRectangularSelection]
-  );
 
   const toggleSelectedLinesComment = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2844,7 +3095,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       const nextText = `${currentText.slice(0, lineRange.start)}${transformedBlock}${currentText.slice(lineRange.end)}`;
-      element.textContent = toInputLayerText(nextText);
+      setInputLayerText(element, nextText);
 
       const nextSelectionStartLogical =
         lineRange.start +
@@ -3110,6 +3361,51 @@ export function Editor({ tab }: { tab: FileTab }) {
     [normalizedRectangularSelection]
   );
 
+  const getTextSelectionHighlightRangeForLine = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (!textSelectionHighlight || textSelectionHighlight.end <= textSelectionHighlight.start) {
+        return null;
+      }
+
+      let sourceText = '';
+      let targetLineInSource = lineNumber;
+
+      if (isHugeEditableMode) {
+        const segment = editableSegmentRef.current;
+        if (lineNumber < segment.startLine + 1 || lineNumber > segment.endLine) {
+          return null;
+        }
+
+        sourceText = segment.text;
+        targetLineInSource = Math.max(1, lineNumber - segment.startLine);
+      } else {
+        const element = contentRef.current;
+        if (!element) {
+          return null;
+        }
+
+        sourceText = normalizeSegmentText(getEditableText(element));
+      }
+
+      const lineStart = getCodeUnitOffsetFromLineColumn(sourceText, targetLineInSource, 1);
+      const lineEnd = lineStart + lineTextLength;
+      const selectionStart = textSelectionHighlight.start;
+      const selectionEnd = textSelectionHighlight.end;
+
+      const start = Math.max(lineStart, selectionStart);
+      const end = Math.min(lineEnd, selectionEnd);
+      if (end <= start) {
+        return null;
+      }
+
+      return {
+        start: start - lineStart,
+        end: end - lineStart,
+      };
+    },
+    [isHugeEditableMode, textSelectionHighlight]
+  );
+
   const getInlineHighlightClass = useCallback((isSearchMatch: boolean, isPairMatch: boolean) => {
     if (isSearchMatch && isPairMatch) {
       return SEARCH_AND_PAIR_HIGHLIGHT_CLASS;
@@ -3131,7 +3427,8 @@ export function Editor({ tab }: { tab: FileTab }) {
       lineTextLength: number,
       searchRange: { start: number; end: number } | null,
       pairColumns: number[],
-      rectangularRange: { start: number; end: number } | null
+      rectangularRange: { start: number; end: number } | null,
+      textSelectionRange: { start: number; end: number } | null
     ) => {
       const boundaries = new Set<number>([0, lineTextLength]);
 
@@ -3150,6 +3447,11 @@ export function Editor({ tab }: { tab: FileTab }) {
         boundaries.add(rectangularRange.end);
       }
 
+      if (textSelectionRange) {
+        boundaries.add(textSelectionRange.start);
+        boundaries.add(textSelectionRange.end);
+      }
+
       const sorted = Array.from(boundaries).sort((left, right) => left - right);
       const segments: Array<{ start: number; end: number; className: string }> = [];
 
@@ -3165,12 +3467,20 @@ export function Editor({ tab }: { tab: FileTab }) {
         const isPairMatch = pairColumns.some((column) => start >= column && end <= column + 1);
         const isRectangularMatch =
           !!rectangularRange && start >= rectangularRange.start && end <= rectangularRange.end;
+        const isTextSelectionMatch =
+          !!textSelectionRange && start >= textSelectionRange.start && end <= textSelectionRange.end;
 
         let className = getInlineHighlightClass(isSearchMatch, isPairMatch);
         if (isRectangularMatch) {
           className = className
             ? `${className} ${RECTANGULAR_SELECTION_HIGHLIGHT_CLASS}`
             : RECTANGULAR_SELECTION_HIGHLIGHT_CLASS;
+        }
+
+        if (isTextSelectionMatch) {
+          className = className
+            ? `${className} ${TEXT_SELECTION_HIGHLIGHT_CLASS}`
+            : TEXT_SELECTION_HIGHLIGHT_CLASS;
         }
 
         segments.push({
@@ -3191,12 +3501,19 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
+      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange) {
+      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderPlainLine(safeText);
       }
 
-      const segments = buildLineHighlightSegments(safeText.length, range, pairColumns, rectangularRange);
+      const segments = buildLineHighlightSegments(
+        safeText.length,
+        range,
+        pairColumns,
+        rectangularRange,
+        textSelectionRange
+      );
 
       return (
         <span>
@@ -3220,6 +3537,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
+      getTextSelectionHighlightRangeForLine,
       renderPlainLine,
     ]
   );
@@ -3663,12 +3981,19 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
+      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange) {
+      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderTokens(tokensArr);
       }
 
-      const segments = buildLineHighlightSegments(lineText.length, range, pairColumns, rectangularRange);
+      const segments = buildLineHighlightSegments(
+        lineText.length,
+        range,
+        pairColumns,
+        rectangularRange,
+        textSelectionRange
+      );
 
       let cursor = 0;
       let segmentIndex = 0;
@@ -3760,6 +4085,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
+      getTextSelectionHighlightRangeForLine,
       getTokenTypeClass,
       renderTokens,
     ]
@@ -4066,14 +4392,22 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
         clearVerticalSelectionState();
       }
+      handleScroll();
       syncSelectionState();
+      syncTextSelectionHighlight();
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, [clearVerticalSelectionState, hasSelectionInsideEditor, syncSelectionState]);
+  }, [
+    clearVerticalSelectionState,
+    handleScroll,
+    hasSelectionInsideEditor,
+    syncSelectionState,
+    syncTextSelectionHighlight,
+  ]);
 
   useEffect(() => {
     if (!editorContextMenu) {
@@ -4152,6 +4486,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   useEffect(() => {
     setActiveLineNumber(1);
     setSearchHighlight(null);
+    setTextSelectionHighlight(null);
     setPairHighlights([]);
 
     if (outlineFlashTimerRef.current) {
@@ -4347,22 +4682,23 @@ export function Editor({ tab }: { tab: FileTab }) {
               minWidth: '100%',
             }}
           >
-            <div
+            <textarea
               ref={contentRef}
-              contentEditable="plaintext-only"
-              suppressContentEditableWarning
               className="absolute left-0 right-0 editor-input-layer"
               style={{
                 top: hugeEditablePaddingTop,
+                height: hugeEditableSegmentHeightPx,
                 fontFamily: settings.fontFamily,
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 paddingLeft: contentPaddingLeft,
-                paddingBottom: hugeEditablePaddingBottom,
+                resize: 'none',
+                overflowX: horizontalOverflowMode,
+                overflowY: 'hidden',
               }}
+              wrap={wordWrap ? 'soft' : 'off'}
               onInput={handleInput}
-              onBeforeInput={handleBeforeInput}
               onKeyDown={handleEditableKeyDown}
               onPointerDown={handleEditorPointerDown}
               onKeyUp={syncSelectionAfterInteraction}
@@ -4378,10 +4714,8 @@ export function Editor({ tab }: { tab: FileTab }) {
       )}
 
       {!isLargeReadOnlyMode && !isHugeEditableMode && (
-        <div
+        <textarea
           ref={contentRef}
-          contentEditable="plaintext-only"
-          suppressContentEditableWarning
           className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-input-layer editor-scroll-stable"
           style={{
             overflowX: horizontalOverflowMode,
@@ -4391,9 +4725,10 @@ export function Editor({ tab }: { tab: FileTab }) {
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
             paddingLeft: contentPaddingLeft,
+            resize: 'none',
           }}
+          wrap={wordWrap ? 'soft' : 'off'}
           onInput={handleInput}
-          onBeforeInput={handleBeforeInput}
           onKeyDown={handleEditableKeyDown}
           onScroll={handleScroll}
           onPointerDown={handleEditorPointerDown}
@@ -4423,7 +4758,10 @@ export function Editor({ tab }: { tab: FileTab }) {
             estimatedItemSize={itemSize}
             onItemsRendered={onItemsRendered}
             overscanCount={20}
-            style={{ overflowX: horizontalOverflowMode, overflowY: 'auto' }}
+            style={{
+              overflowX: isLargeReadOnlyMode ? horizontalOverflowMode : 'hidden',
+              overflowY: isLargeReadOnlyMode ? 'auto' : 'hidden',
+            }}
             onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
             onPointerDown={isLargeReadOnlyMode ? handleReadOnlyListPointerDown : undefined}
           >
