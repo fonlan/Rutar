@@ -1,7 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Pin, PinOff, Settings, Square, X } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type WheelEvent } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type CSSProperties,
+    type MouseEvent,
+    type PointerEvent as ReactPointerEvent,
+    type WheelEvent,
+} from 'react';
 import { FileTab, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -62,6 +72,8 @@ export function TitleBar() {
     const [tabPathTooltip, setTabPathTooltip] = useState<TabPathTooltipState | null>(null);
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tabPathTooltipRef = useRef<HTMLDivElement>(null);
+    const tabDragStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+    const suppressNextTabClickRef = useRef(false);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const alwaysOnTopTitle = isAlwaysOnTop
         ? tr('titleBar.disableAlwaysOnTop')
@@ -183,6 +195,22 @@ export function TitleBar() {
             console.error('Failed to close tab:', error);
         }
     }, [addTab, closeTabs, tabs.length]);
+
+    const clearTabDragStart = useCallback(() => {
+        tabDragStartRef.current = null;
+    }, []);
+
+    const handleTabPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!event.isPrimary || event.pointerType !== 'mouse' || event.button !== 0) {
+            return;
+        }
+
+        tabDragStartRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+        };
+    }, []);
 
     const handleTabDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();
@@ -339,6 +367,55 @@ export function TitleBar() {
     }, []);
 
     useEffect(() => {
+        const DRAG_THRESHOLD_PX = 6;
+
+        const handleWindowPointerMove = (event: PointerEvent) => {
+            const dragStart = tabDragStartRef.current;
+
+            if (!dragStart) {
+                return;
+            }
+
+            if (event.pointerId !== dragStart.pointerId) {
+                return;
+            }
+
+            if ((event.buttons & 1) !== 1) {
+                clearTabDragStart();
+                return;
+            }
+
+            const distance = Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y);
+
+            if (distance < DRAG_THRESHOLD_PX) {
+                return;
+            }
+
+            suppressNextTabClickRef.current = true;
+            clearTabDragStart();
+            void appWindow.startDragging().catch((error) => {
+                console.error('Failed to drag window from tab:', error);
+            });
+        };
+
+        const handleWindowPointerEnd = () => {
+            clearTabDragStart();
+        };
+
+        window.addEventListener('pointermove', handleWindowPointerMove);
+        window.addEventListener('pointerup', handleWindowPointerEnd);
+        window.addEventListener('pointercancel', handleWindowPointerEnd);
+        window.addEventListener('blur', handleWindowPointerEnd);
+
+        return () => {
+            window.removeEventListener('pointermove', handleWindowPointerMove);
+            window.removeEventListener('pointerup', handleWindowPointerEnd);
+            window.removeEventListener('pointercancel', handleWindowPointerEnd);
+            window.removeEventListener('blur', handleWindowPointerEnd);
+        };
+    }, [clearTabDragStart]);
+
+    useEffect(() => {
         if (!tabContextMenu) {
             return;
         }
@@ -484,7 +561,15 @@ export function TitleBar() {
                 {tabs.map((tab) => (
                     <div
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onPointerDown={handleTabPointerDown}
+                        onClick={() => {
+                            if (suppressNextTabClickRef.current) {
+                                suppressNextTabClickRef.current = false;
+                                return;
+                            }
+
+                            setActiveTab(tab.id);
+                        }}
                         onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
                         onMouseEnter={(event) => handleTabPathTooltipEnter(event, tab)}
                         onMouseLeave={handleTabPathTooltipLeave}
