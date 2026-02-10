@@ -16,6 +16,7 @@
         "title": "Rutar",
         "width": 800,
         "height": 600,
+        "dragDropEnabled": true,
         "visible": false,
         "decorations": false,
         "transparent": false

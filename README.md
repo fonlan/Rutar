@@ -16,6 +16,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
 - **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
 - **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
+- **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
 
 ## Configuration
 
@@ -28,6 +29,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - `mouseGestures` stores gesture-action bindings, where `pattern` uses `L/R/U/D` sequence (for example `L`, `RD`, `UL`) and `action` maps to editor actions including tab switching, jump to top/bottom, close current/all/other tabs, quit app, and sidebar toggles.
 - `windowState` persists main window state across launches: if the window was maximized, only `maximized: true` is stored; when not maximized, `width` and `height` are stored and restored on next startup.
 - Main window startup uses hidden-first initialization (`visible: false` in `src-tauri/tauri.conf.json`), restores persisted window state first, and then lets frontend call `show_main_window_when_ready` after app shell render to reduce startup white-screen time and avoid visible size jump from default `800x600` to saved dimensions.
+- Main window keeps `dragDropEnabled: true` in `src-tauri/tauri.conf.json` so Tauri native file drag-open remains stable on Windows; editor text drag-move is handled by frontend pointer-driven logic to avoid WebView HTML5 drag-drop inconsistencies.
 - Frontend injects a lightweight startup splash (`boot-splash`) before React mount and removes it right after the main window reveal signal is sent, so users see loading feedback instead of a blank frame.
 
 ### Windows 11 Context Menu Integration

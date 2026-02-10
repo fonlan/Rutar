@@ -675,10 +675,6 @@ function App() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
 
-    const preventDefaultDrop = (event: DragEvent) => {
-      event.preventDefault();
-    };
-
     const setupDragDrop = async () => {
       try {
         const unsubscribe = await getCurrentWindow().onDragDropEvent((event) => {
@@ -700,14 +696,10 @@ function App() {
       }
     };
 
-    window.addEventListener('dragover', preventDefaultDrop);
-    window.addEventListener('drop', preventDefaultDrop);
     void setupDragDrop();
 
     return () => {
       disposed = true;
-      window.removeEventListener('dragover', preventDefaultDrop);
-      window.removeEventListener('drop', preventDefaultDrop);
       if (unlisten) {
         unlisten();
       }

@@ -90,6 +90,18 @@ interface TextSelectionState {
   end: number;
 }
 
+interface TextDragMoveState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  sourceStart: number;
+  sourceEnd: number;
+  sourceText: string;
+  baseText: string;
+  dropOffset: number;
+  dragging: boolean;
+}
+
 type EditorInputElement = HTMLDivElement | HTMLTextAreaElement;
 
 type EditorCleanupAction =
@@ -1198,6 +1210,9 @@ export function Editor({ tab }: { tab: FileTab }) {
   const rectangularSelectionLastClientPointRef = useRef<{ x: number; y: number } | null>(null);
   const rectangularSelectionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0);
   const rectangularSelectionAutoScrollRafRef = useRef<number | null>(null);
+  const textDragMoveStateRef = useRef<TextDragMoveState | null>(null);
+  const textDragMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const textDragCursorAppliedRef = useRef(false);
   const pointerSelectionActiveRef = useRef(false);
   const selectionChangeRafRef = useRef<number | null>(null);
   const editableSegmentRef = useRef<EditorSegmentState>({
@@ -1629,8 +1644,153 @@ export function Editor({ tab }: { tab: FileTab }) {
     element.style.removeProperty('--editor-native-selection-bg');
   }, []);
 
+  const getTextDragMeasureContext = useCallback(() => {
+    if (!textDragMeasureCanvasRef.current) {
+      textDragMeasureCanvasRef.current = document.createElement('canvas');
+    }
+
+    return textDragMeasureCanvasRef.current.getContext('2d');
+  }, []);
+
+  const estimateDropOffsetForTextareaPoint = useCallback(
+    (element: HTMLTextAreaElement, text: string, clientX: number, clientY: number) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      const paddingLeft = Number.parseFloat(style.paddingLeft || '0') || 0;
+      const paddingRight = Number.parseFloat(style.paddingRight || '0') || 0;
+      const scrollLeft = element.scrollLeft;
+      const scrollTop = element.scrollTop;
+      const availableWidth = Math.max(16, element.clientWidth - paddingLeft - paddingRight);
+
+      const relativeY = Math.max(0, clientY - rect.top + scrollTop);
+      const lineIndex = Math.max(0, Math.floor(relativeY / lineHeightPx));
+
+      const lineStarts = [0];
+      for (let index = 0; index < text.length; index += 1) {
+        if (text[index] === '\n') {
+          lineStarts.push(index + 1);
+        }
+      }
+
+      const clampedLineIndex = Math.min(lineStarts.length - 1, lineIndex);
+      const lineStart = lineStarts[clampedLineIndex] ?? 0;
+      const lineEnd = clampedLineIndex + 1 < lineStarts.length ? lineStarts[clampedLineIndex + 1] - 1 : text.length;
+      const lineText = text.slice(lineStart, lineEnd);
+
+      const context = getTextDragMeasureContext();
+      if (!context) {
+        return lineStart;
+      }
+
+      const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
+      const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : '';
+      const fontWeight = style.fontWeight && style.fontWeight !== 'normal' ? `${style.fontWeight} ` : '';
+      const fontSize = style.fontSize || `${renderedFontSizePx}px`;
+      const fontFamily = style.fontFamily || settings.fontFamily;
+      context.font = `${fontStyle}${fontVariant}${fontWeight}${fontSize} ${fontFamily}`;
+
+      const pointerX = Math.max(0, clientX - rect.left + scrollLeft - paddingLeft);
+      const wrappedLines = wordWrap ? Math.max(1, Math.floor(pointerX / availableWidth)) : 0;
+
+      if (!wordWrap || wrappedLines === 0) {
+        let currentWidth = 0;
+        for (let index = 0; index < lineText.length; index += 1) {
+          const charWidth = context.measureText(lineText[index] ?? '').width;
+          if (pointerX <= currentWidth + charWidth / 2) {
+            return lineStart + index;
+          }
+          currentWidth += charWidth;
+        }
+        return lineEnd;
+      }
+
+      let wrappedStart = 0;
+      let wrappedRow = 0;
+      while (wrappedStart < lineText.length) {
+        let wrappedEnd = wrappedStart;
+        let wrappedWidth = 0;
+        while (wrappedEnd < lineText.length) {
+          const charWidth = context.measureText(lineText[wrappedEnd] ?? '').width;
+          if (wrappedWidth > 0 && wrappedWidth + charWidth > availableWidth) {
+            break;
+          }
+          wrappedWidth += charWidth;
+          wrappedEnd += 1;
+        }
+
+        if (wrappedEnd === wrappedStart) {
+          wrappedEnd = wrappedStart + 1;
+        }
+
+        if (wrappedRow === wrappedLines || wrappedEnd >= lineText.length) {
+          let currentWidth = 0;
+          for (let index = wrappedStart; index < wrappedEnd; index += 1) {
+            const charWidth = context.measureText(lineText[index] ?? '').width;
+            if (pointerX <= currentWidth + charWidth / 2 + wrappedRow * availableWidth) {
+              return lineStart + index;
+            }
+            currentWidth += charWidth;
+          }
+
+          return lineStart + wrappedEnd;
+        }
+
+        wrappedStart = wrappedEnd;
+        wrappedRow += 1;
+      }
+
+      return lineEnd;
+    },
+    [getTextDragMeasureContext, lineHeightPx, renderedFontSizePx, settings.fontFamily, wordWrap]
+  );
+
+  const resolveDropOffsetFromPointer = useCallback(
+    (element: HTMLTextAreaElement, clientX: number, clientY: number) => {
+      const text = getEditableText(element);
+      const estimated = estimateDropOffsetForTextareaPoint(element, text, clientX, clientY);
+      return Math.max(0, Math.min(text.length, estimated));
+    },
+    [estimateDropOffsetForTextareaPoint]
+  );
+
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      const currentElement = contentRef.current;
+      if (
+        !isLargeReadOnlyMode &&
+        currentElement &&
+        isTextareaInputElement(currentElement) &&
+        event.button === 0 &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.metaKey &&
+        !event.ctrlKey
+      ) {
+        const selectionOffsets = getSelectionOffsetsInElement(currentElement);
+        if (selectionOffsets && !selectionOffsets.isCollapsed) {
+          const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
+          if (pointerLogicalOffset >= selectionOffsets.start && pointerLogicalOffset <= selectionOffsets.end) {
+            textDragMoveStateRef.current = {
+              pointerId: event.pointerId,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              sourceStart: selectionOffsets.start,
+              sourceEnd: selectionOffsets.end,
+              sourceText: currentElement.value.slice(selectionOffsets.start, selectionOffsets.end),
+              baseText: currentElement.value,
+              dropOffset: pointerLogicalOffset,
+              dragging: false,
+            };
+          } else {
+            textDragMoveStateRef.current = null;
+          }
+        } else {
+          textDragMoveStateRef.current = null;
+        }
+      } else {
+        textDragMoveStateRef.current = null;
+      }
+
       pointerSelectionActiveRef.current = false;
       if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
         setPointerSelectionNativeHighlightMode(false);
@@ -2455,6 +2615,49 @@ export function Editor({ tab }: { tab: FileTab }) {
       });
     });
   }, [handleScroll, syncSelectionState]);
+
+  const applyTextDragMove = useCallback(
+    (element: HTMLTextAreaElement, state: TextDragMoveState) => {
+      if (!state.dragging) {
+        return false;
+      }
+
+      const sourceStart = state.sourceStart;
+      const sourceEnd = state.sourceEnd;
+      const baseText = state.baseText;
+      if (sourceStart < 0 || sourceEnd <= sourceStart || sourceEnd > baseText.length) {
+        return false;
+      }
+
+      let dropOffset = Math.max(0, Math.min(baseText.length, state.dropOffset));
+      if (dropOffset >= sourceStart && dropOffset <= sourceEnd) {
+        return false;
+      }
+
+      const sourceText = baseText.slice(sourceStart, sourceEnd);
+      const textWithoutSource = `${baseText.slice(0, sourceStart)}${baseText.slice(sourceEnd)}`;
+
+      let adjustedDropOffset = dropOffset;
+      if (dropOffset > sourceEnd) {
+        adjustedDropOffset -= sourceText.length;
+      }
+
+      adjustedDropOffset = Math.max(0, Math.min(textWithoutSource.length, adjustedDropOffset));
+      const nextText = `${textWithoutSource.slice(0, adjustedDropOffset)}${sourceText}${textWithoutSource.slice(adjustedDropOffset)}`;
+      if (nextText === baseText) {
+        return false;
+      }
+
+      setInputLayerText(element, nextText);
+      const caretLogicalOffset = adjustedDropOffset + sourceText.length;
+      const caretLayerOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
+      setCaretToCodeUnitOffset(element, caretLayerOffset);
+      dispatchEditorInputEvent(element);
+      syncSelectionAfterInteraction();
+      return true;
+    },
+    [syncSelectionAfterInteraction]
+  );
 
   const syncTextSelectionHighlight = useCallback(() => {
     const element = contentRef.current;
@@ -4439,6 +4642,33 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
+      const textDragState = textDragMoveStateRef.current;
+      if (textDragState && event.pointerId === textDragState.pointerId) {
+        const element = contentRef.current;
+        if (element && isTextareaInputElement(element) && !isLargeReadOnlyMode) {
+          const deltaX = event.clientX - textDragState.startClientX;
+          const deltaY = event.clientY - textDragState.startClientY;
+          const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+            if (distanceSquared >= 16) {
+              textDragState.dragging = true;
+              if (!textDragCursorAppliedRef.current) {
+                document.body.style.cursor = 'copy';
+                element.style.cursor = 'copy';
+                textDragCursorAppliedRef.current = true;
+              }
+            }
+
+          if (textDragState.dragging) {
+            const dropOffset = resolveDropOffsetFromPointer(element, event.clientX, event.clientY);
+            textDragState.dropOffset = dropOffset;
+
+            const layerOffset = mapLogicalOffsetToInputLayerOffset(element.value, dropOffset);
+            setCaretToCodeUnitOffset(element, layerOffset);
+            event.preventDefault();
+          }
+        }
+      }
+
       if (!rectangularSelectionPointerActiveRef.current) {
         return;
       }
@@ -4518,6 +4748,24 @@ export function Editor({ tab }: { tab: FileTab }) {
     };
 
     const handlePointerUp = () => {
+      const textDragState = textDragMoveStateRef.current;
+      if (textDragState) {
+        const element = contentRef.current;
+        if (element && isTextareaInputElement(element) && !isLargeReadOnlyMode) {
+          applyTextDragMove(element, textDragState);
+        }
+        textDragMoveStateRef.current = null;
+      }
+
+      if (textDragCursorAppliedRef.current) {
+        document.body.style.removeProperty('cursor');
+        const element = contentRef.current;
+        if (element) {
+          element.style.removeProperty('cursor');
+        }
+        textDragCursorAppliedRef.current = false;
+      }
+
       rectangularSelectionPointerActiveRef.current = false;
       rectangularSelectionLastClientPointRef.current = null;
       rectangularSelectionAutoScrollDirectionRef.current = 0;
@@ -4540,8 +4788,24 @@ export function Editor({ tab }: { tab: FileTab }) {
         window.cancelAnimationFrame(rectangularSelectionAutoScrollRafRef.current);
         rectangularSelectionAutoScrollRafRef.current = null;
       }
+
+      if (textDragCursorAppliedRef.current) {
+        document.body.style.removeProperty('cursor');
+        const element = contentRef.current;
+        if (element) {
+          element.style.removeProperty('cursor');
+        }
+        textDragCursorAppliedRef.current = false;
+      }
     };
-  }, [getRectangularSelectionScrollElement, handleScroll, updateRectangularSelectionFromPoint]);
+  }, [
+    applyTextDragMove,
+    getRectangularSelectionScrollElement,
+    handleScroll,
+    isLargeReadOnlyMode,
+    resolveDropOffsetFromPointer,
+    updateRectangularSelectionFromPoint,
+  ]);
 
   useEffect(() => {
     const element = contentRef.current;
@@ -4705,6 +4969,17 @@ export function Editor({ tab }: { tab: FileTab }) {
   useEffect(() => {
     setEditorContextMenu(null);
     clearRectangularSelection();
+
+    if (textDragCursorAppliedRef.current) {
+      document.body.style.removeProperty('cursor');
+      const element = contentRef.current;
+      if (element) {
+        element.style.removeProperty('cursor');
+      }
+      textDragCursorAppliedRef.current = false;
+    }
+
+    textDragMoveStateRef.current = null;
   }, [tab.id]);
 
   useEffect(() => {
@@ -4734,6 +5009,21 @@ export function Editor({ tab }: { tab: FileTab }) {
       window.removeEventListener('rutar:paste-text', handleExternalPaste as EventListener);
     };
   }, [tab.id, tryPasteTextIntoEditor]);
+
+  useEffect(() => {
+    return () => {
+      if (textDragCursorAppliedRef.current) {
+        document.body.style.removeProperty('cursor');
+        const element = contentRef.current;
+        if (element) {
+          element.style.removeProperty('cursor');
+        }
+        textDragCursorAppliedRef.current = false;
+      }
+
+      textDragMoveStateRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     setActiveLineNumber(1);
