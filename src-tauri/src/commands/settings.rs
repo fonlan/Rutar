@@ -11,12 +11,27 @@ fn default_single_instance_mode() -> bool {
     DEFAULT_SINGLE_INSTANCE_MODE
 }
 
+fn default_remember_window_state() -> bool {
+    true
+}
+
 fn default_recent_paths() -> Vec<String> {
     Vec::new()
 }
 
 fn default_new_file_line_ending() -> String {
     default_line_ending().label().to_string()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowStateConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) height: Option<u32>,
+    #[serde(default)]
+    pub(super) maximized: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -35,12 +50,16 @@ pub struct AppConfig {
     pub(super) highlight_current_line: bool,
     #[serde(default = "default_single_instance_mode")]
     pub(super) single_instance_mode: bool,
+    #[serde(default = "default_remember_window_state")]
+    pub(super) remember_window_state: bool,
     #[serde(default = "default_recent_paths")]
     pub(super) recent_files: Vec<String>,
     #[serde(default = "default_recent_paths")]
     pub(super) recent_folders: Vec<String>,
     #[serde(default = "default_windows_file_association_extensions")]
     pub(super) windows_file_association_extensions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) window_state: Option<WindowStateConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -59,9 +78,11 @@ pub struct PartialAppConfig {
     pub(super) show_line_numbers: Option<bool>,
     pub(super) highlight_current_line: Option<bool>,
     pub(super) single_instance_mode: Option<bool>,
+    pub(super) remember_window_state: Option<bool>,
     pub(super) recent_files: Option<Vec<String>>,
     pub(super) recent_folders: Option<Vec<String>>,
     pub(super) windows_file_association_extensions: Option<Vec<String>>,
+    pub(super) window_state: Option<WindowStateConfig>,
     pub(super) filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
 
@@ -79,9 +100,11 @@ impl Default for AppConfig {
             show_line_numbers: DEFAULT_SHOW_LINE_NUMBERS,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
             single_instance_mode: DEFAULT_SINGLE_INSTANCE_MODE,
+            remember_window_state: default_remember_window_state(),
             recent_files: default_recent_paths(),
             recent_folders: default_recent_paths(),
             windows_file_association_extensions: default_windows_file_association_extensions(),
+            window_state: None,
             filter_rule_groups: None,
         }
     }

@@ -1,7 +1,7 @@
 import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -167,7 +167,7 @@ export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
   const updateSettings = useStore((state) => state.updateSettings);
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'shortcuts' | 'about'>('appearance');
+  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'shortcuts' | 'about'>('general');
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
   const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>(
@@ -201,6 +201,12 @@ export function SettingsModal() {
   const projectHomeOpenLabel = tr('settings.about.openLink');
   const projectHomeValue = 'https://github.com/fonlan/Rutar';
   const aboutSummary = tr('settings.about.summary');
+
+  const handleBackdropMouseDown = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      toggleSettings(false);
+    }
+  }, [toggleSettings]);
 
   const controlClassName =
     'flex h-10 w-full rounded-lg border border-input bg-background/70 text-foreground px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
@@ -264,6 +270,8 @@ export function SettingsModal() {
   const singleInstanceModeLabel = tr('settings.singleInstanceMode');
   const singleInstanceModeDesc = tr('settings.singleInstanceModeDesc');
   const singleInstanceModeRestartToast = tr('settings.singleInstanceModeRestartToast');
+  const rememberWindowStateLabel = tr('settings.rememberWindowState');
+  const rememberWindowStateDesc = tr('settings.rememberWindowStateDesc');
 
   const handleOpenProjectHome = async () => {
     try {
@@ -600,16 +608,24 @@ export function SettingsModal() {
     };
   }, []);
 
+  useEffect(() => {
+    if (settings.isOpen) {
+      setActiveTab('general');
+    }
+  }, [settings.isOpen]);
+
   if (!settings.isOpen) return null;
 
   return (
     <div 
-        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-[2px]" 
+        className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-[2px]"
+        onMouseDown={handleBackdropMouseDown}
         role="presentation"
     >
       <div 
         className="pointer-events-auto h-[min(88vh,700px)] w-[min(94vw,980px)] bg-background/95 border rounded-xl shadow-2xl flex overflow-hidden ring-1 ring-border"
         role="dialog"
+        aria-modal="true"
       >
         <div className="w-60 shrink-0 bg-muted/30 border-r p-3 flex flex-col gap-2">
           <div className="px-2 py-2 mb-2">
@@ -886,6 +902,50 @@ export function SettingsModal() {
                   </div>
                 </section>
 
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{rememberWindowStateLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{rememberWindowStateDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ rememberWindowState: !settings.rememberWindowState })}
+                      className={cn(
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.rememberWindowState
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                      )}
+                      aria-pressed={!!settings.rememberWindowState}
+                      aria-label={rememberWindowStateLabel}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.rememberWindowState
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.rememberWindowState
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                    </button>
+                  </div>
+                </section>
+
                 {isWindows && (
                   <>
                     <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
@@ -1079,14 +1139,14 @@ export function SettingsModal() {
                     <Type className="w-4 h-4 text-muted-foreground" />
                     {tr('settings.typography')}
                   </div>
-                  <div className="grid gap-4 md:grid-cols-[1fr_160px]">
-                    <div className="space-y-2">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_160px]">
+                    <div className="min-w-0 space-y-2">
                       <label className="text-sm font-medium leading-none">
                         {tr('settings.fontFamily')}
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
                         <div
-                          className="relative flex-1"
+                          className="relative min-w-0 flex-1"
                           ref={fontPickerContainerRef}
                           onFocus={() => {
                             setIsFontDropdownOpen(true);
@@ -1202,7 +1262,7 @@ export function SettingsModal() {
 
                         <button
                           type="button"
-                          className={actionButtonClassName}
+                          className={cn(actionButtonClassName, 'w-full sm:w-auto')}
                           onClick={handleAddFontFromPicker}
                           disabled={!fontPickerInput.trim()}
                         >
@@ -1259,7 +1319,7 @@ export function SettingsModal() {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <label className="text-sm font-medium leading-none">
                         {tr('settings.fontSize')}
                       </label>
@@ -1278,7 +1338,7 @@ export function SettingsModal() {
                       </div>
                     </div>
 
-                    <div className="space-y-2 md:col-span-2">
+                    <div className="space-y-2 lg:col-span-2">
                       <label className="text-sm font-medium leading-none">
                         {tr('settings.tabWidth')}
                       </label>

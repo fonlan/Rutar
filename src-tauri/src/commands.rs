@@ -39,6 +39,13 @@ pub use self::types::{
 };
 use self::constants::*;
 
+#[derive(Clone, Copy)]
+pub struct PersistedWindowState {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub maximized: bool,
+}
+
 #[tauri::command]
 pub fn list_system_fonts() -> Result<Vec<String>, String> {
     let source = font_kit::source::SystemSource::new();
@@ -106,6 +113,26 @@ pub fn load_config() -> Result<AppConfig, String> {
 
 pub fn is_single_instance_mode_enabled_in_config() -> bool {
     config::is_single_instance_mode_enabled_in_config_impl()
+}
+
+pub fn is_remember_window_state_enabled_in_config() -> bool {
+    config::is_remember_window_state_enabled_in_config_impl()
+}
+
+pub fn load_main_window_state_in_config() -> Option<PersistedWindowState> {
+    config::load_main_window_state_in_config_impl().map(|window_state| PersistedWindowState {
+        width: window_state.width,
+        height: window_state.height,
+        maximized: window_state.maximized,
+    })
+}
+
+pub fn save_main_window_state_in_config(
+    width: Option<u32>,
+    height: Option<u32>,
+    maximized: bool,
+) -> Result<(), String> {
+    config::save_main_window_state_in_config_impl(width, height, maximized)
 }
 
 #[tauri::command]

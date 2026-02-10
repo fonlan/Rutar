@@ -147,6 +147,21 @@ fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
     normalized_paths
 }
 
+fn normalize_window_state(
+    window_state: Option<settings::WindowStateConfig>,
+) -> Option<settings::WindowStateConfig> {
+    window_state.map(|state| {
+        let width = state.width.filter(|value| *value > 0);
+        let height = state.height.filter(|value| *value > 0);
+
+        settings::WindowStateConfig {
+            width,
+            height,
+            maximized: state.maximized,
+        }
+    })
+}
+
 fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: settings::normalize_language(Some(config.language.as_str())),
@@ -166,11 +181,13 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         show_line_numbers: config.show_line_numbers,
         highlight_current_line: config.highlight_current_line,
         single_instance_mode: config.single_instance_mode,
+        remember_window_state: config.remember_window_state,
         recent_files: normalize_recent_paths(Some(config.recent_files)),
         recent_folders: normalize_recent_paths(Some(config.recent_folders)),
         windows_file_association_extensions: normalize_windows_file_association_extensions(Some(
             config.windows_file_association_extensions,
         )),
+        window_state: normalize_window_state(config.window_state),
         filter_rule_groups: normalize_filter_rule_groups(config.filter_rule_groups),
     }
 }
@@ -962,6 +979,10 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
         config.single_instance_mode = single_instance_mode;
     }
 
+    if let Some(remember_window_state) = partial.remember_window_state {
+        config.remember_window_state = remember_window_state;
+    }
+
     if let Some(recent_files) = partial.recent_files {
         config.recent_files = normalize_recent_paths(Some(recent_files));
     }
@@ -975,6 +996,8 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
             normalize_windows_file_association_extensions(Some(extensions));
     }
 
+    config.window_state = normalize_window_state(partial.window_state);
+
     config.filter_rule_groups = normalize_filter_rule_groups(partial.filter_rule_groups);
 
     Ok(config)
@@ -984,6 +1007,34 @@ pub(super) fn is_single_instance_mode_enabled_in_config_impl() -> bool {
     load_config_impl()
         .map(|config| config.single_instance_mode)
         .unwrap_or(DEFAULT_SINGLE_INSTANCE_MODE)
+}
+
+pub(super) fn is_remember_window_state_enabled_in_config_impl() -> bool {
+    load_config_impl()
+        .map(|config| config.remember_window_state)
+        .unwrap_or(true)
+}
+
+pub(super) fn load_main_window_state_in_config_impl() -> Option<settings::WindowStateConfig> {
+    load_config_impl()
+        .ok()
+        .filter(|config| config.remember_window_state)
+        .and_then(|config| normalize_window_state(config.window_state))
+}
+
+pub(super) fn save_main_window_state_in_config_impl(
+    width: Option<u32>,
+    height: Option<u32>,
+    maximized: bool,
+) -> Result<(), String> {
+    let mut config = load_config_impl().unwrap_or_default();
+    config.window_state = normalize_window_state(Some(settings::WindowStateConfig {
+        width: if maximized { None } else { width },
+        height: if maximized { None } else { height },
+        maximized,
+    }));
+
+    save_config_impl(config)
 }
 
 pub(super) fn save_config_impl(config: AppConfig) -> Result<(), String> {

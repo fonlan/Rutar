@@ -94,6 +94,8 @@ export type I18nKey =
   | 'settings.singleInstanceMode'
   | 'settings.singleInstanceModeDesc'
   | 'settings.singleInstanceModeRestartToast'
+  | 'settings.rememberWindowState'
+  | 'settings.rememberWindowStateDesc'
   | 'settings.about'
   | 'settings.aboutDesc'
   | 'settings.aboutPanelDesc'
@@ -265,6 +267,8 @@ const zhCN: Messages = {
   'settings.singleInstanceMode': '单实例模式',
   'settings.singleInstanceModeDesc': '启用后，双击关联文件或“使用 Rutar 打开”会复用当前窗口并新建标签页。更改后重启生效。',
   'settings.singleInstanceModeRestartToast': '单实例模式设置已变更，重启 Rutar 后生效。',
+  'settings.rememberWindowState': '记住窗口状态',
+  'settings.rememberWindowStateDesc': '保存并恢复窗口大小与最大化状态。最大化时仅记录最大化状态，不记录宽高。',
   'settings.about': '关于',
   'settings.aboutDesc': '项目信息与开源地址',
   'settings.aboutPanelDesc': '查看 Rutar 项目信息与源码地址。',
@@ -435,6 +439,8 @@ const enUS: Messages = {
   'settings.singleInstanceMode': 'Single Instance Mode',
   'settings.singleInstanceModeDesc': 'When enabled, file-association and "Open with Rutar" actions reuse this window and open a new tab. Restart required.',
   'settings.singleInstanceModeRestartToast': 'Single instance setting changed. Restart Rutar to apply it.',
+  'settings.rememberWindowState': 'Remember Window State',
+  'settings.rememberWindowStateDesc': 'Persist and restore window size and maximized state. When maximized, only maximized state is stored.',
   'settings.about': 'About',
   'settings.aboutDesc': 'Project info and repository',
   'settings.aboutPanelDesc': 'View project information and source repository for Rutar.',

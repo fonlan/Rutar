@@ -2,7 +2,15 @@ mod state;
 mod commands;
 
 use state::AppState;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{
+    AppHandle,
+    Emitter,
+    Manager,
+    PhysicalSize,
+    Size,
+    WebviewWindow,
+    WindowEvent,
+};
 
 fn collect_valid_startup_paths_from_args<I>(args: I) -> Vec<String>
 where
@@ -52,6 +60,64 @@ fn wake_main_window(window: &WebviewWindow) {
     }
 }
 
+fn restore_main_window_state(window: &WebviewWindow) {
+    let Some(window_state) = commands::load_main_window_state_in_config() else {
+        return;
+    };
+
+    if window_state.maximized {
+        if let Err(error) = window.maximize() {
+            eprintln!("failed to restore main window maximized state: {error}");
+        }
+        return;
+    }
+
+    if let (Some(width), Some(height)) = (window_state.width, window_state.height) {
+        if let Err(error) = window.set_size(Size::Physical(PhysicalSize::new(width, height))) {
+            eprintln!("failed to restore main window size: {error}");
+        }
+    }
+}
+
+fn persist_main_window_state(window: &WebviewWindow) {
+    if !commands::is_remember_window_state_enabled_in_config() {
+        return;
+    }
+
+    let maximized = window.is_maximized().unwrap_or(false);
+
+    let (width, height) = if maximized {
+        (None, None)
+    } else {
+        match window.outer_size() {
+            Ok(size) => (Some(size.width), Some(size.height)),
+            Err(error) => {
+                eprintln!("failed to read main window size: {error}");
+                (None, None)
+            }
+        }
+    };
+
+    if let Err(error) = commands::save_main_window_state_in_config(width, height, maximized) {
+        eprintln!("failed to persist main window state: {error}");
+    }
+}
+
+fn setup_main_window_state_tracking(app: &AppHandle) {
+    let Some(main_window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    restore_main_window_state(&main_window);
+
+    let main_window_for_events = main_window.clone();
+    main_window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::CloseRequested { .. }) {
+            persist_main_window_state(&main_window_for_events);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let startup_paths = collect_valid_startup_paths_from_args(std::env::args().skip(1));
@@ -60,7 +126,11 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            setup_main_window_state_tracking(app.handle());
+            Ok(())
+        });
 
     if single_instance_mode_enabled {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {

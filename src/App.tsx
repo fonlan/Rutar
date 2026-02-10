@@ -67,6 +67,7 @@ interface AppConfig {
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
+  rememberWindowState: boolean;
   recentFiles?: string[];
   recentFolders?: string[];
   windowsFileAssociationExtensions: string[];
@@ -409,6 +410,7 @@ function App() {
           showLineNumbers: config.showLineNumbers !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
           singleInstanceMode: config.singleInstanceMode !== false,
+          rememberWindowState: config.rememberWindowState !== false,
           recentFiles: sanitizeRecentPathList(config.recentFiles),
           recentFolders: sanitizeRecentPathList(config.recentFolders),
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
@@ -455,6 +457,7 @@ function App() {
           showLineNumbers: settings.showLineNumbers,
           highlightCurrentLine: settings.highlightCurrentLine,
           singleInstanceMode: settings.singleInstanceMode,
+          rememberWindowState: settings.rememberWindowState,
           recentFiles: settings.recentFiles,
           recentFolders: settings.recentFolders,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
@@ -480,6 +483,7 @@ function App() {
     settings.showLineNumbers,
     settings.highlightCurrentLine,
     settings.singleInstanceMode,
+    settings.rememberWindowState,
     settings.recentFiles,
     settings.recentFolders,
     settings.windowsFileAssociationExtensions,

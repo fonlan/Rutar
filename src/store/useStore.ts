@@ -87,6 +87,7 @@ interface SettingsState {
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
+  rememberWindowState: boolean;
   recentFiles: string[];
   recentFolders: string[];
   windowsContextMenuEnabled: boolean;
@@ -160,6 +161,7 @@ export const useStore = create<AppState>((set) => ({
     showLineNumbers: true,
     highlightCurrentLine: true,
     singleInstanceMode: true,
+    rememberWindowState: true,
     recentFiles: [],
     recentFolders: [],
     windowsContextMenuEnabled: false,
