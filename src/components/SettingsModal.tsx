@@ -184,6 +184,8 @@ export function SettingsModal() {
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const currentLineLabel = tr('settings.highlightCurrentLine');
   const currentLineDesc = tr('settings.highlightCurrentLineDesc');
+  const showLineNumbersLabel = tr('settings.showLineNumbers');
+  const showLineNumbersDesc = tr('settings.showLineNumbersDesc');
   const doubleClickCloseTabLabel = tr('settings.doubleClickCloseTab');
   const doubleClickCloseTabDesc = tr('settings.doubleClickCloseTabDesc');
   const wordWrapDesc = tr('settings.wordWrapDesc');
@@ -1244,6 +1246,50 @@ export function SettingsModal() {
                         {tr('settings.tabWidthDesc')}
                       </p>
                     </div>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{showLineNumbersLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{showLineNumbersDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ showLineNumbers: !settings.showLineNumbers })}
+                      className={cn(
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.showLineNumbers
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                      )}
+                      aria-pressed={!!settings.showLineNumbers}
+                      aria-label={showLineNumbersLabel}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.showLineNumbers
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.showLineNumbers
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                    </button>
                   </div>
                 </section>
 

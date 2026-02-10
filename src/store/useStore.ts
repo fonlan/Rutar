@@ -79,6 +79,7 @@ interface SettingsState {
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
+  showLineNumbers: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
   recentFiles: string[];
@@ -149,6 +150,7 @@ export const useStore = create<AppState>((set) => ({
     newFileLineEnding: defaultNewFileLineEnding,
     wordWrap: false,
     doubleClickCloseTab: true,
+    showLineNumbers: true,
     highlightCurrentLine: true,
     singleInstanceMode: true,
     recentFiles: [],

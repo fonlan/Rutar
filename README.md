@@ -17,7 +17,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 ## Configuration
 
 - User configuration is saved to `%AppData%\Rutar\config.json`.
-- Current fields include `language`, `fontFamily`, `fontSize`, `tabWidth`, `newFileLineEnding`, `wordWrap`, `recentFiles`, and `recentFolders`.
+- Current fields include `language`, `fontFamily`, `fontSize`, `tabWidth`, `newFileLineEnding`, `wordWrap`, `showLineNumbers`, `recentFiles`, and `recentFolders`.
 - `newFileLineEnding` controls the default line ending (`CRLF` / `LF` / `CR`) used when creating new empty files.
 - `fontFamily` supports comma-separated fallback priority (for example `JetBrains Mono, Cascadia Code, Consolas, monospace`), and Settings provides preset dropdown selection plus priority reordering controls.
 

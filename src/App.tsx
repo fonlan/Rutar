@@ -64,6 +64,7 @@ interface AppConfig {
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
+  showLineNumbers: boolean;
   highlightCurrentLine: boolean;
   singleInstanceMode: boolean;
   recentFiles?: string[];
@@ -405,6 +406,7 @@ function App() {
           newFileLineEnding: normalizeLineEnding(config.newFileLineEnding),
           wordWrap: !!config.wordWrap,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
+          showLineNumbers: config.showLineNumbers !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
           singleInstanceMode: config.singleInstanceMode !== false,
           recentFiles: sanitizeRecentPathList(config.recentFiles),
@@ -450,6 +452,7 @@ function App() {
           newFileLineEnding: settings.newFileLineEnding,
           wordWrap: settings.wordWrap,
           doubleClickCloseTab: settings.doubleClickCloseTab,
+          showLineNumbers: settings.showLineNumbers,
           highlightCurrentLine: settings.highlightCurrentLine,
           singleInstanceMode: settings.singleInstanceMode,
           recentFiles: settings.recentFiles,
@@ -474,6 +477,7 @@ function App() {
     settings.theme,
     settings.wordWrap,
     settings.doubleClickCloseTab,
+    settings.showLineNumbers,
     settings.highlightCurrentLine,
     settings.singleInstanceMode,
     settings.recentFiles,

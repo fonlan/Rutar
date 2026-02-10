@@ -163,6 +163,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         )),
         word_wrap: config.word_wrap,
         double_click_close_tab: config.double_click_close_tab,
+        show_line_numbers: config.show_line_numbers,
         highlight_current_line: config.highlight_current_line,
         single_instance_mode: config.single_instance_mode,
         recent_files: normalize_recent_paths(Some(config.recent_files)),
@@ -745,6 +746,10 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
 
     if let Some(double_click_close_tab) = partial.double_click_close_tab {
         config.double_click_close_tab = double_click_close_tab;
+    }
+
+    if let Some(show_line_numbers) = partial.show_line_numbers {
+        config.show_line_numbers = show_line_numbers;
     }
 
     if let Some(highlight_current_line) = partial.highlight_current_line {

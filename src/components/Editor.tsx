@@ -1204,11 +1204,12 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const fontSize = settings.fontSize || 14;
   const wordWrap = !!settings.wordWrap;
+  const showLineNumbers = settings.showLineNumbers !== false;
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
-  const contentPaddingLeft = '4.5rem';
+  const contentPaddingLeft = showLineNumbers ? '4.5rem' : '1rem';
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
@@ -1377,7 +1378,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   useEffect(() => {
     rowHeightsRef.current.clear();
     listRef.current?.resetAfterIndex?.(0, true);
-  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, tab.lineCount, width, wordWrap]);
+  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, tab.lineCount, width, wordWrap, showLineNumbers]);
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -4879,21 +4880,23 @@ export function Editor({ tab }: { tab: FileTab }) {
                       : ''
                   }`}
                 >
-                  <span
-                    className={`shrink-0 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 transition-colors ${
-                      bookmarks.includes(index + 1)
-                        ? 'text-amber-500/90 font-semibold group-hover:text-amber-500'
-                        : 'text-muted-foreground/40 group-hover:text-muted-foreground'
-                    } pointer-events-auto cursor-pointer`}
-                    style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
-                    onDoubleClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleLineNumberDoubleClick(index + 1);
-                    }}
-                  >
-                    {index + 1}
-                  </span>
+                  {showLineNumbers && (
+                    <span
+                      className={`shrink-0 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 transition-colors ${
+                        bookmarks.includes(index + 1)
+                          ? 'text-amber-500/90 font-semibold group-hover:text-amber-500'
+                          : 'text-muted-foreground/40 group-hover:text-muted-foreground'
+                      } pointer-events-auto cursor-pointer`}
+                      style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleLineNumberDoubleClick(index + 1);
+                      }}
+                    >
+                      {index + 1}
+                    </span>
+                  )}
                   <div
                     className={wordWrap ? 'min-w-0 flex-1' : 'shrink-0'}
                     style={{

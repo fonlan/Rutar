@@ -78,6 +78,7 @@ export function Toolbar() {
     const language = useStore((state) => state.settings.language);
     const tabWidth = useStore((state) => state.settings.tabWidth);
     const wordWrap = useStore((state) => state.settings.wordWrap);
+    const showLineNumbers = useStore((state) => state.settings.showLineNumbers);
     const newFileLineEnding = useStore((state) => state.settings.newFileLineEnding);
     const updateSettings = useStore((state) => state.updateSettings);
     const toggleOutline = useStore((state) => state.toggleOutline);
@@ -378,6 +379,10 @@ export function Toolbar() {
         updateSettings({ wordWrap: !wordWrap });
     }, [wordWrap, updateSettings]);
 
+    const handleToggleLineNumbers = useCallback(() => {
+        updateSettings({ showLineNumbers: !showLineNumbers });
+    }, [showLineNumbers, updateSettings]);
+
     const handleToggleBookmarkSidebar = useCallback(() => {
         if (!activeTab) {
             return;
@@ -438,12 +443,18 @@ export function Toolbar() {
                 return;
             }
 
-            const withPrimaryModifier = event.ctrlKey || event.metaKey;
-            if (!withPrimaryModifier) return;
-
             const key = event.key.toLowerCase();
             const code = event.code;
             const isKey = (letter: string) => key === letter || code === `Key${letter.toUpperCase()}`;
+
+            if (event.altKey && !event.ctrlKey && !event.metaKey && isKey('l')) {
+                event.preventDefault();
+                handleToggleLineNumbers();
+                return;
+            }
+
+            const withPrimaryModifier = event.ctrlKey || event.metaKey;
+            if (!withPrimaryModifier) return;
 
             if (event.altKey) {
                 if (isKey('f')) {
@@ -520,6 +531,7 @@ export function Toolbar() {
         handleCloseActiveTab,
         handleNewFile,
         handleOpenFile,
+        handleToggleLineNumbers,
         handleRedo,
         handleReplace,
         handleFilter,

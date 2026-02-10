@@ -6,6 +6,7 @@ pub(super) const DEFAULT_FONT_FAMILY: &str = "Consolas, \"Courier New\", monospa
 pub(super) const DEFAULT_FONT_SIZE: u32 = 14;
 pub(super) const DEFAULT_TAB_WIDTH: u8 = 4;
 pub(super) const DEFAULT_DOUBLE_CLICK_CLOSE_TAB: bool = true;
+pub(super) const DEFAULT_SHOW_LINE_NUMBERS: bool = true;
 pub(super) const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 pub(super) const DEFAULT_SINGLE_INSTANCE_MODE: bool = true;
 pub(super) const MAX_RECENT_PATHS: usize = 12;

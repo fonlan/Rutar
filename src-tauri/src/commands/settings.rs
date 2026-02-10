@@ -31,6 +31,7 @@ pub struct AppConfig {
     pub(super) new_file_line_ending: String,
     pub(super) word_wrap: bool,
     pub(super) double_click_close_tab: bool,
+    pub(super) show_line_numbers: bool,
     pub(super) highlight_current_line: bool,
     #[serde(default = "default_single_instance_mode")]
     pub(super) single_instance_mode: bool,
@@ -55,6 +56,7 @@ pub struct PartialAppConfig {
     pub(super) new_file_line_ending: Option<String>,
     pub(super) word_wrap: Option<bool>,
     pub(super) double_click_close_tab: Option<bool>,
+    pub(super) show_line_numbers: Option<bool>,
     pub(super) highlight_current_line: Option<bool>,
     pub(super) single_instance_mode: Option<bool>,
     pub(super) recent_files: Option<Vec<String>>,
@@ -74,6 +76,7 @@ impl Default for AppConfig {
             new_file_line_ending: default_new_file_line_ending(),
             word_wrap: false,
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
+            show_line_numbers: DEFAULT_SHOW_LINE_NUMBERS,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
             single_instance_mode: DEFAULT_SINGLE_INSTANCE_MODE,
             recent_files: default_recent_paths(),
