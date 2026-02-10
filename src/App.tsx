@@ -501,7 +501,7 @@ function App() {
 
     const state = useStore.getState();
     const nextTabState = tabPanelStateRef.current[activeTabId];
-    state.toggleSidebar(nextTabState?.sidebarOpen ?? false);
+    state.toggleSidebar(nextTabState?.sidebarOpen ?? state.sidebarOpen);
     state.toggleOutline(nextTabState?.outlineOpen ?? false);
     const toggleBookmarkSidebar = (state as {
       toggleBookmarkSidebar?: (open?: boolean) => void;
