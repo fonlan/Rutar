@@ -25,6 +25,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 
 - **Classic context menu (Show more options)**: managed by registry keys under `HKCU\Software\Classes` and can be toggled directly in Settings.
 - **File associations**: when enabled in Settings, Rutar writes per-user registry associations, registers itself in Windows `RegisteredApplications` for visibility in Default apps, and opens `ms-settings:defaultapps` so you can confirm/adjust defaults on Windows 11.
+- **Single-instance file open behavior**: when single-instance mode is enabled, double-clicking an associated file (or using "Open with Rutar") reuses the existing window, opens a new tab, and wakes/restores the window to foreground.
 
 ## 🛠 Tech Stack
 

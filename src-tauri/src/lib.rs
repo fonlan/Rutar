@@ -2,7 +2,7 @@ mod state;
 mod commands;
 
 use state::AppState;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 fn collect_valid_startup_paths_from_args<I>(args: I) -> Vec<String>
 where
@@ -20,17 +20,27 @@ where
 }
 
 fn forward_startup_paths_to_main_window(app: &AppHandle, startup_paths: Vec<String>) {
-    if startup_paths.is_empty() {
-        return;
-    }
-
     let window = match app.get_webview_window("main") {
         Some(main_window) => main_window,
         None => return,
     };
 
+    wake_main_window(&window);
+
+    if startup_paths.is_empty() {
+        return;
+    }
+
     if let Err(error) = window.emit("rutar://open-paths", startup_paths) {
         eprintln!("failed to forward startup paths to main window: {error}");
+    }
+}
+
+fn wake_main_window(window: &WebviewWindow) {
+    if matches!(window.is_minimized(), Ok(true)) {
+        if let Err(error) = window.unminimize() {
+            eprintln!("failed to unminimize main window: {error}");
+        }
     }
 
     if let Err(error) = window.show() {
