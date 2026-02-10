@@ -1,13 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { ask } from '@tauri-apps/plugin-dialog';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
+import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
-import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
@@ -102,6 +103,26 @@ const TabCloseConfirmModal = lazy(async () => ({
   default: (await import('@/components/TabCloseConfirmModal')).TabCloseConfirmModal,
 }));
 
+function dispatchEditorForceRefresh(tabId: string, lineCount: number) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:force-refresh', {
+      detail: {
+        tabId,
+        lineCount,
+        preserveCaret: false,
+      },
+    })
+  );
+}
+
+function dispatchDocumentUpdated(tabId: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:document-updated', {
+      detail: { tabId },
+    })
+  );
+}
+
 function App() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -124,6 +145,11 @@ function App() {
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
 
+  const removeBootSplash = useCallback(() => {
+    const splashElement = document.getElementById('boot-splash');
+    splashElement?.remove();
+  }, []);
+
   const openIncomingPaths = useCallback(async (paths: string[]) => {
     for (const incomingPath of paths) {
       try {
@@ -142,6 +168,39 @@ function App() {
       }
     }
   }, [setFolder]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const revealMainWindow = async () => {
+      try {
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        });
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        await invoke('show_main_window_when_ready');
+      } catch (error) {
+        console.error('Failed to reveal main window after app shell ready:', error);
+      } finally {
+        if (!cancelled) {
+          removeBootSplash();
+        }
+      }
+    };
+
+    void revealMainWindow();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [removeBootSplash]);
 
   useEffect(() => {
     if (!isWindows) {
@@ -355,6 +414,125 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let checking = false;
+
+    const checkOpenFilesForExternalChanges = async () => {
+      if (checking) {
+        return;
+      }
+
+      checking = true;
+
+      try {
+        const snapshotTabs = useStore
+          .getState()
+          .tabs
+          .filter((tab) => !!tab.path);
+
+        for (const tab of snapshotTabs) {
+          if (cancelled) {
+            return;
+          }
+
+          let changed = false;
+          try {
+            changed = await invoke<boolean>('has_external_file_change', { id: tab.id });
+          } catch (error) {
+            console.error(`Failed to check external file change: ${tab.path}`, error);
+            continue;
+          }
+
+          if (!changed) {
+            continue;
+          }
+
+          const latestState = useStore.getState();
+          const latestTab = latestState.tabs.find((item) => item.id === tab.id);
+          if (!latestTab || !latestTab.path) {
+            continue;
+          }
+
+          const fileName = latestTab.name || latestTab.path;
+          const promptText = t(latestState.settings.language, 'app.externalFileChanged.prompt')
+            .replace('{fileName}', fileName);
+          const unsavedWarningText = t(
+            latestState.settings.language,
+            'app.externalFileChanged.unsavedWarning'
+          );
+          const messageText = latestTab.isDirty
+            ? `${promptText}\n\n${unsavedWarningText}`
+            : promptText;
+
+          const shouldReload = await ask(messageText, {
+            title: 'Rutar',
+            kind: 'warning',
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          if (shouldReload) {
+            try {
+              const fileInfo = await invoke<FileTab>('reload_file_from_disk', { id: latestTab.id });
+              useStore.getState().updateTab(latestTab.id, {
+                name: fileInfo.name,
+                path: fileInfo.path,
+                encoding: fileInfo.encoding,
+                lineEnding: fileInfo.lineEnding,
+                lineCount: fileInfo.lineCount,
+                largeFileMode: fileInfo.largeFileMode,
+                syntaxOverride: fileInfo.syntaxOverride ?? null,
+                isDirty: false,
+              });
+
+              if (useStore.getState().activeTabId === latestTab.id) {
+                dispatchEditorForceRefresh(latestTab.id, Math.max(1, fileInfo.lineCount));
+              }
+
+              dispatchDocumentUpdated(latestTab.id);
+            } catch (error) {
+              console.error(`Failed to reload changed file: ${latestTab.path}`, error);
+            }
+
+            continue;
+          }
+
+          try {
+            await invoke('acknowledge_external_file_change', { id: latestTab.id });
+          } catch (error) {
+            console.error(`Failed to acknowledge external change: ${latestTab.path}`, error);
+          }
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    const handleWindowFocus = () => {
+      void checkOpenFilesForExternalChanges();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      void checkOpenFilesForExternalChanges();
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
 
@@ -514,12 +692,7 @@ function App() {
   ]);
   
   const activeTab = tabs.find(t => t.id === activeTabId);
-  const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
-  const editorFallback = (
-    <div className="flex items-center justify-center h-full text-muted-foreground select-none text-sm">
-      {tr('app.readyOpenHint')}
-    </div>
-  );
+  const editorFallback = <div className="h-full w-full bg-background" aria-hidden="true" />;
 
   useEffect(() => {
     const previousTabId = previousActiveTabIdRef.current;

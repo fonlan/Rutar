@@ -84,3 +84,18 @@ pub async fn get_word_count_info(
 ) -> Result<WordCountInfo, String> {
     file_io::get_word_count_info_impl(state, id).await
 }
+
+#[tauri::command]
+pub fn has_external_file_change(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    file_io::has_external_file_change_impl(state, id)
+}
+
+#[tauri::command]
+pub fn acknowledge_external_file_change(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    file_io::acknowledge_external_file_change_impl(state, id)
+}
+
+#[tauri::command]
+pub fn reload_file_from_disk(state: State<'_, AppState>, id: String) -> Result<FileInfo, String> {
+    file_io::reload_file_from_disk_impl(state, id)
+}

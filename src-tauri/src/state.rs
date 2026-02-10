@@ -6,6 +6,12 @@ use std::sync::Mutex;
 use tree_sitter::{Language, Parser, Tree};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub struct FileFingerprint {
+    pub size_bytes: u64,
+    pub modified_unix_millis: Option<u128>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
     CrLf,
     Lf,
@@ -74,6 +80,7 @@ pub struct Document {
     pub tree: Option<Tree>,
     pub language: Option<Language>,
     pub syntax_dirty: bool,
+    pub saved_file_fingerprint: Option<FileFingerprint>,
 }
 
 pub struct AppState {

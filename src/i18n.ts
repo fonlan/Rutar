@@ -2,6 +2,8 @@ import { AppLanguage } from '@/store/useStore';
 
 export type I18nKey =
   | 'app.readyOpenHint'
+  | 'app.externalFileChanged.prompt'
+  | 'app.externalFileChanged.unsavedWarning'
   | 'titleBar.settings'
   | 'titleBar.closeOtherTabs'
   | 'titleBar.closeAllTabs'
@@ -177,6 +179,8 @@ type Messages = Record<I18nKey, string>;
 
 const zhCN: Messages = {
   'app.readyOpenHint': '就绪：打开文件或文件夹',
+  'app.externalFileChanged.prompt': '文件“{fileName}”在外部发生了变化。是否重新加载？',
+  'app.externalFileChanged.unsavedWarning': '注意：重新加载会丢失当前未保存修改。',
   'titleBar.settings': '设置',
   'titleBar.closeOtherTabs': '关闭其他标签页',
   'titleBar.closeAllTabs': '关闭所有标签页',
@@ -351,6 +355,8 @@ const zhCN: Messages = {
 
 const enUS: Messages = {
   'app.readyOpenHint': 'READY: Open a file or folder',
+  'app.externalFileChanged.prompt': 'File "{fileName}" has changed outside the editor. Reload now?',
+  'app.externalFileChanged.unsavedWarning': 'Warning: Reloading will discard unsaved changes in this tab.',
   'titleBar.settings': 'Settings',
   'titleBar.closeOtherTabs': 'Close Other Tabs',
   'titleBar.closeAllTabs': 'Close All Tabs',

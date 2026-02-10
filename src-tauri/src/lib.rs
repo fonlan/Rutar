@@ -12,6 +12,12 @@ use tauri::{
     WindowEvent,
 };
 
+#[tauri::command]
+fn show_main_window_when_ready(window: WebviewWindow) -> Result<(), String> {
+    wake_main_window(&window);
+    Ok(())
+}
+
 fn collect_valid_startup_paths_from_args<I>(args: I) -> Vec<String>
 where
     I: IntoIterator<Item = String>,
@@ -156,6 +162,9 @@ pub fn run() {
             commands::file_io_commands::read_dir,
             commands::file_io_commands::open_in_file_manager,
             commands::file_io_commands::get_word_count_info,
+            commands::file_io_commands::has_external_file_change,
+            commands::file_io_commands::acknowledge_external_file_change,
+            commands::file_io_commands::reload_file_from_disk,
             commands::editing_commands::undo,
             commands::editing_commands::redo,
             commands::editing_commands::get_edit_history_state,
@@ -187,7 +196,8 @@ pub fn run() {
             commands::apply_windows_file_associations,
             commands::remove_windows_file_associations,
             commands::get_windows_file_association_status,
-            commands::get_startup_paths
+            commands::get_startup_paths,
+            show_main_window_when_ready
         ])
         .run(tauri::generate_context!())
     {

@@ -1,5 +1,65 @@
 use super::*;
+use crate::state::FileFingerprint;
 use std::path::PathBuf;
+
+struct DiskFileSnapshot {
+    rope: Rope,
+    encoding: &'static Encoding,
+    line_ending: LineEnding,
+    line_count: usize,
+    large_file_mode: bool,
+    fingerprint: FileFingerprint,
+}
+
+fn build_file_fingerprint(metadata: &std::fs::Metadata) -> FileFingerprint {
+    let modified_unix_millis = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis());
+
+    FileFingerprint {
+        size_bytes: metadata.len(),
+        modified_unix_millis,
+    }
+}
+
+fn read_disk_file_snapshot(path: &PathBuf) -> Result<DiskFileSnapshot, String> {
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    let size = metadata.len();
+    let large_file_mode = size > LARGE_FILE_THRESHOLD_BYTES as u64;
+    let fingerprint = build_file_fingerprint(&metadata);
+
+    let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
+
+    let encoding = if let Some((enc, _size)) = Encoding::for_bom(&mmap) {
+        enc
+    } else {
+        let mut detector = EncodingDetector::new();
+        if size as usize > ENCODING_DETECT_SAMPLE_BYTES {
+            detector.feed(&mmap[..ENCODING_DETECT_SAMPLE_BYTES], true);
+        } else {
+            detector.feed(&mmap, true);
+        }
+        detector.guess(None, true)
+    };
+
+    let (cow, _, _malformed) = encoding.decode(&mmap);
+    let line_ending = detect_line_ending(&cow);
+    let normalized_content = text_utils::normalize_to_lf(&cow);
+    let rope = Rope::from_str(&normalized_content);
+    let line_count = rope.len_lines();
+
+    Ok(DiskFileSnapshot {
+        rope,
+        encoding,
+        line_ending,
+        line_count,
+        large_file_mode,
+        fingerprint,
+    })
+}
 
 fn detect_line_ending(text: &str) -> LineEnding {
     let bytes = text.as_bytes();
@@ -169,40 +229,16 @@ fn count_word_stats(rope: &Rope) -> WordCountInfo {
 
 pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
-    let file = File::open(&path_buf).map_err(|e| e.to_string())?;
-
-    let metadata = file.metadata().map_err(|e| e.to_string())?;
-    let size = metadata.len();
-    let large_file_mode = size > LARGE_FILE_THRESHOLD_BYTES as u64;
-
-    let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
-
-    let encoding = if let Some((enc, _size)) = Encoding::for_bom(&mmap) {
-        enc
-    } else {
-        let mut detector = EncodingDetector::new();
-        if size as usize > ENCODING_DETECT_SAMPLE_BYTES {
-            detector.feed(&mmap[..ENCODING_DETECT_SAMPLE_BYTES], true);
-        } else {
-            detector.feed(&mmap, true);
-        }
-        detector.guess(None, true)
-    };
-
-    let (cow, _, _malformed) = encoding.decode(&mmap);
-    let line_ending = detect_line_ending(&cow);
-    let normalized_content = text_utils::normalize_to_lf(&cow);
-    let rope = Rope::from_str(&normalized_content);
-    let line_count = rope.len_lines();
+    let snapshot = read_disk_file_snapshot(&path_buf)?;
 
     let id = Uuid::new_v4().to_string();
 
     let mut doc = Document {
-        rope,
-        encoding,
-        saved_encoding: encoding.name().to_string(),
-        line_ending,
-        saved_line_ending: line_ending,
+        rope: snapshot.rope,
+        encoding: snapshot.encoding,
+        saved_encoding: snapshot.encoding.name().to_string(),
+        line_ending: snapshot.line_ending,
+        saved_line_ending: snapshot.line_ending,
         path: Some(path_buf.clone()),
         syntax_override: None,
         document_version: 0,
@@ -213,9 +249,10 @@ pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> 
         tree: None,
         language: None,
         syntax_dirty: false,
+        saved_file_fingerprint: Some(snapshot.fingerprint),
     };
 
-    configure_document_syntax(&mut doc, !large_file_mode);
+    configure_document_syntax(&mut doc, !snapshot.large_file_mode);
 
     state.documents.insert(id.clone(), doc);
 
@@ -227,10 +264,10 @@ pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> 
             .unwrap_or_default()
             .to_string_lossy()
             .to_string(),
-        encoding: encoding.name().to_string(),
-        line_ending: line_ending.label().to_string(),
-        line_count,
-        large_file_mode,
+        encoding: snapshot.encoding.name().to_string(),
+        line_ending: snapshot.line_ending.label().to_string(),
+        line_count: snapshot.line_count,
+        large_file_mode: snapshot.large_file_mode,
         syntax_override: None,
     })
 }
@@ -304,8 +341,8 @@ pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
 
 pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        if let Some(path) = &doc.path {
-            let mut file = File::create(path).map_err(|e| e.to_string())?;
+        if let Some(path) = doc.path.clone() {
+            let mut file = File::create(&path).map_err(|e| e.to_string())?;
             let persist_content = build_persist_content(&doc);
             let (bytes, _, _malformed) = doc.encoding.encode(&persist_content);
 
@@ -314,6 +351,9 @@ pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Re
             doc.saved_document_version = doc.document_version;
             doc.saved_encoding = doc.encoding.name().to_string();
             doc.saved_line_ending = doc.line_ending;
+            doc.saved_file_fingerprint = fs::metadata(&path)
+                .ok()
+                .map(|metadata| build_file_fingerprint(&metadata));
 
             Ok(())
         } else {
@@ -339,6 +379,11 @@ pub(super) async fn save_file_as_impl(state: State<'_, AppState>, id: String, pa
         doc.saved_document_version = doc.document_version;
         doc.saved_encoding = doc.encoding.name().to_string();
         doc.saved_line_ending = doc.line_ending;
+        if let Some(path) = &doc.path {
+            doc.saved_file_fingerprint = fs::metadata(path)
+                .ok()
+                .map(|metadata| build_file_fingerprint(&metadata));
+        }
         let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
         configure_document_syntax(&mut doc, enable_syntax);
         Ok(())
@@ -422,6 +467,7 @@ pub(super) fn new_file_impl(
         tree: None,
         language: None,
         syntax_dirty: false,
+        saved_file_fingerprint: None,
     };
 
     configure_document_syntax(&mut doc, true);
@@ -438,6 +484,93 @@ pub(super) fn new_file_impl(
         large_file_mode: false,
         syntax_override: None,
     })
+}
+
+pub(super) fn has_external_file_change_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, String> {
+    let (path, saved_fingerprint) = if let Some(doc) = state.documents.get(&id) {
+        let Some(path) = &doc.path else {
+            return Ok(false);
+        };
+
+        (path.clone(), doc.saved_file_fingerprint)
+    } else {
+        return Err("Document not found".to_string());
+    };
+
+    let metadata = match fs::metadata(path) {
+        Ok(value) => value,
+        Err(_) => return Ok(saved_fingerprint.is_some()),
+    };
+
+    let current_fingerprint = build_file_fingerprint(&metadata);
+    Ok(saved_fingerprint != Some(current_fingerprint))
+}
+
+pub(super) fn acknowledge_external_file_change_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let Some(path) = &doc.path else {
+            return Ok(());
+        };
+
+        doc.saved_file_fingerprint = fs::metadata(path)
+            .ok()
+            .map(|metadata| build_file_fingerprint(&metadata));
+        Ok(())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+pub(super) fn reload_file_from_disk_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FileInfo, String> {
+    let path = if let Some(doc) = state.documents.get(&id) {
+        doc.path
+            .clone()
+            .ok_or_else(|| "No path associated with this file".to_string())?
+    } else {
+        return Err("Document not found".to_string());
+    };
+
+    let snapshot = read_disk_file_snapshot(&path)?;
+
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        doc.rope = snapshot.rope;
+        doc.encoding = snapshot.encoding;
+        doc.saved_encoding = snapshot.encoding.name().to_string();
+        doc.line_ending = snapshot.line_ending;
+        doc.saved_line_ending = snapshot.line_ending;
+        doc.document_version = 0;
+        doc.saved_document_version = 0;
+        doc.undo_stack.clear();
+        doc.redo_stack.clear();
+        doc.saved_file_fingerprint = Some(snapshot.fingerprint);
+        configure_document_syntax(&mut doc, !snapshot.large_file_mode);
+
+        Ok(FileInfo {
+            id,
+            path: path.to_string_lossy().to_string(),
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            encoding: snapshot.encoding.name().to_string(),
+            line_ending: snapshot.line_ending.label().to_string(),
+            line_count: snapshot.line_count,
+            large_file_mode: snapshot.large_file_mode,
+            syntax_override: doc.syntax_override.clone(),
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
 }
 
 pub(super) fn read_dir_impl(path: String) -> Result<Vec<DirEntry>, String> {
