@@ -110,6 +110,7 @@ function getParentDirectoryPath(filePath: string): string | null {
 }
 
 export function TitleBar() {
+    const isReleaseBuild = import.meta.env.PROD;
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
     const setActiveTab = useStore((state) => state.setActiveTab);
@@ -421,6 +422,16 @@ export function TitleBar() {
         tabsContainer.scrollLeft = Math.max(0, Math.min(maxScrollLeft, tabsContainer.scrollLeft + normalizedDelta));
     }, []);
 
+    const handleTabsContainerContextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
+        if (!isReleaseBuild) {
+            return;
+        }
+
+        event.preventDefault();
+        setTabContextMenu(null);
+        setTabPathTooltip(null);
+    }, [isReleaseBuild]);
+
     useEffect(() => {
         const DRAG_THRESHOLD_PX = 6;
 
@@ -609,6 +620,7 @@ export function TitleBar() {
             {/* Tabs Container */}
             <div
                 onWheel={handleTabsWheel}
+                onContextMenu={handleTabsContainerContextMenu}
                 data-tauri-drag-region
                 className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10"
             >
