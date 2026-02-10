@@ -65,7 +65,7 @@ npm run tauri build
 - `src-tauri/src/commands/document.rs`: Document version and syntax-token generation submodule.
 - `src-tauri/src/commands/file_io.rs`: File open/save/new operations and filesystem utility submodule.
 - `src-tauri/src/commands/editing.rs`: Edit/undo-redo, document cleanup, and structured format commands submodule.
-- `src-tauri/src/commands/formatting.rs`: Structured data formatting/minify helpers for JSON/YAML/XML/TOML.
+- `src-tauri/src/commands/formatting.rs`: Structured data formatting/minify helpers for JSON/YAML/XML/HTML/TOML.
 - `src-tauri/src/commands/syntax.rs`: File extension and syntax-override language resolution plus parser creation.
 - `src-tauri/src/commands/settings.rs`: App config types/defaults and normalization helpers (language/theme/tab width).
 - `src-tauri/src/commands/types.rs`: Shared command data structures (`FileInfo`, `DirEntry`, `SyntaxToken`, etc.).

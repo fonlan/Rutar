@@ -1,6 +1,6 @@
 import { FileTab } from '@/store/useStore';
 
-const STRUCTURED_EXTENSIONS = new Set(['json', 'jsonc', 'yaml', 'yml', 'xml', 'svg', 'toml']);
+const STRUCTURED_EXTENSIONS = new Set(['json', 'jsonc', 'yaml', 'yml', 'xml', 'svg', 'html', 'htm', 'xhtml', 'toml']);
 
 function extFromPath(path?: string) {
   if (!path) {
@@ -28,4 +28,3 @@ export function isStructuredFormatSupported(tab?: FileTab | null) {
 
   return STRUCTURED_EXTENSIONS.has(ext);
 }
-

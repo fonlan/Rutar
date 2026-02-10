@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
+use regex::Regex;
 use serde::Serialize;
 use tree_sitter::{Language, Parser};
 
@@ -9,6 +10,7 @@ enum StructuredFormat {
     Json,
     Yaml,
     Xml,
+    Html,
     Toml,
 }
 
@@ -117,6 +119,10 @@ fn parse_structured_format_from_name(name: &str) -> Option<StructuredFormat> {
 
     if lower.ends_with(".xml") || lower.ends_with(".svg") {
         return Some(StructuredFormat::Xml);
+    }
+
+    if lower.ends_with(".html") || lower.ends_with(".htm") || lower.ends_with(".xhtml") {
+        return Some(StructuredFormat::Html);
     }
 
     if lower.ends_with(".toml") {
@@ -333,6 +339,105 @@ fn format_xml(source: &str, mode: FormatMode, tab_width: usize) -> Result<String
     String::from_utf8(writer.into_inner()).map_err(|e| e.to_string())
 }
 
+fn is_html_void_tag(tag_name: &str) -> bool {
+    matches!(
+        tag_name,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
+fn extract_html_tag_name(tag_line: &str) -> Option<String> {
+    let trimmed = tag_line.trim();
+    if !trimmed.starts_with('<') {
+        return None;
+    }
+
+    let inner = trimmed
+        .trim_start_matches('<')
+        .trim_start_matches('/')
+        .trim_start();
+    let end = inner
+        .find(|ch: char| ch.is_whitespace() || ch == '>' || ch == '/')
+        .unwrap_or(inner.len());
+
+    if end == 0 {
+        return None;
+    }
+
+    Some(inner[..end].to_ascii_lowercase())
+}
+
+fn format_html_fallback(source: &str, mode: FormatMode, tab_width: usize) -> Result<String, String> {
+    let spacing_regex = Regex::new(r">\s*<").map_err(|e| format!("Failed to build HTML spacing regex: {}", e))?;
+
+    match mode {
+        FormatMode::Beautify => {
+            let normalized = spacing_regex.replace_all(source, ">\n<");
+            let indent_unit = " ".repeat(tab_width.max(1));
+            let mut indent_level = 0usize;
+            let mut formatted = String::with_capacity(source.len().saturating_add(source.len() / 4));
+
+            for raw_line in normalized.lines() {
+                let line = raw_line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                let is_closing_tag = line.starts_with("</");
+                if is_closing_tag {
+                    indent_level = indent_level.saturating_sub(1);
+                }
+
+                formatted.push_str(&indent_unit.repeat(indent_level));
+                formatted.push_str(line);
+                formatted.push('\n');
+
+                let is_self_closing = line.ends_with("/>");
+                let is_declaration = line.starts_with("<!") || line.starts_with("<?");
+                let closes_same_line = line.contains("</");
+                let is_void = extract_html_tag_name(line).as_deref().is_some_and(is_html_void_tag);
+
+                let should_indent_after = line.starts_with('<')
+                    && !is_closing_tag
+                    && !is_self_closing
+                    && !is_declaration
+                    && !closes_same_line
+                    && !is_void;
+
+                if should_indent_after {
+                    indent_level = indent_level.saturating_add(1);
+                }
+            }
+
+            Ok(formatted.trim_end_matches('\n').to_string())
+        }
+        FormatMode::Minify => {
+            let compact = spacing_regex.replace_all(source, "><");
+            Ok(compact.trim().to_string())
+        }
+    }
+}
+
+fn format_html(source: &str, mode: FormatMode, tab_width: usize) -> Result<String, String> {
+    match format_xml(source, mode, tab_width) {
+        Ok(formatted) => Ok(formatted),
+        Err(_) => format_html_fallback(source, mode, tab_width),
+    }
+}
+
 fn format_structured_text(
     source: &str,
     file_format: StructuredFormat,
@@ -352,6 +457,7 @@ fn format_structured_text(
             }
         }
         StructuredFormat::Xml => format_xml(source, mode, indent_width),
+        StructuredFormat::Html => format_html(source, mode, indent_width),
         StructuredFormat::Toml => {
             if preserve_comments {
                 Ok(format_preserving_comments(source, mode, indent_width))
@@ -373,7 +479,7 @@ pub(super) fn format_document_text(
     let format_mode =
         parse_format_mode(mode).ok_or_else(|| "Unsupported format mode. Use beautify or minify".to_string())?;
     let file_format = resolve_structured_format(file_path, file_name, document_path)
-        .ok_or_else(|| "Only JSON, YAML, XML, and TOML files are supported".to_string())?;
+        .ok_or_else(|| "Only JSON, YAML, XML, HTML, and TOML files are supported".to_string())?;
     let preserve_comments = should_preserve_comments(source, file_format);
 
     format_structured_text(source, file_format, format_mode, tab_width, preserve_comments)
@@ -407,5 +513,24 @@ mod tests {
         let result = format_document_text(source, "beautify", None, Some("config.yaml"), &None, 2);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn format_html_should_beautify_even_when_not_well_formed_xml() {
+        let source = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Rutar</title></head><body><h1>Hello</h1></body></html>";
+        let result = format_document_text(source, "beautify", None, Some("index.html"), &None, 2);
+
+        let formatted = result.expect("expected HTML formatting to succeed");
+        assert!(formatted.contains("\n"));
+        assert!(formatted.contains("<meta charset=\"utf-8\">"));
+    }
+
+    #[test]
+    fn format_html_should_minify_document() {
+        let source = "<html>\n  <body>\n    <h1>Hello</h1>\n  </body>\n</html>\n";
+        let result = format_document_text(source, "minify", None, Some("index.htm"), &None, 2);
+
+        let formatted = result.expect("expected HTML minify to succeed");
+        assert_eq!(formatted, "<html><body><h1>Hello</h1></body></html>");
     }
 }
