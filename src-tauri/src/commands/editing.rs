@@ -103,6 +103,23 @@ pub(super) fn redo_impl(state: State<'_, AppState>, id: String) -> Result<usize,
     }
 }
 
+pub(super) fn get_edit_history_state_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<EditHistoryState, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        Ok(EditHistoryState {
+            can_undo: !doc.undo_stack.is_empty(),
+            can_redo: !doc.redo_stack.is_empty(),
+            is_dirty: doc.document_version != doc.saved_document_version
+                || doc.encoding.name() != doc.saved_encoding
+                || doc.line_ending != doc.saved_line_ending,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn edit_text_impl(
     state: State<'_, AppState>,
     id: String,

@@ -75,10 +75,18 @@ npm run tauri build
 - `src-tauri/src/commands/constants.rs`: Shared backend constants for editor defaults and runtime limits.
 - `src-tauri/src/commands/search_commands.rs`: Tauri command wrappers for search/filter operations.
 - `src-tauri/src/commands/file_io_commands.rs`: Tauri command wrappers for document/file I/O operations.
-- `src-tauri/src/commands/editing_commands.rs`: Tauri command wrappers for edit/undo/cleanup/format operations.
+- `src-tauri/src/commands/editing_commands.rs`: Tauri command wrappers for edit/undo/history/cleanup/format operations.
 - `src-tauri/src/commands/search.rs`: Search / filter matching and step-navigation submodule.
 - `src-tauri/src/commands/outline.rs`: Outline parsing and symbol extraction submodule.
 - `AGENTS.md`: Detailed guidelines for AI coding agents working on this repository.
+
+## Toolbar Button Availability
+
+- Toolbar action states are dynamically derived from current editor context.
+- `Save` is enabled only when the active document has unsaved changes.
+- `Save All` is enabled only when at least one tab has unsaved changes.
+- `Cut` and `Copy` are enabled only when text is selected in the active editor.
+- `Undo` / `Redo` are enabled only when corresponding history entries exist.
 
 ## 📄 License
 

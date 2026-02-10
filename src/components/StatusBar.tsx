@@ -7,6 +7,14 @@ import { SyntaxKey } from '@/store/useStore';
 
 type LineEnding = 'CRLF' | 'LF' | 'CR';
 
+function dispatchDocumentUpdated(tabId: string) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:document-updated', {
+            detail: { tabId },
+        })
+    );
+}
+
 export function StatusBar() {
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
@@ -46,6 +54,7 @@ export function StatusBar() {
         try {
             await invoke('convert_encoding', { id: activeTab.id, newEncoding: newEnc });
             updateTab(activeTab.id, { encoding: newEnc, isDirty: true });
+            dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.error(e);
         }
@@ -55,6 +64,7 @@ export function StatusBar() {
         try {
             await invoke('set_line_ending', { id: activeTab.id, newLineEnding });
             updateTab(activeTab.id, { lineEnding: newLineEnding, isDirty: true });
+            dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.error(e);
         }

@@ -46,11 +46,49 @@ function dispatchEditorPaste(tabId: string, text: string) {
     );
 }
 
+function dispatchDocumentUpdated(tabId: string) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:document-updated', {
+            detail: { tabId },
+        })
+    );
+}
+
 function getActiveEditorElement() {
-    return document.querySelector('.editor-input-layer') as HTMLDivElement | null;
+    return document.querySelector('.editor-input-layer') as HTMLTextAreaElement | null;
+}
+
+function hasSelectionInEditorElement(element: HTMLTextAreaElement | null) {
+    if (!element) {
+        return false;
+    }
+
+    if (typeof element.selectionStart === 'number' && typeof element.selectionEnd === 'number') {
+        return element.selectionEnd > element.selectionStart;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    return element.contains(range.commonAncestorContainer) && selection.toString().length > 0;
 }
 
 type RecentMenuKind = 'file' | 'folder' | null;
+
+interface EditHistoryState {
+    canUndo: boolean;
+    canRedo: boolean;
+    isDirty: boolean;
+}
+
+const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
+    canUndo: false,
+    canRedo: false,
+    isDirty: false,
+};
 
 function sortFolderEntries(entries: any[]) {
     entries.sort((left, right) => {
@@ -89,9 +127,12 @@ export function Toolbar() {
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
     const activeTab = tabs.find(t => t.id === activeTabId);
+    const activeTabLargeFileMode = !!activeTab?.largeFileMode;
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const canOutline = !!activeTab && !!detectOutlineType(activeTab);
+    const [canClipboardSelectionAction, setCanClipboardSelectionAction] = useState(false);
+    const [editHistoryState, setEditHistoryState] = useState<EditHistoryState>(DEFAULT_EDIT_HISTORY_STATE);
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
     const openFileMenuRef = useRef<HTMLDivElement>(null);
     const openFolderMenuRef = useRef<HTMLDivElement>(null);
@@ -101,11 +142,109 @@ export function Toolbar() {
     const formatMinifyTitle = tr('toolbar.format.minify');
     const formatUnsupportedMessage = tr('toolbar.format.unsupported');
     const formatFailedPrefix = tr('toolbar.format.failed');
-    const noRecentFilesText = language === 'zh-CN' ? '暂无最近文件' : 'No recent files';
-    const noRecentFoldersText = language === 'zh-CN' ? '暂无最近文件夹' : 'No recent folders';
-    const clearRecentFilesText = language === 'zh-CN' ? '清空最近文件' : 'Clear recent files';
-    const clearRecentFoldersText = language === 'zh-CN' ? '清空最近文件夹' : 'Clear recent folders';
+    const noRecentFilesText = tr('toolbar.recent.noFiles');
+    const noRecentFoldersText = tr('toolbar.recent.noFolders');
+    const clearRecentFilesText = tr('toolbar.recent.clearFiles');
+    const clearRecentFoldersText = tr('toolbar.recent.clearFolders');
     const removeRecentItemText = tr('bookmark.remove');
+    const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
+    const canSaveAnyTab = tabs.some((tab) => !!tab.isDirty);
+    const canCutOrCopy = canEdit && canClipboardSelectionAction;
+    const canUndo = canEdit && editHistoryState.canUndo;
+    const canRedo = canEdit && editHistoryState.canRedo;
+    const noActiveDocumentReason = tr('toolbar.disabled.noActiveDocument');
+    const noUnsavedChangesReason = tr('toolbar.disabled.noUnsavedChanges');
+    const noUnsavedDocumentsReason = tr('toolbar.disabled.noUnsavedDocuments');
+    const noSelectedTextReason = tr('toolbar.disabled.noSelectedText');
+    const noUndoHistoryReason = tr('toolbar.disabled.noUndoHistory');
+    const noRedoHistoryReason = tr('toolbar.disabled.noRedoHistory');
+    const saveDisabledReason = !activeTab ? noActiveDocumentReason : !canSaveActiveTab ? noUnsavedChangesReason : undefined;
+    const saveAllDisabledReason = !canSaveAnyTab ? noUnsavedDocumentsReason : undefined;
+    const cutCopyDisabledReason = !activeTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
+    const undoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
+    const redoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
+
+    const refreshSelectionState = useCallback(() => {
+        if (!activeTabId || activeTabLargeFileMode) {
+            setCanClipboardSelectionAction(false);
+            return;
+        }
+
+        const editor = getActiveEditorElement();
+        setCanClipboardSelectionAction(hasSelectionInEditorElement(editor));
+    }, [activeTabId, activeTabLargeFileMode]);
+
+    const refreshEditHistoryState = useCallback(async (targetTabId?: string) => {
+        const id = targetTabId ?? activeTabId;
+        if (!id) {
+            setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
+            return;
+        }
+
+        try {
+            const historyState = await invoke<EditHistoryState>('get_edit_history_state', { id });
+            const currentActiveTabId = useStore.getState().activeTabId;
+            if (currentActiveTabId === id) {
+                setEditHistoryState(historyState);
+            }
+            const currentTab = useStore.getState().tabs.find((tab) => tab.id === id);
+            if (currentTab && currentTab.isDirty !== historyState.isDirty) {
+                updateTab(id, { isDirty: historyState.isDirty });
+            }
+        } catch (error) {
+            console.warn('Failed to get edit history state:', error);
+            if (useStore.getState().activeTabId === id) {
+                setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
+            }
+        }
+    }, [activeTabId, updateTab]);
+
+    useEffect(() => {
+        if (!activeTabId) {
+            setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
+            setCanClipboardSelectionAction(false);
+            return;
+        }
+
+        void refreshEditHistoryState(activeTabId);
+        refreshSelectionState();
+    }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
+
+    useEffect(() => {
+        const handleSelectionChange = () => {
+            refreshSelectionState();
+        };
+
+        const handleDocumentUpdated = (event: Event) => {
+            const customEvent = event as CustomEvent<{ tabId?: string }>;
+            if (!activeTabId || customEvent.detail?.tabId !== activeTabId) {
+                return;
+            }
+
+            void refreshEditHistoryState(activeTabId);
+            refreshSelectionState();
+        };
+
+        const handleForceRefresh = (event: Event) => {
+            const customEvent = event as CustomEvent<{ tabId?: string }>;
+            if (!activeTabId || customEvent.detail?.tabId !== activeTabId) {
+                return;
+            }
+
+            void refreshEditHistoryState(activeTabId);
+            refreshSelectionState();
+        };
+
+        document.addEventListener('selectionchange', handleSelectionChange);
+        window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+        window.addEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
+
+        return () => {
+            document.removeEventListener('selectionchange', handleSelectionChange);
+            window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+            window.removeEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
+        };
+    }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
 
     const recentFileItems = useMemo(
         () => recentFiles.map((path) => ({ path, name: pathBaseName(path) })),
@@ -154,6 +293,7 @@ export function Toolbar() {
             });
 
             dispatchEditorForceRefresh(activeTab.id, newLineCount);
+            dispatchDocumentUpdated(activeTab.id);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             await message(`${formatFailedPrefix} ${errorMessage}`, {
@@ -193,11 +333,12 @@ export function Toolbar() {
 
             if (selected && typeof selected === 'string') {
                 await openFilePath(selected);
+                refreshSelectionState();
             }
         } catch (e) {
             console.error('Failed to open file:', e);
         }
-    }, []);
+    }, [refreshSelectionState]);
 
     const handleOpenFolder = useCallback(async () => {
         try {
@@ -220,12 +361,15 @@ export function Toolbar() {
     const handleOpenRecentFile = useCallback(async (path: string) => {
         try {
             await openFilePath(path);
+            if (activeTabId) {
+                void refreshEditHistoryState(activeTabId);
+            }
         } catch (error) {
             console.error('Failed to open recent file:', error);
         } finally {
             setRecentMenu(null);
         }
-    }, []);
+    }, [activeTabId, refreshEditHistoryState]);
 
     const handleOpenRecentFolder = useCallback(async (path: string) => {
         try {
@@ -256,21 +400,25 @@ export function Toolbar() {
         if (!activeTab) return;
         try {
             await persistTab(activeTab);
+            await refreshEditHistoryState(activeTab.id);
+            dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.error('Failed to save file:', e);
         }
-    }, [activeTab, persistTab]);
+    }, [activeTab, persistTab, refreshEditHistoryState]);
 
     const handleSaveAll = useCallback(async () => {
         const dirtyTabs = tabs.filter(t => t.isDirty);
         for (const tab of dirtyTabs) {
             try {
                 await persistTab(tab);
+                await refreshEditHistoryState(tab.id);
+                dispatchDocumentUpdated(tab.id);
             } catch (e) {
                 console.error(`Failed to save ${tab.name}:`, e);
             }
         }
-    }, [persistTab, tabs]);
+    }, [persistTab, refreshEditHistoryState, tabs]);
 
     const handleCloseActiveTab = useCallback(async () => {
         if (!activeTab) return;
@@ -312,23 +460,29 @@ export function Toolbar() {
         if (!activeTab) return;
         try {
             const newLineCount = await invoke<number>('undo', { id: activeTab.id });
-            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: true });
+            await refreshEditHistoryState(activeTab.id);
+            const currentDirty = useStore.getState().tabs.find((tab) => tab.id === activeTab.id)?.isDirty ?? true;
+            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: currentDirty });
             dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
+            dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.warn(e);
         }
-    }, [activeTab, updateTab]);
+    }, [activeTab, refreshEditHistoryState, updateTab]);
 
     const handleRedo = useCallback(async () => {
         if (!activeTab) return;
         try {
             const newLineCount = await invoke<number>('redo', { id: activeTab.id });
-            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: true });
+            await refreshEditHistoryState(activeTab.id);
+            const currentDirty = useStore.getState().tabs.find((tab) => tab.id === activeTab.id)?.isDirty ?? true;
+            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: currentDirty });
             dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
+            dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.warn(e);
         }
-    }, [activeTab, updateTab]);
+    }, [activeTab, refreshEditHistoryState, updateTab]);
 
     const handleClipboardAction = useCallback(async (action: 'cut' | 'copy' | 'paste') => {
         const editor = getActiveEditorElement();
@@ -636,17 +790,53 @@ export function Toolbar() {
                 }}
             />
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Save} title={tr('toolbar.save')} onClick={handleSave} disabled={!activeTab} />
-            <ToolbarBtn icon={SaveAll} title={tr('toolbar.saveAll')} onClick={handleSaveAll} disabled={tabs.length === 0} />
+            <ToolbarBtn
+                icon={Save}
+                title={tr('toolbar.save')}
+                onClick={handleSave}
+                disabled={!canSaveActiveTab}
+                disabledReason={saveDisabledReason}
+            />
+            <ToolbarBtn
+                icon={SaveAll}
+                title={tr('toolbar.saveAll')}
+                onClick={handleSaveAll}
+                disabled={!canSaveAnyTab}
+                disabledReason={saveAllDisabledReason}
+            />
             
             {/* Edit Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Scissors} title={tr('toolbar.cut')} onClick={() => void handleClipboardAction('cut')} disabled={!canEdit} />
-            <ToolbarBtn icon={Copy} title={tr('toolbar.copy')} onClick={() => void handleClipboardAction('copy')} disabled={!activeTab} />
+            <ToolbarBtn
+                icon={Scissors}
+                title={tr('toolbar.cut')}
+                onClick={() => void handleClipboardAction('cut')}
+                disabled={!canCutOrCopy}
+                disabledReason={cutCopyDisabledReason}
+            />
+            <ToolbarBtn
+                icon={Copy}
+                title={tr('toolbar.copy')}
+                onClick={() => void handleClipboardAction('copy')}
+                disabled={!canCutOrCopy}
+                disabledReason={cutCopyDisabledReason}
+            />
             <ToolbarBtn icon={ClipboardPaste} title={tr('toolbar.paste')} onClick={() => void handleClipboardAction('paste')} disabled={!canEdit} />
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Undo} title={tr('toolbar.undo')} onClick={handleUndo} disabled={!canEdit} />
-            <ToolbarBtn icon={Redo} title={tr('toolbar.redo')} onClick={handleRedo} disabled={!canEdit} />
+            <ToolbarBtn
+                icon={Undo}
+                title={tr('toolbar.undo')}
+                onClick={handleUndo}
+                disabled={!canUndo}
+                disabledReason={undoDisabledReason}
+            />
+            <ToolbarBtn
+                icon={Redo}
+                title={tr('toolbar.redo')}
+                onClick={handleRedo}
+                disabled={!canRedo}
+                disabledReason={redoDisabledReason}
+            />
             
             {/* Search Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
@@ -696,22 +886,27 @@ export function Toolbar() {
     )
 }
 
-function ToolbarBtn({ icon: Icon, title, onClick, disabled, active }: { icon: any, title: string, onClick?: () => void, disabled?: boolean, active?: boolean }) {
+function ToolbarBtn({ icon: Icon, title, onClick, disabled, active, disabledReason }: { icon: any, title: string, onClick?: () => void, disabled?: boolean, active?: boolean, disabledReason?: string }) {
+    const resolvedTitle = disabled && disabledReason
+        ? `${title} · ${disabledReason}`
+        : title;
+
     return (
-        <button 
-            type="button"
-            className={`p-2 rounded-md hover:bg-accent hover:text-accent-foreground disabled:opacity-30 flex-shrink-0 transition-colors ${active ? 'bg-accent text-accent-foreground' : ''}`}
-            title={title}
-            onMouseDown={(event) => {
-                if (!disabled) {
-                    event.preventDefault();
-                }
-            }}
-            onClick={onClick}
-            disabled={disabled}
-        >
-            <Icon className="w-4 h-4" />
-        </button>
+        <span title={resolvedTitle} className="inline-flex flex-shrink-0">
+            <button
+                type="button"
+                className={`p-2 rounded-md hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:pointer-events-none transition-colors ${active ? 'bg-accent text-accent-foreground' : ''}`}
+                onMouseDown={(event) => {
+                    if (!disabled) {
+                        event.preventDefault();
+                    }
+                }}
+                onClick={onClick}
+                disabled={disabled}
+            >
+                <Icon className="w-4 h-4" />
+            </button>
+        </span>
     )
 }
 

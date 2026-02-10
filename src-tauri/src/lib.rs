@@ -87,6 +87,7 @@ pub fn run() {
             commands::file_io_commands::open_in_file_manager,
             commands::editing_commands::undo,
             commands::editing_commands::redo,
+            commands::editing_commands::get_edit_history_state,
             commands::editing_commands::edit_text,
             commands::editing_commands::replace_line_range,
             commands::editing_commands::cleanup_document,

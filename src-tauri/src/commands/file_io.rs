@@ -113,10 +113,13 @@ pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> 
     let mut doc = Document {
         rope,
         encoding,
+        saved_encoding: encoding.name().to_string(),
         line_ending,
+        saved_line_ending: line_ending,
         path: Some(path_buf.clone()),
         syntax_override: None,
         document_version: 0,
+        saved_document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,
@@ -213,7 +216,7 @@ pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
 }
 
 pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    if let Some(doc) = state.documents.get(&id) {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(path) = &doc.path {
             let mut file = File::create(path).map_err(|e| e.to_string())?;
             let persist_content = build_persist_content(&doc);
@@ -221,6 +224,9 @@ pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Re
 
             use std::io::Write;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
+            doc.saved_document_version = doc.document_version;
+            doc.saved_encoding = doc.encoding.name().to_string();
+            doc.saved_line_ending = doc.line_ending;
 
             Ok(())
         } else {
@@ -243,6 +249,9 @@ pub(super) async fn save_file_as_impl(state: State<'_, AppState>, id: String, pa
         file.write_all(&bytes).map_err(|e| e.to_string())?;
 
         doc.path = Some(path_buf);
+        doc.saved_document_version = doc.document_version;
+        doc.saved_encoding = doc.encoding.name().to_string();
+        doc.saved_line_ending = doc.line_ending;
         let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
         configure_document_syntax(&mut doc, enable_syntax);
         Ok(())
@@ -257,7 +266,12 @@ pub(super) fn convert_encoding_impl(state: State<'_, AppState>, id: String, new_
         let encoding = Encoding::for_label(label)
             .ok_or_else(|| format!("Unsupported encoding: {}", new_encoding))?;
 
+        if doc.encoding.name() == encoding.name() {
+            return Ok(());
+        }
+
         doc.encoding = encoding;
+        doc.document_version = doc.document_version.saturating_add(1);
         Ok(())
     } else {
         Err("Document not found".to_string())
@@ -269,7 +283,12 @@ pub(super) fn set_line_ending_impl(state: State<'_, AppState>, id: String, new_l
         let line_ending = LineEnding::from_label(&new_line_ending)
             .ok_or_else(|| format!("Unsupported line ending: {}", new_line_ending))?;
 
+        if doc.line_ending == line_ending {
+            return Ok(());
+        }
+
         doc.line_ending = line_ending;
+        doc.document_version = doc.document_version.saturating_add(1);
         Ok(())
     } else {
         Err("Document not found".to_string())
@@ -303,10 +322,13 @@ pub(super) fn new_file_impl(
     let mut doc = Document {
         rope: Rope::new(),
         encoding,
+        saved_encoding: encoding.name().to_string(),
         line_ending,
+        saved_line_ending: line_ending,
         path: None,
         syntax_override: None,
         document_version: 0,
+        saved_document_version: 0,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
         parser: None,

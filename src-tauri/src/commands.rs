@@ -29,7 +29,13 @@ mod constants;
 
 use self::search::*;
 pub use self::settings::AppConfig;
-pub use self::types::{DirEntry, FileInfo, SyntaxToken, WindowsFileAssociationStatus};
+pub use self::types::{
+    DirEntry,
+    EditHistoryState,
+    FileInfo,
+    SyntaxToken,
+    WindowsFileAssociationStatus,
+};
 use self::constants::*;
 
 #[tauri::command]

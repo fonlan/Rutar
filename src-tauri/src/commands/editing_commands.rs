@@ -11,6 +11,14 @@ pub fn redo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
 }
 
 #[tauri::command]
+pub fn get_edit_history_state(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<EditHistoryState, String> {
+    editing::get_edit_history_state_impl(state, id)
+}
+
+#[tauri::command]
 pub fn edit_text(
     state: State<'_, AppState>,
     id: String,

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tree_sitter::{Language, Parser, Tree};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
     CrLf,
     Lf,
@@ -61,10 +61,13 @@ impl EditOperation {
 pub struct Document {
     pub rope: Rope,
     pub encoding: &'static Encoding,
+    pub saved_encoding: String,
     pub line_ending: LineEnding,
+    pub saved_line_ending: LineEnding,
     pub path: Option<PathBuf>,
     pub syntax_override: Option<String>,
     pub document_version: u64,
+    pub saved_document_version: u64,
     pub undo_stack: Vec<EditOperation>,
     pub redo_stack: Vec<EditOperation>,
     pub parser: Option<Parser>,

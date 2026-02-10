@@ -32,6 +32,14 @@ pub struct WindowsFileAssociationStatus {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditHistoryState {
+    pub(super) can_undo: bool,
+    pub(super) can_redo: bool,
+    pub(super) is_dirty: bool,
+}
+
+#[derive(serde::Serialize)]
 pub struct DirEntry {
     pub(super) name: String,
     pub(super) path: String,

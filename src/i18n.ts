@@ -38,6 +38,16 @@ export type I18nKey =
   | 'toolbar.format.minify'
   | 'toolbar.format.unsupported'
   | 'toolbar.format.failed'
+  | 'toolbar.recent.noFiles'
+  | 'toolbar.recent.noFolders'
+  | 'toolbar.recent.clearFiles'
+  | 'toolbar.recent.clearFolders'
+  | 'toolbar.disabled.noActiveDocument'
+  | 'toolbar.disabled.noUnsavedChanges'
+  | 'toolbar.disabled.noUnsavedDocuments'
+  | 'toolbar.disabled.noSelectedText'
+  | 'toolbar.disabled.noUndoHistory'
+  | 'toolbar.disabled.noRedoHistory'
   | 'bookmark.menu.title'
   | 'bookmark.add'
   | 'bookmark.remove'
@@ -191,6 +201,16 @@ const zhCN: Messages = {
   'toolbar.format.minify': '最小化文档 (Ctrl+Alt+M)',
   'toolbar.format.unsupported': '仅支持 JSON / YAML / XML / HTML / TOML 文件格式化。',
   'toolbar.format.failed': '格式化失败：',
+  'toolbar.recent.noFiles': '暂无最近文件',
+  'toolbar.recent.noFolders': '暂无最近文件夹',
+  'toolbar.recent.clearFiles': '清空最近文件',
+  'toolbar.recent.clearFolders': '清空最近文件夹',
+  'toolbar.disabled.noActiveDocument': '当前没有打开的文档',
+  'toolbar.disabled.noUnsavedChanges': '当前文档没有未保存更改',
+  'toolbar.disabled.noUnsavedDocuments': '没有可保存的更改',
+  'toolbar.disabled.noSelectedText': '当前没有选中文本',
+  'toolbar.disabled.noUndoHistory': '当前没有可撤销的操作',
+  'toolbar.disabled.noRedoHistory': '当前没有可重做的操作',
   'bookmark.menu.title': '书签',
   'bookmark.add': '添加书签',
   'bookmark.remove': '删除书签',
@@ -343,6 +363,16 @@ const enUS: Messages = {
   'toolbar.format.minify': 'Minify (Ctrl+Alt+M)',
   'toolbar.format.unsupported': 'Only JSON, YAML, XML, HTML, and TOML are supported.',
   'toolbar.format.failed': 'Format failed:',
+  'toolbar.recent.noFiles': 'No recent files',
+  'toolbar.recent.noFolders': 'No recent folders',
+  'toolbar.recent.clearFiles': 'Clear recent files',
+  'toolbar.recent.clearFolders': 'Clear recent folders',
+  'toolbar.disabled.noActiveDocument': 'No active document',
+  'toolbar.disabled.noUnsavedChanges': 'No unsaved changes',
+  'toolbar.disabled.noUnsavedDocuments': 'No unsaved documents',
+  'toolbar.disabled.noSelectedText': 'No selected text',
+  'toolbar.disabled.noUndoHistory': 'No undo history',
+  'toolbar.disabled.noRedoHistory': 'No redo history',
   'bookmark.menu.title': 'Bookmark',
   'bookmark.add': 'Add Bookmark',
   'bookmark.remove': 'Remove Bookmark',
