@@ -157,6 +157,7 @@ function App() {
     bookmarkSidebarOpen: boolean;
   }>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
+  const externalChangeCheckingTabIdsRef = useRef<Set<string>>(new Set());
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
 
@@ -358,6 +359,106 @@ function App() {
       }
     }
   }, [setFolder]);
+
+  const checkTabForExternalChange = useCallback(async (tabId: string | null | undefined) => {
+    if (!tabId) {
+      return;
+    }
+
+    const snapshotTab = useStore
+      .getState()
+      .tabs
+      .find((tab) => tab.id === tabId && !!tab.path);
+
+    if (!snapshotTab || !snapshotTab.path) {
+      return;
+    }
+
+    if (externalChangeCheckingTabIdsRef.current.has(snapshotTab.id)) {
+      return;
+    }
+
+    externalChangeCheckingTabIdsRef.current.add(snapshotTab.id);
+
+    try {
+      let changed = false;
+      try {
+        changed = await invoke<boolean>('has_external_file_change', { id: snapshotTab.id });
+      } catch (error) {
+        console.error(`Failed to check external file change: ${snapshotTab.path}`, error);
+        return;
+      }
+
+      if (!changed) {
+        return;
+      }
+
+      const latestState = useStore.getState();
+      const latestTab = latestState.tabs.find((item) => item.id === snapshotTab.id);
+      if (!latestTab || !latestTab.path) {
+        return;
+      }
+
+      const fileName = latestTab.name || latestTab.path;
+      const promptText = t(latestState.settings.language, 'app.externalFileChanged.prompt')
+        .replace('{fileName}', fileName);
+      const unsavedWarningText = t(
+        latestState.settings.language,
+        'app.externalFileChanged.unsavedWarning'
+      );
+      const messageText = latestTab.isDirty
+        ? `${promptText}\n\n${unsavedWarningText}`
+        : promptText;
+
+      const shouldReload = await ask(messageText, {
+        title: 'Rutar',
+        kind: 'warning',
+      });
+
+      if (shouldReload) {
+        try {
+          const fileInfo = await invoke<FileTab>('reload_file_from_disk', { id: latestTab.id });
+          useStore.getState().updateTab(latestTab.id, {
+            name: fileInfo.name,
+            path: fileInfo.path,
+            encoding: fileInfo.encoding,
+            lineEnding: fileInfo.lineEnding,
+            lineCount: fileInfo.lineCount,
+            largeFileMode: fileInfo.largeFileMode,
+            syntaxOverride: fileInfo.syntaxOverride ?? null,
+            isDirty: false,
+          });
+
+          if (useStore.getState().activeTabId === latestTab.id) {
+            dispatchEditorForceRefresh(latestTab.id, Math.max(1, fileInfo.lineCount));
+          }
+
+          dispatchDocumentUpdated(latestTab.id);
+        } catch (error) {
+          console.error(`Failed to reload changed file: ${latestTab.path}`, error);
+        }
+
+        return;
+      }
+
+      try {
+        await invoke('acknowledge_external_file_change', { id: latestTab.id });
+      } catch (error) {
+        console.error(`Failed to acknowledge external change: ${latestTab.path}`, error);
+      }
+    } finally {
+      externalChangeCheckingTabIdsRef.current.delete(snapshotTab.id);
+    }
+  }, []);
+
+  const checkActiveTabForExternalChange = useCallback(() => {
+    const currentActiveTabId = useStore.getState().activeTabId;
+    if (!currentActiveTabId) {
+      return;
+    }
+
+    void checkTabForExternalChange(currentActiveTabId);
+  }, [checkTabForExternalChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -604,104 +705,59 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    let checking = false;
+    let disposed = false;
+    let unlistenResize: (() => void) | undefined;
+    const appWindow = getCurrentWindow();
+    let previousWindowState: { maximized: boolean; minimized: boolean } | null = null;
 
-    const checkOpenFilesForExternalChanges = async () => {
-      if (checking) {
-        return;
-      }
-
-      checking = true;
-
+    const readWindowState = async () => {
       try {
-        const snapshotTabs = useStore
-          .getState()
-          .tabs
-          .filter((tab) => !!tab.path);
+        const [maximized, minimized] = await Promise.all([
+          appWindow.isMaximized(),
+          appWindow.isMinimized(),
+        ]);
 
-        for (const tab of snapshotTabs) {
-          if (cancelled) {
-            return;
-          }
-
-          let changed = false;
-          try {
-            changed = await invoke<boolean>('has_external_file_change', { id: tab.id });
-          } catch (error) {
-            console.error(`Failed to check external file change: ${tab.path}`, error);
-            continue;
-          }
-
-          if (!changed) {
-            continue;
-          }
-
-          const latestState = useStore.getState();
-          const latestTab = latestState.tabs.find((item) => item.id === tab.id);
-          if (!latestTab || !latestTab.path) {
-            continue;
-          }
-
-          const fileName = latestTab.name || latestTab.path;
-          const promptText = t(latestState.settings.language, 'app.externalFileChanged.prompt')
-            .replace('{fileName}', fileName);
-          const unsavedWarningText = t(
-            latestState.settings.language,
-            'app.externalFileChanged.unsavedWarning'
-          );
-          const messageText = latestTab.isDirty
-            ? `${promptText}\n\n${unsavedWarningText}`
-            : promptText;
-
-          const shouldReload = await ask(messageText, {
-            title: 'Rutar',
-            kind: 'warning',
-          });
-
-          if (cancelled) {
-            return;
-          }
-
-          if (shouldReload) {
-            try {
-              const fileInfo = await invoke<FileTab>('reload_file_from_disk', { id: latestTab.id });
-              useStore.getState().updateTab(latestTab.id, {
-                name: fileInfo.name,
-                path: fileInfo.path,
-                encoding: fileInfo.encoding,
-                lineEnding: fileInfo.lineEnding,
-                lineCount: fileInfo.lineCount,
-                largeFileMode: fileInfo.largeFileMode,
-                syntaxOverride: fileInfo.syntaxOverride ?? null,
-                isDirty: false,
-              });
-
-              if (useStore.getState().activeTabId === latestTab.id) {
-                dispatchEditorForceRefresh(latestTab.id, Math.max(1, fileInfo.lineCount));
-              }
-
-              dispatchDocumentUpdated(latestTab.id);
-            } catch (error) {
-              console.error(`Failed to reload changed file: ${latestTab.path}`, error);
-            }
-
-            continue;
-          }
-
-          try {
-            await invoke('acknowledge_external_file_change', { id: latestTab.id });
-          } catch (error) {
-            console.error(`Failed to acknowledge external change: ${latestTab.path}`, error);
-          }
-        }
-      } finally {
-        checking = false;
+        return { maximized, minimized };
+      } catch (error) {
+        console.error('Failed to read window state for external change check:', error);
+        return null;
       }
     };
 
-    const handleWindowFocus = () => {
-      void checkOpenFilesForExternalChanges();
+    const handleWindowResize = async () => {
+      const currentWindowState = await readWindowState();
+      if (!currentWindowState) {
+        return;
+      }
+
+      const maximizedChanged = previousWindowState !== null
+        && previousWindowState.maximized !== currentWindowState.maximized;
+      const minimizedChanged = previousWindowState !== null
+        && previousWindowState.minimized !== currentWindowState.minimized;
+
+      previousWindowState = currentWindowState;
+
+      if (maximizedChanged || minimizedChanged) {
+        checkActiveTabForExternalChange();
+      }
+    };
+
+    const setupWindowResizeListener = async () => {
+      try {
+        previousWindowState = await readWindowState();
+        const unlisten = await appWindow.onResized(() => {
+          void handleWindowResize();
+        });
+
+        if (disposed) {
+          unlisten();
+          return;
+        }
+
+        unlistenResize = unlisten;
+      } catch (error) {
+        console.error('Failed to register window resize listener:', error);
+      }
     };
 
     const handleVisibilityChange = () => {
@@ -709,18 +765,28 @@ function App() {
         return;
       }
 
-      void checkOpenFilesForExternalChanges();
+      checkActiveTabForExternalChange();
     };
 
-    window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    void setupWindowResizeListener();
 
     return () => {
-      cancelled = true;
-      window.removeEventListener('focus', handleWindowFocus);
+      disposed = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (unlistenResize) {
+        unlistenResize();
+      }
     };
-  }, []);
+  }, [checkActiveTabForExternalChange]);
+
+  useEffect(() => {
+    if (!activeTabId) {
+      return;
+    }
+
+    void checkTabForExternalChange(activeTabId);
+  }, [activeTabId, checkTabForExternalChange]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
