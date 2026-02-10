@@ -138,6 +138,16 @@ function dispatchNavigateToLine(tabId: string, line: number) {
   );
 }
 
+function dispatchGesturePreview(sequence: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:gesture-preview', {
+      detail: {
+        sequence,
+      },
+    })
+  );
+}
+
 function App() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -958,7 +968,7 @@ function App() {
       return;
     }
 
-    const gestureAreaSelector = '[data-rutar-gesture-area="true"]';
+    const gestureAreaSelector = '[data-rutar-app-root="true"]';
     const gestureByPattern = new Map<string, MouseGestureAction>();
 
     for (const binding of settings.mouseGestures) {
@@ -980,13 +990,94 @@ function App() {
       startY: 0,
       lastX: 0,
       lastY: 0,
+      trailLastX: 0,
+      trailLastY: 0,
       sequence: '',
       movedEnough: false,
       suppressNextContextMenu: false,
+      clearTrailTimer: null as number | null,
     };
 
     const directionThreshold = 18;
     const gestureDistanceThreshold = 6;
+    const trailPointDistanceThreshold = 1.5;
+    const finalizeDirectionThreshold = 8;
+
+    const resolveGestureAction = (sequence: string): MouseGestureAction | undefined => {
+      let candidate = sequence;
+
+      while (candidate.length > 0) {
+        const matched = gestureByPattern.get(candidate);
+        if (matched) {
+          return matched;
+        }
+
+        candidate = candidate.slice(0, -1);
+      }
+
+      return undefined;
+    };
+
+    const trailCanvas = document.createElement('canvas');
+    trailCanvas.style.position = 'fixed';
+    trailCanvas.style.left = '0';
+    trailCanvas.style.top = '0';
+    trailCanvas.style.width = '100vw';
+    trailCanvas.style.height = '100vh';
+    trailCanvas.style.pointerEvents = 'none';
+    trailCanvas.style.zIndex = '9999';
+    trailCanvas.style.opacity = '1';
+
+    const trailContext = trailCanvas.getContext('2d');
+
+    const syncTrailCanvasSize = () => {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      trailCanvas.width = Math.floor(window.innerWidth * dpr);
+      trailCanvas.height = Math.floor(window.innerHeight * dpr);
+
+      if (trailContext) {
+        trailContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+        trailContext.lineCap = 'round';
+        trailContext.lineJoin = 'round';
+        trailContext.lineWidth = 2.5;
+        trailContext.strokeStyle = document.documentElement.classList.contains('dark')
+          ? 'rgba(96, 165, 250, 0.95)'
+          : 'rgba(37, 99, 235, 0.9)';
+      }
+    };
+
+    const clearTrail = () => {
+      if (!trailContext) {
+        return;
+      }
+
+      trailContext.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    };
+
+    const scheduleTrailClear = () => {
+      if (state.clearTrailTimer !== null) {
+        window.clearTimeout(state.clearTrailTimer);
+      }
+
+      state.clearTrailTimer = window.setTimeout(() => {
+        clearTrail();
+        state.clearTrailTimer = null;
+      }, 180);
+    };
+
+    const drawTrailSegment = (fromX: number, fromY: number, toX: number, toY: number) => {
+      if (!trailContext) {
+        return;
+      }
+
+      trailContext.beginPath();
+      trailContext.moveTo(fromX, fromY);
+      trailContext.lineTo(toX, toY);
+      trailContext.stroke();
+    };
+
+    syncTrailCanvasSize();
+    document.body.appendChild(trailCanvas);
 
     const reset = () => {
       state.active = false;
@@ -995,8 +1086,28 @@ function App() {
       state.startY = 0;
       state.lastX = 0;
       state.lastY = 0;
+      state.trailLastX = 0;
+      state.trailLastY = 0;
       state.sequence = '';
       state.movedEnough = false;
+      dispatchGesturePreview('');
+    };
+
+    const appendDirection = (dx: number, dy: number, threshold: number) => {
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      if (absDx < threshold && absDy < threshold) {
+        return false;
+      }
+
+      const direction = absDx >= absDy ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
+      if (!state.sequence.endsWith(direction)) {
+        state.sequence += direction;
+        dispatchGesturePreview(state.sequence);
+      }
+
+      return true;
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -1015,13 +1126,31 @@ function App() {
       state.startY = event.clientY;
       state.lastX = event.clientX;
       state.lastY = event.clientY;
+      state.trailLastX = event.clientX;
+      state.trailLastY = event.clientY;
       state.sequence = '';
       state.movedEnough = false;
+      dispatchGesturePreview('');
+
+      if (state.clearTrailTimer !== null) {
+        window.clearTimeout(state.clearTrailTimer);
+        state.clearTrailTimer = null;
+      }
+
+      clearTrail();
     };
 
     const handlePointerMove = (event: PointerEvent) => {
       if (!state.active || event.pointerId !== state.pointerId) {
         return;
+      }
+
+      const trailDx = event.clientX - state.trailLastX;
+      const trailDy = event.clientY - state.trailLastY;
+      if (Math.hypot(trailDx, trailDy) >= trailPointDistanceThreshold) {
+        drawTrailSegment(state.trailLastX, state.trailLastY, event.clientX, event.clientY);
+        state.trailLastX = event.clientX;
+        state.trailLastY = event.clientY;
       }
 
       const totalDx = event.clientX - state.startX;
@@ -1032,20 +1161,11 @@ function App() {
 
       const dx = event.clientX - state.lastX;
       const dy = event.clientY - state.lastY;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
 
-      if (absDx < directionThreshold && absDy < directionThreshold) {
-        return;
+      if (appendDirection(dx, dy, directionThreshold)) {
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
       }
-
-      const direction = absDx >= absDy ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
-      if (!state.sequence.endsWith(direction)) {
-        state.sequence += direction;
-      }
-
-      state.lastX = event.clientX;
-      state.lastY = event.clientY;
     };
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -1053,9 +1173,11 @@ function App() {
         return;
       }
 
+      appendDirection(event.clientX - state.lastX, event.clientY - state.lastY, finalizeDirectionThreshold);
+
       const pattern = state.sequence;
       const wasGestureAttempt = state.movedEnough || pattern.length > 0;
-      const action = pattern ? gestureByPattern.get(pattern) : undefined;
+      const action = pattern ? resolveGestureAction(pattern) : undefined;
 
       if (action) {
         state.suppressNextContextMenu = true;
@@ -1065,6 +1187,7 @@ function App() {
         state.suppressNextContextMenu = true;
       }
 
+      scheduleTrailClear();
       reset();
     };
 
@@ -1073,6 +1196,7 @@ function App() {
         return;
       }
 
+      scheduleTrailClear();
       reset();
     };
 
@@ -1090,6 +1214,7 @@ function App() {
     window.addEventListener('pointerup', handlePointerUp, true);
     window.addEventListener('pointercancel', handlePointerCancel, true);
     window.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('resize', syncTrailCanvasSize);
 
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown, true);
@@ -1097,6 +1222,13 @@ function App() {
       window.removeEventListener('pointerup', handlePointerUp, true);
       window.removeEventListener('pointercancel', handlePointerCancel, true);
       window.removeEventListener('contextmenu', handleContextMenu, true);
+      window.removeEventListener('resize', syncTrailCanvasSize);
+
+      if (state.clearTrailTimer !== null) {
+        window.clearTimeout(state.clearTrailTimer);
+      }
+
+      trailCanvas.remove();
     };
   }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
   
@@ -1224,7 +1356,7 @@ function App() {
   }, [activeTab, outlineOpen, setOutlineData]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden" data-rutar-app-root="true">
       <TitleBar />
       <Toolbar />
       <Suspense fallback={null}>

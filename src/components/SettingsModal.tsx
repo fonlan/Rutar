@@ -1208,7 +1208,7 @@ export function SettingsModal() {
                           <button
                             type="button"
                             onClick={() => handleAddCustomExtension()}
-                            className="h-9 rounded-md border border-border px-3 text-xs hover:bg-muted transition-colors"
+                            className="h-9 shrink-0 min-w-[4.5rem] whitespace-nowrap rounded-md border border-border px-4 text-xs font-medium hover:bg-muted transition-colors"
                           >
                             {addExtensionButtonLabel}
                           </button>
@@ -1221,7 +1221,7 @@ export function SettingsModal() {
                                 key={extension}
                                 type="button"
                                 onClick={() => handleRemoveCustomExtension(extension)}
-                                className="rounded-md border border-border bg-background/70 px-2.5 py-1 text-xs hover:bg-muted transition-colors"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors"
                               >
                                 {extension} ×
                               </button>
@@ -1694,7 +1694,7 @@ export function SettingsModal() {
                             <button
                               type="button"
                               onClick={() => handleDeleteGesture(index)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-muted transition-colors"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
                               aria-label={mouseGestureDeleteLabel}
                             >
                               <Trash2 className="h-4 w-4" />

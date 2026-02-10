@@ -35,11 +35,15 @@ fn default_mouse_gestures() -> Vec<MouseGestureConfig> {
         },
         MouseGestureConfig {
             pattern: "U".to_string(),
-            action: "toggleOutline".to_string(),
+            action: "toTop".to_string(),
         },
         MouseGestureConfig {
             pattern: "D".to_string(),
-            action: "toggleSidebar".to_string(),
+            action: "toBottom".to_string(),
+        },
+        MouseGestureConfig {
+            pattern: "DR".to_string(),
+            action: "closeCurrentTab".to_string(),
         },
     ]
 }

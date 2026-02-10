@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Globe, Zap } from 'lucide-react';
@@ -26,6 +27,20 @@ export function StatusBar() {
     const cursorLine = activeCursorPosition?.line ?? 1;
     const cursorColumn = activeCursorPosition?.column ?? 1;
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const [gesturePreview, setGesturePreview] = useState('');
+
+    useEffect(() => {
+        const handleGesturePreview = (event: Event) => {
+            const customEvent = event as CustomEvent<{ sequence?: string }>;
+            setGesturePreview(customEvent.detail?.sequence ?? '');
+        };
+
+        window.addEventListener('rutar:gesture-preview', handleGesturePreview as EventListener);
+
+        return () => {
+            window.removeEventListener('rutar:gesture-preview', handleGesturePreview as EventListener);
+        };
+    }, []);
 
     if (!activeTab) return (
         <div
@@ -117,6 +132,12 @@ export function StatusBar() {
                 <span>{tr('status.lines')}: {activeTab.lineCount.toLocaleString()}</span>
                 <div className="w-[1px] h-3 bg-border" />
                 <span>{tr('status.cursor')}: {cursorLine}:{cursorColumn}</span>
+                {settings.mouseGesturesEnabled && gesturePreview && (
+                    <>
+                        <div className="w-[1px] h-3 bg-border" />
+                        <span>手势: {gesturePreview}</span>
+                    </>
+                )}
             </div>
             
             <div className="flex items-center gap-4">

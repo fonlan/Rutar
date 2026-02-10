@@ -43,8 +43,9 @@ const VALID_ACTIONS = new Set<MouseGestureAction>(MOUSE_GESTURE_ACTIONS);
 const DEFAULT_MOUSE_GESTURES: MouseGestureBinding[] = [
   { pattern: 'L', action: 'previousTab' },
   { pattern: 'R', action: 'nextTab' },
-  { pattern: 'U', action: 'toggleOutline' },
-  { pattern: 'D', action: 'toggleSidebar' },
+  { pattern: 'U', action: 'toTop' },
+  { pattern: 'D', action: 'toBottom' },
+  { pattern: 'DR', action: 'closeCurrentTab' },
 ];
 
 export function getDefaultMouseGestures(): MouseGestureBinding[] {
