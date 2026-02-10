@@ -110,8 +110,10 @@ export type I18nKey =
   | 'settings.generalTabDesc'
   | 'settings.appearanceTabDesc'
   | 'settings.shortcutsTabDesc'
+  | 'settings.mouseGesturesTabDesc'
   | 'settings.generalPanelDesc'
   | 'settings.appearancePanelDesc'
+  | 'settings.mouseGesturesPanelDesc'
   | 'settings.shortcutsPanelDesc'
   | 'settings.close'
   | 'settings.highlightCurrentLine'
@@ -149,6 +151,26 @@ export type I18nKey =
   | 'settings.shortcutMinify'
   | 'settings.shortcutToggleComment'
   | 'settings.shortcutRectangularSelection'
+  | 'settings.mouseGestures'
+  | 'settings.mouseGesturesDesc'
+  | 'settings.mouseGestureSequence'
+  | 'settings.mouseGestureAction'
+  | 'settings.mouseGestureSequencePlaceholder'
+  | 'settings.mouseGestureAdd'
+  | 'settings.mouseGestureDelete'
+  | 'settings.mouseGestureAction.previousTab'
+  | 'settings.mouseGestureAction.nextTab'
+  | 'settings.mouseGestureAction.toTop'
+  | 'settings.mouseGestureAction.toBottom'
+  | 'settings.mouseGestureAction.closeCurrentTab'
+  | 'settings.mouseGestureAction.closeAllTabs'
+  | 'settings.mouseGestureAction.closeOtherTabs'
+  | 'settings.mouseGestureAction.quitApp'
+  | 'settings.mouseGestureAction.toggleSidebar'
+  | 'settings.mouseGestureAction.toggleOutline'
+  | 'settings.mouseGestureAction.toggleBookmarkSidebar'
+  | 'settings.mouseGestureAction.toggleWordWrap'
+  | 'settings.mouseGestureAction.openSettings'
   | 'editor.context.delete'
   | 'editor.context.selectAll'
   | 'editor.context.edit'
@@ -286,9 +308,11 @@ const zhCN: Messages = {
   'settings.editorPrefsDesc': '编辑器偏好与体验',
   'settings.generalTabDesc': '语言与基础偏好',
   'settings.appearanceTabDesc': '主题、字体与编辑器显示',
+  'settings.mouseGesturesTabDesc': '手势动作与映射',
   'settings.shortcutsTabDesc': '查看全部快捷键',
   'settings.generalPanelDesc': '配置应用基础行为与语言。',
   'settings.appearancePanelDesc': '调整编辑器观感、排版与阅读体验。',
+  'settings.mouseGesturesPanelDesc': '管理鼠标手势与动作映射。',
   'settings.shortcutsPanelDesc': '查看当前版本支持的键盘快捷键。',
   'settings.close': '关闭设置',
   'settings.highlightCurrentLine': '高亮当前行',
@@ -326,6 +350,26 @@ const zhCN: Messages = {
   'settings.shortcutMinify': '最小化文档',
   'settings.shortcutToggleComment': '切换行注释',
   'settings.shortcutRectangularSelection': '矩形选区扩展',
+  'settings.mouseGestures': '鼠标手势',
+  'settings.mouseGesturesDesc': '按住右键拖动触发手势；可自定义手势序列与动作。',
+  'settings.mouseGestureSequence': '手势序列',
+  'settings.mouseGestureAction': '动作',
+  'settings.mouseGestureSequencePlaceholder': '例如 L、RD、UL',
+  'settings.mouseGestureAdd': '添加',
+  'settings.mouseGestureDelete': '删除',
+  'settings.mouseGestureAction.previousTab': '切换到上一个标签',
+  'settings.mouseGestureAction.nextTab': '切换到下一个标签',
+  'settings.mouseGestureAction.toTop': '跳转到顶部',
+  'settings.mouseGestureAction.toBottom': '跳转到底部',
+  'settings.mouseGestureAction.closeCurrentTab': '关闭当前标签页',
+  'settings.mouseGestureAction.closeAllTabs': '关闭所有标签页',
+  'settings.mouseGestureAction.closeOtherTabs': '关闭其他标签页',
+  'settings.mouseGestureAction.quitApp': '退出程序',
+  'settings.mouseGestureAction.toggleSidebar': '切换文件侧边栏',
+  'settings.mouseGestureAction.toggleOutline': '切换大纲侧边栏',
+  'settings.mouseGestureAction.toggleBookmarkSidebar': '切换书签侧边栏',
+  'settings.mouseGestureAction.toggleWordWrap': '切换自动换行',
+  'settings.mouseGestureAction.openSettings': '打开设置',
   'editor.context.delete': '删除',
   'editor.context.selectAll': '全选',
   'editor.context.edit': '编辑',
@@ -462,9 +506,11 @@ const enUS: Messages = {
   'settings.editorPrefsDesc': 'Editor preferences and experience',
   'settings.generalTabDesc': 'Language and basic preferences',
   'settings.appearanceTabDesc': 'Theme, fonts, and editor visuals',
+  'settings.mouseGesturesTabDesc': 'Gestures and action mapping',
   'settings.shortcutsTabDesc': 'View all keyboard shortcuts',
   'settings.generalPanelDesc': 'Configure language and base behavior.',
   'settings.appearancePanelDesc': 'Tune editor visuals, typography, and readability.',
+  'settings.mouseGesturesPanelDesc': 'Manage mouse gestures and action mapping.',
   'settings.shortcutsPanelDesc': 'View keyboard shortcuts supported in the current version.',
   'settings.close': 'Close settings',
   'settings.highlightCurrentLine': 'Highlight Current Line',
@@ -502,6 +548,26 @@ const enUS: Messages = {
   'settings.shortcutMinify': 'Minify Document',
   'settings.shortcutToggleComment': 'Toggle Line Comment',
   'settings.shortcutRectangularSelection': 'Expand Rectangular Selection',
+  'settings.mouseGestures': 'Mouse Gestures',
+  'settings.mouseGesturesDesc': 'Hold right mouse button and drag to trigger gestures. You can customize sequence and action.',
+  'settings.mouseGestureSequence': 'Gesture Sequence',
+  'settings.mouseGestureAction': 'Action',
+  'settings.mouseGestureSequencePlaceholder': 'e.g. L, RD, UL',
+  'settings.mouseGestureAdd': 'Add',
+  'settings.mouseGestureDelete': 'Delete',
+  'settings.mouseGestureAction.previousTab': 'Switch to Previous Tab',
+  'settings.mouseGestureAction.nextTab': 'Switch to Next Tab',
+  'settings.mouseGestureAction.toTop': 'Go to Top',
+  'settings.mouseGestureAction.toBottom': 'Go to Bottom',
+  'settings.mouseGestureAction.closeCurrentTab': 'Close Current Tab',
+  'settings.mouseGestureAction.closeAllTabs': 'Close All Tabs',
+  'settings.mouseGestureAction.closeOtherTabs': 'Close Other Tabs',
+  'settings.mouseGestureAction.quitApp': 'Quit App',
+  'settings.mouseGestureAction.toggleSidebar': 'Toggle File Sidebar',
+  'settings.mouseGestureAction.toggleOutline': 'Toggle Outline Sidebar',
+  'settings.mouseGestureAction.toggleBookmarkSidebar': 'Toggle Bookmark Sidebar',
+  'settings.mouseGestureAction.toggleWordWrap': 'Toggle Word Wrap',
+  'settings.mouseGestureAction.openSettings': 'Open Settings',
   'editor.context.delete': 'Delete',
   'editor.context.selectAll': 'Select All',
   'editor.context.edit': 'Edit',

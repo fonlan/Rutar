@@ -20,10 +20,12 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 ## Configuration
 
 - User configuration is saved to `%AppData%\Rutar\config.json`.
-- Current fields include `language`, `fontFamily`, `fontSize`, `tabWidth`, `newFileLineEnding`, `wordWrap`, `showLineNumbers`, `recentFiles`, `recentFolders`, `rememberWindowState`, and `windowState`.
+- Current fields include `language`, `fontFamily`, `fontSize`, `tabWidth`, `newFileLineEnding`, `wordWrap`, `showLineNumbers`, `recentFiles`, `recentFolders`, `rememberWindowState`, `mouseGesturesEnabled`, `mouseGestures`, and `windowState`.
 - `newFileLineEnding` controls the default line ending (`CRLF` / `LF` / `CR`) used when creating new empty files.
 - `fontFamily` supports comma-separated fallback priority (for example `JetBrains Mono, Cascadia Code, Consolas, monospace`), and Settings provides preset dropdown selection plus priority reordering controls.
 - `rememberWindowState` is enabled by default and controls whether window state persistence is active.
+- `mouseGesturesEnabled` controls whether right-button drag mouse gestures are active in the editor area.
+- `mouseGestures` stores gesture-action bindings, where `pattern` uses `L/R/U/D` sequence (for example `L`, `RD`, `UL`) and `action` maps to editor actions including tab switching, jump to top/bottom, close current/all/other tabs, quit app, and sidebar toggles.
 - `windowState` persists main window state across launches: if the window was maximized, only `maximized: true` is stored; when not maximized, `width` and `height` are stored and restored on next startup.
 - Main window startup uses hidden-first initialization (`visible: false` in `src-tauri/tauri.conf.json`), restores persisted window state first, and then lets frontend call `show_main_window_when_ready` after app shell render to reduce startup white-screen time and avoid visible size jump from default `800x600` to saved dimensions.
 - Frontend injects a lightweight startup splash (`boot-splash`) before React mount and removes it right after the main window reveal signal is sent, so users see loading feedback instead of a blank frame.

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { type MouseGestureBinding, getDefaultMouseGestures } from '@/lib/mouseGestures';
 
 export interface FileTab {
   id: string;
@@ -93,6 +94,8 @@ interface SettingsState {
   windowsContextMenuEnabled: boolean;
   windowsFileAssociationEnabled: boolean;
   windowsFileAssociationExtensions: string[];
+  mouseGesturesEnabled: boolean;
+  mouseGestures: MouseGestureBinding[];
 }
 
 const defaultNewFileLineEnding: LineEnding =
@@ -167,6 +170,8 @@ export const useStore = create<AppState>((set) => ({
     windowsContextMenuEnabled: false,
     windowsFileAssociationEnabled: false,
     windowsFileAssociationExtensions: [],
+    mouseGesturesEnabled: true,
+    mouseGestures: getDefaultMouseGestures(),
   },
   sidebarOpen: false,
   sidebarWidth: 240,

@@ -147,6 +147,72 @@ fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
     normalized_paths
 }
 
+fn normalize_mouse_gesture_pattern(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_uppercase()
+        .chars()
+        .filter(|ch| matches!(ch, 'L' | 'R' | 'U' | 'D'))
+        .take(8)
+        .collect()
+}
+
+fn is_valid_mouse_gesture_action(value: &str) -> bool {
+    matches!(
+        value,
+        "previousTab"
+            | "nextTab"
+            | "toTop"
+            | "toBottom"
+            | "closeCurrentTab"
+            | "closeAllTabs"
+            | "closeOtherTabs"
+            | "quitApp"
+            | "toggleSidebar"
+            | "toggleOutline"
+            | "toggleBookmarkSidebar"
+            | "toggleWordWrap"
+            | "openSettings"
+    )
+}
+
+fn normalize_mouse_gestures(
+    gestures: Option<Vec<settings::MouseGestureConfig>>,
+) -> Vec<settings::MouseGestureConfig> {
+    if matches!(gestures.as_ref(), Some(list) if list.is_empty()) {
+        return Vec::new();
+    }
+
+    let mut normalized = Vec::new();
+    let mut seen_patterns: BTreeSet<String> = BTreeSet::new();
+
+    for gesture in gestures.unwrap_or_default() {
+        let pattern = normalize_mouse_gesture_pattern(gesture.pattern.as_str());
+        if pattern.is_empty() {
+            continue;
+        }
+
+        if !is_valid_mouse_gesture_action(gesture.action.as_str()) {
+            continue;
+        }
+
+        if !seen_patterns.insert(pattern.clone()) {
+            continue;
+        }
+
+        normalized.push(settings::MouseGestureConfig {
+            pattern,
+            action: gesture.action,
+        });
+    }
+
+    if normalized.is_empty() {
+        return settings::AppConfig::default().mouse_gestures;
+    }
+
+    normalized
+}
+
 fn normalize_window_state(
     window_state: Option<settings::WindowStateConfig>,
 ) -> Option<settings::WindowStateConfig> {
@@ -187,6 +253,8 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         windows_file_association_extensions: normalize_windows_file_association_extensions(Some(
             config.windows_file_association_extensions,
         )),
+        mouse_gestures_enabled: config.mouse_gestures_enabled,
+        mouse_gestures: normalize_mouse_gestures(Some(config.mouse_gestures)),
         window_state: normalize_window_state(config.window_state),
         filter_rule_groups: normalize_filter_rule_groups(config.filter_rule_groups),
     }
@@ -994,6 +1062,14 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
     if let Some(extensions) = partial.windows_file_association_extensions {
         config.windows_file_association_extensions =
             normalize_windows_file_association_extensions(Some(extensions));
+    }
+
+    if let Some(mouse_gestures_enabled) = partial.mouse_gestures_enabled {
+        config.mouse_gestures_enabled = mouse_gestures_enabled;
+    }
+
+    if let Some(mouse_gestures) = partial.mouse_gestures {
+        config.mouse_gestures = normalize_mouse_gestures(Some(mouse_gestures));
     }
 
     config.window_state = normalize_window_state(partial.window_state);

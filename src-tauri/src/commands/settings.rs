@@ -19,6 +19,31 @@ fn default_recent_paths() -> Vec<String> {
     Vec::new()
 }
 
+fn default_mouse_gestures_enabled() -> bool {
+    true
+}
+
+fn default_mouse_gestures() -> Vec<MouseGestureConfig> {
+    vec![
+        MouseGestureConfig {
+            pattern: "L".to_string(),
+            action: "previousTab".to_string(),
+        },
+        MouseGestureConfig {
+            pattern: "R".to_string(),
+            action: "nextTab".to_string(),
+        },
+        MouseGestureConfig {
+            pattern: "U".to_string(),
+            action: "toggleOutline".to_string(),
+        },
+        MouseGestureConfig {
+            pattern: "D".to_string(),
+            action: "toggleSidebar".to_string(),
+        },
+    ]
+}
+
 fn default_new_file_line_ending() -> String {
     default_line_ending().label().to_string()
 }
@@ -32,6 +57,13 @@ pub struct WindowStateConfig {
     pub(super) height: Option<u32>,
     #[serde(default)]
     pub(super) maximized: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MouseGestureConfig {
+    pub(super) pattern: String,
+    pub(super) action: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -58,6 +90,10 @@ pub struct AppConfig {
     pub(super) recent_folders: Vec<String>,
     #[serde(default = "default_windows_file_association_extensions")]
     pub(super) windows_file_association_extensions: Vec<String>,
+    #[serde(default = "default_mouse_gestures_enabled")]
+    pub(super) mouse_gestures_enabled: bool,
+    #[serde(default = "default_mouse_gestures")]
+    pub(super) mouse_gestures: Vec<MouseGestureConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) window_state: Option<WindowStateConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -82,6 +118,8 @@ pub struct PartialAppConfig {
     pub(super) recent_files: Option<Vec<String>>,
     pub(super) recent_folders: Option<Vec<String>>,
     pub(super) windows_file_association_extensions: Option<Vec<String>>,
+    pub(super) mouse_gestures_enabled: Option<bool>,
+    pub(super) mouse_gestures: Option<Vec<MouseGestureConfig>>,
     pub(super) window_state: Option<WindowStateConfig>,
     pub(super) filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -104,6 +142,8 @@ impl Default for AppConfig {
             recent_files: default_recent_paths(),
             recent_folders: default_recent_paths(),
             windows_file_association_extensions: default_windows_file_association_extensions(),
+            mouse_gestures_enabled: default_mouse_gestures_enabled(),
+            mouse_gestures: default_mouse_gestures(),
             window_state: None,
             filter_rule_groups: None,
         }

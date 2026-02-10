@@ -1,10 +1,16 @@
-import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard, Trash2, MousePointer2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { t } from '@/i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import {
+  MOUSE_GESTURE_ACTIONS,
+  type MouseGestureAction,
+  normalizeMouseGesturePattern,
+  isValidMouseGesturePattern,
+} from '@/lib/mouseGestures';
 import rutarDocumentLogo from '../../rutar_document.svg';
 
 const LINE_ENDING_OPTIONS = [
@@ -167,7 +173,7 @@ export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
   const updateSettings = useStore((state) => state.updateSettings);
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'shortcuts' | 'about'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'mouseGestures' | 'shortcuts' | 'about'>('general');
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
   const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>(
@@ -177,6 +183,8 @@ export function SettingsModal() {
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false);
   const [activeFontSuggestionIndex, setActiveFontSuggestionIndex] = useState(-1);
   const [isUpdatingFileAssociations, setIsUpdatingFileAssociations] = useState(false);
+  const [newGesturePatternInput, setNewGesturePatternInput] = useState('');
+  const [newGestureActionInput, setNewGestureActionInput] = useState<MouseGestureAction>('previousTab');
   const [showRestartToast, setShowRestartToast] = useState(false);
   const restartToastTimerRef = useRef<number | null>(null);
   const fontPickerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -194,6 +202,8 @@ export function SettingsModal() {
   const shortcutsTabTitle = tr('settings.shortcuts');
   const shortcutsTabDesc = tr('settings.shortcutsTabDesc');
   const shortcutsPanelDesc = tr('settings.shortcutsPanelDesc');
+  const mouseGesturesTabDesc = tr('settings.mouseGesturesTabDesc');
+  const mouseGesturesPanelDesc = tr('settings.mouseGesturesPanelDesc');
   const aboutTabTitle = tr('settings.about');
   const aboutTabDesc = tr('settings.aboutDesc');
   const aboutPanelDesc = tr('settings.aboutPanelDesc');
@@ -244,6 +254,8 @@ export function SettingsModal() {
       ? tr('settings.general')
       : activeTab === 'appearance'
       ? tr('settings.appearance')
+      : activeTab === 'mouseGestures'
+      ? tr('settings.mouseGestures')
       : activeTab === 'shortcuts'
       ? shortcutsTabTitle
       : aboutTabTitle;
@@ -253,6 +265,8 @@ export function SettingsModal() {
       ? tr('settings.generalPanelDesc')
       : activeTab === 'appearance'
       ? tr('settings.appearancePanelDesc')
+      : activeTab === 'mouseGestures'
+      ? mouseGesturesPanelDesc
       : activeTab === 'shortcuts'
       ? shortcutsPanelDesc
       : aboutPanelDesc;
@@ -272,6 +286,13 @@ export function SettingsModal() {
   const singleInstanceModeRestartToast = tr('settings.singleInstanceModeRestartToast');
   const rememberWindowStateLabel = tr('settings.rememberWindowState');
   const rememberWindowStateDesc = tr('settings.rememberWindowStateDesc');
+  const mouseGesturesLabel = tr('settings.mouseGestures');
+  const mouseGesturesDesc = tr('settings.mouseGesturesDesc');
+  const mouseGestureSequenceLabel = tr('settings.mouseGestureSequence');
+  const mouseGestureActionLabel = tr('settings.mouseGestureAction');
+  const mouseGestureSequencePlaceholder = tr('settings.mouseGestureSequencePlaceholder');
+  const mouseGestureAddLabel = tr('settings.mouseGestureAdd');
+  const mouseGestureDeleteLabel = tr('settings.mouseGestureDelete');
 
   const handleOpenProjectHome = async () => {
     try {
@@ -280,6 +301,34 @@ export function SettingsModal() {
       console.error('Failed to open project URL:', error);
     }
   };
+
+  const mouseGestureActionLabels = useMemo<Record<MouseGestureAction, string>>(
+    () => ({
+      previousTab: tr('settings.mouseGestureAction.previousTab'),
+      nextTab: tr('settings.mouseGestureAction.nextTab'),
+      toTop: tr('settings.mouseGestureAction.toTop'),
+      toBottom: tr('settings.mouseGestureAction.toBottom'),
+      closeCurrentTab: tr('settings.mouseGestureAction.closeCurrentTab'),
+      closeAllTabs: tr('settings.mouseGestureAction.closeAllTabs'),
+      closeOtherTabs: tr('settings.mouseGestureAction.closeOtherTabs'),
+      quitApp: tr('settings.mouseGestureAction.quitApp'),
+      toggleSidebar: tr('settings.mouseGestureAction.toggleSidebar'),
+      toggleOutline: tr('settings.mouseGestureAction.toggleOutline'),
+      toggleBookmarkSidebar: tr('settings.mouseGestureAction.toggleBookmarkSidebar'),
+      toggleWordWrap: tr('settings.mouseGestureAction.toggleWordWrap'),
+      openSettings: tr('settings.mouseGestureAction.openSettings'),
+    }),
+    [tr],
+  );
+
+  const normalizedNewGesturePattern = useMemo(
+    () => normalizeMouseGesturePattern(newGesturePatternInput),
+    [newGesturePatternInput],
+  );
+
+  const addGestureDisabled =
+    !isValidMouseGesturePattern(normalizedNewGesturePattern) ||
+    settings.mouseGestures.some((gesture) => gesture.pattern === normalizedNewGesturePattern);
 
   const normalizedSelectedExtensions = useMemo(
     () => normalizeWindowsFileAssociationExtensions(settings.windowsFileAssociationExtensions),
@@ -588,6 +637,64 @@ export function SettingsModal() {
     }
   };
 
+  const handleChangeGesturePattern = (index: number, value: string) => {
+    const normalizedPattern = normalizeMouseGesturePattern(value);
+    const isDuplicatePattern = settings.mouseGestures.some(
+      (gesture, gestureIndex) => gestureIndex !== index && gesture.pattern === normalizedPattern,
+    );
+
+    if (!isValidMouseGesturePattern(normalizedPattern) || isDuplicatePattern) {
+      return;
+    }
+
+    const nextGestures = settings.mouseGestures.map((gesture, gestureIndex) =>
+      gestureIndex === index
+        ? {
+            ...gesture,
+            pattern: normalizedPattern,
+          }
+        : gesture,
+    );
+
+    updateSettings({ mouseGestures: nextGestures });
+  };
+
+  const handleChangeGestureAction = (index: number, action: MouseGestureAction) => {
+    const nextGestures = settings.mouseGestures.map((gesture, gestureIndex) =>
+      gestureIndex === index
+        ? {
+            ...gesture,
+            action,
+          }
+        : gesture,
+    );
+
+    updateSettings({ mouseGestures: nextGestures });
+  };
+
+  const handleDeleteGesture = (index: number) => {
+    const nextGestures = settings.mouseGestures.filter((_, gestureIndex) => gestureIndex !== index);
+    updateSettings({ mouseGestures: nextGestures });
+  };
+
+  const handleAddGesture = () => {
+    if (addGestureDisabled) {
+      return;
+    }
+
+    updateSettings({
+      mouseGestures: [
+        ...settings.mouseGestures,
+        {
+          pattern: normalizedNewGesturePattern,
+          action: newGestureActionInput,
+        },
+      ],
+    });
+
+    setNewGesturePatternInput('');
+  };
+
   const showSingleInstanceRestartToast = () => {
     if (restartToastTimerRef.current !== null) {
       window.clearTimeout(restartToastTimerRef.current);
@@ -664,6 +771,22 @@ export function SettingsModal() {
             <span className="min-w-0">
               <span className="block text-sm font-medium leading-tight">{tr('settings.appearance')}</span>
               <span className="block text-xs text-muted-foreground mt-1">{appearanceTabDesc}</span>
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('mouseGestures')}
+            className={cn(
+              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              activeTab === 'mouseGestures'
+                ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
+                : 'hover:bg-muted/70 border-transparent'
+            )}
+          >
+            <MousePointer2 className="w-4 h-4 mt-0.5" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-tight">{mouseGesturesLabel}</span>
+              <span className="block text-xs text-muted-foreground mt-1">{mouseGesturesTabDesc}</span>
             </span>
           </button>
 
@@ -1486,6 +1609,132 @@ export function SettingsModal() {
                       ))}
                     </div>
                   </div>
+                </section>
+              </div>
+            )}
+
+            {activeTab === 'mouseGestures' && (
+              <div className="space-y-4 max-w-3xl">
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{mouseGesturesLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{mouseGesturesDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ mouseGesturesEnabled: !settings.mouseGesturesEnabled })}
+                      className={cn(
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.mouseGesturesEnabled
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                      )}
+                      aria-pressed={!!settings.mouseGesturesEnabled}
+                      aria-label={mouseGesturesLabel}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.mouseGesturesEnabled
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.mouseGesturesEnabled
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                    </button>
+                  </div>
+
+                  {settings.mouseGesturesEnabled && (
+                    <div className="mt-4 space-y-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        <span>{mouseGestureSequenceLabel}</span>
+                        <span>{mouseGestureActionLabel}</span>
+                        <span className="sr-only">{mouseGestureDeleteLabel}</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {settings.mouseGestures.map((gesture, index) => (
+                          <div key={`${gesture.pattern}-${index}`} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                            <input
+                              value={gesture.pattern}
+                              onChange={(event) => {
+                                const value = normalizeMouseGesturePattern(event.target.value);
+                                handleChangeGesturePattern(index, value);
+                              }}
+                              className={cn(controlClassName, 'h-9 uppercase')}
+                              inputMode="text"
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                            <select
+                              value={gesture.action}
+                              onChange={(event) => handleChangeGestureAction(index, event.target.value as MouseGestureAction)}
+                              className={cn(controlClassName, 'h-9')}
+                            >
+                              {MOUSE_GESTURE_ACTIONS.map((action) => (
+                                <option key={action} value={action}>
+                                  {mouseGestureActionLabels[action]}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteGesture(index)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-muted transition-colors"
+                              aria-label={mouseGestureDeleteLabel}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                        <input
+                          value={normalizedNewGesturePattern}
+                          onChange={(event) => setNewGesturePatternInput(normalizeMouseGesturePattern(event.target.value))}
+                          className={cn(controlClassName, 'h-9 uppercase')}
+                          placeholder={mouseGestureSequencePlaceholder}
+                          inputMode="text"
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <select
+                          value={newGestureActionInput}
+                          onChange={(event) => setNewGestureActionInput(event.target.value as MouseGestureAction)}
+                          className={cn(controlClassName, 'h-9')}
+                        >
+                          {MOUSE_GESTURE_ACTIONS.map((action) => (
+                            <option key={action} value={action}>
+                              {mouseGestureActionLabels[action]}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleAddGesture}
+                          disabled={addGestureDisabled}
+                          className="h-9 rounded-md border border-border px-3 text-xs hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {mouseGestureAddLabel}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
               </div>
             )}

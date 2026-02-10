@@ -7,6 +7,7 @@ import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
 import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
+import { type MouseGestureAction, type MouseGestureBinding, sanitizeMouseGestures } from '@/lib/mouseGestures';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
@@ -64,6 +65,8 @@ interface AppConfig {
   recentFiles?: string[];
   recentFolders?: string[];
   windowsFileAssociationExtensions: string[];
+  mouseGesturesEnabled?: boolean;
+  mouseGestures?: MouseGestureBinding[];
 }
 
 interface WindowsFileAssociationStatus {
@@ -123,6 +126,18 @@ function dispatchDocumentUpdated(tabId: string) {
   );
 }
 
+function dispatchNavigateToLine(tabId: string, line: number) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:navigate-to-line', {
+      detail: {
+        tabId,
+        line,
+        column: 1,
+      },
+    })
+  );
+}
+
 function App() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -149,6 +164,181 @@ function App() {
     const splashElement = document.getElementById('boot-splash');
     splashElement?.remove();
   }, []);
+
+  const closeTabsWithConfirm = useCallback(async (tabsToClose: FileTab[]) => {
+    if (tabsToClose.length === 0) {
+      return false;
+    }
+
+    const state = useStore.getState();
+    const closableTabs: FileTab[] = [];
+    let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
+
+    for (const tab of tabsToClose) {
+      let decision: TabCloseDecision | null = bulkDecision;
+      if (!decision) {
+        decision = await confirmTabClose(tab, state.settings.language, true);
+      }
+
+      if (decision === 'cancel') {
+        return false;
+      }
+
+      if (decision === 'save_all' || decision === 'discard_all') {
+        bulkDecision = decision;
+      }
+
+      if (decision === 'save' || decision === 'save_all') {
+        const saved = await saveTab(tab, state.updateTab);
+        if (!saved) {
+          return false;
+        }
+      }
+
+      closableTabs.push(tab);
+    }
+
+    if (closableTabs.length === 0) {
+      return false;
+    }
+
+    const tabIds = closableTabs.map((tab) => tab.id);
+
+    for (const tabId of tabIds) {
+      state.closeTab(tabId);
+    }
+
+    const closeResults = await Promise.allSettled(
+      tabIds.map((id) => invoke('close_file', { id }))
+    );
+
+    closeResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error('Failed to close tab ' + tabIds[index] + ':', result.reason);
+      }
+    });
+
+    return true;
+  }, []);
+
+  const executeMouseGestureAction = useCallback((action: MouseGestureAction) => {
+    const state = useStore.getState();
+
+    const ensureAtLeastOneTab = async () => {
+      if (useStore.getState().tabs.length > 0) {
+        return;
+      }
+
+      try {
+        const fileInfo = await invoke<FileTab>('new_file', {
+          newFileLineEnding: useStore.getState().settings.newFileLineEnding,
+        });
+        useStore.getState().addTab(fileInfo);
+      } catch (error) {
+        console.error('Failed to create startup file:', error);
+      }
+    };
+
+    const closeByAction = async (mode: 'current' | 'others' | 'all') => {
+      const latestState = useStore.getState();
+      const activeId = latestState.activeTabId;
+
+      if (!activeId) {
+        return;
+      }
+
+      let targets: FileTab[] = [];
+
+      if (mode === 'current') {
+        const current = latestState.tabs.find((tab) => tab.id === activeId);
+        if (!current) {
+          return;
+        }
+
+        targets = [current];
+      } else if (mode === 'others') {
+        targets = latestState.tabs.filter((tab) => tab.id !== activeId);
+      } else {
+        targets = [...latestState.tabs];
+      }
+
+      if (targets.length === 0) {
+        return;
+      }
+
+      const closed = await closeTabsWithConfirm(targets);
+      if (closed && mode === 'current') {
+        await ensureAtLeastOneTab();
+      }
+    };
+
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+
+    switch (action) {
+      case 'previousTab': {
+        if (state.tabs.length <= 1) {
+          return;
+        }
+
+        const currentIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+        const targetIndex = currentIndex <= 0 ? state.tabs.length - 1 : currentIndex - 1;
+        state.setActiveTab(state.tabs[targetIndex].id);
+        return;
+      }
+      case 'nextTab': {
+        if (state.tabs.length <= 1) {
+          return;
+        }
+
+        const currentIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+        const baseIndex = currentIndex < 0 ? 0 : currentIndex;
+        const targetIndex = (baseIndex + 1) % state.tabs.length;
+        state.setActiveTab(state.tabs[targetIndex].id);
+        return;
+      }
+      case 'toTop':
+        if (activeTab) {
+          dispatchNavigateToLine(activeTab.id, 1);
+        }
+        return;
+      case 'toBottom':
+        if (activeTab) {
+          dispatchNavigateToLine(activeTab.id, Math.max(1, activeTab.lineCount));
+        }
+        return;
+      case 'closeCurrentTab':
+        void closeByAction('current');
+        return;
+      case 'closeAllTabs':
+        void closeByAction('all');
+        return;
+      case 'closeOtherTabs':
+        void closeByAction('others');
+        return;
+      case 'quitApp':
+        void getCurrentWindow().close().catch((error) => {
+          console.error('Failed to close app window:', error);
+        });
+        return;
+      case 'toggleSidebar':
+        state.toggleSidebar();
+        return;
+      case 'toggleOutline':
+        state.toggleOutline();
+        return;
+      case 'toggleBookmarkSidebar':
+        state.toggleBookmarkSidebar();
+        return;
+      case 'toggleWordWrap':
+        state.updateSettings({ wordWrap: !state.settings.wordWrap });
+        return;
+      case 'openSettings':
+        state.toggleSettings(true);
+        return;
+      default:
+        return;
+    }
+  }, [closeTabsWithConfirm]);
 
   const openIncomingPaths = useCallback(async (paths: string[]) => {
     for (const incomingPath of paths) {
@@ -618,6 +808,8 @@ function App() {
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
             : [],
+          mouseGesturesEnabled: config.mouseGesturesEnabled !== false,
+          mouseGestures: sanitizeMouseGestures(config.mouseGestures),
         });
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -663,6 +855,8 @@ function App() {
           recentFiles: settings.recentFiles,
           recentFolders: settings.recentFolders,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
+          mouseGesturesEnabled: settings.mouseGesturesEnabled,
+          mouseGestures: settings.mouseGestures,
         },
       }).catch((error) => {
         console.error('Failed to save config:', error);
@@ -689,7 +883,156 @@ function App() {
     settings.recentFiles,
     settings.recentFolders,
     settings.windowsFileAssociationExtensions,
+    settings.mouseGesturesEnabled,
+    settings.mouseGestures,
   ]);
+
+  useEffect(() => {
+    if (!settings.mouseGesturesEnabled) {
+      return;
+    }
+
+    const gestureAreaSelector = '[data-rutar-gesture-area="true"]';
+    const gestureByPattern = new Map<string, MouseGestureAction>();
+
+    for (const binding of settings.mouseGestures) {
+      if (!binding.pattern) {
+        continue;
+      }
+
+      gestureByPattern.set(binding.pattern, binding.action);
+    }
+
+    if (gestureByPattern.size === 0) {
+      return;
+    }
+
+    const state = {
+      active: false,
+      pointerId: -1,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      sequence: '',
+      movedEnough: false,
+      suppressNextContextMenu: false,
+    };
+
+    const directionThreshold = 18;
+    const gestureDistanceThreshold = 6;
+
+    const reset = () => {
+      state.active = false;
+      state.pointerId = -1;
+      state.startX = 0;
+      state.startY = 0;
+      state.lastX = 0;
+      state.lastY = 0;
+      state.sequence = '';
+      state.movedEnough = false;
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!event.isPrimary || event.pointerType !== 'mouse' || event.button !== 2) {
+        return;
+      }
+
+      const target = event.target as Element | null;
+      if (!target?.closest(gestureAreaSelector)) {
+        return;
+      }
+
+      state.active = true;
+      state.pointerId = event.pointerId;
+      state.startX = event.clientX;
+      state.startY = event.clientY;
+      state.lastX = event.clientX;
+      state.lastY = event.clientY;
+      state.sequence = '';
+      state.movedEnough = false;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!state.active || event.pointerId !== state.pointerId) {
+        return;
+      }
+
+      const totalDx = event.clientX - state.startX;
+      const totalDy = event.clientY - state.startY;
+      if (!state.movedEnough && Math.hypot(totalDx, totalDy) >= gestureDistanceThreshold) {
+        state.movedEnough = true;
+      }
+
+      const dx = event.clientX - state.lastX;
+      const dy = event.clientY - state.lastY;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      if (absDx < directionThreshold && absDy < directionThreshold) {
+        return;
+      }
+
+      const direction = absDx >= absDy ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
+      if (!state.sequence.endsWith(direction)) {
+        state.sequence += direction;
+      }
+
+      state.lastX = event.clientX;
+      state.lastY = event.clientY;
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!state.active || event.pointerId !== state.pointerId) {
+        return;
+      }
+
+      const pattern = state.sequence;
+      const wasGestureAttempt = state.movedEnough || pattern.length > 0;
+      const action = pattern ? gestureByPattern.get(pattern) : undefined;
+
+      if (action) {
+        state.suppressNextContextMenu = true;
+        event.preventDefault();
+        executeMouseGestureAction(action);
+      } else if (wasGestureAttempt) {
+        state.suppressNextContextMenu = true;
+      }
+
+      reset();
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (!state.active || event.pointerId !== state.pointerId) {
+        return;
+      }
+
+      reset();
+    };
+
+    const handleContextMenu = (event: MouseEvent) => {
+      if (!state.suppressNextContextMenu) {
+        return;
+      }
+
+      state.suppressNextContextMenu = false;
+      event.preventDefault();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('pointercancel', handlePointerCancel, true);
+    window.addEventListener('contextmenu', handleContextMenu, true);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('pointercancel', handlePointerCancel, true);
+      window.removeEventListener('contextmenu', handleContextMenu, true);
+    };
+  }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
   
   const activeTab = tabs.find(t => t.id === activeTabId);
   const editorFallback = <div className="h-full w-full bg-background" aria-hidden="true" />;
@@ -836,7 +1179,7 @@ function App() {
         </Suspense>
         
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative overflow-hidden" data-rutar-gesture-area="true">
             {activeTab ? (
               <Suspense fallback={editorFallback}>
                 <Editor key={activeTab.id} tab={activeTab} />
