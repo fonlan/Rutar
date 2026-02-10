@@ -169,6 +169,44 @@ fn yaml_pair_key_value_nodes<'tree>(
     (key_node, value_node)
 }
 
+fn append_yaml_collection_children(
+    output: &mut Vec<OutlineNode>,
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    file_type: OutlineFileType,
+) {
+    let normalized_node = unwrap_yaml_wrapper_node(node);
+
+    if normalized_node.kind().contains("mapping") {
+        let mut mapping_cursor = normalized_node.walk();
+        for mapping_child in normalized_node.children(&mut mapping_cursor) {
+            if mapping_child.is_named() {
+                output.push(build_tree_sitter_outline_node(mapping_child, source, file_type));
+            }
+        }
+        return;
+    }
+
+    if normalized_node.kind().contains("sequence") {
+        let mut sequence_cursor = normalized_node.walk();
+        for sequence_child in normalized_node.children(&mut sequence_cursor) {
+            if !sequence_child.is_named() {
+                continue;
+            }
+
+            let normalized_item = unwrap_yaml_wrapper_node(sequence_child);
+            if normalized_item.kind().contains("mapping") || normalized_item.kind().contains("sequence") {
+                append_yaml_collection_children(output, normalized_item, source, file_type);
+            } else {
+                output.push(build_tree_sitter_outline_node(normalized_item, source, file_type));
+            }
+        }
+        return;
+    }
+
+    output.push(build_tree_sitter_outline_node(normalized_node, source, file_type));
+}
+
 fn is_yaml_scalar_kind(kind: &str) -> bool {
     matches!(
         kind,
@@ -574,15 +612,26 @@ fn build_tree_sitter_outline_node(
 
         if let Some(value_node) = value_node {
             if !is_scalar_value_kind(file_type, value_node.kind()) {
-                children.push(build_tree_sitter_outline_node(value_node, source, file_type));
+                if matches!(file_type, OutlineFileType::Yaml) {
+                    append_yaml_collection_children(&mut children, value_node, source, file_type);
+                } else {
+                    children.push(build_tree_sitter_outline_node(value_node, source, file_type));
+                }
             }
         }
     } else if is_container_kind(file_type, kind) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.is_named() {
-                children.push(build_tree_sitter_outline_node(child, source, file_type));
+            if !child.is_named() {
+                continue;
             }
+
+            if matches!(file_type, OutlineFileType::Yaml) {
+                append_yaml_collection_children(&mut children, child, source, file_type);
+                continue;
+            }
+
+            children.push(build_tree_sitter_outline_node(child, source, file_type));
         }
     }
 
@@ -1085,6 +1134,85 @@ items:
         assert!(labels.iter().any(|label| label == "editor:"));
         assert!(labels.iter().any(|label| label == "tab_width: 4"));
         assert!(labels.iter().any(|label| label == "items:"));
+    }
+
+    #[test]
+    fn yaml_outline_should_not_insert_extra_mapping_node_under_pair() {
+        let source = r#"
+executors:
+  rust-executor:
+    docker:
+      - image: rust:latest
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_yaml::LANGUAGE.into())
+            .expect("set yaml parser");
+        let tree = parser.parse(source, None).expect("parse yaml");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root
+        };
+
+        let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Yaml);
+        let executors_pair = outline
+            .children
+            .iter()
+            .find(|node| node.label == "executors:")
+            .expect("executors pair should exist");
+
+        assert_eq!(executors_pair.children.len(), 1);
+        assert_eq!(executors_pair.children[0].label, "rust-executor:");
+        assert_ne!(executors_pair.children[0].label, "{}");
+
+        let rust_executor_pair = &executors_pair.children[0];
+        assert_eq!(rust_executor_pair.children.len(), 1);
+        assert_eq!(rust_executor_pair.children[0].label, "docker:");
+    }
+
+    #[test]
+    fn yaml_outline_should_not_insert_extra_sequence_node_under_pair() {
+        let source = r#"
+docker:
+  - image: rust:latest
+  - image: rust:nightly
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_yaml::LANGUAGE.into())
+            .expect("set yaml parser");
+        let tree = parser.parse(source, None).expect("parse yaml");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root
+        };
+
+        let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Yaml);
+
+        let docker_pair = outline
+            .children
+            .iter()
+            .find(|node| node.label == "docker:")
+            .expect("docker pair should exist");
+
+        assert_eq!(docker_pair.children.len(), 2);
+        assert!(docker_pair
+            .children
+            .iter()
+            .all(|node| node.node_type.contains("pair") && node.label.starts_with("image:")));
+        assert!(docker_pair.children.iter().all(|node| node.label != "[]"));
     }
 
     #[test]
