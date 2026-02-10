@@ -53,6 +53,7 @@ export function OutlineSidebar({
   parseError: string | null;
 }) {
   const outlineOpen = useStore((state) => state.outlineOpen);
+  const toggleOutline = useStore((state) => state.toggleOutline);
   const language = useStore((state) => state.settings.language);
   const activeTabId = useStore((state) => state.activeTabId);
   const outlineWidth = useStore((state) => state.outlineWidth);
@@ -99,6 +100,7 @@ export function OutlineSidebar({
       ref={containerRef}
       className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
       style={{ width: `${outlineWidth}px` }}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div className="flex items-center gap-2 border-b px-2 py-2">
         <span className="max-w-[45%] truncate text-[10px] font-bold uppercase text-muted-foreground">
@@ -124,6 +126,15 @@ export function OutlineSidebar({
             </button>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+          title={tr('sidebar.close')}
+          aria-label={tr('sidebar.close')}
+          onClick={() => toggleOutline(false)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar py-2">

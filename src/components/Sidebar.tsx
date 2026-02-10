@@ -33,6 +33,7 @@ export function Sidebar() {
             ref={containerRef}
             className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
             style={{ width: `${sidebarWidth}px` }}
+            onContextMenu={(event) => event.preventDefault()}
         >
             <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-2 border-b">
                 <FolderOpen className="w-3 h-3" />
