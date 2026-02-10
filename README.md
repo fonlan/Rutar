@@ -5,7 +5,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 ## 🚀 Key Features
 
 - **Top-Grade Highlighting**: Syntax tokens are generated in the Rust backend using Tree-sitter, providing accurate and fast highlighting for JS, TS, Rust, Python, JSON, and more.
-- **Outline Sidebar**: Supports structured file outlines for JSON / YAML / XML / TOML / INI and symbol outlines for Python / JavaScript / TypeScript / C / C++ / Go / Java / Rust / C# / PHP / Kotlin / Swift.
+- **Outline Sidebar**: Supports structured file outlines for JSON / YAML / XML / TOML / INI and symbol outlines for Python / JavaScript / TypeScript / C / C++ / Go / Java / Rust / C# / PHP / Kotlin / Swift. Includes a lightweight search box at the top for quickly filtering outline items.
 - **Virtualized Rendering**: Handles massive files with ease using `react-window` to ensure smooth scrolling regardless of file size.
 - **Native Performance**: Built on Tauri for a small footprint and native-speed operations.
 - **Modern Tech Stack**: React 19, Tailwind CSS 4, and Zustand on the frontend; Rust with `ropey` and `tree-sitter` on the backend.

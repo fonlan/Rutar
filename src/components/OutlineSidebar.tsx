@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FileCode2, FileJson } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, FileCode2, FileJson, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { OutlineNode, OutlineType, useStore } from '@/store/useStore';
@@ -17,6 +17,32 @@ function getNodeIcon(nodeType: string) {
   return <FileCode2 className="w-3.5 h-3.5 text-muted-foreground/70" />;
 }
 
+function filterOutlineNodes(nodes: OutlineNode[], keyword: string): OutlineNode[] {
+  if (!keyword) {
+    return nodes;
+  }
+
+  const filterNode = (node: OutlineNode): OutlineNode | null => {
+    const matched = node.label.toLowerCase().includes(keyword);
+    const filteredChildren = node.children
+      .map((child) => filterNode(child))
+      .filter((child): child is OutlineNode => child !== null);
+
+    if (!matched && filteredChildren.length === 0) {
+      return null;
+    }
+
+    return {
+      ...node,
+      children: filteredChildren,
+    };
+  };
+
+  return nodes
+    .map((node) => filterNode(node))
+    .filter((node): node is OutlineNode => node !== null);
+}
+
 export function OutlineSidebar({
   nodes,
   activeType,
@@ -31,6 +57,7 @@ export function OutlineSidebar({
   const activeTabId = useStore((state) => state.activeTabId);
   const outlineWidth = useStore((state) => state.outlineWidth);
   const setOutlineWidth = useStore((state) => state.setOutlineWidth);
+  const [searchValue, setSearchValue] = useState('');
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
     width: outlineWidth,
@@ -47,6 +74,22 @@ export function OutlineSidebar({
     return `${tr('outline.title')} - ${activeType.toUpperCase()}`;
   }, [activeType, language]);
 
+  const normalizedSearchValue = useMemo(() => searchValue.trim().toLowerCase(), [searchValue]);
+
+  const filteredNodes = useMemo(
+    () => filterOutlineNodes(nodes, normalizedSearchValue),
+    [nodes, normalizedSearchValue]
+  );
+
+  const hasActiveSearch = normalizedSearchValue.length > 0;
+  const searchPlaceholder = tr('outline.searchPlaceholder');
+  const searchEmptyText = tr('outline.searchEmpty');
+  const searchClearLabel = tr('outline.searchClear');
+
+  useEffect(() => {
+    setSearchValue('');
+  }, [activeTabId, activeType]);
+
   if (!outlineOpen) {
     return null;
   }
@@ -57,22 +100,47 @@ export function OutlineSidebar({
       className="relative shrink-0 border-r bg-muted/5 flex flex-col h-full select-none overflow-hidden"
       style={{ width: `${outlineWidth}px` }}
     >
-      <div className="p-3 text-[10px] font-bold text-muted-foreground uppercase border-b truncate">
-        {title}
+      <div className="flex items-center gap-2 border-b px-2 py-2">
+        <span className="max-w-[45%] truncate text-[10px] font-bold uppercase text-muted-foreground">
+          {title}
+        </span>
+        <div className="relative min-w-0 flex-1">
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-7 w-full rounded-md border border-input bg-background px-2 pr-7 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          {searchValue ? (
+            <button
+              type="button"
+              title={searchClearLabel}
+              aria-label={searchClearLabel}
+              className="absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => setSearchValue('')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar py-2">
         {parseError ? (
           <div className="px-3 py-2 text-xs text-destructive/90 break-words">{parseError}</div>
-        ) : nodes.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-muted-foreground">{tr('outline.empty')}</div>
+        ) : filteredNodes.length === 0 ? (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            {hasActiveSearch ? searchEmptyText : tr('outline.empty')}
+          </div>
         ) : (
-          nodes.map((node, index) => (
+          filteredNodes.map((node, index) => (
             <TreeNodeItem
               key={`${node.label}-${index}`}
               node={node}
               level={0}
               activeTabId={activeTabId}
+              forceExpanded={hasActiveSearch}
             />
           ))
         )}
@@ -96,13 +164,16 @@ function TreeNodeItem({
   node,
   level,
   activeTabId,
+  forceExpanded,
 }: {
   node: OutlineNode;
   level: number;
   activeTabId: string | null;
+  forceExpanded: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
+  const isExpanded = forceExpanded || expanded;
 
   const handleSelectNode = () => {
     if (activeTabId) {
@@ -123,26 +194,27 @@ function TreeNodeItem({
           className="w-4 h-4 flex items-center justify-center"
           onClick={(event) => {
             event.stopPropagation();
-            if (hasChildren) {
+            if (hasChildren && !forceExpanded) {
               setExpanded((value) => !value);
             }
           }}
         >
           {hasChildren ? (
-            expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
+            isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
           ) : null}
         </span>
         {getNodeIcon(node.nodeType)}
         <span className="truncate flex-1">{node.label}</span>
       </div>
 
-      {expanded && hasChildren
+      {isExpanded && hasChildren
         ? node.children.map((child, index) => (
             <TreeNodeItem
               key={`${child.label}-${index}`}
               node={child}
               level={level + 1}
               activeTabId={activeTabId}
+              forceExpanded={forceExpanded}
             />
           ))
         : null}
