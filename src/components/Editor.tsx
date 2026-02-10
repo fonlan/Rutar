@@ -140,6 +140,8 @@ const TEXT_SELECTION_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-blue-400/35 ring-1 ring-blue-500/30 dark:bg-blue-500/30 dark:ring-blue-300/30';
 const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
+const DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG = true;
+const USE_NATIVE_TEXT_SELECTION_HIGHLIGHT = true;
 const EMPTY_BOOKMARKS: number[] = [];
 
 function isToggleLineCommentShortcut(event: {
@@ -1196,6 +1198,8 @@ export function Editor({ tab }: { tab: FileTab }) {
   const rectangularSelectionLastClientPointRef = useRef<{ x: number; y: number } | null>(null);
   const rectangularSelectionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0);
   const rectangularSelectionAutoScrollRafRef = useRef<number | null>(null);
+  const pointerSelectionActiveRef = useRef(false);
+  const selectionChangeRafRef = useRef<number | null>(null);
   const editableSegmentRef = useRef<EditorSegmentState>({
     startLine: 0,
     endLine: 0,
@@ -1611,8 +1615,26 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
   }, [showLineNumbers, isHugeEditableMode, tab.id, tab.lineCount, editableSegment.startLine, editableSegment.endLine]);
 
+  const setPointerSelectionNativeHighlightMode = useCallback((enabled: boolean) => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+
+    if (enabled) {
+      element.style.setProperty('--editor-native-selection-bg', 'hsl(217 91% 60% / 0.32)');
+      return;
+    }
+
+    element.style.removeProperty('--editor-native-selection-bg');
+  }, []);
+
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      pointerSelectionActiveRef.current = false;
+      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        setPointerSelectionNativeHighlightMode(false);
+      }
       verticalSelectionRef.current = null;
 
       if (
@@ -1624,6 +1646,9 @@ export function Editor({ tab }: { tab: FileTab }) {
         contentRef.current
       ) {
         event.stopPropagation();
+        if (USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+          setPointerSelectionNativeHighlightMode(false);
+        }
         const isTextarea = isTextareaInputElement(contentRef.current);
         if (!isTextarea) {
           event.preventDefault();
@@ -1695,6 +1720,17 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       const editorElement = contentRef.current;
       if (!isPointerOnScrollbar(editorElement, event.clientX, event.clientY)) {
+        if (
+          DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG &&
+          event.isPrimary &&
+          event.button === 0
+        ) {
+          pointerSelectionActiveRef.current = true;
+          if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+            setPointerSelectionNativeHighlightMode(true);
+            setTextSelectionHighlight((prev) => (prev === null ? prev : null));
+          }
+        }
         return;
       }
 
@@ -1702,7 +1738,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [isLargeReadOnlyMode]
+    [isLargeReadOnlyMode, setPointerSelectionNativeHighlightMode]
   );
 
   const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -2006,13 +2042,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       return;
     }
 
-    const text = normalizeSegmentText(getEditableText(contentRef.current));
     const selectionOffsets = getSelectionOffsetsInElement(contentRef.current);
 
     if (!selectionOffsets || !selectionOffsets.isCollapsed) {
       setPairHighlights((prev) => (prev.length === 0 ? prev : []));
       return;
     }
+
+    const text = normalizeSegmentText(getEditableText(contentRef.current));
 
     const matched = findMatchingPairNearOffset(text, selectionOffsets.end);
     if (!matched) {
@@ -2449,6 +2486,35 @@ export function Editor({ tab }: { tab: FileTab }) {
     });
   }, []);
 
+  const finalizePointerSelectionInteraction = useCallback(() => {
+    if (!DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG) {
+      pointerSelectionActiveRef.current = false;
+      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        setPointerSelectionNativeHighlightMode(false);
+      }
+      return;
+    }
+
+    const wasPointerSelectionActive = pointerSelectionActiveRef.current;
+    pointerSelectionActiveRef.current = false;
+
+    if (!wasPointerSelectionActive) {
+      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        setPointerSelectionNativeHighlightMode(false);
+      }
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      handleScroll();
+      syncSelectionState();
+      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        syncTextSelectionHighlight();
+        setPointerSelectionNativeHighlightMode(false);
+      }
+    });
+  }, [handleScroll, setPointerSelectionNativeHighlightMode, syncSelectionState, syncTextSelectionHighlight]);
+
   useEffect(() => {
     if (!normalizedRectangularSelection) {
       return;
@@ -2456,6 +2522,18 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     setTextSelectionHighlight((prev) => (prev === null ? prev : null));
   }, [normalizedRectangularSelection]);
+
+  useEffect(() => {
+    if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      return;
+    }
+
+    if (normalizedRectangularSelection) {
+      setPointerSelectionNativeHighlightMode(false);
+    } else {
+      setPointerSelectionNativeHighlightMode(true);
+    }
+  }, [normalizedRectangularSelection, setPointerSelectionNativeHighlightMode]);
 
   const hasSelectionInsideEditor = useCallback(() => {
     if (!contentRef.current) {
@@ -3607,7 +3685,9 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
-      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
+      const textSelectionRange = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT
+        ? null
+        : getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
 
       if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderPlainLine(safeText);
@@ -4095,7 +4175,9 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
-      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
+      const textSelectionRange = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT
+        ? null
+        : getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
 
       if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderTokens(tokensArr);
@@ -4333,13 +4415,27 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
+    window.addEventListener('pointercancel', endScrollbarDragSelectionGuard);
     window.addEventListener('blur', endScrollbarDragSelectionGuard);
 
     return () => {
       window.removeEventListener('pointerup', endScrollbarDragSelectionGuard);
+      window.removeEventListener('pointercancel', endScrollbarDragSelectionGuard);
       window.removeEventListener('blur', endScrollbarDragSelectionGuard);
     };
   }, [endScrollbarDragSelectionGuard]);
+
+  useEffect(() => {
+    window.addEventListener('pointerup', finalizePointerSelectionInteraction);
+    window.addEventListener('pointercancel', finalizePointerSelectionInteraction);
+    window.addEventListener('blur', finalizePointerSelectionInteraction);
+
+    return () => {
+      window.removeEventListener('pointerup', finalizePointerSelectionInteraction);
+      window.removeEventListener('pointercancel', finalizePointerSelectionInteraction);
+      window.removeEventListener('blur', finalizePointerSelectionInteraction);
+    };
+  }, [finalizePointerSelectionInteraction]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -4513,22 +4609,49 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (base64DecodeErrorToastTimerRef.current !== null) {
         window.clearTimeout(base64DecodeErrorToastTimerRef.current);
       }
+
+      if (USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        setPointerSelectionNativeHighlightMode(false);
+      }
     };
-  }, []);
+  }, [setPointerSelectionNativeHighlightMode]);
 
   useEffect(() => {
-    const handleSelectionChange = () => {
+    const flushSelectionChange = () => {
+      selectionChangeRafRef.current = null;
+
       if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
         clearVerticalSelectionState();
       }
+
       handleScroll();
-      syncSelectionState();
-      syncTextSelectionHighlight();
+
+      if (
+        !DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG ||
+        !pointerSelectionActiveRef.current
+      ) {
+        syncSelectionState();
+        if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+          syncTextSelectionHighlight();
+        }
+      }
+    };
+
+    const handleSelectionChange = () => {
+      if (selectionChangeRafRef.current !== null) {
+        return;
+      }
+
+      selectionChangeRafRef.current = window.requestAnimationFrame(flushSelectionChange);
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
+      if (selectionChangeRafRef.current !== null) {
+        window.cancelAnimationFrame(selectionChangeRafRef.current);
+        selectionChangeRafRef.current = null;
+      }
     };
   }, [
     clearVerticalSelectionState,

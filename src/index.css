@@ -88,13 +88,13 @@ option {
 }
 
 .editor-input-layer::selection {
-  background: transparent !important;
+  background: var(--editor-native-selection-bg, transparent) !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
 }
 
 .editor-input-layer::-moz-selection {
-  background: transparent !important;
+  background: var(--editor-native-selection-bg, transparent) !important;
   color: transparent !important;
 }
 

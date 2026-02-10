@@ -144,6 +144,7 @@ export function Toolbar() {
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
     const openFileMenuRef = useRef<HTMLDivElement>(null);
     const openFolderMenuRef = useRef<HTMLDivElement>(null);
+    const selectionChangeRafRef = useRef<number | null>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
     const filterTitle = tr('toolbar.filter');
     const formatBeautifyTitle = tr('toolbar.format.beautify');
@@ -232,8 +233,17 @@ export function Toolbar() {
     }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
 
     useEffect(() => {
-        const handleSelectionChange = () => {
+        const flushSelectionChange = () => {
+            selectionChangeRafRef.current = null;
             refreshSelectionState();
+        };
+
+        const handleSelectionChange = () => {
+            if (selectionChangeRafRef.current !== null) {
+                return;
+            }
+
+            selectionChangeRafRef.current = window.requestAnimationFrame(flushSelectionChange);
         };
 
         const handleDocumentUpdated = (event: Event) => {
@@ -264,6 +274,10 @@ export function Toolbar() {
             document.removeEventListener('selectionchange', handleSelectionChange);
             window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
             window.removeEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
+            if (selectionChangeRafRef.current !== null) {
+                window.cancelAnimationFrame(selectionChangeRafRef.current);
+                selectionChangeRafRef.current = null;
+            }
         };
     }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
 
