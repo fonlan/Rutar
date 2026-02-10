@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FileCode2, FileJson, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, FileCode2, FileJson, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
 import { OutlineNode, OutlineType, useStore } from '@/store/useStore';
@@ -59,6 +59,7 @@ export function OutlineSidebar({
   const outlineWidth = useStore((state) => state.outlineWidth);
   const setOutlineWidth = useStore((state) => state.setOutlineWidth);
   const [searchValue, setSearchValue] = useState('');
+  const [treeExpandSignal, setTreeExpandSignal] = useState({ version: 0, expanded: true });
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
     width: outlineWidth,
@@ -86,9 +87,23 @@ export function OutlineSidebar({
   const searchPlaceholder = tr('outline.searchPlaceholder');
   const searchEmptyText = tr('outline.searchEmpty');
   const searchClearLabel = tr('outline.searchClear');
+  const expandAllLabel = tr('outline.expandAll');
+  const collapseAllLabel = tr('outline.collapseAll');
+  const treeActionDisabled = Boolean(parseError) || filteredNodes.length === 0;
+
+  const setTreeExpanded = (expanded: boolean) => {
+    setTreeExpandSignal((state) => ({
+      version: state.version + 1,
+      expanded,
+    }));
+  };
 
   useEffect(() => {
     setSearchValue('');
+    setTreeExpandSignal((state) => ({
+      version: state.version + 1,
+      expanded: true,
+    }));
   }, [activeTabId, activeType]);
 
   if (!outlineOpen) {
@@ -103,9 +118,21 @@ export function OutlineSidebar({
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="flex items-center gap-2 border-b px-2 py-2">
-        <span className="max-w-[45%] truncate text-[10px] font-bold uppercase text-muted-foreground">
+        <span className="flex-1 truncate text-[10px] font-bold uppercase text-muted-foreground">
           {title}
         </span>
+        <button
+          type="button"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+          title={tr('sidebar.close')}
+          aria-label={tr('sidebar.close')}
+          onClick={() => toggleOutline(false)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 border-b px-2 py-1.5">
         <div className="relative min-w-0 flex-1">
           <input
             type="text"
@@ -128,12 +155,23 @@ export function OutlineSidebar({
         </div>
         <button
           type="button"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
-          title={tr('sidebar.close')}
-          aria-label={tr('sidebar.close')}
-          onClick={() => toggleOutline(false)}
+          title={expandAllLabel}
+          aria-label={expandAllLabel}
+          disabled={treeActionDisabled}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => setTreeExpanded(true)}
         >
-          <X className="h-3.5 w-3.5" />
+          <ChevronsDown className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title={collapseAllLabel}
+          aria-label={collapseAllLabel}
+          disabled={treeActionDisabled}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => setTreeExpanded(false)}
+        >
+          <ChevronsUp className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -152,6 +190,7 @@ export function OutlineSidebar({
               level={0}
               activeTabId={activeTabId}
               forceExpanded={hasActiveSearch}
+              treeExpandSignal={treeExpandSignal}
             />
           ))
         )}
@@ -176,15 +215,24 @@ function TreeNodeItem({
   level,
   activeTabId,
   forceExpanded,
+  treeExpandSignal,
 }: {
   node: OutlineNode;
   level: number;
   activeTabId: string | null;
   forceExpanded: boolean;
+  treeExpandSignal: {
+    version: number;
+    expanded: boolean;
+  };
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isExpanded = forceExpanded || expanded;
+
+  useEffect(() => {
+    setExpanded(treeExpandSignal.expanded);
+  }, [treeExpandSignal.version, treeExpandSignal.expanded]);
 
   const handleSelectNode = () => {
     if (activeTabId) {
@@ -226,6 +274,7 @@ function TreeNodeItem({
               level={level + 1}
               activeTabId={activeTabId}
               forceExpanded={forceExpanded}
+              treeExpandSignal={treeExpandSignal}
             />
           ))
         : null}
