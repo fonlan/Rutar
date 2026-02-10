@@ -67,6 +67,11 @@ export interface OutlineNode {
   children: OutlineNode[];
 }
 
+export interface CursorPosition {
+  line: number;
+  column: number;
+}
+
 export type TabBookmarks = Record<string, number[]>;
 
 interface SettingsState {
@@ -108,6 +113,7 @@ interface AppState {
   outlineType: OutlineType;
   outlineError: string | null;
   outlineNodes: OutlineNode[];
+  cursorPositionByTab: Record<string, CursorPosition>;
   bookmarksByTab: TabBookmarks;
   folderPath: string | null;
   folderEntries: any[];
@@ -135,6 +141,7 @@ interface AppState {
     nodes: OutlineNode[];
     error?: string | null;
   }) => void;
+  setCursorPosition: (tabId: string, line: number, column: number) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -168,14 +175,25 @@ export const useStore = create<AppState>((set) => ({
   outlineType: null,
   outlineError: null,
   outlineNodes: [],
+  cursorPositionByTab: {},
   bookmarksByTab: {},
   folderPath: null,
   folderEntries: [],
 
-  addTab: (tab) => set((state) => ({ 
-    tabs: [...state.tabs, tab], 
-    activeTabId: tab.id 
-  })),
+  addTab: (tab) => set((state) => {
+    const nextCursorPositionByTab = state.cursorPositionByTab[tab.id]
+      ? state.cursorPositionByTab
+      : {
+          ...state.cursorPositionByTab,
+          [tab.id]: { line: 1, column: 1 },
+        };
+
+    return {
+      tabs: [...state.tabs, tab],
+      activeTabId: tab.id,
+      cursorPositionByTab: nextCursorPositionByTab,
+    };
+  }),
   closeTab: (id) => set((state) => {
     const newTabs = state.tabs.filter((t) => t.id !== id);
     let newActiveId = state.activeTabId;
@@ -184,10 +202,13 @@ export const useStore = create<AppState>((set) => ({
     }
     const nextBookmarks = { ...state.bookmarksByTab };
     delete nextBookmarks[id];
+    const nextCursorPositionByTab = { ...state.cursorPositionByTab };
+    delete nextCursorPositionByTab[id];
 
     return {
       tabs: newTabs,
       activeTabId: newActiveId,
+      cursorPositionByTab: nextCursorPositionByTab,
       bookmarksByTab: nextBookmarks,
     };
   }),
@@ -269,5 +290,24 @@ export const useStore = create<AppState>((set) => ({
     outlineType: outlineType,
     outlineNodes: nodes,
     outlineError: error ?? null,
+  }),
+  setCursorPosition: (tabId, line, column) => set((state) => {
+    const safeLine = Math.max(1, Math.floor(line));
+    const safeColumn = Math.max(1, Math.floor(column));
+    const current = state.cursorPositionByTab[tabId];
+
+    if (current && current.line === safeLine && current.column === safeColumn) {
+      return state;
+    }
+
+    return {
+      cursorPositionByTab: {
+        ...state.cursorPositionByTab,
+        [tabId]: {
+          line: safeLine,
+          column: safeColumn,
+        },
+      },
+    };
   }),
 }));

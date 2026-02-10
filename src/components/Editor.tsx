@@ -1131,6 +1131,7 @@ function dispatchDocumentUpdated(tabId: string) {
 export function Editor({ tab }: { tab: FileTab }) {
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
+  const setCursorPosition = useStore((state) => state.setCursorPosition);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
   const [tokens, setTokens] = useState<SyntaxToken[]>([]);
@@ -1931,23 +1932,30 @@ export function Editor({ tab }: { tab: FileTab }) {
     pendingSyncRequestedRef.current = false;
   }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id]);
 
-  const updateActiveLineFromSelection = useCallback(() => {
-    if (!highlightCurrentLine || !contentRef.current) {
+  const updateCursorPositionFromSelection = useCallback(() => {
+    if (!contentRef.current) {
       return;
     }
 
-    const localLine = getCaretLineInElement(contentRef.current);
-    if (localLine === null) {
+    const text = normalizeSegmentText(getEditableText(contentRef.current));
+    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(contentRef.current);
+    const focusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(contentRef.current)?.end;
+
+    if (focusOffset === null || focusOffset === undefined) {
       return;
     }
+
+    const localPosition = codeUnitOffsetToLineColumn(text, focusOffset);
 
     const absoluteLine = isHugeEditableMode
-      ? editableSegmentRef.current.startLine + localLine
-      : localLine;
+      ? editableSegmentRef.current.startLine + localPosition.line
+      : localPosition.line;
     const safeLine = Math.max(1, Math.min(Math.max(1, tab.lineCount), Math.floor(absoluteLine)));
+    const safeColumn = Math.max(1, Math.floor(localPosition.column + 1));
 
     setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
-  }, [highlightCurrentLine, isHugeEditableMode, tab.lineCount]);
+    setCursorPosition(tab.id, safeLine, safeColumn);
+  }, [isHugeEditableMode, setCursorPosition, tab.id, tab.lineCount]);
 
   const updatePairHighlightsFromSelection = useCallback(() => {
     if (!isPairHighlightEnabled || !contentRef.current) {
@@ -1986,9 +1994,9 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [isHugeEditableMode, isPairHighlightEnabled]);
 
   const syncSelectionState = useCallback(() => {
-    updateActiveLineFromSelection();
+    updateCursorPositionFromSelection();
     updatePairHighlightsFromSelection();
-  }, [updateActiveLineFromSelection, updatePairHighlightsFromSelection]);
+  }, [updateCursorPositionFromSelection, updatePairHighlightsFromSelection]);
 
   const clearVerticalSelectionState = useCallback(() => {
     verticalSelectionRef.current = null;
@@ -4563,6 +4571,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     setActiveLineNumber(1);
+    setCursorPosition(tab.id, 1, 1);
     setSearchHighlight(null);
     setTextSelectionHighlight(null);
     setPairHighlights([]);
@@ -4573,7 +4582,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     setOutlineFlashLine(null);
-  }, [tab.id]);
+  }, [setCursorPosition, tab.id]);
 
   useEffect(() => {
     const handleNavigateToLine = (event: Event) => {
@@ -4594,7 +4603,9 @@ export function Editor({ tab }: { tab: FileTab }) {
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
       const shouldMoveCaretToLineStart = detail.source === 'outline';
+      const targetCaretColumn = shouldMoveCaretToLineStart ? 1 : targetColumn;
       setActiveLineNumber(targetLine);
+      setCursorPosition(tab.id, targetLine, targetCaretColumn);
 
       const placeCaretAtTargetPosition = () => {
         if (!contentRef.current) {
@@ -4604,7 +4615,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         const lineForCaret = isHugeEditableMode
           ? Math.max(1, targetLine - editableSegmentRef.current.startLine)
           : targetLine;
-        const columnForCaret = shouldMoveCaretToLineStart ? 1 : targetColumn;
+        const columnForCaret = targetCaretColumn;
 
         setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
       };
@@ -4687,7 +4698,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
       window.removeEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
     };
-  }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, syncVisibleTokens, tab.id, tab.lineCount]);
+  }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, setCursorPosition, syncVisibleTokens, tab.id, tab.lineCount]);
 
   useEffect(() => {
     const handleForcedRefresh = (event: Event) => {

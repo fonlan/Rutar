@@ -11,8 +11,12 @@ export function StatusBar() {
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
     const updateTab = useStore((state) => state.updateTab);
+    const cursorPositionByTab = useStore((state) => state.cursorPositionByTab);
     const settings = useStore((state) => state.settings);
     const activeTab = tabs.find(t => t.id === activeTabId);
+    const activeCursorPosition = activeTab ? cursorPositionByTab[activeTab.id] : null;
+    const cursorLine = activeCursorPosition?.line ?? 1;
+    const cursorColumn = activeCursorPosition?.column ?? 1;
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
     if (!activeTab) return (
@@ -101,6 +105,8 @@ export function StatusBar() {
                     </>
                 )}
                 <span>{tr('status.lines')}: {activeTab.lineCount.toLocaleString()}</span>
+                <div className="w-[1px] h-3 bg-border" />
+                <span>{tr('status.cursor')}: {cursorLine}:{cursorColumn}</span>
             </div>
             
             <div className="flex items-center gap-4">

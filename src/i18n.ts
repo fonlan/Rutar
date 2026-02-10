@@ -47,6 +47,7 @@ export type I18nKey =
   | 'bookmark.sidebar.emptyLine'
   | 'status.ready'
   | 'status.lines'
+  | 'status.cursor'
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
   | 'sidebar.close'
@@ -199,6 +200,7 @@ const zhCN: Messages = {
   'bookmark.sidebar.emptyLine': '(空行)',
   'status.ready': 'Rutar 就绪',
   'status.lines': '行数',
+  'status.cursor': '光标',
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
   'sidebar.close': '关闭侧边栏',
@@ -350,6 +352,7 @@ const enUS: Messages = {
   'bookmark.sidebar.emptyLine': '(empty line)',
   'status.ready': 'Rutar Ready',
   'status.lines': 'Lines',
+  'status.cursor': 'Cursor',
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
   'sidebar.close': 'Close Sidebar',

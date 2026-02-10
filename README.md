@@ -13,6 +13,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Multi-language UI**: Supports Simplified Chinese / English and can switch in Settings.
 - **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
 - **Recent Quick Access**: The toolbar `Open File` and `Open Folder` actions include dropdown arrows for opening recently used files and folders.
+- **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
 
 ## Configuration
 
