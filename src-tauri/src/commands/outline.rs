@@ -125,6 +125,168 @@ fn second_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'
     None
 }
 
+fn kind_matches(actual: &str, expected: &str) -> bool {
+    actual.eq_ignore_ascii_case(expected)
+}
+
+fn named_child_by_kind<'tree>(
+    node: tree_sitter::Node<'tree>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'tree>> {
+    let mut cursor = node.walk();
+    let result = node
+        .children(&mut cursor)
+        .find(|child| child.is_named() && kind_matches(child.kind(), kind));
+    result
+}
+
+fn first_named_descendant_by_kind<'tree>(
+    node: tree_sitter::Node<'tree>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'tree>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if !child.is_named() {
+            continue;
+        }
+
+        if kind_matches(child.kind(), kind) {
+            return Some(child);
+        }
+
+        if let Some(found) = first_named_descendant_by_kind(child, kind) {
+            return Some(found);
+        }
+    }
+
+    None
+}
+
+fn build_xml_attribute_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
+    if !kind_matches(node.kind(), "Attribute") {
+        return None;
+    }
+
+    let name = named_child_by_kind(node, "Name")
+        .map(|name_node| get_node_text_preview(name_node, source, 120))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let value = named_child_by_kind(node, "AttValue")
+        .map(|value_node| get_node_text_preview(value_node, source, 120))
+        .map(|parsed| parsed.trim().to_string())
+        .filter(|parsed| !parsed.is_empty());
+
+    let label = match (name, value) {
+        (Some(name), Some(value)) => format!("@{}={}", name, value),
+        (Some(name), None) => format!("@{}", name),
+        _ => format!("@{}", get_node_text_preview(node, source, 120)),
+    };
+
+    Some(build_outline_node(label, "attribute", node, Vec::new()))
+}
+
+fn extract_xml_element_name(node: tree_sitter::Node<'_>, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if !child.is_named() {
+            continue;
+        }
+
+        if kind_matches(child.kind(), "STag")
+            || kind_matches(child.kind(), "EmptyElemTag")
+            || kind_matches(child.kind(), "ETag")
+        {
+            if let Some(name_node) = named_child_by_kind(child, "Name") {
+                let name = get_node_text_preview(name_node, source, 80).trim().to_string();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+        }
+    }
+
+    if let Some(name_node) = first_named_descendant_by_kind(node, "Name") {
+        let name = get_node_text_preview(name_node, source, 80).trim().to_string();
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+
+    let preview = get_node_text_preview(node, source, 80);
+    preview
+        .trim_start_matches('<')
+        .trim_start_matches('/')
+        .split([' ', '>', '/'])
+        .find(|part| !part.trim().is_empty())
+        .map(str::to_string)
+}
+
+fn build_xml_element_outline_node(node: tree_sitter::Node<'_>, source: &str) -> OutlineNode {
+    let mut children = Vec::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if !child.is_named() {
+            continue;
+        }
+
+        if kind_matches(child.kind(), "STag") || kind_matches(child.kind(), "EmptyElemTag") {
+            let mut tag_cursor = child.walk();
+            for tag_child in child.children(&mut tag_cursor) {
+                if !tag_child.is_named() {
+                    continue;
+                }
+
+                if let Some(attribute_node) = build_xml_attribute_outline_node(tag_child, source) {
+                    children.push(attribute_node);
+                }
+            }
+            continue;
+        }
+
+        if kind_matches(child.kind(), "content") {
+            let mut content_cursor = child.walk();
+            for content_child in child.children(&mut content_cursor) {
+                if content_child.is_named() && kind_matches(content_child.kind(), "element") {
+                    children.push(build_xml_element_outline_node(content_child, source));
+                }
+            }
+            continue;
+        }
+
+        if kind_matches(child.kind(), "element") {
+            children.push(build_xml_element_outline_node(child, source));
+        }
+    }
+
+    let label = extract_xml_element_name(node, source)
+        .map(|name| format!("<{}>", name))
+        .unwrap_or_else(|| "<element>".to_string());
+
+    build_outline_node(label, "element", node, children)
+}
+
+fn parse_xml_outline(root_node: tree_sitter::Node<'_>, source: &str) -> Vec<OutlineNode> {
+    if kind_matches(root_node.kind(), "element") {
+        return vec![build_xml_element_outline_node(root_node, source)];
+    }
+
+    if let Some(root_field_node) = root_node.child_by_field_name("root") {
+        if root_field_node.is_named() && kind_matches(root_field_node.kind(), "element") {
+            return vec![build_xml_element_outline_node(root_field_node, source)];
+        }
+    }
+
+    if let Some(root_element) = first_named_descendant_by_kind(root_node, "element") {
+        return vec![build_xml_element_outline_node(root_element, source)];
+    }
+
+    Vec::new()
+}
+
 fn is_pair_kind(kind: &str) -> bool {
     kind == "pair" || kind.contains("pair")
 }
@@ -601,6 +763,10 @@ pub fn get_outline_impl(
             return Ok(symbols);
         }
 
+        if matches!(outline_type, OutlineFileType::Xml) {
+            return Ok(parse_xml_outline(root_node, &source));
+        }
+
         let mut cursor = root_node.walk();
         let named_children: Vec<_> = root_node.children(&mut cursor).filter(|node| node.is_named()).collect();
 
@@ -624,7 +790,8 @@ pub fn get_outline_impl(
 #[cfg(test)]
 mod outline_tests {
     use super::{
-        build_symbol_outline_node, parse_ini_outline, parse_outline_file_type, OutlineFileType,
+        build_symbol_outline_node, parse_ini_outline, parse_outline_file_type, parse_xml_outline,
+        OutlineFileType,
         Parser,
     };
 
@@ -704,6 +871,52 @@ word_wrap = true
         assert_eq!(nodes[1].children.len(), 2);
         assert_eq!(nodes[1].children[0].label, "tab_width =");
         assert_eq!(nodes[1].children[1].label, "word_wrap =");
+    }
+
+    #[test]
+    fn xml_outline_should_extract_element_hierarchy_and_attributes() {
+        let source = r#"<?xml version="1.0" encoding="UTF-8"?>
+<catalog lang="en">
+  <book id="b1">
+    <title>Rust</title>
+  </book>
+</catalog>
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_xml::LANGUAGE_XML.into())
+            .expect("set xml parser");
+        let tree = parser.parse(source, None).expect("parse xml");
+
+        let nodes = parse_xml_outline(tree.root_node(), source);
+        assert_eq!(nodes.len(), 1);
+
+        let root = &nodes[0];
+        assert_eq!(root.node_type, "element");
+        assert_eq!(root.label, "<catalog>");
+        assert!(root
+            .children
+            .iter()
+            .any(|node| node.node_type == "attribute" && node.label == "@lang=\"en\""));
+
+        let book = root
+            .children
+            .iter()
+            .find(|node| node.node_type == "element" && node.label == "<book>")
+            .expect("book element should exist");
+        assert!(book
+            .children
+            .iter()
+            .any(|node| node.node_type == "attribute" && node.label == "@id=\"b1\""));
+        assert!(book
+            .children
+            .iter()
+            .any(|node| node.node_type == "element" && node.label == "<title>"));
+
+        assert!(!root.children.iter().any(|node| {
+            node.node_type == "STag" || node.node_type == "ETag" || node.node_type == "content"
+        }));
     }
 
     #[test]
