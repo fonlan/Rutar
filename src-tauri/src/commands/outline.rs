@@ -125,6 +125,70 @@ fn second_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'
     None
 }
 
+fn get_node_first_line_preview(node: tree_sitter::Node<'_>, source: &str, max_len: usize) -> String {
+    let raw = source
+        .get(node.start_byte()..node.end_byte())
+        .unwrap_or("")
+        .trim();
+    let first_line = raw.lines().next().map(str::trim).unwrap_or("");
+
+    if first_line.is_empty() {
+        get_node_text_preview(node, source, max_len)
+    } else {
+        truncate_preview(first_line, max_len)
+    }
+}
+
+fn is_yaml_wrapper_kind(kind: &str) -> bool {
+    matches!(kind, "block_node" | "flow_node" | "block_sequence_item")
+}
+
+fn unwrap_yaml_wrapper_node<'tree>(mut node: tree_sitter::Node<'tree>) -> tree_sitter::Node<'tree> {
+    while is_yaml_wrapper_kind(node.kind()) {
+        let Some(next) = first_named_child(node) else {
+            break;
+        };
+        node = next;
+    }
+
+    node
+}
+
+fn yaml_pair_key_value_nodes<'tree>(
+    node: tree_sitter::Node<'tree>,
+) -> (Option<tree_sitter::Node<'tree>>, Option<tree_sitter::Node<'tree>>) {
+    let key_node = node
+        .child_by_field_name("key")
+        .or_else(|| first_named_child(node))
+        .map(unwrap_yaml_wrapper_node);
+    let value_node = node
+        .child_by_field_name("value")
+        .or_else(|| second_named_child(node))
+        .map(unwrap_yaml_wrapper_node);
+
+    (key_node, value_node)
+}
+
+fn is_yaml_scalar_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "plain_scalar"
+            | "single_quote_scalar"
+            | "double_quote_scalar"
+            | "block_scalar"
+            | "string_scalar"
+            | "integer_scalar"
+            | "float_scalar"
+            | "boolean_scalar"
+            | "null_scalar"
+            | "timestamp_scalar"
+            | "alias"
+            | "anchor"
+            | "anchor_name"
+            | "tag"
+    )
+}
+
 fn kind_matches(actual: &str, expected: &str) -> bool {
     actual.eq_ignore_ascii_case(expected)
 }
@@ -325,7 +389,10 @@ fn is_container_kind(file_type: OutlineFileType, kind: &str) -> bool {
 }
 
 fn is_scalar_value_kind(file_type: OutlineFileType, kind: &str) -> bool {
-    !is_pair_kind(kind) && !is_container_kind(file_type, kind)
+    match file_type {
+        OutlineFileType::Yaml => is_yaml_scalar_kind(kind),
+        _ => !is_pair_kind(kind) && !is_container_kind(file_type, kind),
+    }
 }
 
 fn format_outline_label(
@@ -367,19 +434,13 @@ fn format_outline_label(
             }
         },
         OutlineFileType::Yaml => {
-            if kind.contains("mapping") {
-                return "{}".to_string();
-            }
-
-            if kind.contains("sequence") {
-                return "[]".to_string();
-            }
-
             if kind.contains("pair") {
-                if let Some(key_node) = first_named_child(node) {
+                let (key_node, value_node) = yaml_pair_key_value_nodes(node);
+
+                if let Some(key_node) = key_node {
                     let key = get_node_text_preview(key_node, source, 60);
 
-                    if let Some(value_node) = second_named_child(node) {
+                    if let Some(value_node) = value_node {
                         if is_scalar_value_kind(file_type, value_node.kind()) {
                             return format!("{}: {}", key, get_node_text_preview(value_node, source, 80));
                         }
@@ -387,6 +448,14 @@ fn format_outline_label(
 
                     return format!("{}:", key);
                 }
+            }
+
+            if kind.contains("mapping") {
+                return "{}".to_string();
+            }
+
+            if kind.contains("sequence") {
+                return "[]".to_string();
             }
 
             if has_named_children {
@@ -424,13 +493,12 @@ fn format_outline_label(
         }
         OutlineFileType::Toml => {
             if kind == "table" || kind == "table_array_element" || kind == "inline_table" {
-                let preview = get_node_text_preview(node, source, 80);
-                return preview
-                    .lines()
-                    .next()
-                    .map(str::trim)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| "table".to_string());
+                let preview = get_node_first_line_preview(node, source, 80);
+                return if preview.trim().is_empty() {
+                    "table".to_string()
+                } else {
+                    preview
+                };
             }
 
             if kind == "array" {
@@ -489,8 +557,22 @@ fn build_tree_sitter_outline_node(
     let mut children = Vec::new();
     let kind = node.kind();
 
+    if matches!(file_type, OutlineFileType::Yaml) && is_yaml_wrapper_kind(kind) {
+        if let Some(inner_node) = first_named_child(node) {
+            return build_tree_sitter_outline_node(inner_node, source, file_type);
+        }
+    }
+
     if is_pair_kind(kind) {
-        if let Some(value_node) = second_named_child(node) {
+        let value_node = if matches!(file_type, OutlineFileType::Yaml) {
+            node.child_by_field_name("value")
+                .or_else(|| second_named_child(node))
+                .map(unwrap_yaml_wrapper_node)
+        } else {
+            second_named_child(node)
+        };
+
+        if let Some(value_node) = value_node {
             if !is_scalar_value_kind(file_type, value_node.kind()) {
                 children.push(build_tree_sitter_outline_node(value_node, source, file_type));
             }
@@ -790,10 +872,17 @@ pub fn get_outline_impl(
 #[cfg(test)]
 mod outline_tests {
     use super::{
-        build_symbol_outline_node, parse_ini_outline, parse_outline_file_type, parse_xml_outline,
-        OutlineFileType,
+        build_symbol_outline_node, build_tree_sitter_outline_node, parse_ini_outline,
+        parse_outline_file_type, parse_xml_outline, OutlineFileType,
         Parser,
     };
+
+    fn collect_outline_labels(node: &super::OutlineNode, labels: &mut Vec<String>) {
+        labels.push(node.label.clone());
+        for child in &node.children {
+            collect_outline_labels(child, labels);
+        }
+    }
 
     #[test]
     fn parse_outline_file_type_should_support_config_and_code_languages() {
@@ -917,6 +1006,244 @@ word_wrap = true
         assert!(!root.children.iter().any(|node| {
             node.node_type == "STag" || node.node_type == "ETag" || node.node_type == "content"
         }));
+    }
+
+    #[test]
+    fn json_outline_should_extract_pairs_and_nested_containers() {
+        let source = r#"{"name":"rutar","meta":{"version":1},"items":[1,2]}"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_json::LANGUAGE.into())
+            .expect("set json parser");
+        let tree = parser.parse(source, None).expect("parse json");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root
+        };
+
+        let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Json);
+        assert_eq!(outline.label, "{}");
+        assert!(outline.children.iter().any(|node| node.label == "name: \"rutar\""));
+
+        let meta_pair = outline
+            .children
+            .iter()
+            .find(|node| node.label == "meta:")
+            .expect("meta pair should exist");
+        assert!(meta_pair
+            .children
+            .iter()
+            .any(|node| node.node_type == "object" && node.label == "{}"));
+
+        let items_pair = outline
+            .children
+            .iter()
+            .find(|node| node.label == "items:")
+            .expect("items pair should exist");
+        assert!(items_pair
+            .children
+            .iter()
+            .any(|node| node.node_type == "array" && node.label == "[]"));
+    }
+
+    #[test]
+    fn yaml_outline_should_extract_mapping_and_sequence_labels() {
+        let source = r#"
+name: rutar
+editor:
+  tab_width: 4
+items:
+  - rust
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_yaml::LANGUAGE.into())
+            .expect("set yaml parser");
+        let tree = parser.parse(source, None).expect("parse yaml");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root
+        };
+
+        let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Yaml);
+        let mut labels = Vec::new();
+        collect_outline_labels(&outline, &mut labels);
+
+        assert!(labels.iter().any(|label| label == "name: rutar"));
+        assert!(labels.iter().any(|label| label == "editor:"));
+        assert!(labels.iter().any(|label| label == "tab_width: 4"));
+        assert!(labels.iter().any(|label| label == "items:"));
+    }
+
+    #[test]
+    fn toml_outline_should_extract_tables_and_pairs() {
+        let source = r#"
+title = "Rutar"
+
+[editor]
+tab_width = 4
+
+[servers.alpha]
+ip = "127.0.0.1"
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_toml_ng::LANGUAGE.into())
+            .expect("set toml parser");
+        let tree = parser.parse(source, None).expect("parse toml");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let start_node = if named_children.len() == 1 {
+            named_children[0]
+        } else {
+            root
+        };
+
+        let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Toml);
+        let mut labels = Vec::new();
+        collect_outline_labels(&outline, &mut labels);
+
+        assert!(labels.iter().any(|label| label == "title = \"Rutar\""));
+        assert!(labels.iter().any(|label| label == "[editor]"));
+        assert!(labels.iter().any(|label| label == "tab_width = 4"));
+        assert!(labels.iter().any(|label| label == "[servers.alpha]"));
+        assert!(labels.iter().any(|label| label == "ip = \"127.0.0.1\""));
+    }
+
+    #[test]
+    fn python_outline_should_detect_class_and_functions() {
+        let source = r#"
+class Service:
+    def run(self):
+        pass
+
+def helper():
+    pass
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .expect("set python parser");
+        let tree = parser.parse(source, None).expect("parse python");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let symbols: Vec<_> = root
+            .children(&mut cursor)
+            .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Python))
+            .collect();
+
+        let class_node = symbols
+            .iter()
+            .find(|node| node.node_type == "class" && node.label == "class Service")
+            .expect("class Service should exist");
+        assert!(class_node
+            .children
+            .iter()
+            .any(|node| node.node_type == "function" && node.label == "def run()"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "function" && node.label == "def helper()"));
+    }
+
+    #[test]
+    fn javascript_outline_should_detect_class_method_and_functions() {
+        let source = r#"
+class Service {
+  run() {}
+}
+
+function helper() {}
+const arrow = () => {};
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_javascript::LANGUAGE.into())
+            .expect("set javascript parser");
+        let tree = parser.parse(source, None).expect("parse javascript");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let symbols: Vec<_> = root
+            .children(&mut cursor)
+            .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Javascript))
+            .collect();
+
+        let class_node = symbols
+            .iter()
+            .find(|node| node.node_type == "class" && node.label == "class Service")
+            .expect("class Service should exist");
+        assert!(class_node
+            .children
+            .iter()
+            .any(|node| node.node_type == "method" && node.label == "run()"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "function" && node.label == "function helper()"));
+    }
+
+    #[test]
+    fn c_outline_should_detect_typedef_struct_members_and_function() {
+        let source = r#"
+typedef int MyInt;
+
+struct Service {
+  int value;
+  void run();
+};
+
+int helper() { return 0; }
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_c::LANGUAGE.into())
+            .expect("set c parser");
+        let tree = parser.parse(source, None).expect("parse c");
+
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let symbols: Vec<_> = root
+            .children(&mut cursor)
+            .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::C))
+            .collect();
+
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "typedef" && node.label == "typedef MyInt"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "function" && node.label == "fn helper()"));
+
+        let struct_node = symbols
+            .iter()
+            .find(|node| node.node_type == "struct" && node.label == "struct Service")
+            .expect("struct Service should exist");
+        assert!(struct_node
+            .children
+            .iter()
+            .any(|node| node.node_type == "field" && node.label == "field value"));
+        assert!(struct_node
+            .children
+            .iter()
+            .any(|node| node.node_type == "method_decl" && node.label == "method run()"));
     }
 
     #[test]
