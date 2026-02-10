@@ -76,3 +76,11 @@ pub fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
 pub fn open_in_file_manager(path: String) -> Result<(), String> {
     file_io::open_in_file_manager_impl(path)
 }
+
+#[tauri::command]
+pub async fn get_word_count_info(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<WordCountInfo, String> {
+    file_io::get_word_count_info_impl(state, id).await
+}

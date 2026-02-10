@@ -14,6 +14,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
 - **Recent Quick Access**: The toolbar `Open File` and `Open Folder` actions include dropdown arrows for opening recently used files and folders.
 - **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
+- **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
 
 ## Configuration
 
@@ -75,6 +76,7 @@ npm run tauri build
 - `src-tauri/src/commands/constants.rs`: Shared backend constants for editor defaults and runtime limits.
 - `src-tauri/src/commands/search_commands.rs`: Tauri command wrappers for search/filter operations.
 - `src-tauri/src/commands/file_io_commands.rs`: Tauri command wrappers for document/file I/O operations.
+- `src-tauri/src/commands/file_io.rs`: Includes async word-count computation (`get_word_count_info`) with chunk iteration over `Rope` to keep large-file interactions responsive.
 - `src-tauri/src/commands/editing_commands.rs`: Tauri command wrappers for edit/undo/history/cleanup/format operations.
 - `src-tauri/src/commands/search.rs`: Search / filter matching and step-navigation submodule.
 - `src-tauri/src/commands/outline.rs`: Outline parsing and symbol extraction submodule.

@@ -40,6 +40,16 @@ pub struct EditHistoryState {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WordCountInfo {
+    pub(super) word_count: usize,
+    pub(super) character_count: usize,
+    pub(super) character_count_no_spaces: usize,
+    pub(super) line_count: usize,
+    pub(super) paragraph_count: usize,
+}
+
+#[derive(serde::Serialize)]
 pub struct DirEntry {
     pub(super) name: String,
     pub(super) path: String,

@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -84,6 +84,14 @@ interface EditHistoryState {
     isDirty: boolean;
 }
 
+interface WordCountInfo {
+    wordCount: number;
+    characterCount: number;
+    characterCountNoSpaces: number;
+    lineCount: number;
+    paragraphCount: number;
+}
+
 const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canUndo: false,
     canRedo: false,
@@ -147,6 +155,7 @@ export function Toolbar() {
     const clearRecentFilesText = tr('toolbar.recent.clearFiles');
     const clearRecentFoldersText = tr('toolbar.recent.clearFolders');
     const removeRecentItemText = tr('bookmark.remove');
+    const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
     const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
     const canSaveAnyTab = tabs.some((tab) => !!tab.isDirty);
     const canCutOrCopy = canEdit && canClipboardSelectionAction;
@@ -163,6 +172,18 @@ export function Toolbar() {
     const cutCopyDisabledReason = !activeTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
     const undoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
     const redoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
+
+    const formatWordCountResult = useCallback((result: WordCountInfo) => {
+        const lines = [
+            `${tr('toolbar.wordCount.words')}：${result.wordCount}`,
+            `${tr('toolbar.wordCount.characters')}：${result.characterCount}`,
+            `${tr('toolbar.wordCount.charactersNoSpaces')}：${result.characterCountNoSpaces}`,
+            `${tr('toolbar.wordCount.lines')}：${result.lineCount}`,
+            `${tr('toolbar.wordCount.paragraphs')}：${result.paragraphCount}`,
+        ];
+
+        return lines.join('\n');
+    }, [tr]);
 
     const refreshSelectionState = useCallback(() => {
         if (!activeTabId || activeTabLargeFileMode) {
@@ -601,6 +622,26 @@ export function Toolbar() {
         }
     }, [activeTab, outlineOpen, setOutlineData, toggleOutline, tr]);
 
+    const handleWordCount = useCallback(async () => {
+        if (!activeTab) {
+            return;
+        }
+
+        try {
+            const result = await invoke<WordCountInfo>('get_word_count_info', { id: activeTab.id });
+            await message(formatWordCountResult(result), {
+                title: tr('toolbar.wordCount.title'),
+                kind: 'info',
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            await message(`${wordCountFailedPrefix} ${errorMessage}`, {
+                title: tr('toolbar.wordCount.title'),
+                kind: 'warning',
+            });
+        }
+    }, [activeTab, formatWordCountResult, tr, wordCountFailedPrefix]);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape' && recentMenu) {
@@ -881,6 +922,13 @@ export function Toolbar() {
                 onClick={() => void handleToggleOutline()}
                 active={outlineOpen}
                 disabled={!canOutline}
+            />
+            <ToolbarBtn
+                icon={Text}
+                title={tr('toolbar.wordCount')}
+                onClick={() => void handleWordCount()}
+                disabled={!activeTab}
+                disabledReason={noActiveDocumentReason}
             />
         </div>
     )

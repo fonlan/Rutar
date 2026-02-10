@@ -80,6 +80,93 @@ fn resolve_new_file_line_ending(preferred: Option<&str>) -> LineEnding {
     default_line_ending()
 }
 
+fn is_cjk_script_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{20000}'..='\u{2A6DF}'
+            | '\u{2A700}'..='\u{2B73F}'
+            | '\u{2B740}'..='\u{2B81F}'
+            | '\u{2B820}'..='\u{2CEAF}'
+            | '\u{2F800}'..='\u{2FA1F}'
+            | '\u{3040}'..='\u{309F}'
+            | '\u{30A0}'..='\u{30FF}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{1100}'..='\u{11FF}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{AC00}'..='\u{D7AF}'
+    )
+}
+
+fn is_latin_like_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_' || ch == '\'' || ch == '-'
+}
+
+fn count_word_stats(rope: &Rope) -> WordCountInfo {
+    let mut word_count = 0usize;
+    let mut character_count = 0usize;
+    let mut character_count_no_spaces = 0usize;
+    let mut paragraph_count = 0usize;
+
+    let mut in_latin_word = false;
+    let mut in_paragraph = false;
+
+    for chunk in rope.chunks() {
+        for ch in chunk.chars() {
+            character_count = character_count.saturating_add(1);
+
+            let is_whitespace = ch.is_whitespace();
+            if !is_whitespace {
+                character_count_no_spaces = character_count_no_spaces.saturating_add(1);
+            }
+
+            if ch == '\n' || ch == '\r' {
+                if in_paragraph {
+                    paragraph_count = paragraph_count.saturating_add(1);
+                    in_paragraph = false;
+                }
+            } else if !is_whitespace {
+                in_paragraph = true;
+            }
+
+            if is_whitespace {
+                in_latin_word = false;
+                continue;
+            }
+
+            if is_cjk_script_char(ch) {
+                word_count = word_count.saturating_add(1);
+                in_latin_word = false;
+                continue;
+            }
+
+            if is_latin_like_word_char(ch) {
+                if !in_latin_word {
+                    word_count = word_count.saturating_add(1);
+                    in_latin_word = true;
+                }
+                continue;
+            }
+
+            in_latin_word = false;
+        }
+    }
+
+    if in_paragraph {
+        paragraph_count = paragraph_count.saturating_add(1);
+    }
+
+    WordCountInfo {
+        word_count,
+        character_count,
+        character_count_no_spaces,
+        line_count: rope.len_lines(),
+        paragraph_count,
+    }
+}
+
 pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
     let file = File::open(&path_buf).map_err(|e| e.to_string())?;
@@ -418,4 +505,47 @@ pub(super) fn open_in_file_manager_impl(path: String) -> Result<(), String> {
 
     #[allow(unreachable_code)]
     Err("Opening file manager is not supported on this platform".to_string())
+}
+
+pub(super) async fn get_word_count_info_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<WordCountInfo, String> {
+    let rope = state
+        .documents
+        .get(&id)
+        .map(|doc| doc.rope.clone())
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || count_word_stats(&rope))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::count_word_stats;
+    use ropey::Rope;
+
+    #[test]
+    fn word_count_should_treat_cjk_characters_individually() {
+        let rope = Rope::from_str("你好 world");
+        let result = count_word_stats(&rope);
+
+        assert_eq!(result.word_count, 3);
+        assert_eq!(result.character_count, 8);
+        assert_eq!(result.character_count_no_spaces, 7);
+        assert_eq!(result.line_count, 1);
+        assert_eq!(result.paragraph_count, 1);
+    }
+
+    #[test]
+    fn word_count_should_skip_blank_paragraphs() {
+        let rope = Rope::from_str("first line\n\nsecond line\n");
+        let result = count_word_stats(&rope);
+
+        assert_eq!(result.word_count, 4);
+        assert_eq!(result.line_count, 4);
+        assert_eq!(result.paragraph_count, 2);
+    }
 }

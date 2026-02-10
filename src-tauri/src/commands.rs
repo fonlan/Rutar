@@ -34,6 +34,7 @@ pub use self::types::{
     EditHistoryState,
     FileInfo,
     SyntaxToken,
+    WordCountInfo,
     WindowsFileAssociationStatus,
 };
 use self::constants::*;

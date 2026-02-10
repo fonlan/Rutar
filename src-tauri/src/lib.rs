@@ -85,6 +85,7 @@ pub fn run() {
             commands::file_io_commands::new_file,
             commands::file_io_commands::read_dir,
             commands::file_io_commands::open_in_file_manager,
+            commands::file_io_commands::get_word_count_info,
             commands::editing_commands::undo,
             commands::editing_commands::redo,
             commands::editing_commands::get_edit_history_state,

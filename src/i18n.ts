@@ -42,6 +42,14 @@ export type I18nKey =
   | 'toolbar.recent.noFolders'
   | 'toolbar.recent.clearFiles'
   | 'toolbar.recent.clearFolders'
+  | 'toolbar.wordCount'
+  | 'toolbar.wordCount.title'
+  | 'toolbar.wordCount.words'
+  | 'toolbar.wordCount.characters'
+  | 'toolbar.wordCount.charactersNoSpaces'
+  | 'toolbar.wordCount.lines'
+  | 'toolbar.wordCount.paragraphs'
+  | 'toolbar.wordCount.failed'
   | 'toolbar.disabled.noActiveDocument'
   | 'toolbar.disabled.noUnsavedChanges'
   | 'toolbar.disabled.noUnsavedDocuments'
@@ -205,6 +213,14 @@ const zhCN: Messages = {
   'toolbar.recent.noFolders': '暂无最近文件夹',
   'toolbar.recent.clearFiles': '清空最近文件',
   'toolbar.recent.clearFolders': '清空最近文件夹',
+  'toolbar.wordCount': '字数统计',
+  'toolbar.wordCount.title': '字数统计',
+  'toolbar.wordCount.words': '字数',
+  'toolbar.wordCount.characters': '字符数（含空格）',
+  'toolbar.wordCount.charactersNoSpaces': '字符数（不含空格）',
+  'toolbar.wordCount.lines': '行数',
+  'toolbar.wordCount.paragraphs': '段落数',
+  'toolbar.wordCount.failed': '字数统计失败：',
   'toolbar.disabled.noActiveDocument': '当前没有打开的文档',
   'toolbar.disabled.noUnsavedChanges': '当前文档没有未保存更改',
   'toolbar.disabled.noUnsavedDocuments': '没有可保存的更改',
@@ -367,6 +383,14 @@ const enUS: Messages = {
   'toolbar.recent.noFolders': 'No recent folders',
   'toolbar.recent.clearFiles': 'Clear recent files',
   'toolbar.recent.clearFolders': 'Clear recent folders',
+  'toolbar.wordCount': 'Word Count',
+  'toolbar.wordCount.title': 'Word Count',
+  'toolbar.wordCount.words': 'Words',
+  'toolbar.wordCount.characters': 'Characters (with spaces)',
+  'toolbar.wordCount.charactersNoSpaces': 'Characters (no spaces)',
+  'toolbar.wordCount.lines': 'Lines',
+  'toolbar.wordCount.paragraphs': 'Paragraphs',
+  'toolbar.wordCount.failed': 'Word count failed:',
   'toolbar.disabled.noActiveDocument': 'No active document',
   'toolbar.disabled.noUnsavedChanges': 'No unsaved changes',
   'toolbar.disabled.noUnsavedDocuments': 'No unsaved documents',
