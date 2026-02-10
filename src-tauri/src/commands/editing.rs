@@ -334,6 +334,7 @@ pub(super) fn format_document_impl(
     state: State<'_, AppState>,
     id: String,
     mode: String,
+    file_syntax: Option<String>,
     file_path: Option<String>,
     file_name: Option<String>,
     tab_width: Option<u8>,
@@ -343,6 +344,7 @@ pub(super) fn format_document_impl(
         let formatted = formatting::format_document_text(
             &source,
             mode.as_str(),
+            file_syntax.as_deref(),
             file_path.as_deref(),
             file_name.as_deref(),
             &doc.path,

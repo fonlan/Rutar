@@ -14,6 +14,17 @@ enum StructuredFormat {
     Toml,
 }
 
+fn parse_structured_format_from_syntax_key(syntax_key: &str) -> Option<StructuredFormat> {
+    match syntax_key.trim().to_lowercase().as_str() {
+        "json" => Some(StructuredFormat::Json),
+        "yaml" => Some(StructuredFormat::Yaml),
+        "xml" => Some(StructuredFormat::Xml),
+        "html" => Some(StructuredFormat::Html),
+        "toml" => Some(StructuredFormat::Toml),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 enum FormatMode {
     Beautify,
@@ -133,10 +144,17 @@ fn parse_structured_format_from_name(name: &str) -> Option<StructuredFormat> {
 }
 
 fn resolve_structured_format(
+    file_syntax: Option<&str>,
     file_path: Option<&str>,
     file_name: Option<&str>,
     document_path: &Option<PathBuf>,
 ) -> Option<StructuredFormat> {
+    if let Some(syntax_key) = file_syntax {
+        if let Some(detected) = parse_structured_format_from_syntax_key(syntax_key) {
+            return Some(detected);
+        }
+    }
+
     if let Some(path) = file_path {
         if let Some(detected) = parse_structured_format_from_name(path) {
             return Some(detected);
@@ -471,6 +489,7 @@ fn format_structured_text(
 pub(super) fn format_document_text(
     source: &str,
     mode: &str,
+    file_syntax: Option<&str>,
     file_path: Option<&str>,
     file_name: Option<&str>,
     document_path: &Option<PathBuf>,
@@ -478,7 +497,7 @@ pub(super) fn format_document_text(
 ) -> Result<String, String> {
     let format_mode =
         parse_format_mode(mode).ok_or_else(|| "Unsupported format mode. Use beautify or minify".to_string())?;
-    let file_format = resolve_structured_format(file_path, file_name, document_path)
+    let file_format = resolve_structured_format(file_syntax, file_path, file_name, document_path)
         .ok_or_else(|| "Only JSON, YAML, XML, HTML, and TOML files are supported".to_string())?;
     let preserve_comments = should_preserve_comments(source, file_format);
 
@@ -492,7 +511,7 @@ mod tests {
     #[test]
     fn format_yaml_should_preserve_comments_and_succeed() {
         let source = "name: app\n# keep this comment\nenabled: true\n";
-        let result = format_document_text(source, "beautify", None, Some("config.yaml"), &None, 2);
+        let result = format_document_text(source, "beautify", None, None, Some("config.yaml"), &None, 2);
 
         let formatted = result.expect("expected formatting to succeed");
         assert!(formatted.contains("# keep this comment"));
@@ -501,7 +520,7 @@ mod tests {
     #[test]
     fn format_toml_should_preserve_comments_and_succeed() {
         let source = "title = \"Rutar\"\n# keep this comment\nversion = \"1.0.0\"\n";
-        let result = format_document_text(source, "beautify", None, Some("Cargo.toml"), &None, 2);
+        let result = format_document_text(source, "beautify", None, None, Some("Cargo.toml"), &None, 2);
 
         let formatted = result.expect("expected formatting to succeed");
         assert!(formatted.contains("# keep this comment"));
@@ -510,7 +529,7 @@ mod tests {
     #[test]
     fn format_yaml_should_keep_working_without_comments() {
         let source = "name: app\nfeatures:\n  - editor\n";
-        let result = format_document_text(source, "beautify", None, Some("config.yaml"), &None, 2);
+        let result = format_document_text(source, "beautify", None, None, Some("config.yaml"), &None, 2);
 
         assert!(result.is_ok());
     }
@@ -518,7 +537,7 @@ mod tests {
     #[test]
     fn format_html_should_beautify_even_when_not_well_formed_xml() {
         let source = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Rutar</title></head><body><h1>Hello</h1></body></html>";
-        let result = format_document_text(source, "beautify", None, Some("index.html"), &None, 2);
+        let result = format_document_text(source, "beautify", None, None, Some("index.html"), &None, 2);
 
         let formatted = result.expect("expected HTML formatting to succeed");
         assert!(formatted.contains("\n"));
@@ -528,9 +547,19 @@ mod tests {
     #[test]
     fn format_html_should_minify_document() {
         let source = "<html>\n  <body>\n    <h1>Hello</h1>\n  </body>\n</html>\n";
-        let result = format_document_text(source, "minify", None, Some("index.htm"), &None, 2);
+        let result = format_document_text(source, "minify", None, None, Some("index.htm"), &None, 2);
 
         let formatted = result.expect("expected HTML minify to succeed");
         assert_eq!(formatted, "<html><body><h1>Hello</h1></body></html>");
+    }
+
+    #[test]
+    fn format_should_resolve_from_syntax_key_when_name_missing() {
+        let source = "{\"b\":2,\"a\":1}";
+        let result = format_document_text(source, "beautify", Some("json"), None, None, &None, 2);
+
+        let formatted = result.expect("expected JSON formatting via syntax key to succeed");
+        assert!(formatted.contains("\n"));
+        assert!(formatted.contains("\"a\": 1"));
     }
 }

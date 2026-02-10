@@ -1,30 +1,23 @@
-import { FileTab } from '@/store/useStore';
+import { detectSyntaxKeyFromTab } from '@/lib/syntax';
+import { FileTab, SyntaxKey } from '@/store/useStore';
 
-const STRUCTURED_EXTENSIONS = new Set(['json', 'jsonc', 'yaml', 'yml', 'xml', 'svg', 'html', 'htm', 'xhtml', 'toml']);
+export type StructuredFormatSyntaxKey = Extract<SyntaxKey, 'json' | 'yaml' | 'xml' | 'html' | 'toml'>;
 
-function extFromPath(path?: string) {
-  if (!path) {
+const STRUCTURED_SYNTAX_KEYS = new Set<StructuredFormatSyntaxKey>(['json', 'yaml', 'xml', 'html', 'toml']);
+
+export function detectStructuredFormatSyntaxKey(tab?: FileTab | null): StructuredFormatSyntaxKey | null {
+  if (!tab) {
     return null;
   }
 
-  const fileName = path.split(/[\\/]/).pop() || path;
-  const dotIndex = fileName.lastIndexOf('.');
-  if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+  const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
+  if (!STRUCTURED_SYNTAX_KEYS.has(activeSyntaxKey as StructuredFormatSyntaxKey)) {
     return null;
   }
 
-  return fileName.slice(dotIndex + 1).toLowerCase();
+  return activeSyntaxKey as StructuredFormatSyntaxKey;
 }
 
 export function isStructuredFormatSupported(tab?: FileTab | null) {
-  if (!tab) {
-    return false;
-  }
-
-  const ext = extFromPath(tab.path || tab.name);
-  if (!ext) {
-    return false;
-  }
-
-  return STRUCTURED_EXTENSIONS.has(ext);
+  return detectStructuredFormatSyntaxKey(tab) !== null;
 }

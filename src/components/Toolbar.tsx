@@ -10,7 +10,7 @@ import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } fro
 import { useStore, FileTab } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
-import { isStructuredFormatSupported } from '@/lib/structuredFormat';
+import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
 
@@ -91,6 +91,7 @@ export function Toolbar() {
     const activeTab = tabs.find(t => t.id === activeTabId);
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
+    const canOutline = !!activeTab && !!detectOutlineType(activeTab);
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
     const openFileMenuRef = useRef<HTMLDivElement>(null);
     const openFolderMenuRef = useRef<HTMLDivElement>(null);
@@ -128,10 +129,20 @@ export function Toolbar() {
             return;
         }
 
+        const fileSyntax = detectStructuredFormatSyntaxKey(activeTab);
+        if (!fileSyntax) {
+            await message(formatUnsupportedMessage, {
+                title: tr('titleBar.settings'),
+                kind: 'warning',
+            });
+            return;
+        }
+
         try {
             const newLineCount = await invoke<number>('format_document', {
                 id: activeTab.id,
                 mode,
+                fileSyntax,
                 filePath: activeTab.path,
                 fileName: activeTab.name,
                 tabWidth,
@@ -679,6 +690,7 @@ export function Toolbar() {
                 title={tr('toolbar.outline')}
                 onClick={() => void handleToggleOutline()}
                 active={outlineOpen}
+                disabled={!canOutline}
             />
         </div>
     )

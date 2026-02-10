@@ -46,9 +46,10 @@ pub fn format_document(
     state: State<'_, AppState>,
     id: String,
     mode: String,
+    file_syntax: Option<String>,
     file_path: Option<String>,
     file_name: Option<String>,
     tab_width: Option<u8>,
 ) -> Result<usize, String> {
-    editing::format_document_impl(state, id, mode, file_path, file_name, tab_width)
+    editing::format_document_impl(state, id, mode, file_syntax, file_path, file_name, tab_width)
 }

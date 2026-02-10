@@ -69,10 +69,7 @@ export function detectOutlineType(tab: FileTab | null | undefined): OutlineType 
 
   const syntaxOverride = tab.syntaxOverride?.trim().toLowerCase();
   if (syntaxOverride) {
-    const mappedBySyntax = OUTLINE_TYPE_BY_SYNTAX_KEY[syntaxOverride];
-    if (mappedBySyntax) {
-      return mappedBySyntax;
-    }
+    return OUTLINE_TYPE_BY_SYNTAX_KEY[syntaxOverride] ?? null;
   }
 
   const target = (tab.path || tab.name || '').trim().toLowerCase();
