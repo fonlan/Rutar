@@ -1163,6 +1163,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
+  const lineNumberListRef = useRef<any>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const requestTimeout = useRef<any>(null);
   const editTimeout = useRef<any>(null);
@@ -1210,7 +1211,10 @@ export function Editor({ tab }: { tab: FileTab }) {
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
-  const contentPaddingLeft = showLineNumbers ? '4.5rem' : '1rem';
+  const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
+  const contentViewportLeftPx = lineNumberColumnWidthPx;
+  const contentViewportWidth = Math.max(0, width - contentViewportLeftPx);
+  const contentTextPadding = '0.375rem';
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
@@ -1372,6 +1376,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       rowHeightsRef.current.set(index, measuredHeight);
       listRef.current?.resetAfterIndex?.(index);
+      lineNumberListRef.current?.resetAfterIndex?.(index);
     },
     [itemSize, wordWrap]
   );
@@ -1379,6 +1384,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   useEffect(() => {
     rowHeightsRef.current.clear();
     listRef.current?.resetAfterIndex?.(0, true);
+    lineNumberListRef.current?.resetAfterIndex?.(0, true);
   }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, tab.lineCount, width, wordWrap, showLineNumbers]);
 
   const fetchPlainLines = useCallback(
@@ -1468,11 +1474,22 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (listEl && Math.abs(listEl.scrollTop - alignedTop) > 0.001) {
         listEl.scrollTop = alignedTop;
       }
+
+      const lineNumberOuter = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+      if (lineNumberOuter && Math.abs(lineNumberOuter.scrollTop - alignedTop) > 0.001) {
+        lineNumberOuter.scrollTop = alignedTop;
+      }
     });
   }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
 
   const handleScroll = useCallback(() => {
     const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+
+    const lineNumberOuter = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+    const currentScrollTop = scrollElement?.scrollTop ?? 0;
+    if (lineNumberOuter && Math.abs(lineNumberOuter.scrollTop - currentScrollTop) > 0.001) {
+      lineNumberOuter.scrollTop = currentScrollTop;
+    }
 
     if (!isLargeReadOnlyMode && scrollElement && listRef.current) {
       const listEl = listRef.current._outerRef;
@@ -1500,6 +1517,10 @@ export function Editor({ tab }: { tab: FileTab }) {
           listEl.scrollTop = targetTop;
         }
 
+        if (lineNumberOuter && Math.abs(lineNumberOuter.scrollTop - targetTop) > 0.001) {
+          lineNumberOuter.scrollTop = targetTop;
+        }
+
         if (Math.abs(listEl.scrollLeft - targetLeft) > 0.001) {
           listEl.scrollLeft = targetLeft;
         }
@@ -1511,6 +1532,12 @@ export function Editor({ tab }: { tab: FileTab }) {
         if (Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
           scrollElement.scrollLeft = targetLeft;
         }
+      }
+    }
+
+    if (isLargeReadOnlyMode && scrollElement) {
+      if (lineNumberOuter && Math.abs(lineNumberOuter.scrollTop - scrollElement.scrollTop) > 0.001) {
+        lineNumberOuter.scrollTop = scrollElement.scrollTop;
       }
     }
   }, [isHugeEditableMode, isLargeReadOnlyMode]);
@@ -1567,6 +1594,22 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     };
   }, [handleScroll, isLargeReadOnlyMode, tab.lineCount]);
+
+  useEffect(() => {
+    if (!showLineNumbers) {
+      return;
+    }
+
+    const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+    const lineNumberOuter = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+    if (!scrollElement || !lineNumberOuter) {
+      return;
+    }
+
+    if (Math.abs(lineNumberOuter.scrollTop - scrollElement.scrollTop) > 0.001) {
+      lineNumberOuter.scrollTop = scrollElement.scrollTop;
+    }
+  }, [showLineNumbers, isHugeEditableMode, tab.id, tab.lineCount, editableSegment.startLine, editableSegment.endLine]);
 
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -4642,6 +4685,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
       const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
+      const lineNumberElement = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
 
       if (isHugeEditableMode) {
         if (scrollContainerRef.current) {
@@ -4664,6 +4708,10 @@ export function Editor({ tab }: { tab: FileTab }) {
           listElement.scrollTop = targetScrollTop;
         }
 
+        if (lineNumberElement) {
+          lineNumberElement.scrollTop = targetScrollTop;
+        }
+
         void syncVisibleTokens(Math.max(1, tab.lineCount));
         return;
       }
@@ -4671,6 +4719,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (isLargeReadOnlyMode) {
         if (listElement) {
           listElement.scrollTop = targetScrollTop;
+        }
+
+        if (lineNumberElement) {
+          lineNumberElement.scrollTop = targetScrollTop;
         }
         void syncVisibleTokens(Math.max(1, tab.lineCount));
         return;
@@ -4687,6 +4739,10 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       if (listElement) {
         listElement.scrollTop = targetScrollTop;
+      }
+
+      if (lineNumberElement) {
+        lineNumberElement.scrollTop = targetScrollTop;
       }
 
       void syncVisibleTokens(Math.max(1, tab.lineCount));
@@ -4756,8 +4812,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       {!isLargeReadOnlyMode && isHugeEditableMode && (
         <div
           ref={scrollContainerRef}
-          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-scroll-stable"
+          className="absolute top-0 bottom-0 right-0 z-0 outline-none overflow-auto editor-scroll-stable"
           style={{
+            left: `${contentViewportLeftPx}px`,
+            width: `${contentViewportWidth}px`,
             overflowX: horizontalOverflowMode,
             overflowY: 'auto',
           }}
@@ -4781,7 +4839,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                paddingLeft: contentPaddingLeft,
+                paddingLeft: contentTextPadding,
                 resize: 'none',
                 overflowX: horizontalOverflowMode,
                 overflowY: 'hidden',
@@ -4805,15 +4863,17 @@ export function Editor({ tab }: { tab: FileTab }) {
       {!isLargeReadOnlyMode && !isHugeEditableMode && (
         <textarea
           ref={contentRef}
-          className="absolute inset-0 w-full h-full z-0 outline-none overflow-auto editor-input-layer editor-scroll-stable"
+          className="absolute top-0 bottom-0 right-0 z-0 outline-none overflow-auto editor-input-layer editor-scroll-stable"
           style={{
+            left: `${contentViewportLeftPx}px`,
+            width: `${contentViewportWidth}px`,
             overflowX: horizontalOverflowMode,
             overflowY: 'auto',
             fontFamily: settings.fontFamily,
             fontSize: `${renderedFontSizePx}px`,
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-            paddingLeft: contentPaddingLeft,
+            paddingLeft: contentTextPadding,
             resize: 'none',
           }}
           wrap={wordWrap ? 'soft' : 'off'}
@@ -4834,14 +4894,18 @@ export function Editor({ tab }: { tab: FileTab }) {
       {width > 0 && height > 0 && (
         <div
           ref={backdropRef}
-          className={`absolute inset-0 w-full h-full z-10 overflow-hidden ${
+          className={`absolute top-0 bottom-0 right-0 z-10 overflow-hidden ${
             isLargeReadOnlyMode ? '' : 'pointer-events-none'
           }`}
+          style={{
+            left: `${contentViewportLeftPx}px`,
+            width: `${contentViewportWidth}px`,
+          }}
         >
           <List
             ref={listRef}
             height={height}
-            width={width}
+            width={contentViewportWidth}
             itemCount={tab.lineCount}
             itemSize={getListItemSize}
             estimatedItemSize={itemSize}
@@ -4879,11 +4943,13 @@ export function Editor({ tab }: { tab: FileTab }) {
                     ...style,
                     width: wordWrap ? '100%' : 'max-content',
                     minWidth: '100%',
+                    paddingLeft: contentTextPadding,
+                    paddingRight: contentTextPadding,
                     fontFamily: settings.fontFamily,
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
                   }}
-                  className={`px-4 hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
+                  className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
                     outlineFlashLine === index + 1
                       ? 'bg-primary/15 dark:bg-primary/20'
                       : highlightCurrentLine && activeLineNumber === index + 1
@@ -4891,23 +4957,6 @@ export function Editor({ tab }: { tab: FileTab }) {
                       : ''
                   }`}
                 >
-                  {showLineNumbers && (
-                    <span
-                      className={`shrink-0 line-number w-12 text-right mr-2 border-r border-border/50 pr-2 transition-colors ${
-                        bookmarks.includes(index + 1)
-                          ? 'text-amber-500/90 font-semibold group-hover:text-amber-500'
-                          : 'text-muted-foreground/40 group-hover:text-muted-foreground'
-                      } pointer-events-auto cursor-pointer`}
-                      style={{ fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px` }}
-                      onDoubleClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        handleLineNumberDoubleClick(index + 1);
-                      }}
-                    >
-                      {index + 1}
-                    </span>
-                  )}
                   <div
                     className={wordWrap ? 'min-w-0 flex-1' : 'shrink-0'}
                     style={{
@@ -4923,6 +4972,50 @@ export function Editor({ tab }: { tab: FileTab }) {
                 </div>
               );
             }}
+          </List>
+        </div>
+      )}
+
+      {width > 0 && height > 0 && showLineNumbers && (
+        <div
+          className="absolute left-0 top-0 bottom-0 z-30 border-r border-border/50 bg-background"
+          style={{ width: `${lineNumberColumnWidthPx}px` }}
+        >
+          <List
+            ref={lineNumberListRef}
+            height={height}
+            width={lineNumberColumnWidthPx}
+            itemCount={tab.lineCount}
+            itemSize={getListItemSize}
+            estimatedItemSize={itemSize}
+            overscanCount={20}
+            style={{
+              overflowX: 'hidden',
+              overflowY: 'hidden',
+            }}
+          >
+            {({ index, style }) => (
+              <div
+                style={{
+                  ...style,
+                  fontFamily: settings.fontFamily,
+                  fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px`,
+                  lineHeight: `${lineHeightPx}px`,
+                }}
+                className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
+                  bookmarks.includes(index + 1)
+                    ? 'text-amber-500/90 font-semibold'
+                    : 'text-muted-foreground/45'
+                } pointer-events-auto cursor-pointer select-none`}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleLineNumberDoubleClick(index + 1);
+                }}
+              >
+                {index + 1}
+              </div>
+            )}
           </List>
         </div>
       )}
