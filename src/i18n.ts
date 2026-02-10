@@ -81,8 +81,10 @@ export type I18nKey =
   | 'settings.editorPrefsDesc'
   | 'settings.generalTabDesc'
   | 'settings.appearanceTabDesc'
+  | 'settings.shortcutsTabDesc'
   | 'settings.generalPanelDesc'
   | 'settings.appearancePanelDesc'
+  | 'settings.shortcutsPanelDesc'
   | 'settings.close'
   | 'settings.highlightCurrentLine'
   | 'settings.highlightCurrentLineDesc'
@@ -109,6 +111,16 @@ export type I18nKey =
   | 'settings.typography'
   | 'settings.tabWidth'
   | 'settings.tabWidthDesc'
+  | 'settings.shortcuts'
+  | 'settings.shortcutsDesc'
+  | 'settings.shortcutsAction'
+  | 'settings.shortcutsKey'
+  | 'settings.shortcutCloseTab'
+  | 'settings.shortcutFindNext'
+  | 'settings.shortcutBeautify'
+  | 'settings.shortcutMinify'
+  | 'settings.shortcutToggleComment'
+  | 'settings.shortcutRectangularSelection'
   | 'editor.context.delete'
   | 'editor.context.selectAll'
   | 'editor.context.edit'
@@ -218,8 +230,10 @@ const zhCN: Messages = {
   'settings.editorPrefsDesc': '编辑器偏好与体验',
   'settings.generalTabDesc': '语言与基础偏好',
   'settings.appearanceTabDesc': '主题、字体与编辑器显示',
+  'settings.shortcutsTabDesc': '查看全部快捷键',
   'settings.generalPanelDesc': '配置应用基础行为与语言。',
   'settings.appearancePanelDesc': '调整编辑器观感、排版与阅读体验。',
+  'settings.shortcutsPanelDesc': '查看当前版本支持的键盘快捷键。',
   'settings.close': '关闭设置',
   'settings.highlightCurrentLine': '高亮当前行',
   'settings.highlightCurrentLineDesc': '在编辑器中突出显示光标所在行。',
@@ -246,6 +260,16 @@ const zhCN: Messages = {
   'settings.typography': '排版',
   'settings.tabWidth': '制表符宽度',
   'settings.tabWidthDesc': '用于工具栏格式化按钮的缩进宽度。',
+  'settings.shortcuts': '快捷键列表',
+  'settings.shortcutsDesc': '以下为当前版本已实现的常用快捷键。',
+  'settings.shortcutsAction': '功能',
+  'settings.shortcutsKey': '快捷键',
+  'settings.shortcutCloseTab': '关闭当前标签页',
+  'settings.shortcutFindNext': '查找下一个/上一个',
+  'settings.shortcutBeautify': '格式化文档',
+  'settings.shortcutMinify': '最小化文档',
+  'settings.shortcutToggleComment': '切换行注释',
+  'settings.shortcutRectangularSelection': '矩形选区扩展',
   'editor.context.delete': '删除',
   'editor.context.selectAll': '全选',
   'editor.context.edit': '编辑',
@@ -354,8 +378,10 @@ const enUS: Messages = {
   'settings.editorPrefsDesc': 'Editor preferences and experience',
   'settings.generalTabDesc': 'Language and basic preferences',
   'settings.appearanceTabDesc': 'Theme, fonts, and editor visuals',
+  'settings.shortcutsTabDesc': 'View all keyboard shortcuts',
   'settings.generalPanelDesc': 'Configure language and base behavior.',
   'settings.appearancePanelDesc': 'Tune editor visuals, typography, and readability.',
+  'settings.shortcutsPanelDesc': 'View keyboard shortcuts supported in the current version.',
   'settings.close': 'Close settings',
   'settings.highlightCurrentLine': 'Highlight Current Line',
   'settings.highlightCurrentLineDesc': 'Highlight the line where the caret is currently placed.',
@@ -382,6 +408,16 @@ const enUS: Messages = {
   'settings.typography': 'Typography',
   'settings.tabWidth': 'Tab Width',
   'settings.tabWidthDesc': 'Indent width used by toolbar beautify action.',
+  'settings.shortcuts': 'Shortcuts',
+  'settings.shortcutsDesc': 'Common keyboard shortcuts currently supported in Rutar.',
+  'settings.shortcutsAction': 'Action',
+  'settings.shortcutsKey': 'Shortcut',
+  'settings.shortcutCloseTab': 'Close Current Tab',
+  'settings.shortcutFindNext': 'Find Next / Previous',
+  'settings.shortcutBeautify': 'Beautify Document',
+  'settings.shortcutMinify': 'Minify Document',
+  'settings.shortcutToggleComment': 'Toggle Line Comment',
+  'settings.shortcutRectangularSelection': 'Expand Rectangular Selection',
   'editor.context.delete': 'Delete',
   'editor.context.selectAll': 'Select All',
   'editor.context.edit': 'Edit',

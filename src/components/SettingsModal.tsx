@@ -1,4 +1,4 @@
-import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -167,7 +167,7 @@ export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
   const updateSettings = useStore((state) => state.updateSettings);
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'about'>('appearance');
+  const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'shortcuts' | 'about'>('appearance');
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
   const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>(
@@ -191,6 +191,9 @@ export function SettingsModal() {
   const wordWrapDesc = tr('settings.wordWrapDesc');
   const appearanceTabDesc = tr('settings.appearanceTabDesc');
   const generalTabDesc = tr('settings.generalTabDesc');
+  const shortcutsTabTitle = tr('settings.shortcuts');
+  const shortcutsTabDesc = tr('settings.shortcutsTabDesc');
+  const shortcutsPanelDesc = tr('settings.shortcutsPanelDesc');
   const aboutTabTitle = tr('settings.about');
   const aboutTabDesc = tr('settings.aboutDesc');
   const aboutPanelDesc = tr('settings.aboutPanelDesc');
@@ -208,6 +211,45 @@ export function SettingsModal() {
   const switchOnText = tr('settings.switchOn');
   const switchOffText = tr('settings.switchOff');
   const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent);
+  const primaryModifierLabel = isMac ? '⌘' : 'Ctrl';
+  const redoShortcutLabel = isMac ? '⌘ + Shift + Z' : 'Ctrl + Y / Ctrl + Shift + Z';
+
+  const shortcutRows: Array<{ action: string; shortcut: string }> = [
+    { action: tr('toolbar.newFile'), shortcut: `${primaryModifierLabel} + N` },
+    { action: tr('toolbar.openFile'), shortcut: `${primaryModifierLabel} + O` },
+    { action: tr('toolbar.save'), shortcut: `${primaryModifierLabel} + S` },
+    { action: tr('toolbar.saveAll'), shortcut: `${primaryModifierLabel} + Shift + S` },
+    { action: tr('settings.shortcutCloseTab'), shortcut: `${primaryModifierLabel} + W` },
+    { action: tr('toolbar.undo'), shortcut: `${primaryModifierLabel} + Z` },
+    { action: tr('toolbar.redo'), shortcut: redoShortcutLabel },
+    { action: tr('toolbar.find'), shortcut: `${primaryModifierLabel} + F` },
+    { action: tr('toolbar.replace'), shortcut: `${primaryModifierLabel} + H` },
+    { action: tr('settings.shortcutFindNext'), shortcut: 'F3 / Shift + F3' },
+    { action: tr('settings.showLineNumbers'), shortcut: 'Alt + L' },
+    { action: tr('settings.shortcutBeautify'), shortcut: `${primaryModifierLabel} + Alt + F` },
+    { action: tr('settings.shortcutMinify'), shortcut: `${primaryModifierLabel} + Alt + M` },
+    { action: tr('settings.shortcutToggleComment'), shortcut: `${primaryModifierLabel} + /` },
+    { action: tr('settings.shortcutRectangularSelection'), shortcut: 'Alt + Shift + ↑/↓/←/→' },
+  ];
+
+  const activePanelTitle =
+    activeTab === 'general'
+      ? tr('settings.general')
+      : activeTab === 'appearance'
+      ? tr('settings.appearance')
+      : activeTab === 'shortcuts'
+      ? shortcutsTabTitle
+      : aboutTabTitle;
+
+  const activePanelDesc =
+    activeTab === 'general'
+      ? tr('settings.generalPanelDesc')
+      : activeTab === 'appearance'
+      ? tr('settings.appearancePanelDesc')
+      : activeTab === 'shortcuts'
+      ? shortcutsPanelDesc
+      : aboutPanelDesc;
 
   const windowsContextLabel = tr('settings.windowsContextMenu');
   const windowsContextDesc = tr('settings.windowsContextMenuDesc');
@@ -569,7 +611,7 @@ export function SettingsModal() {
         className="pointer-events-auto h-[min(88vh,700px)] w-[min(94vw,980px)] bg-background/95 border rounded-xl shadow-2xl flex overflow-hidden ring-1 ring-border"
         role="dialog"
       >
-        <div className="w-60 bg-muted/30 border-r p-3 flex flex-col gap-2">
+        <div className="w-60 shrink-0 bg-muted/30 border-r p-3 flex flex-col gap-2">
           <div className="px-2 py-2 mb-2">
             <div className="text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">{tr('settings.title')}</div>
             <div className="mt-1 text-xs text-muted-foreground/80">
@@ -610,6 +652,22 @@ export function SettingsModal() {
           </button>
 
           <button
+            onClick={() => setActiveTab('shortcuts')}
+            className={cn(
+              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              activeTab === 'shortcuts'
+                ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
+                : 'hover:bg-muted/70 border-transparent'
+            )}
+          >
+            <Keyboard className="w-4 h-4 mt-0.5" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-tight">{shortcutsTabTitle}</span>
+              <span className="block text-xs text-muted-foreground mt-1">{shortcutsTabDesc}</span>
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('about')}
             className={cn(
               'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
@@ -626,14 +684,12 @@ export function SettingsModal() {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b bg-background/70">
             <div>
-              <h2 className="font-semibold text-base">
-                {activeTab === 'general' ? tr('settings.general') : activeTab === 'appearance' ? tr('settings.appearance') : aboutTabTitle}
-              </h2>
+              <h2 className="font-semibold text-base">{activePanelTitle}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {activeTab === 'about' ? aboutPanelDesc : activeTab === 'general' ? tr('settings.generalPanelDesc') : tr('settings.appearancePanelDesc')}
+                {activePanelDesc}
               </p>
             </div>
             <button 
@@ -1334,6 +1390,41 @@ export function SettingsModal() {
                       </span>
                       <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
                     </button>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {activeTab === 'shortcuts' && (
+              <div className="space-y-4 max-w-3xl">
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                    <Keyboard className="w-4 h-4 text-muted-foreground" />
+                    {tr('settings.shortcuts')}
+                  </div>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {tr('settings.shortcutsDesc')}
+                  </p>
+
+                  <div className="overflow-hidden rounded-lg border border-border/70">
+                    <div className="grid grid-cols-[1fr_auto] gap-3 bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      <span>{tr('settings.shortcutsAction')}</span>
+                      <span>{tr('settings.shortcutsKey')}</span>
+                    </div>
+
+                    <div className="divide-y divide-border/60">
+                      {shortcutRows.map((row) => (
+                        <div
+                          key={`${row.action}-${row.shortcut}`}
+                          className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5"
+                        >
+                          <span className="text-sm text-foreground/90">{row.action}</span>
+                          <code className="rounded-md border border-border bg-background/80 px-2 py-0.5 text-xs font-medium text-foreground">
+                            {row.shortcut}
+                          </code>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </section>
               </div>
