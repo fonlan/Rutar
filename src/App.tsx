@@ -1,17 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
-import { Editor } from '@/components/Editor';
-import { SettingsModal } from '@/components/SettingsModal';
-import { Sidebar } from '@/components/Sidebar';
-import { OutlineSidebar } from '@/components/OutlineSidebar';
-import { BookmarkSidebar } from '@/components/BookmarkSidebar';
-import { StatusBar } from '@/components/StatusBar';
-import { SearchReplacePanel } from '@/components/SearchReplacePanel';
-import { TabCloseConfirmModal } from '@/components/TabCloseConfirmModal';
 import { openFilePaths } from '@/lib/openFile';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
@@ -77,6 +69,38 @@ interface WindowsFileAssociationStatus {
   enabled: boolean;
   extensions: string[];
 }
+
+const Editor = lazy(async () => ({
+  default: (await import('@/components/Editor')).Editor,
+}));
+
+const SettingsModal = lazy(async () => ({
+  default: (await import('@/components/SettingsModal')).SettingsModal,
+}));
+
+const Sidebar = lazy(async () => ({
+  default: (await import('@/components/Sidebar')).Sidebar,
+}));
+
+const OutlineSidebar = lazy(async () => ({
+  default: (await import('@/components/OutlineSidebar')).OutlineSidebar,
+}));
+
+const BookmarkSidebar = lazy(async () => ({
+  default: (await import('@/components/BookmarkSidebar')).BookmarkSidebar,
+}));
+
+const StatusBar = lazy(async () => ({
+  default: (await import('@/components/StatusBar')).StatusBar,
+}));
+
+const SearchReplacePanel = lazy(async () => ({
+  default: (await import('@/components/SearchReplacePanel')).SearchReplacePanel,
+}));
+
+const TabCloseConfirmModal = lazy(async () => ({
+  default: (await import('@/components/TabCloseConfirmModal')).TabCloseConfirmModal,
+}));
 
 function App() {
   const tabs = useStore((state) => state.tabs);
@@ -491,6 +515,11 @@ function App() {
   
   const activeTab = tabs.find(t => t.id === activeTabId);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+  const editorFallback = (
+    <div className="flex items-center justify-center h-full text-muted-foreground select-none text-sm">
+      {tr('app.readyOpenHint')}
+    </div>
+  );
 
   useEffect(() => {
     const previousTabId = previousActiveTabIdRef.current;
@@ -612,34 +641,40 @@ function App() {
     };
   }, [activeTab, outlineOpen, setOutlineData]);
 
-    return (
+  return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
       <TitleBar />
       <Toolbar />
-      <SettingsModal />
-      <TabCloseConfirmModal />
-      <SearchReplacePanel />
+      <Suspense fallback={null}>
+        <SettingsModal />
+        <TabCloseConfirmModal />
+        <SearchReplacePanel />
+      </Suspense>
       
       <div className="flex-1 flex overflow-hidden relative">
-        <Sidebar />
-        <BookmarkSidebar />
-        <OutlineSidebar
-          nodes={outlineNodes}
-          activeType={outlineType}
-          parseError={outlineError}
-        />
+        <Suspense fallback={null}>
+          <Sidebar />
+          <BookmarkSidebar />
+          <OutlineSidebar
+            nodes={outlineNodes}
+            activeType={outlineType}
+            parseError={outlineError}
+          />
+        </Suspense>
         
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 relative overflow-hidden">
             {activeTab ? (
+              <Suspense fallback={editorFallback}>
                 <Editor key={activeTab.id} tab={activeTab} />
+              </Suspense>
             ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground select-none text-sm">
-                    {tr('app.readyOpenHint')}
-                </div>
+              editorFallback
             )}
           </div>
-          <StatusBar />
+          <Suspense fallback={null}>
+            <StatusBar />
+          </Suspense>
         </div>
       </div>
     </div>
