@@ -15,6 +15,10 @@ fn default_recent_paths() -> Vec<String> {
     Vec::new()
 }
 
+fn default_new_file_line_ending() -> String {
+    default_line_ending().label().to_string()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -23,6 +27,8 @@ pub struct AppConfig {
     pub(super) font_family: String,
     pub(super) font_size: u32,
     pub(super) tab_width: u8,
+    #[serde(default = "default_new_file_line_ending")]
+    pub(super) new_file_line_ending: String,
     pub(super) word_wrap: bool,
     pub(super) double_click_close_tab: bool,
     pub(super) highlight_current_line: bool,
@@ -46,6 +52,7 @@ pub struct PartialAppConfig {
     pub(super) font_family: Option<String>,
     pub(super) font_size: Option<u32>,
     pub(super) tab_width: Option<u8>,
+    pub(super) new_file_line_ending: Option<String>,
     pub(super) word_wrap: Option<bool>,
     pub(super) double_click_close_tab: Option<bool>,
     pub(super) highlight_current_line: Option<bool>,
@@ -64,6 +71,7 @@ impl Default for AppConfig {
             font_family: DEFAULT_FONT_FAMILY.to_string(),
             font_size: DEFAULT_FONT_SIZE,
             tab_width: DEFAULT_TAB_WIDTH,
+            new_file_line_ending: default_new_file_line_ending(),
             word_wrap: false,
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
@@ -92,4 +100,12 @@ pub(super) fn normalize_theme(theme: Option<&str>) -> String {
 
 pub(super) fn normalize_tab_width(tab_width: u8) -> u8 {
     tab_width.clamp(1, 8)
+}
+
+pub(super) fn normalize_new_file_line_ending(label: Option<&str>) -> String {
+    label
+        .and_then(LineEnding::from_label)
+        .unwrap_or_else(default_line_ending)
+        .label()
+        .to_string()
 }

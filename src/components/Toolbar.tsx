@@ -78,6 +78,7 @@ export function Toolbar() {
     const language = useStore((state) => state.settings.language);
     const tabWidth = useStore((state) => state.settings.tabWidth);
     const wordWrap = useStore((state) => state.settings.wordWrap);
+    const newFileLineEnding = useStore((state) => state.settings.newFileLineEnding);
     const updateSettings = useStore((state) => state.updateSettings);
     const toggleOutline = useStore((state) => state.toggleOutline);
     const outlineOpen = useStore((state) => state.outlineOpen);
@@ -164,12 +165,12 @@ export function Toolbar() {
 
     const handleNewFile = useCallback(async () => {
         try {
-            const fileInfo = await invoke<FileTab>('new_file');
+            const fileInfo = await invoke<FileTab>('new_file', { newFileLineEnding });
             addTab(fileInfo);
         } catch (e) {
             console.error('Failed to create new file:', e);
         }
-    }, [addTab]);
+    }, [addTab, newFileLineEnding]);
 
     const handleOpenFile = useCallback(async () => {
         try {
@@ -287,13 +288,13 @@ export function Toolbar() {
             await invoke('close_file', { id: activeTab.id });
 
             if (shouldCreateBlankTab) {
-                const fileInfo = await invoke<FileTab>('new_file');
+                const fileInfo = await invoke<FileTab>('new_file', { newFileLineEnding });
                 addTab(fileInfo);
             }
         } catch (e) {
             console.error('Failed to close tab:', e);
         }
-    }, [activeTab, addTab, closeTab, language, persistTab, tabs.length]);
+    }, [activeTab, addTab, closeTab, language, newFileLineEnding, persistTab, tabs.length]);
 
     const handleUndo = useCallback(async () => {
         if (!activeTab) return;

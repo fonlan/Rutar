@@ -5,12 +5,14 @@ export interface FileTab {
   name: string;
   path: string;
   encoding: string;
-  lineEnding: 'CRLF' | 'LF' | 'CR';
+  lineEnding: LineEnding;
   lineCount: number;
   largeFileMode: boolean;
   syntaxOverride?: SyntaxKey | null;
   isDirty?: boolean;
 }
+
+export type LineEnding = 'CRLF' | 'LF' | 'CR';
 
 export type SyntaxKey =
   | 'plain_text'
@@ -74,6 +76,7 @@ interface SettingsState {
   fontFamily: string;
   fontSize: number;
   tabWidth: number;
+  newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
@@ -84,6 +87,11 @@ interface SettingsState {
   windowsFileAssociationEnabled: boolean;
   windowsFileAssociationExtensions: string[];
 }
+
+const defaultNewFileLineEnding: LineEnding =
+  typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent)
+    ? 'CRLF'
+    : 'LF';
 
 interface AppState {
   tabs: FileTab[];
@@ -138,6 +146,7 @@ export const useStore = create<AppState>((set) => ({
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
     tabWidth: 4,
+    newFileLineEnding: defaultNewFileLineEnding,
     wordWrap: false,
     doubleClickCloseTab: true,
     highlightCurrentLine: true,

@@ -14,7 +14,7 @@ import { SearchReplacePanel } from '@/components/SearchReplacePanel';
 import { TabCloseConfirmModal } from '@/components/TabCloseConfirmModal';
 import { openFilePaths } from '@/lib/openFile';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
-import { FileTab, useStore, AppLanguage, AppTheme } from '@/store/useStore';
+import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
@@ -47,12 +47,21 @@ function areStringArraysEqual(left: string[], right: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+function normalizeLineEnding(value?: string): LineEnding {
+  if (value === 'CRLF' || value === 'LF' || value === 'CR') {
+    return value;
+  }
+
+  return detectWindowsPlatform() ? 'CRLF' : 'LF';
+}
+
 interface AppConfig {
   language: AppLanguage;
   theme: AppTheme;
   fontFamily: string;
   fontSize: number;
   tabWidth: number;
+  newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
   highlightCurrentLine: boolean;
@@ -260,7 +269,9 @@ function App() {
       }
 
       try {
-        const fileInfo = await invoke<FileTab>('new_file');
+        const fileInfo = await invoke<FileTab>('new_file', {
+          newFileLineEnding: useStore.getState().settings.newFileLineEnding,
+        });
         if (useStore.getState().tabs.length === 0) {
           useStore.getState().addTab(fileInfo);
         } else {
@@ -391,6 +402,7 @@ function App() {
           fontFamily: config.fontFamily || 'Consolas, "Courier New", monospace',
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
           tabWidth: Number.isFinite(config.tabWidth) ? Math.min(8, Math.max(1, config.tabWidth)) : 4,
+          newFileLineEnding: normalizeLineEnding(config.newFileLineEnding),
           wordWrap: !!config.wordWrap,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
@@ -435,6 +447,7 @@ function App() {
           fontFamily: settings.fontFamily,
           fontSize: settings.fontSize,
           tabWidth: settings.tabWidth,
+          newFileLineEnding: settings.newFileLineEnding,
           wordWrap: settings.wordWrap,
           doubleClickCloseTab: settings.doubleClickCloseTab,
           highlightCurrentLine: settings.highlightCurrentLine,
@@ -456,6 +469,7 @@ function App() {
     settings.fontFamily,
     settings.fontSize,
     settings.tabWidth,
+    settings.newFileLineEnding,
     settings.language,
     settings.theme,
     settings.wordWrap,

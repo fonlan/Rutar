@@ -7,6 +7,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import rutarDocumentLogo from '../../rutar_document.svg';
 
+const LINE_ENDING_OPTIONS = [
+  { value: 'CRLF', label: 'Win (CRLF)' },
+  { value: 'LF', label: 'Linux (LF)' },
+  { value: 'CR', label: 'Mac (CR)' },
+] as const;
+
 const FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS = [
   '.txt',
   '.md',
@@ -496,6 +502,33 @@ export function SettingsModal() {
                       </span>
                       <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
                     </button>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-medium mb-3">
+                    <Type className="w-4 h-4 text-muted-foreground" />
+                    {tr('settings.newFileLineEnding')}
+                  </div>
+                  <div className="space-y-2">
+                    <select
+                      className={controlClassName}
+                      value={settings.newFileLineEnding}
+                      onChange={(event) => {
+                        updateSettings({
+                          newFileLineEnding: event.target.value as typeof settings.newFileLineEnding,
+                        });
+                      }}
+                    >
+                      {LINE_ENDING_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      {tr('settings.newFileLineEndingDesc')}
+                    </p>
                   </div>
                 </section>
 

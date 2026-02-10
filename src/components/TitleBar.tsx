@@ -239,7 +239,9 @@ export function TitleBar() {
             await closeTabs([tab], false);
 
             if (shouldCreateBlankTab && useStore.getState().tabs.length === 0) {
-                const fileInfo = await invoke<FileTab>('new_file');
+                const fileInfo = await invoke<FileTab>('new_file', {
+                    newFileLineEnding: settings.newFileLineEnding,
+                });
                 addTab(fileInfo);
             }
         } catch (error) {
@@ -301,12 +303,14 @@ export function TitleBar() {
         }
 
         try {
-            const fileInfo = await invoke<FileTab>('new_file');
+            const fileInfo = await invoke<FileTab>('new_file', {
+                newFileLineEnding: settings.newFileLineEnding,
+            });
             addTab(fileInfo);
         } catch (error) {
             console.error('Failed to create tab after closing all tabs:', error);
         }
-    }, [addTab, closeTabs, tabs]);
+    }, [addTab, closeTabs, settings.newFileLineEnding, tabs]);
 
     const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();

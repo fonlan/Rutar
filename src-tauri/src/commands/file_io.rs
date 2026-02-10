@@ -66,6 +66,20 @@ fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {
     doc.syntax_dirty = doc.parser.is_some();
 }
 
+fn resolve_new_file_line_ending(preferred: Option<&str>) -> LineEnding {
+    if let Some(line_ending) = preferred.and_then(LineEnding::from_label) {
+        return line_ending;
+    }
+
+    if let Ok(config) = config::load_config_impl() {
+        if let Some(line_ending) = LineEnding::from_label(config.new_file_line_ending.as_str()) {
+            return line_ending;
+        }
+    }
+
+    default_line_ending()
+}
+
 pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
     let file = File::open(&path_buf).map_err(|e| e.to_string())?;
@@ -278,10 +292,13 @@ pub(super) fn set_document_syntax_impl(
     }
 }
 
-pub(super) fn new_file_impl(state: State<'_, AppState>) -> Result<FileInfo, String> {
+pub(super) fn new_file_impl(
+    state: State<'_, AppState>,
+    new_file_line_ending: Option<String>,
+) -> Result<FileInfo, String> {
     let id = Uuid::new_v4().to_string();
     let encoding = encoding_rs::UTF_8;
-    let line_ending = default_line_ending();
+    let line_ending = resolve_new_file_line_ending(new_file_line_ending.as_deref());
 
     let mut doc = Document {
         rope: Rope::new(),

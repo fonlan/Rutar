@@ -60,8 +60,11 @@ pub fn set_document_syntax(
 }
 
 #[tauri::command]
-pub fn new_file(state: State<'_, AppState>) -> Result<FileInfo, String> {
-    file_io::new_file_impl(state)
+pub fn new_file(
+    state: State<'_, AppState>,
+    new_file_line_ending: Option<String>,
+) -> Result<FileInfo, String> {
+    file_io::new_file_impl(state, new_file_line_ending)
 }
 
 #[tauri::command]

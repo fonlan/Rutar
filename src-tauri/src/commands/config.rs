@@ -158,6 +158,9 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         },
         font_size: config.font_size.clamp(8, 72),
         tab_width: settings::normalize_tab_width(config.tab_width),
+        new_file_line_ending: settings::normalize_new_file_line_ending(Some(
+            config.new_file_line_ending.as_str(),
+        )),
         word_wrap: config.word_wrap,
         double_click_close_tab: config.double_click_close_tab,
         highlight_current_line: config.highlight_current_line,
@@ -729,6 +732,11 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
 
     if let Some(tab_width) = partial.tab_width {
         config.tab_width = settings::normalize_tab_width(tab_width);
+    }
+
+    if let Some(new_file_line_ending) = partial.new_file_line_ending {
+        config.new_file_line_ending =
+            settings::normalize_new_file_line_ending(Some(new_file_line_ending.as_str()));
     }
 
     if let Some(word_wrap) = partial.word_wrap {

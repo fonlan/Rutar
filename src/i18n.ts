@@ -88,6 +88,8 @@ export type I18nKey =
   | 'settings.highlightCurrentLineDesc'
   | 'settings.doubleClickCloseTab'
   | 'settings.doubleClickCloseTabDesc'
+  | 'settings.newFileLineEnding'
+  | 'settings.newFileLineEndingDesc'
   | 'settings.wordWrapDesc'
   | 'settings.switchOn'
   | 'settings.switchOff'
@@ -217,6 +219,8 @@ const zhCN: Messages = {
   'settings.highlightCurrentLineDesc': '在编辑器中突出显示光标所在行。',
   'settings.doubleClickCloseTab': '双击关闭标签页',
   'settings.doubleClickCloseTabDesc': '双击顶部标签页可直接关闭。',
+  'settings.newFileLineEnding': '新建文件换行符',
+  'settings.newFileLineEndingDesc': '控制新建空白文件的默认换行符。',
   'settings.wordWrapDesc': '超过容器宽度时自动换行，减少横向滚动。',
   'settings.switchOn': '开',
   'settings.switchOff': '关',
@@ -345,6 +349,8 @@ const enUS: Messages = {
   'settings.highlightCurrentLineDesc': 'Highlight the line where the caret is currently placed.',
   'settings.doubleClickCloseTab': 'Double-click to Close Tab',
   'settings.doubleClickCloseTabDesc': 'Double-click a tab in the title bar to close it.',
+  'settings.newFileLineEnding': 'New File Line Ending',
+  'settings.newFileLineEndingDesc': 'Choose the default line ending for newly created empty files.',
   'settings.wordWrapDesc': 'Wrap long lines to avoid horizontal scrolling.',
   'settings.switchOn': 'ON',
   'settings.switchOff': 'OFF',
