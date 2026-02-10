@@ -100,6 +100,10 @@ export type I18nKey =
   | 'settings.windowsFileAssociationsHint'
   | 'settings.add'
   | 'settings.customExtensionPlaceholder'
+  | 'settings.fontPickerPlaceholder'
+  | 'settings.fontMoveUp'
+  | 'settings.fontMoveDown'
+  | 'settings.fontRemove'
   | 'settings.typography'
   | 'settings.tabWidth'
   | 'settings.tabWidthDesc'
@@ -231,6 +235,10 @@ const zhCN: Messages = {
   'settings.windowsFileAssociationsHint': '勾选常见文本后缀，也可自定义（如 .env、.sql）。',
   'settings.add': '添加',
   'settings.customExtensionPlaceholder': '输入自定义后缀，如 .env',
+  'settings.fontPickerPlaceholder': '输入或选择字体名（支持系统字体）',
+  'settings.fontMoveUp': '上移字体',
+  'settings.fontMoveDown': '下移字体',
+  'settings.fontRemove': '移除字体',
   'settings.typography': '排版',
   'settings.tabWidth': '制表符宽度',
   'settings.tabWidthDesc': '用于工具栏格式化按钮的缩进宽度。',
@@ -361,6 +369,10 @@ const enUS: Messages = {
   'settings.windowsFileAssociationsHint': 'Select common text extensions and add custom ones (for example .env, .sql).',
   'settings.add': 'Add',
   'settings.customExtensionPlaceholder': 'Custom extension, e.g. .env',
+  'settings.fontPickerPlaceholder': 'Type or select a font family (system fonts supported)',
+  'settings.fontMoveUp': 'Move Font Up',
+  'settings.fontMoveDown': 'Move Font Down',
+  'settings.fontRemove': 'Remove Font',
   'settings.typography': 'Typography',
   'settings.tabWidth': 'Tab Width',
   'settings.tabWidthDesc': 'Indent width used by toolbar beautify action.',

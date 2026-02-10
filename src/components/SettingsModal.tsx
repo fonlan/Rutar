@@ -13,6 +13,31 @@ const LINE_ENDING_OPTIONS = [
   { value: 'CR', label: 'Mac (CR)' },
 ] as const;
 
+const DEFAULT_FONT_FAMILY = 'Consolas, "Courier New", monospace';
+const MAX_FONT_SUGGESTIONS = 200;
+
+const FALLBACK_FONT_FAMILIES = [
+  'Segoe UI',
+  'Arial',
+  'Calibri',
+  'Times New Roman',
+  'Verdana',
+  'Georgia',
+  'Microsoft YaHei',
+  'PingFang SC',
+  'Helvetica',
+  'JetBrains Mono',
+  'Cascadia Code',
+  'Consolas',
+  'Fira Code',
+  'Source Code Pro',
+  'Menlo',
+  'Monaco',
+  'Noto Sans Mono',
+  'Courier New',
+  'monospace',
+] as const;
+
 const FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS = [
   '.txt',
   '.md',
@@ -64,6 +89,80 @@ function areStringListsEqual(left: string[], right: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+function normalizeFontFamilyName(value: string): string {
+  return value
+    .trim()
+    .replace(/^['\"]+|['\"]+$/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeFontFamilyOptions(values: readonly string[]): string[] {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawValue of values) {
+    const fontName = normalizeFontFamilyName(rawValue);
+    if (!fontName) {
+      continue;
+    }
+
+    const key = fontName.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push(fontName);
+  }
+
+  normalized.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  return normalized;
+}
+
+function parseFontFamilyList(value: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const rawPart of value.split(',')) {
+    const normalized = normalizeFontFamilyName(rawPart);
+    if (!normalized) {
+      continue;
+    }
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function serializeFontFamilyList(value: string[]): string {
+  const uniqueValues: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawPart of value) {
+    const normalized = normalizeFontFamilyName(rawPart);
+    if (!normalized) {
+      continue;
+    }
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uniqueValues.push(normalized);
+  }
+
+  return uniqueValues.length > 0 ? uniqueValues.join(', ') : DEFAULT_FONT_FAMILY;
+}
+
 export function SettingsModal() {
   const settings = useStore((state) => state.settings);
   const toggleSettings = useStore((state) => state.toggleSettings);
@@ -71,9 +170,17 @@ export function SettingsModal() {
   const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'about'>('appearance');
   const [defaultExtensions, setDefaultExtensions] = useState<string[]>(FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS);
   const [customExtensionInput, setCustomExtensionInput] = useState('');
+  const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>(
+    normalizeFontFamilyOptions(FALLBACK_FONT_FAMILIES),
+  );
+  const [fontPickerInput, setFontPickerInput] = useState('');
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false);
+  const [activeFontSuggestionIndex, setActiveFontSuggestionIndex] = useState(-1);
   const [isUpdatingFileAssociations, setIsUpdatingFileAssociations] = useState(false);
   const [showRestartToast, setShowRestartToast] = useState(false);
   const restartToastTimerRef = useRef<number | null>(null);
+  const fontPickerContainerRef = useRef<HTMLDivElement | null>(null);
+  const fontDropdownListRef = useRef<HTMLDivElement | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const currentLineLabel = tr('settings.highlightCurrentLine');
   const currentLineDesc = tr('settings.highlightCurrentLineDesc');
@@ -92,6 +199,10 @@ export function SettingsModal() {
 
   const controlClassName =
     'flex h-10 w-full rounded-lg border border-input bg-background/70 text-foreground px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
+  const actionButtonClassName =
+    'inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-input bg-background/70 px-3 text-sm shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50';
+  const sortButtonClassName =
+    'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-input bg-background/70 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-40';
   const switchOnText = tr('settings.switchOn');
   const switchOffText = tr('settings.switchOff');
   const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent);
@@ -102,6 +213,10 @@ export function SettingsModal() {
   const windowsFileAssociationDesc = tr('settings.windowsFileAssociationsDesc');
   const windowsFileAssociationHint = tr('settings.windowsFileAssociationsHint');
   const addExtensionButtonLabel = tr('settings.add');
+  const fontPickerPlaceholder = tr('settings.fontPickerPlaceholder');
+  const fontMoveUpLabel = tr('settings.fontMoveUp');
+  const fontMoveDownLabel = tr('settings.fontMoveDown');
+  const fontRemoveLabel = tr('settings.fontRemove');
   const singleInstanceModeLabel = tr('settings.singleInstanceMode');
   const singleInstanceModeDesc = tr('settings.singleInstanceModeDesc');
   const singleInstanceModeRestartToast = tr('settings.singleInstanceModeRestartToast');
@@ -126,6 +241,140 @@ export function SettingsModal() {
     () => normalizedSelectedExtensions.filter((extension) => !effectiveDefaultExtensions.includes(extension)),
     [normalizedSelectedExtensions, effectiveDefaultExtensions],
   );
+  const fontPriorityList = useMemo(() => parseFontFamilyList(settings.fontFamily), [settings.fontFamily]);
+  const availableSystemFontFamilies = useMemo(() => {
+    const selectedFonts = new Set(fontPriorityList.map((font) => font.toLowerCase()));
+    return systemFontFamilies.filter((fontName) => !selectedFonts.has(fontName.toLowerCase()));
+  }, [fontPriorityList, systemFontFamilies]);
+  const filteredFontSuggestions = useMemo(() => {
+    const keyword = normalizeFontFamilyName(fontPickerInput).toLowerCase();
+    if (!keyword) {
+      return availableSystemFontFamilies.slice(0, MAX_FONT_SUGGESTIONS);
+    }
+
+    const prefixMatches = availableSystemFontFamilies.filter((fontName) =>
+      fontName.toLowerCase().startsWith(keyword),
+    );
+
+    const containsMatches = availableSystemFontFamilies.filter((fontName) => {
+      const lowerCaseName = fontName.toLowerCase();
+      return lowerCaseName.includes(keyword) && !lowerCaseName.startsWith(keyword);
+    });
+
+    return [...prefixMatches, ...containsMatches].slice(0, MAX_FONT_SUGGESTIONS);
+  }, [availableSystemFontFamilies, fontPickerInput]);
+
+  useEffect(() => {
+    if (!isFontDropdownOpen || filteredFontSuggestions.length === 0) {
+      setActiveFontSuggestionIndex(-1);
+      return;
+    }
+
+    if (activeFontSuggestionIndex >= filteredFontSuggestions.length) {
+      setActiveFontSuggestionIndex(0);
+      return;
+    }
+
+    if (activeFontSuggestionIndex === -1) {
+      setActiveFontSuggestionIndex(0);
+    }
+  }, [activeFontSuggestionIndex, filteredFontSuggestions, isFontDropdownOpen]);
+
+  useEffect(() => {
+    if (!isFontDropdownOpen || activeFontSuggestionIndex < 0) {
+      return;
+    }
+
+    const activeElement = fontDropdownListRef.current?.querySelector<HTMLButtonElement>(
+      `[data-font-index="${activeFontSuggestionIndex}"]`,
+    );
+    activeElement?.scrollIntoView({ block: 'nearest' });
+  }, [activeFontSuggestionIndex, filteredFontSuggestions, isFontDropdownOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSystemFonts = async () => {
+      try {
+        const fonts = await invoke<string[]>('list_system_fonts');
+        if (cancelled) {
+          return;
+        }
+
+        const normalizedFonts = normalizeFontFamilyOptions([...fonts, ...FALLBACK_FONT_FAMILIES]);
+        if (normalizedFonts.length === 0) {
+          return;
+        }
+
+        setSystemFontFamilies(normalizedFonts);
+      } catch (error) {
+        console.error('Failed to load system fonts:', error);
+      }
+    };
+
+    void loadSystemFonts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updateFontPriorityList = (nextList: string[]) => {
+    updateSettings({
+      fontFamily: serializeFontFamilyList(nextList),
+    });
+  };
+
+  const addFontToPriorityList = (fontName: string) => {
+    const normalizedFontName = normalizeFontFamilyName(fontName);
+    if (!normalizedFontName) {
+      return;
+    }
+
+    const nextList = [
+      normalizedFontName,
+      ...fontPriorityList.filter((font) => font.toLowerCase() !== normalizedFontName.toLowerCase()),
+    ];
+
+    updateFontPriorityList(nextList);
+  };
+
+  const handleAddFontFromPicker = () => {
+    const normalizedFontName = normalizeFontFamilyName(fontPickerInput);
+    if (!normalizedFontName) {
+      return;
+    }
+
+    addFontToPriorityList(normalizedFontName);
+    setFontPickerInput('');
+    setIsFontDropdownOpen(false);
+    setActiveFontSuggestionIndex(-1);
+  };
+
+  const handleSelectFontSuggestion = (fontName: string) => {
+    addFontToPriorityList(fontName);
+    setFontPickerInput('');
+    setIsFontDropdownOpen(false);
+    setActiveFontSuggestionIndex(-1);
+  };
+
+  const handleMoveFont = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= fontPriorityList.length) {
+      return;
+    }
+
+    const nextList = [...fontPriorityList];
+    const [movedFont] = nextList.splice(index, 1);
+    nextList.splice(targetIndex, 0, movedFont);
+    updateFontPriorityList(nextList);
+  };
+
+  const handleRemoveFont = (fontName: string) => {
+    const normalizedFontName = normalizeFontFamilyName(fontName);
+    const nextList = fontPriorityList.filter((font) => font.toLowerCase() !== normalizedFontName.toLowerCase());
+    updateFontPriorityList(nextList);
+  };
 
   const handleToggleWindowsContextMenu = async () => {
     const nextEnabled = !settings.windowsContextMenuEnabled;
@@ -777,12 +1026,176 @@ export function SettingsModal() {
                       <label className="text-sm font-medium leading-none">
                         {tr('settings.fontFamily')}
                       </label>
-                      <input
-                        className={controlClassName}
-                        value={settings.fontFamily}
-                        onChange={(e) => updateSettings({ fontFamily: e.target.value })}
-                        placeholder='Consolas, "Courier New", monospace'
-                      />
+                      <div className="flex gap-2">
+                        <div
+                          className="relative flex-1"
+                          ref={fontPickerContainerRef}
+                          onFocus={() => {
+                            setIsFontDropdownOpen(true);
+                            setActiveFontSuggestionIndex(filteredFontSuggestions.length > 0 ? 0 : -1);
+                          }}
+                          onBlur={(event) => {
+                            const nextFocusedElement = event.relatedTarget as Node | null;
+                            if (!event.currentTarget.contains(nextFocusedElement)) {
+                              setIsFontDropdownOpen(false);
+                              setActiveFontSuggestionIndex(-1);
+                            }
+                          }}
+                        >
+                          <input
+                            className={controlClassName}
+                            value={fontPickerInput}
+                            onChange={(e) => {
+                              setFontPickerInput(e.target.value);
+                              setIsFontDropdownOpen(true);
+                              setActiveFontSuggestionIndex(0);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowDown') {
+                                event.preventDefault();
+                                if (!isFontDropdownOpen) {
+                                  setIsFontDropdownOpen(true);
+                                }
+
+                                if (filteredFontSuggestions.length === 0) {
+                                  return;
+                                }
+
+                                setActiveFontSuggestionIndex((currentIndex) => {
+                                  if (currentIndex < 0) {
+                                    return 0;
+                                  }
+
+                                  return Math.min(currentIndex + 1, filteredFontSuggestions.length - 1);
+                                });
+                                return;
+                              }
+
+                              if (event.key === 'ArrowUp') {
+                                event.preventDefault();
+                                if (!isFontDropdownOpen) {
+                                  setIsFontDropdownOpen(true);
+                                }
+
+                                if (filteredFontSuggestions.length === 0) {
+                                  return;
+                                }
+
+                                setActiveFontSuggestionIndex((currentIndex) => {
+                                  if (currentIndex < 0) {
+                                    return 0;
+                                  }
+
+                                  return Math.max(currentIndex - 1, 0);
+                                });
+                                return;
+                              }
+
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+
+                                if (
+                                  isFontDropdownOpen
+                                  && activeFontSuggestionIndex >= 0
+                                  && activeFontSuggestionIndex < filteredFontSuggestions.length
+                                ) {
+                                  handleSelectFontSuggestion(filteredFontSuggestions[activeFontSuggestionIndex]);
+                                  return;
+                                }
+
+                                handleAddFontFromPicker();
+                              }
+
+                              if (event.key === 'Escape') {
+                                event.preventDefault();
+                                setIsFontDropdownOpen(false);
+                                setActiveFontSuggestionIndex(-1);
+                              }
+                            }}
+                            placeholder={fontPickerPlaceholder}
+                          />
+
+                          {isFontDropdownOpen && filteredFontSuggestions.length > 0 && (
+                            <div
+                              ref={fontDropdownListRef}
+                              className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
+                            >
+                              {filteredFontSuggestions.map((fontName, index) => (
+                                <button
+                                  key={fontName.toLowerCase()}
+                                  data-font-index={index}
+                                  type="button"
+                                  className={cn(
+                                    'flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
+                                    index === activeFontSuggestionIndex ? 'bg-muted' : '',
+                                  )}
+                                  onMouseDown={(event) => {
+                                    event.preventDefault();
+                                  }}
+                                  onMouseEnter={() => setActiveFontSuggestionIndex(index)}
+                                  onClick={() => handleSelectFontSuggestion(fontName)}
+                                >
+                                  {fontName}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          className={actionButtonClassName}
+                          onClick={handleAddFontFromPicker}
+                          disabled={!fontPickerInput.trim()}
+                        >
+                          {addExtensionButtonLabel}
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 rounded-lg border border-border/70 bg-background/60 p-2">
+                        {fontPriorityList.map((fontName, index) => (
+                          <div
+                            key={fontName.toLowerCase()}
+                            className="flex items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2 py-1.5"
+                          >
+                            <span className="w-5 text-center text-xs text-muted-foreground">{index + 1}</span>
+                            <span className="min-w-0 flex-1 truncate text-sm">{fontName}</span>
+                            <button
+                              type="button"
+                              className={sortButtonClassName}
+                              onClick={() => handleMoveFont(index, -1)}
+                              disabled={index === 0}
+                              aria-label={fontMoveUpLabel}
+                              title={fontMoveUpLabel}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className={sortButtonClassName}
+                              onClick={() => handleMoveFont(index, 1)}
+                              disabled={index === fontPriorityList.length - 1}
+                              aria-label={fontMoveDownLabel}
+                              title={fontMoveDownLabel}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className={sortButtonClassName}
+                              onClick={() => handleRemoveFont(fontName)}
+                              aria-label={fontRemoveLabel}
+                              title={fontRemoveLabel}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <code className="block truncate rounded-md border border-border/70 bg-background/60 px-2 py-1 text-xs text-muted-foreground">
+                        {settings.fontFamily || DEFAULT_FONT_FAMILY}
+                      </code>
                       <p className="text-xs text-muted-foreground">
                         {tr('settings.fontFamilyDesc')}
                       </p>

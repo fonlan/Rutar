@@ -33,6 +33,23 @@ pub use self::types::{DirEntry, FileInfo, SyntaxToken, WindowsFileAssociationSta
 use self::constants::*;
 
 #[tauri::command]
+pub fn list_system_fonts() -> Result<Vec<String>, String> {
+    let source = font_kit::source::SystemSource::new();
+    let families = source.all_families().map_err(|error| error.to_string())?;
+
+    let mut normalized = families
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<String>>();
+
+    normalized.sort_by(|left, right| left.to_lowercase().cmp(&right.to_lowercase()));
+    normalized.dedup_by(|left, right| left.to_lowercase() == right.to_lowercase());
+
+    Ok(normalized)
+}
+
+#[tauri::command]
 pub fn register_windows_context_menu(language: Option<String>) -> Result<(), String> {
     config::register_windows_context_menu_impl(language)
 }
