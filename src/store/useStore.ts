@@ -22,6 +22,7 @@ export type SyntaxKey =
   | 'rust'
   | 'python'
   | 'json'
+  | 'ini'
   | 'html'
   | 'css'
   | 'bash'

@@ -4241,6 +4241,21 @@ export function Editor({ tab }: { tab: FileTab }) {
           typeClass += ' token-string';
         }
       }
+
+      if (normalizedType === 'setting_value') {
+        if (['true', 'false', 'yes', 'no', 'on', 'off'].includes(cleanText)) {
+          typeClass += ' token-boolean token-constant';
+        } else if (/^-?(0x[0-9a-f]+|0b[01]+|0o[0-7]+|\d+(\.\d+)?)$/i.test(cleanText)) {
+          typeClass += ' token-number';
+        } else if (cleanText.length > 0) {
+          typeClass += ' token-string';
+        }
+      }
+
+      if (normalizedType === 'section_name_text' || normalizedType === 'section_name') {
+        typeClass += ' token-type';
+      }
+
       if (
         (cleanType.includes('identifier') && !cleanType.includes('property')) ||
         cleanType === 'name' ||

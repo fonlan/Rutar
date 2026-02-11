@@ -150,8 +150,9 @@ option {
 .editor-syntax-yaml .token-string,
 .editor-syntax-yaml .token-string_scalar,
 .editor-syntax-yaml .token-double_quote_scalar,
-.editor-syntax-yaml .token-single_quote_scalar {
-  color: #1f2328 !important;
+.editor-syntax-yaml .token-single_quote_scalar,
+.editor-syntax-ini .token-setting_value {
+  color: #0a7b4f !important;
 }
 
 .editor-syntax-json .token-property,
@@ -166,7 +167,8 @@ option {
 .editor-syntax-yaml .token-key_float_scalar,
 .editor-syntax-yaml .token-key_boolean_scalar,
 .editor-syntax-yaml .token-key_null_scalar,
-.editor-syntax-yaml .token-key_timestamp_scalar {
+.editor-syntax-yaml .token-key_timestamp_scalar,
+.editor-syntax-ini .token-key_setting_name {
   color: #a15c00 !important;
   font-weight: 600;
 }
@@ -178,9 +180,22 @@ option {
 }
 
 .editor-syntax-json .token-pair_separator,
-.editor-syntax-yaml .token-pair_separator {
+.editor-syntax-yaml .token-pair_separator,
+.editor-syntax-ini .token-operator {
   color: #6b7280 !important;
   opacity: 0.8;
+}
+
+.editor-syntax-ini .token-section_name_text,
+.editor-syntax-ini .token-section_name {
+  color: #0e7490 !important;
+  font-weight: 600;
+}
+
+.editor-syntax-ini .token-comment,
+.editor-syntax-ini .token-comment_text {
+  color: #16a34a !important;
+  font-style: italic;
 }
 
 /* 修复特殊符号显示 */
@@ -226,8 +241,9 @@ option {
 .dark .editor-syntax-yaml .token-string,
 .dark .editor-syntax-yaml .token-string_scalar,
 .dark .editor-syntax-yaml .token-double_quote_scalar,
-.dark .editor-syntax-yaml .token-single_quote_scalar {
-  color: #e6edf3 !important;
+.dark .editor-syntax-yaml .token-single_quote_scalar,
+.dark .editor-syntax-ini .token-setting_value {
+  color: #a5d6ff !important;
 }
 
 .dark .editor-syntax-json .token-property,
@@ -242,7 +258,8 @@ option {
 .dark .editor-syntax-yaml .token-key_float_scalar,
 .dark .editor-syntax-yaml .token-key_boolean_scalar,
 .dark .editor-syntax-yaml .token-key_null_scalar,
-.dark .editor-syntax-yaml .token-key_timestamp_scalar {
+.dark .editor-syntax-yaml .token-key_timestamp_scalar,
+.dark .editor-syntax-ini .token-key_setting_name {
   color: #ffcb6b !important;
   font-weight: 600;
 }
@@ -254,9 +271,22 @@ option {
 }
 
 .dark .editor-syntax-json .token-pair_separator,
-.dark .editor-syntax-yaml .token-pair_separator {
+.dark .editor-syntax-yaml .token-pair_separator,
+.dark .editor-syntax-ini .token-operator {
   color: #7f8ea3 !important;
   opacity: 0.8;
+}
+
+.dark .editor-syntax-ini .token-section_name_text,
+.dark .editor-syntax-ini .token-section_name {
+  color: #4fc1ff !important;
+  font-weight: 600;
+}
+
+.dark .editor-syntax-ini .token-comment,
+.dark .editor-syntax-ini .token-comment_text {
+  color: #4ade80 !important;
+  font-style: italic;
 }
 
 .dark .token-_ { color: #93a4b8 !important; opacity: 0.9; }

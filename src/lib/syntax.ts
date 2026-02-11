@@ -7,6 +7,7 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'rust', label: 'Rust' },
   { value: 'python', label: 'Python' },
   { value: 'json', label: 'JSON' },
+  { value: 'ini', label: 'INI' },
   { value: 'html', label: 'HTML' },
   { value: 'css', label: 'CSS' },
   { value: 'bash', label: 'Bash' },
@@ -29,6 +30,7 @@ const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   python: '#',
   bash: '#',
   toml: '#',
+  ini: '#',
   yaml: '#',
   json: '#',
   javascript: '//',
@@ -91,6 +93,12 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'json':
     case 'jsonc':
       return 'json';
+    case 'ini':
+    case 'cfg':
+    case 'conf':
+    case 'cnf':
+    case 'properties':
+      return 'ini';
     case 'html':
     case 'htm':
     case 'xhtml':

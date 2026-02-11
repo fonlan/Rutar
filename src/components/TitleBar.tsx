@@ -64,6 +64,7 @@ const tabFileIconConfigBySyntaxKey: Partial<Record<SyntaxKey, TabFileIconConfig>
     rust: { Icon: FileCode2, className: 'text-orange-500' },
     python: { Icon: FileCode2, className: 'text-sky-500' },
     json: { Icon: FileJson, className: 'text-amber-500' },
+    ini: { Icon: Braces, className: 'text-amber-600' },
     html: { Icon: FileCode2, className: 'text-orange-500' },
     css: { Icon: FileCode2, className: 'text-pink-500' },
     bash: { Icon: Terminal, className: 'text-green-500' },

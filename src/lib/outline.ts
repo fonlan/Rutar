@@ -6,6 +6,7 @@ const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
   yaml: 'yaml',
   xml: 'xml',
   toml: 'toml',
+  ini: 'ini',
   python: 'python',
   javascript: 'javascript',
   typescript: 'typescript',
