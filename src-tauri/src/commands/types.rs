@@ -12,7 +12,7 @@ pub struct FileInfo {
     pub(super) syntax_override: Option<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 pub struct SyntaxToken {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) r#type: Option<String>,

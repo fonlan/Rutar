@@ -176,6 +176,7 @@ pub fn run() {
             commands::file_io_commands::get_visible_lines_chunk,
             commands::file_io_commands::get_bookmark_line_previews,
             commands::get_syntax_tokens,
+            commands::get_syntax_token_lines,
             commands::file_io_commands::close_file,
             commands::file_io_commands::save_file,
             commands::file_io_commands::save_file_as,

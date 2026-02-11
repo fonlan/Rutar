@@ -164,6 +164,52 @@ fn build_tokens_with_gaps(
     tokens
 }
 
+fn split_tokens_by_line(tokens: Vec<SyntaxToken>) -> Vec<Vec<SyntaxToken>> {
+    let mut lines: Vec<Vec<SyntaxToken>> = Vec::new();
+    let mut current_line: Vec<SyntaxToken> = Vec::new();
+
+    for token in tokens {
+        let Some(text) = token.text.clone() else {
+            continue;
+        };
+
+        let normalized = text.replace("\r\n", "\n");
+        if !normalized.contains('\n') {
+            current_line.push(token);
+            continue;
+        }
+
+        let parts: Vec<&str> = normalized.split('\n').collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        current_line.push(SyntaxToken {
+            text: Some(parts[0].to_string()),
+            ..token.clone()
+        });
+        lines.push(current_line);
+
+        for part in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
+            lines.push(vec![SyntaxToken {
+                text: Some((*part).to_string()),
+                ..token.clone()
+            }]);
+        }
+
+        current_line = vec![SyntaxToken {
+            text: Some(parts[parts.len() - 1].to_string()),
+            ..token
+        }];
+    }
+
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    lines
+}
+
 pub(super) fn get_document_version_impl(
     state: State<'_, AppState>,
     id: String,
@@ -219,4 +265,14 @@ pub(super) fn get_syntax_tokens_impl(
     } else {
         Err("Document not found".to_string())
     }
+}
+
+pub(super) fn get_syntax_token_lines_impl(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+) -> Result<Vec<Vec<SyntaxToken>>, String> {
+    let tokens = get_syntax_tokens_impl(state, id, start_line, end_line)?;
+    Ok(split_tokens_by_line(tokens))
 }

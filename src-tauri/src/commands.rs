@@ -228,6 +228,16 @@ pub fn get_syntax_tokens(
 }
 
 #[tauri::command]
+pub fn get_syntax_token_lines(
+    state: State<'_, AppState>,
+    id: String,
+    start_line: usize,
+    end_line: usize,
+) -> Result<Vec<Vec<SyntaxToken>>, String> {
+    document::get_syntax_token_lines_impl(state, id, start_line, end_line)
+}
+
+#[tauri::command]
 pub fn get_outline(
     state: State<'_, AppState>,
     id: String,

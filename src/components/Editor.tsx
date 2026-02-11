@@ -1013,7 +1013,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
-  const [tokens, setTokens] = useState<SyntaxToken[]>([]);
+  const [lineTokens, setLineTokens] = useState<SyntaxToken[][]>([]);
   const [startLine, setStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
   const [plainStartLine, setPlainStartLine] = useState(0);
@@ -1022,6 +1022,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     endLine: 0,
     text: '',
   });
+  const [hugeScrollableContentWidth, setHugeScrollableContentWidth] = useState(0);
   const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [textSelectionHighlight, setTextSelectionHighlight] = useState<TextSelectionState | null>(null);
@@ -1413,9 +1414,8 @@ export function Editor({ tab }: { tab: FileTab }) {
           scrollElement.scrollTop = targetTop;
         }
 
-        if (Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
-          scrollElement.scrollLeft = targetLeft;
-        }
+        // Keep input-layer horizontal scroll as source of truth.
+        // Avoid snapping it back based on backdrop width.
       }
     }
 
@@ -1843,41 +1843,6 @@ export function Editor({ tab }: { tab: FileTab }) {
     setShowLargeModeEditPrompt(false);
   }, []);
 
-  const lineTokens = useMemo(() => {
-    if (usePlainLineRendering) {
-      return [];
-    }
-
-    const lines: SyntaxToken[][] = [];
-    let currentLine: SyntaxToken[] = [];
-
-    for (const token of tokens) {
-      if (token.text === undefined || token.text === null) continue;
-      const text = token.text.replace(/\r\n/g, '\n');
-      const firstNewlineIndex = text.indexOf('\n');
-
-      if (firstNewlineIndex === -1) {
-        currentLine.push(token);
-      } else {
-        const linesInToken = text.split('\n');
-        currentLine.push({ ...token, text: linesInToken[0] });
-        lines.push([...currentLine]);
-
-        for (let i = 1; i < linesInToken.length - 1; i += 1) {
-          lines.push([{ ...token, text: linesInToken[i] }]);
-        }
-
-        currentLine = [{ ...token, text: linesInToken[linesInToken.length - 1] }];
-      }
-    }
-
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
-    }
-
-    return lines;
-  }, [tokens, usePlainLineRendering]);
-
   const editableSegmentLines = useMemo(() => {
     if (!isHugeEditableMode) {
       return [];
@@ -1890,20 +1855,58 @@ export function Editor({ tab }: { tab: FileTab }) {
     return editableSegment.text.split('\n');
   }, [editableSegment.endLine, editableSegment.startLine, editableSegment.text, isHugeEditableMode]);
 
+  const syncHugeScrollableContentWidth = useCallback(() => {
+    if (!isHugeEditableMode || wordWrap) {
+      setHugeScrollableContentWidth(0);
+      return;
+    }
+
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+
+    const measuredWidth = Math.max(contentViewportWidth, element.scrollWidth);
+    setHugeScrollableContentWidth((prev) => (prev === measuredWidth ? prev : measuredWidth));
+  }, [contentViewportWidth, isHugeEditableMode, wordWrap]);
+
+  useEffect(() => {
+    if (!isHugeEditableMode || wordWrap) {
+      setHugeScrollableContentWidth(0);
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      syncHugeScrollableContentWidth();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [
+    contentViewportWidth,
+    editableSegment.text,
+    isHugeEditableMode,
+    renderedFontSizePx,
+    settings.fontFamily,
+    syncHugeScrollableContentWidth,
+    wordWrap,
+  ]);
+
   const fetchTokens = useCallback(
     async (start: number, end: number) => {
       const version = ++currentRequestVersion.current;
       try {
-        const result = await invoke<SyntaxToken[]>('get_syntax_tokens', {
+        const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
           id: tab.id,
           startLine: start,
           endLine: end,
         });
 
         if (version !== currentRequestVersion.current) return;
-        if (!Array.isArray(result)) return;
+        if (!Array.isArray(lineResult)) return;
 
-        setTokens(result);
+        setLineTokens(lineResult);
         setStartLine(start);
       } catch (e) {
         console.error('Fetch error:', e);
@@ -3227,6 +3230,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       if (contentRef.current && !isComposingRef.current) {
         normalizeInputLayerDom(contentRef.current);
+        syncHugeScrollableContentWidth();
       }
 
       if (!tab.isDirty) {
@@ -3247,6 +3251,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       tab.isDirty,
       updateTab,
       queueTextSync,
+      syncHugeScrollableContentWidth,
       syncSelectionAfterInteraction,
     ]
   );
@@ -3536,7 +3541,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         ? editableSegment.endLine <= editableSegment.startLine
         : usePlainLineRendering
         ? plainLines.length === 0
-        : tokens.length === 0;
+        : lineTokens.length === 0;
       const isOutside = hasNoCache || start < cachedStart || end > cachedStart + cachedCount;
 
       if (isOutside) {
@@ -3567,7 +3572,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       plainStartLine,
       lineTokens.length,
       pendingSyncRequestedRef,
-      tokens.length,
+      lineTokens.length,
       syncInFlightRef,
       startLine,
       syncVisibleTokens,
@@ -4412,7 +4417,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         hugeWindowUnlockTimerRef.current = null;
       }
       syncedTextRef.current = '';
-      setTokens([]);
+      setLineTokens([]);
       setStartLine(0);
       editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
       setEditableSegment({ startLine: 0, endLine: 0, text: '' });
@@ -4434,6 +4439,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       hugeWindowUnlockTimerRef.current = null;
     }
     syncedTextRef.current = '';
+    setLineTokens([]);
     editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
     setEditableSegment({ startLine: 0, endLine: 0, text: '' });
 
@@ -5134,7 +5140,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       {!isLargeReadOnlyMode && isHugeEditableMode && (
         <div
           ref={scrollContainerRef}
-          className="absolute top-0 bottom-0 right-0 z-0 outline-none overflow-auto editor-scroll-stable"
+          className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-scroll-stable"
           style={{
             left: `${contentViewportLeftPx}px`,
             width: `${contentViewportWidth}px`,
@@ -5148,7 +5154,9 @@ export function Editor({ tab }: { tab: FileTab }) {
             className="relative"
             style={{
               minHeight: `${Math.max(1, tab.lineCount) * itemSize}px`,
-              minWidth: '100%',
+              minWidth: wordWrap
+                ? '100%'
+                : `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`,
             }}
           >
             <textarea
@@ -5157,13 +5165,17 @@ export function Editor({ tab }: { tab: FileTab }) {
               style={{
                 top: hugeEditablePaddingTop,
                 height: hugeEditableSegmentHeightPx,
+                width: wordWrap
+                  ? '100%'
+                  : `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`,
+                right: 'auto',
                 fontFamily: settings.fontFamily,
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 paddingLeft: contentTextPadding,
                 resize: 'none',
-                overflowX: horizontalOverflowMode,
+                overflowX: 'hidden',
                 overflowY: 'hidden',
               }}
               wrap={wordWrap ? 'soft' : 'off'}
@@ -5185,7 +5197,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       {!isLargeReadOnlyMode && !isHugeEditableMode && (
         <textarea
           ref={contentRef}
-          className="absolute top-0 bottom-0 right-0 z-0 outline-none overflow-auto editor-input-layer editor-scroll-stable"
+          className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-input-layer editor-scroll-stable"
           style={{
             left: `${contentViewportLeftPx}px`,
             width: `${contentViewportWidth}px`,
