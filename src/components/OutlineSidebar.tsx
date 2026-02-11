@@ -103,6 +103,12 @@ export function OutlineSidebar({
   };
 
   useEffect(() => {
+    if (normalizedSearchValue) {
+      setTreeExpanded(true);
+    }
+  }, [normalizedSearchValue]);
+
+  useEffect(() => {
     setSearchValue('');
     setTreeExpandSignal((state) => ({
       version: state.version + 1,
@@ -193,7 +199,6 @@ export function OutlineSidebar({
               node={node}
               level={0}
               activeTabId={activeTabId}
-              forceExpanded={hasActiveSearch}
               treeExpandSignal={treeExpandSignal}
             />
           ))
@@ -218,13 +223,11 @@ function TreeNodeItem({
   node,
   level,
   activeTabId,
-  forceExpanded,
   treeExpandSignal,
 }: {
   node: OutlineNode;
   level: number;
   activeTabId: string | null;
-  forceExpanded: boolean;
   treeExpandSignal: {
     version: number;
     expanded: boolean;
@@ -232,7 +235,7 @@ function TreeNodeItem({
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
-  const isExpanded = forceExpanded || expanded;
+  const isExpanded = expanded;
 
   useEffect(() => {
     setExpanded(treeExpandSignal.expanded);
@@ -257,7 +260,7 @@ function TreeNodeItem({
           className="w-4 h-4 flex items-center justify-center"
           onClick={(event) => {
             event.stopPropagation();
-            if (hasChildren && !forceExpanded) {
+            if (hasChildren) {
               setExpanded((value) => !value);
             }
           }}
@@ -277,7 +280,6 @@ function TreeNodeItem({
               node={child}
               level={level + 1}
               activeTabId={activeTabId}
-              forceExpanded={forceExpanded}
               treeExpandSignal={treeExpandSignal}
             />
           ))
