@@ -393,6 +393,8 @@ export function Toolbar() {
     }, [setFolder]);
 
     const handleOpenRecentFile = useCallback(async (path: string) => {
+        setRecentMenu(null);
+
         try {
             await openFilePath(path);
             if (activeTabId) {
@@ -400,12 +402,12 @@ export function Toolbar() {
             }
         } catch (error) {
             console.error('Failed to open recent file:', error);
-        } finally {
-            setRecentMenu(null);
         }
     }, [activeTabId, refreshEditHistoryState]);
 
     const handleOpenRecentFolder = useCallback(async (path: string) => {
+        setRecentMenu(null);
+
         try {
             const entries = await invoke<any[] | null>('read_dir_if_directory', { path });
             if (!entries) {
@@ -416,8 +418,6 @@ export function Toolbar() {
             addRecentFolderPath(path);
         } catch (error) {
             console.error('Failed to open recent folder:', error);
-        } finally {
-            setRecentMenu(null);
         }
     }, [setFolder]);
 

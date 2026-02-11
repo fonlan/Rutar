@@ -8,6 +8,7 @@ import {
     Minus,
     Pin,
     PinOff,
+    LoaderCircle,
     Settings,
     Square,
     Terminal,
@@ -18,6 +19,7 @@ import {
     useCallback,
     useEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type CSSProperties,
@@ -51,6 +53,18 @@ interface TabPathTooltipState {
 interface TabFileIconConfig {
     Icon: LucideIcon;
     className: string;
+}
+
+interface PendingOpenTab {
+    id: string;
+    path: string;
+    name: string;
+}
+
+interface FileOpenLoadingEventDetail {
+    path: string;
+    tabId: string;
+    status: 'start' | 'end';
 }
 
 const defaultTabFileIconConfig: TabFileIconConfig = {
@@ -110,6 +124,12 @@ function getParentDirectoryPath(filePath: string): string | null {
     return normalizedPath.slice(0, separatorIndex);
 }
 
+function pathBaseName(path: string) {
+    const normalizedPath = path.trim().replace(/[\\/]+$/, '');
+    const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+    return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
+}
+
 export function TitleBar() {
     const isReleaseBuild = import.meta.env.PROD;
     const tabs = useStore((state) => state.tabs);
@@ -123,6 +143,7 @@ export function TitleBar() {
     const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
     const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
     const [tabPathTooltip, setTabPathTooltip] = useState<TabPathTooltipState | null>(null);
+    const [pendingOpenTabs, setPendingOpenTabs] = useState<PendingOpenTab[]>([]);
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tabPathTooltipRef = useRef<HTMLDivElement>(null);
     const tabDragStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -605,6 +626,53 @@ export function TitleBar() {
         };
     }, [adjustTabPathTooltipPosition, tabPathTooltip]);
 
+    useEffect(() => {
+        const handleFileOpenLoading = (event: Event) => {
+            const customEvent = event as CustomEvent<FileOpenLoadingEventDetail>;
+            const detail = customEvent.detail;
+            if (!detail?.tabId || !detail.path) {
+                return;
+            }
+
+            if (detail.status === 'start') {
+                setPendingOpenTabs((current) => {
+                    if (current.some((item) => item.id === detail.tabId)) {
+                        return current;
+                    }
+
+                    return [
+                        ...current,
+                        {
+                            id: detail.tabId,
+                            path: detail.path,
+                            name: pathBaseName(detail.path),
+                        },
+                    ];
+                });
+                return;
+            }
+
+            setPendingOpenTabs((current) => current.filter((item) => item.id !== detail.tabId));
+        };
+
+        window.addEventListener('rutar:file-open-loading', handleFileOpenLoading as EventListener);
+
+        return () => {
+            window.removeEventListener('rutar:file-open-loading', handleFileOpenLoading as EventListener);
+        };
+    }, []);
+
+    const displayTabs = useMemo(() => {
+        const existingPaths = new Set(
+            tabs
+                .map((tab) => tab.path)
+                .filter((path): path is string => !!path)
+        );
+
+        const visiblePendingTabs = pendingOpenTabs.filter((item) => !existingPaths.has(item.path));
+        return [...tabs, ...visiblePendingTabs];
+    }, [pendingOpenTabs, tabs]);
+
     return (
         <div
             className="flex h-9 w-full select-none items-stretch bg-background relative"
@@ -622,15 +690,20 @@ export function TitleBar() {
                 className="flex-1 flex overflow-x-auto no-scrollbar overflow-y-hidden h-full relative z-10"
             >
                 <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border z-10" />
-                {tabs.map((tab) => {
+                {displayTabs.map((tab) => {
                     const tabFileIconConfig = getTabFileIconConfig(tab);
                     const TabFileIcon = tabFileIconConfig.Icon;
+                    const isPendingTab = tab.id.startsWith('pending:');
 
                     return (
                         <div
                             key={tab.id}
                             onPointerDown={handleTabPointerDown}
                             onClick={() => {
+                                if (isPendingTab) {
+                                    return;
+                                }
+
                                 if (suppressNextTabClickRef.current) {
                                     suppressNextTabClickRef.current = false;
                                     return;
@@ -638,44 +711,71 @@ export function TitleBar() {
 
                                 setActiveTab(tab.id);
                             }}
-                            onDoubleClick={(event) => handleTabDoubleClick(event, tab)}
-                            onMouseEnter={(event) => handleTabPathTooltipEnter(event, tab)}
+                            onDoubleClick={(event) => {
+                                if (isPendingTab) {
+                                    return;
+                                }
+
+                                handleTabDoubleClick(event, tab);
+                            }}
+                            onMouseEnter={(event) => {
+                                if (isPendingTab) {
+                                    return;
+                                }
+
+                                handleTabPathTooltipEnter(event, tab);
+                            }}
                             onMouseLeave={handleTabPathTooltipLeave}
-                            onContextMenu={(event) => handleTabContextMenu(event, tab)}
+                            onContextMenu={(event) => {
+                                if (isPendingTab) {
+                                    event.preventDefault();
+                                    return;
+                                }
+
+                                handleTabContextMenu(event, tab);
+                            }}
                             className={cn(
                                 "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
-                                activeTabId === tab.id ? "bg-background border-border z-20" : "border-border dark:border-white/15 hover:bg-muted/80"
+                                activeTabId === tab.id ? "bg-background border-border z-20" : "border-border dark:border-white/15",
+                                !isPendingTab && 'hover:bg-muted/80',
+                                isPendingTab && 'opacity-80'
                             )}
                             style={noDragStyle}
                         >
                             {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
-                            <TabFileIcon
-                                className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
-                            />
+                            {isPendingTab ? (
+                                <LoaderCircle className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                            ) : (
+                                <TabFileIcon
+                                    className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
+                                />
+                            )}
                             <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
-                            <button
-                                type="button"
-                                style={noDragStyle}
-                                draggable={false}
-                                onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                }}
-                                onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                }}
-                                onDoubleClick={(e) => {
-                                    e.stopPropagation();
-                                }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleCloseTab(tab);
-                                }}
-                                className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
+                            {!isPendingTab && (
+                                <button
+                                    type="button"
+                                    style={noDragStyle}
+                                    draggable={false}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleCloseTab(tab);
+                                    }}
+                                    className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
 
                         </div>
                     );
