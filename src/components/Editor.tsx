@@ -900,6 +900,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const [textSelectionHighlight, setTextSelectionHighlight] = useState<TextSelectionState | null>(null);
   const [pairHighlights, setPairHighlights] = useState<PairHighlightPosition[]>([]);
   const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
+  const [lineNumberMultiSelection, setLineNumberMultiSelection] = useState<number[]>([]);
   const [outlineFlashLine, setOutlineFlashLine] = useState<number | null>(null);
   const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
@@ -952,6 +953,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const textDragMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const textDragCursorAppliedRef = useRef(false);
   const pointerSelectionActiveRef = useRef(false);
+  const lineNumberSelectionAnchorLineRef = useRef<number | null>(null);
   const selectionChangeRafRef = useRef<number | null>(null);
   const pairHighlightRequestIdRef = useRef(0);
   const editableSegmentRef = useRef<EditorSegmentState>({
@@ -961,6 +963,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   });
 
   const syncedTextRef = useRef('');
+  const lineNumberMultiSelectionSet = useMemo(() => new Set(lineNumberMultiSelection), [lineNumberMultiSelection]);
 
   const fontSize = settings.fontSize || 14;
   const wordWrap = !!settings.wordWrap;
@@ -1648,6 +1651,9 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        setLineNumberMultiSelection((prev) => (prev.length === 0 ? prev : []));
+      }
       const currentElement = contentRef.current;
 
       if (
@@ -2193,6 +2199,211 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
     setRectangularSelection(null);
   }, []);
+
+  const clearLineNumberMultiSelection = useCallback(() => {
+    setLineNumberMultiSelection((prev) => (prev.length === 0 ? prev : []));
+  }, []);
+
+  const mapAbsoluteLineToSourceLine = useCallback(
+    (absoluteLine: number) => {
+      const safeLine = Math.max(1, Math.floor(absoluteLine));
+      if (!isHugeEditableMode) {
+        return safeLine;
+      }
+
+      const segment = editableSegmentRef.current;
+      const segmentStartLine = segment.startLine + 1;
+      const segmentEndLine = segment.endLine;
+      if (safeLine < segmentStartLine || safeLine > segmentEndLine) {
+        return null;
+      }
+
+      return safeLine - segment.startLine;
+    },
+    [isHugeEditableMode]
+  );
+
+  const buildLineNumberSelectionRangeText = useCallback(
+    (text: string, selectedLines: number[]) => {
+      if (!text || selectedLines.length === 0) {
+        return '';
+      }
+
+      const starts = buildLineStartOffsets(text);
+      const segments: string[] = [];
+
+      for (const line of selectedLines) {
+        const sourceLine = mapAbsoluteLineToSourceLine(line);
+        if (sourceLine === null) {
+          continue;
+        }
+        const bounds = getLineBoundsByLineNumber(text, starts, sourceLine);
+        if (!bounds) {
+          continue;
+        }
+
+        const endOffset = bounds.end < text.length && text[bounds.end] === '\n' ? bounds.end + 1 : bounds.end;
+        segments.push(text.slice(bounds.start, endOffset));
+      }
+
+      return segments.join('');
+    },
+    [mapAbsoluteLineToSourceLine]
+  );
+
+  const applyLineNumberMultiSelectionEdit = useCallback(
+    async (mode: 'cut' | 'delete') => {
+      const selectedLines = lineNumberMultiSelection;
+      if (selectedLines.length === 0 || isLargeReadOnlyMode) {
+        return false;
+      }
+
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const baseText = normalizeSegmentText(getEditableText(element));
+      if (!baseText) {
+        clearLineNumberMultiSelection();
+        return false;
+      }
+
+      const starts = buildLineStartOffsets(baseText);
+      const ranges = selectedLines
+        .map((line) => {
+          const sourceLine = mapAbsoluteLineToSourceLine(line);
+          if (sourceLine === null) {
+            return null;
+          }
+          const bounds = getLineBoundsByLineNumber(baseText, starts, sourceLine);
+          if (!bounds) {
+            return null;
+          }
+
+          const endOffset =
+            bounds.end < baseText.length && baseText[bounds.end] === '\n' ? bounds.end + 1 : bounds.end;
+
+          return {
+            start: bounds.start,
+            end: endOffset,
+          };
+        })
+        .filter((range): range is { start: number; end: number } => !!range)
+        .sort((left, right) => left.start - right.start);
+
+      if (ranges.length === 0) {
+        clearLineNumberMultiSelection();
+        return false;
+      }
+
+      const mergedRanges: Array<{ start: number; end: number }> = [];
+      for (const range of ranges) {
+        const previous = mergedRanges[mergedRanges.length - 1];
+        if (!previous || range.start > previous.end) {
+          mergedRanges.push({ ...range });
+          continue;
+        }
+
+        if (range.end > previous.end) {
+          previous.end = range.end;
+        }
+      }
+
+      if (mode === 'cut') {
+        const selectedText = mergedRanges.map((range) => baseText.slice(range.start, range.end)).join('');
+        if (selectedText && navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(selectedText).catch(() => {
+            console.warn('Failed to write line selection to clipboard.');
+          });
+        }
+      }
+
+      const nextPieces: string[] = [];
+      let cursor = 0;
+      for (const range of mergedRanges) {
+        nextPieces.push(baseText.slice(cursor, range.start));
+        cursor = range.end;
+      }
+      nextPieces.push(baseText.slice(cursor));
+      const nextText = nextPieces.join('');
+
+      if (nextText === baseText) {
+        clearLineNumberMultiSelection();
+        return false;
+      }
+
+      const startChar = codeUnitOffsetToUnicodeScalarIndex(baseText, 0);
+      const endChar = codeUnitOffsetToUnicodeScalarIndex(baseText, baseText.length);
+
+      try {
+        const newLineCount = isHugeEditableMode
+          ? await invoke<number>('replace_line_range', {
+              id: tab.id,
+              startLine: editableSegmentRef.current.startLine,
+              endLine: editableSegmentRef.current.endLine,
+              newText: nextText,
+            })
+          : await invoke<number>('edit_text', {
+              id: tab.id,
+              startChar,
+              endChar,
+              newText: nextText,
+            });
+
+        setInputLayerText(element, nextText);
+        setCaretToCodeUnitOffset(element, 0);
+
+        if (isHugeEditableMode) {
+          const nextSegment: EditorSegmentState = {
+            startLine: editableSegmentRef.current.startLine,
+            endLine: editableSegmentRef.current.endLine,
+            text: nextText,
+          };
+          editableSegmentRef.current = nextSegment;
+          setEditableSegment(nextSegment);
+        }
+
+        syncedTextRef.current = nextText;
+        suppressExternalReloadRef.current = true;
+
+        const safeLineCount = Math.max(1, newLineCount);
+        updateTab(tab.id, { lineCount: safeLineCount, isDirty: true });
+        dispatchDocumentUpdated(tab.id);
+
+        clearLineNumberMultiSelection();
+        lineNumberSelectionAnchorLineRef.current = null;
+        setActiveLineNumber(1);
+        setCursorPosition(tab.id, 1, 1);
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          syncSelectionState();
+
+          window.requestAnimationFrame(() => {
+            handleScroll();
+          });
+        });
+
+        await syncVisibleTokens(safeLineCount);
+        return true;
+      } catch (error) {
+        console.error('Failed to apply line-number multi-selection edit:', error);
+        return false;
+      }
+    },
+    [
+      clearLineNumberMultiSelection,
+      isLargeReadOnlyMode,
+      lineNumberMultiSelection,
+      mapAbsoluteLineToSourceLine,
+      setCursorPosition,
+      handleScroll,
+      syncSelectionState,
+      syncVisibleTokens,
+      tab.id,
+      updateTab,
+    ]
+  );
 
   const normalizedRectangularSelection = useMemo(
     () => normalizeRectangularSelection(rectangularSelection),
@@ -2756,6 +2967,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       return false;
     }
 
+    if (lineNumberMultiSelection.length > 0) {
+      return true;
+    }
+
     if (isTextareaInputElement(contentRef.current)) {
       const start = contentRef.current.selectionStart ?? 0;
       const end = contentRef.current.selectionEnd ?? 0;
@@ -2769,7 +2984,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const range = selection.getRangeAt(0);
     return contentRef.current.contains(range.commonAncestorContainer) && selection.toString().length > 0;
-  }, []);
+  }, [lineNumberMultiSelection.length]);
 
   const updateSubmenuVerticalAlignment = useCallback(
     (submenuKey: EditorSubmenuKey, anchorElement: HTMLDivElement) => {
@@ -3003,6 +3218,31 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
+      if ((action === 'copy' || action === 'cut' || action === 'delete') && lineNumberMultiSelection.length > 0) {
+        if (action === 'copy') {
+          if (contentRef.current) {
+            const text = normalizeSegmentText(getEditableText(contentRef.current));
+            const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
+            if (selected && navigator.clipboard?.writeText) {
+              void navigator.clipboard.writeText(selected).catch(() => {
+                console.warn('Failed to write line selection to clipboard.');
+              });
+            }
+          }
+
+          setEditorContextMenu(null);
+          return;
+        }
+
+        await applyLineNumberMultiSelectionEdit(action === 'cut' ? 'cut' : 'delete');
+        setEditorContextMenu(null);
+        return;
+      }
+
+      if (action === 'selectAll' && lineNumberMultiSelection.length > 0) {
+        clearLineNumberMultiSelection();
+      }
+
       if (action === 'paste') {
         let pasted = false;
 
@@ -3056,8 +3296,12 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [
+      applyLineNumberMultiSelectionEdit,
+      buildLineNumberSelectionRangeText,
+      clearLineNumberMultiSelection,
       getRectangularSelectionTextFromBackend,
       isEditorContextMenuActionDisabled,
+      lineNumberMultiSelection,
       normalizedRectangularSelection,
       replaceRectangularSelection,
       runEditorContextCommand,
@@ -3099,6 +3343,99 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [bookmarkSidebarOpen, bookmarks, tab.id, toggleBookmark, toggleBookmarkSidebar]
+  );
+
+  const handleLineNumberClick = useCallback(
+    (line: number, shiftKey: boolean, additiveKey: boolean) => {
+      const safeLine = Math.max(1, Math.floor(line));
+
+      if (additiveKey) {
+        lineNumberSelectionAnchorLineRef.current = safeLine;
+        clearRectangularSelection();
+        setLineNumberMultiSelection((prev) => {
+          const exists = prev.includes(safeLine);
+          if (exists) {
+            return prev.filter((lineNumber) => lineNumber !== safeLine);
+          }
+
+          return [...prev, safeLine].sort((left, right) => left - right);
+        });
+
+        const element = contentRef.current;
+        if (element && !isLargeReadOnlyMode) {
+          const text = normalizeSegmentText(getEditableText(element));
+          const starts = buildLineStartOffsets(text);
+          const lineInSource = mapAbsoluteLineToSourceLine(safeLine);
+          if (lineInSource === null) {
+            return;
+          }
+          const bounds = getLineBoundsByLineNumber(text, starts, lineInSource);
+          if (bounds) {
+            const caretOffset = mapLogicalOffsetToInputLayerOffset(text, bounds.start);
+            setCaretToCodeUnitOffset(element, caretOffset);
+          }
+        }
+
+        setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
+        setCursorPosition(tab.id, safeLine, 1);
+        syncSelectionAfterInteraction();
+        return;
+      }
+
+      clearLineNumberMultiSelection();
+
+      if (lineNumberSelectionAnchorLineRef.current === null) {
+        lineNumberSelectionAnchorLineRef.current = safeLine;
+      }
+
+      const anchorLine = lineNumberSelectionAnchorLineRef.current;
+      const selectionStartLine = shiftKey ? Math.min(anchorLine, safeLine) : safeLine;
+      const selectionEndLine = shiftKey ? Math.max(anchorLine, safeLine) : safeLine;
+
+      if (!shiftKey) {
+        lineNumberSelectionAnchorLineRef.current = safeLine;
+      }
+
+      setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
+      setCursorPosition(tab.id, safeLine, 1);
+
+      const element = contentRef.current;
+      if (!element || isLargeReadOnlyMode) {
+        return;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+      const starts = buildLineStartOffsets(text);
+      const startLineInSource = mapAbsoluteLineToSourceLine(selectionStartLine);
+      const endLineInSource = mapAbsoluteLineToSourceLine(selectionEndLine);
+      if (startLineInSource === null || endLineInSource === null) {
+        return;
+      }
+      const startBounds = getLineBoundsByLineNumber(text, starts, startLineInSource);
+      const endBounds = getLineBoundsByLineNumber(text, starts, endLineInSource);
+      if (!startBounds || !endBounds) {
+        return;
+      }
+
+      const selectionStartOffset = mapLogicalOffsetToInputLayerOffset(text, startBounds.start);
+      const logicalEndOffset = endBounds.end < text.length && text[endBounds.end] === '\n'
+        ? endBounds.end + 1
+        : endBounds.end;
+      const selectionEndOffset = mapLogicalOffsetToInputLayerOffset(text, logicalEndOffset);
+
+      clearRectangularSelection();
+      setSelectionToCodeUnitOffsets(element, selectionStartOffset, selectionEndOffset);
+      syncSelectionAfterInteraction();
+    },
+    [
+      clearLineNumberMultiSelection,
+      clearRectangularSelection,
+      isLargeReadOnlyMode,
+      mapAbsoluteLineToSourceLine,
+      setCursorPosition,
+      syncSelectionAfterInteraction,
+      tab.id,
+    ]
   );
 
   const handleLineNumberWheel = useCallback(
@@ -3650,11 +3987,56 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       if (event.key !== 'Enter' || event.isComposing) {
+        if (event.key === 'Delete' && lineNumberMultiSelection.length > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          void applyLineNumberMultiSelectionEdit('delete');
+          return;
+        }
+
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'x' &&
+          lineNumberMultiSelection.length > 0
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          void applyLineNumberMultiSelectionEdit('cut');
+          return;
+        }
+
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'c' &&
+          lineNumberMultiSelection.length > 0
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const element = contentRef.current;
+          if (element) {
+            const text = normalizeSegmentText(getEditableText(element));
+            const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
+            if (selected && navigator.clipboard?.writeText) {
+              void navigator.clipboard.writeText(selected).catch(() => {
+                console.warn('Failed to write line selection to clipboard.');
+              });
+            }
+          }
+          return;
+        }
+
         if (
           normalizedRectangularSelection &&
           (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')
         ) {
           clearRectangularSelection();
+        }
+        if (!event.shiftKey && !event.ctrlKey && !event.metaKey && event.key !== 'Shift') {
+          clearLineNumberMultiSelection();
         }
         if (!event.shiftKey || event.key !== 'Shift') {
           clearVerticalSelectionState();
@@ -3664,6 +4046,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       clearVerticalSelectionState();
       clearRectangularSelection();
+      clearLineNumberMultiSelection();
       event.preventDefault();
       event.stopPropagation();
       if (insertTextAtSelection('\n')) {
@@ -3671,10 +4054,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
     },
     [
+      applyLineNumberMultiSelectionEdit,
+      buildLineNumberSelectionRangeText,
+      clearLineNumberMultiSelection,
       clearRectangularSelection,
       clearVerticalSelectionState,
       beginRectangularSelectionFromCaret,
       expandVerticalSelection,
+      lineNumberMultiSelection,
       handleInput,
       handleRectangularSelectionInputByKey,
       insertTextAtSelection,
@@ -4932,6 +5319,21 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const handleCopyLike = (event: ClipboardEvent, cut: boolean) => {
       if (!normalizedRectangularSelection) {
+        if (lineNumberMultiSelection.length > 0) {
+          const text = normalizeSegmentText(getEditableText(element));
+          const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
+          if (!selected) {
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          event.clipboardData?.setData('text/plain', selected);
+
+          if (cut && !isLargeReadOnlyMode) {
+            void applyLineNumberMultiSelectionEdit('cut');
+          }
+        }
         return;
       }
 
@@ -4975,7 +5377,15 @@ export function Editor({ tab }: { tab: FileTab }) {
       element.removeEventListener('cut', handleCut);
       element.removeEventListener('paste', handlePaste);
     };
-  }, [getRectangularSelectionText, normalizedRectangularSelection, replaceRectangularSelection]);
+  }, [
+    applyLineNumberMultiSelectionEdit,
+    buildLineNumberSelectionRangeText,
+    getRectangularSelectionText,
+    isLargeReadOnlyMode,
+    lineNumberMultiSelection,
+    normalizedRectangularSelection,
+    replaceRectangularSelection,
+  ]);
 
   useEffect(() => {
     if (isPairHighlightEnabled) {
@@ -5144,6 +5554,8 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   useEffect(() => {
     setActiveLineNumber(1);
+    lineNumberSelectionAnchorLineRef.current = null;
+    setLineNumberMultiSelection([]);
     setCursorPosition(tab.id, 1, 1);
     setSearchHighlight(null);
     setTextSelectionHighlight(null);
@@ -5533,9 +5945,11 @@ export function Editor({ tab }: { tab: FileTab }) {
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
                   }}
-                  className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
+                className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
                     outlineFlashLine === index + 1
                       ? 'bg-primary/15 dark:bg-primary/20'
+                      : lineNumberMultiSelectionSet.has(index + 1)
+                      ? 'bg-blue-500/25 dark:bg-blue-500/20'
                       : highlightCurrentLine && activeLineNumber === index + 1
                       ? 'bg-accent/45 dark:bg-accent/25'
                       : ''
@@ -5590,8 +6004,19 @@ export function Editor({ tab }: { tab: FileTab }) {
                 className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
                   bookmarks.includes(index + 1)
                     ? 'text-amber-500/90 font-semibold'
+                    : lineNumberMultiSelectionSet.has(index + 1)
+                    ? 'text-blue-600 dark:text-blue-300 font-semibold'
                     : 'text-muted-foreground/45'
                 } pointer-events-auto cursor-pointer select-none`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleLineNumberClick(index + 1, event.shiftKey, event.ctrlKey || event.metaKey);
+                }}
                 onDoubleClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
