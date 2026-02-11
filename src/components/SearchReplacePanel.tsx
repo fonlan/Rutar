@@ -24,6 +24,7 @@ import {
   useState,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type UIEvent as ReactUIEvent,
@@ -559,6 +560,9 @@ export function SearchReplacePanel() {
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
+  const [isSearchUiFocused, setIsSearchUiFocused] = useState(false);
+  const [isSearchUiPointerActive, setIsSearchUiPointerActive] = useState(false);
+  const [isSearchUiPinnedActive, setIsSearchUiPinnedActive] = useState(false);
 
   const isReplaceMode = panelMode === 'replace';
   const isFilterMode = panelMode === 'filter';
@@ -676,6 +680,114 @@ export function SearchReplacePanel() {
   } | null>(null);
   const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
+  const blurUpdateTimerRef = useRef<number | null>(null);
+
+  const isTargetInsideSearchUi = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof Node)) {
+      return false;
+    }
+
+    return (
+      !!searchSidebarContainerRef.current?.contains(target) ||
+      !!resultPanelWrapperRef.current?.contains(target) ||
+      !!minimizedResultWrapperRef.current?.contains(target)
+    );
+  }, []);
+
+  const syncSearchUiFocusFromDom = useCallback(() => {
+    setIsSearchUiFocused(isTargetInsideSearchUi(document.activeElement));
+  }, [isTargetInsideSearchUi]);
+
+  const handleSearchUiPointerDownCapture = useCallback(() => {
+    if (blurUpdateTimerRef.current !== null) {
+      window.clearTimeout(blurUpdateTimerRef.current);
+      blurUpdateTimerRef.current = null;
+    }
+
+    setIsSearchUiPointerActive(true);
+    setIsSearchUiPinnedActive(true);
+    setIsSearchUiFocused(true);
+  }, []);
+
+  const handleSearchUiFocusCapture = useCallback(() => {
+    if (blurUpdateTimerRef.current !== null) {
+      window.clearTimeout(blurUpdateTimerRef.current);
+      blurUpdateTimerRef.current = null;
+    }
+
+    setIsSearchUiFocused(true);
+  }, []);
+
+  const handleSearchUiBlurCapture = useCallback(
+    (event: ReactFocusEvent<HTMLElement>) => {
+      if (isTargetInsideSearchUi(event.relatedTarget)) {
+        return;
+      }
+
+      if (isSearchUiPointerActive) {
+        return;
+      }
+
+      if (blurUpdateTimerRef.current !== null) {
+        window.clearTimeout(blurUpdateTimerRef.current);
+      }
+
+      blurUpdateTimerRef.current = window.setTimeout(() => {
+        if (!isSearchUiPointerActive) {
+          syncSearchUiFocusFromDom();
+        }
+        blurUpdateTimerRef.current = null;
+      }, 40);
+    },
+    [isSearchUiPointerActive, isTargetInsideSearchUi, syncSearchUiFocusFromDom]
+  );
+
+  useEffect(() => {
+    if (!isSearchUiPointerActive) {
+      return;
+    }
+
+    const handlePointerEnd = () => {
+      setIsSearchUiPointerActive(false);
+      window.requestAnimationFrame(() => {
+        syncSearchUiFocusFromDom();
+      });
+    };
+
+    window.addEventListener('pointerup', handlePointerEnd, true);
+    window.addEventListener('pointercancel', handlePointerEnd, true);
+
+    return () => {
+      window.removeEventListener('pointerup', handlePointerEnd, true);
+      window.removeEventListener('pointercancel', handlePointerEnd, true);
+    };
+  }, [isSearchUiPointerActive, syncSearchUiFocusFromDom]);
+
+  useEffect(() => {
+    const handleGlobalPointerDown = (event: PointerEvent) => {
+      if (isTargetInsideSearchUi(event.target)) {
+        return;
+      }
+
+      setIsSearchUiPinnedActive(false);
+    };
+
+    window.addEventListener('pointerdown', handleGlobalPointerDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', handleGlobalPointerDown, true);
+    };
+  }, [isTargetInsideSearchUi]);
+
+  const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
+
+  useEffect(() => {
+    return () => {
+      if (blurUpdateTimerRef.current !== null) {
+        window.clearTimeout(blurUpdateTimerRef.current);
+        blurUpdateTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     currentMatchIndexRef.current = currentMatchIndex;
@@ -3322,9 +3434,13 @@ export function SearchReplacePanel() {
       >
         <div
           className={cn(
-            'flex h-full flex-col border-l border-border bg-background/95 p-3 shadow-2xl backdrop-blur',
+            'flex h-full flex-col border-l border-border p-3 shadow-2xl transition-colors',
+            isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
             isOpen ? 'pointer-events-auto' : 'pointer-events-none'
           )}
+          onPointerDownCapture={handleSearchUiPointerDownCapture}
+          onFocusCapture={handleSearchUiFocusCapture}
+          onBlurCapture={handleSearchUiBlurCapture}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="inline-flex items-center rounded-md border border-border p-0.5">
@@ -3885,9 +4001,13 @@ export function SearchReplacePanel() {
         <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-2 pb-2">
         <div
           className={cn(
-            'pointer-events-auto rounded-lg border border-border bg-background/95 shadow-2xl',
+            'pointer-events-auto rounded-lg border border-border shadow-2xl transition-colors',
+            isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
             resultPanelState === 'open' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           )}
+          onPointerDownCapture={handleSearchUiPointerDownCapture}
+          onFocusCapture={handleSearchUiFocusCapture}
+          onBlurCapture={handleSearchUiBlurCapture}
         >
           <button
             type="button"
@@ -4126,7 +4246,15 @@ export function SearchReplacePanel() {
 
       {isResultPanelMinimized && (
         <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-30">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow-lg backdrop-blur">
+          <div
+            className={cn(
+              'pointer-events-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs shadow-lg transition-colors',
+              isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65'
+            )}
+            onPointerDownCapture={handleSearchUiPointerDownCapture}
+            onFocusCapture={handleSearchUiFocusCapture}
+            onBlurCapture={handleSearchUiBlurCapture}
+          >
             <span className="text-muted-foreground">
               {isFilterMode
                 ? messages.filterMinimizedSummary(displayTotalFilterMatchedLineCountText, filterMatches.length)
