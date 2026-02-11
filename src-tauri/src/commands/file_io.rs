@@ -418,8 +418,17 @@ pub(super) fn close_files_impl(state: State<'_, AppState>, ids: Vec<String>) {
     }
 }
 
-pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveFileBatchResultItem {
+    pub id: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+fn save_file_by_id(state: &State<'_, AppState>, id: &str) -> Result<(), String> {
+    if let Some(mut doc) = state.documents.get_mut(id) {
         if let Some(path) = doc.path.clone() {
             let mut file = File::create(&path).map_err(|e| e.to_string())?;
             let persist_content = build_persist_content(&doc);
@@ -441,6 +450,30 @@ pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Re
     } else {
         Err("Document not found".to_string())
     }
+}
+
+pub(super) async fn save_files_impl(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Vec<SaveFileBatchResultItem> {
+    ids.into_iter()
+        .map(|id| match save_file_by_id(&state, id.as_str()) {
+            Ok(()) => SaveFileBatchResultItem {
+                id,
+                success: true,
+                error: None,
+            },
+            Err(error) => SaveFileBatchResultItem {
+                id,
+                success: false,
+                error: Some(error),
+            },
+        })
+        .collect()
+}
+
+pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    save_file_by_id(&state, id.as_str())
 }
 
 pub(super) async fn save_file_as_impl(

@@ -50,6 +50,14 @@ pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), Str
 }
 
 #[tauri::command]
+pub async fn save_files(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<Vec<file_io::SaveFileBatchResultItem>, String> {
+    Ok(file_io::save_files_impl(state, ids).await)
+}
+
+#[tauri::command]
 pub async fn save_file_as(
     state: State<'_, AppState>,
     id: String,

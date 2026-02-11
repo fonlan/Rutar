@@ -180,6 +180,7 @@ pub fn run() {
             commands::file_io_commands::close_file,
             commands::file_io_commands::close_files,
             commands::file_io_commands::save_file,
+            commands::file_io_commands::save_files,
             commands::file_io_commands::save_file_as,
             commands::file_io_commands::convert_encoding,
             commands::file_io_commands::set_line_ending,

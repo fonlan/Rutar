@@ -92,6 +92,12 @@ interface WordCountInfo {
     paragraphCount: number;
 }
 
+interface SaveFileBatchResultItem {
+    id: string;
+    success: boolean;
+    error?: string;
+}
+
 const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canUndo: false,
     canRedo: false,
@@ -431,17 +437,49 @@ export function Toolbar() {
     }, [activeTab, persistTab, refreshEditHistoryState]);
 
     const handleSaveAll = useCallback(async () => {
-        const dirtyTabs = tabs.filter(t => t.isDirty);
-        for (const tab of dirtyTabs) {
+        const dirtyTabs = tabs.filter((tab) => tab.isDirty);
+        const tabsWithPath = dirtyTabs.filter((tab) => !!tab.path);
+        const tabsWithoutPath = dirtyTabs.filter((tab) => !tab.path);
+
+        if (tabsWithPath.length > 0) {
             try {
-                await persistTab(tab);
-                await refreshEditHistoryState(tab.id);
-                dispatchDocumentUpdated(tab.id);
-            } catch (e) {
-                console.error(`Failed to save ${tab.name}:`, e);
+                const results = await invoke<SaveFileBatchResultItem[]>('save_files', {
+                    ids: tabsWithPath.map((tab) => tab.id),
+                });
+
+                for (const result of results) {
+                    const tab = tabsWithPath.find((item) => item.id === result.id);
+                    if (!tab) {
+                        continue;
+                    }
+
+                    if (!result.success) {
+                        console.error(`Failed to save ${tab.name}:`, result.error ?? 'Unknown error');
+                        continue;
+                    }
+
+                    updateTab(tab.id, { isDirty: false });
+                    await refreshEditHistoryState(tab.id);
+                    dispatchDocumentUpdated(tab.id);
+                }
+            } catch (error) {
+                console.error('Failed to batch save files:', error);
             }
         }
-    }, [persistTab, refreshEditHistoryState, tabs]);
+
+        for (const tab of tabsWithoutPath) {
+            try {
+                const saved = await persistTab(tab);
+                if (!saved) {
+                    continue;
+                }
+                await refreshEditHistoryState(tab.id);
+                dispatchDocumentUpdated(tab.id);
+            } catch (error) {
+                console.error(`Failed to save ${tab.name}:`, error);
+            }
+        }
+    }, [persistTab, refreshEditHistoryState, tabs, updateTab]);
 
     const handleCloseActiveTab = useCallback(async () => {
         if (!activeTab) return;
