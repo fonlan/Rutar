@@ -390,6 +390,12 @@ pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
     state.documents.remove(&id);
 }
 
+pub(super) fn close_files_impl(state: State<'_, AppState>, ids: Vec<String>) {
+    for id in ids {
+        state.documents.remove(&id);
+    }
+}
+
 pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(path) = doc.path.clone() {

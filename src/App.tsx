@@ -209,15 +209,11 @@ function App() {
       state.closeTab(tabId);
     }
 
-    const closeResults = await Promise.allSettled(
-      tabIds.map((id) => invoke('close_file', { id }))
-    );
-
-    closeResults.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.error('Failed to close tab ' + tabIds[index] + ':', result.reason);
-      }
-    });
+    try {
+      await invoke('close_files', { ids: tabIds });
+    } catch (error) {
+      console.error('Failed to close tabs:', error);
+    }
 
     return true;
   }, []);

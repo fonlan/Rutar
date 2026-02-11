@@ -40,6 +40,11 @@ pub fn close_file(state: State<'_, AppState>, id: String) {
 }
 
 #[tauri::command]
+pub fn close_files(state: State<'_, AppState>, ids: Vec<String>) {
+    file_io::close_files_impl(state, ids)
+}
+
+#[tauri::command]
 pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), String> {
     file_io::save_file_impl(state, id).await
 }
