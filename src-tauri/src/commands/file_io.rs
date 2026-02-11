@@ -74,6 +74,17 @@ fn read_disk_file_snapshot(path: &PathBuf) -> Result<DiskFileSnapshot, String> {
     })
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenFileBatchResultItem {
+    pub path: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_info: Option<FileInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 fn detect_line_ending(text: &str) -> LineEnding {
     let bytes = text.as_bytes();
     let mut crlf_count = 0usize;
@@ -240,10 +251,7 @@ fn count_word_stats(rope: &Rope) -> WordCountInfo {
     }
 }
 
-pub(super) async fn open_file_impl(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<FileInfo, String> {
+fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
 
     if let Some(existing) = state
@@ -308,6 +316,36 @@ pub(super) async fn open_file_impl(
         large_file_mode: snapshot.large_file_mode,
         syntax_override: None,
     })
+}
+
+pub(super) async fn open_file_impl(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<FileInfo, String> {
+    open_file_by_path_impl(&state, path)
+}
+
+pub(super) async fn open_files_impl(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Vec<OpenFileBatchResultItem> {
+    paths
+        .into_iter()
+        .map(|path| match open_file_by_path_impl(&state, path.clone()) {
+            Ok(file_info) => OpenFileBatchResultItem {
+                path,
+                success: true,
+                file_info: Some(file_info),
+                error: None,
+            },
+            Err(error) => OpenFileBatchResultItem {
+                path,
+                success: false,
+                file_info: None,
+                error: Some(error),
+            },
+        })
+        .collect()
 }
 
 pub(super) fn get_visible_lines_chunk_impl(

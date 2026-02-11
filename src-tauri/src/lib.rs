@@ -172,6 +172,7 @@ pub fn run() {
         .manage(AppState::new(startup_paths))
         .invoke_handler(tauri::generate_handler![
             commands::file_io_commands::open_file,
+            commands::file_io_commands::open_files,
             commands::file_io_commands::get_visible_lines,
             commands::file_io_commands::get_visible_lines_chunk,
             commands::file_io_commands::get_bookmark_line_previews,

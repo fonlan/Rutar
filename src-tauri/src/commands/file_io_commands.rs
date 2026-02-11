@@ -6,6 +6,14 @@ pub async fn open_file(state: State<'_, AppState>, path: String) -> Result<FileI
 }
 
 #[tauri::command]
+pub async fn open_files(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<file_io::OpenFileBatchResultItem>, String> {
+    Ok(file_io::open_files_impl(state, paths).await)
+}
+
+#[tauri::command]
 pub fn get_visible_lines_chunk(
     state: State<'_, AppState>,
     id: String,
