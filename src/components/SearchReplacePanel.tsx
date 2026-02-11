@@ -224,9 +224,10 @@ const FILTER_CHUNK_SIZE = 300;
 const RESULT_PANEL_DEFAULT_HEIGHT = 224;
 const RESULT_PANEL_MIN_HEIGHT = 140;
 const RESULT_PANEL_MAX_HEIGHT = 640;
-const SEARCH_SIDEBAR_DEFAULT_WIDTH = 420;
+const SEARCH_SIDEBAR_DEFAULT_WIDTH = 325;
 const SEARCH_SIDEBAR_MIN_WIDTH = 280;
 const SEARCH_SIDEBAR_MAX_WIDTH = 900;
+const SEARCH_SIDEBAR_RIGHT_OFFSET = 12;
 const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
 const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
 
@@ -272,6 +273,16 @@ function dispatchNavigateToLine(tabId: string, line: number, column: number, len
         line,
         column,
         length,
+      },
+    })
+  );
+}
+
+function dispatchSearchClose(tabId: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:search-close', {
+      detail: {
+        tabId,
       },
     })
   );
@@ -587,6 +598,7 @@ export function SearchReplacePanel() {
     onWidthChange: setSearchSidebarWidth,
     resizeEdge: 'left',
   });
+  const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
   const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -680,23 +692,20 @@ export function SearchReplacePanel() {
   } | null>(null);
   const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
+  const previousIsOpenRef = useRef(false);
   const blurUpdateTimerRef = useRef<number | null>(null);
 
-  const isTargetInsideSearchUi = useCallback((target: EventTarget | null) => {
+  const isTargetInsideSearchSidebar = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Node)) {
       return false;
     }
 
-    return (
-      !!searchSidebarContainerRef.current?.contains(target) ||
-      !!resultPanelWrapperRef.current?.contains(target) ||
-      !!minimizedResultWrapperRef.current?.contains(target)
-    );
+    return !!searchSidebarContainerRef.current?.contains(target);
   }, []);
 
-  const syncSearchUiFocusFromDom = useCallback(() => {
-    setIsSearchUiFocused(isTargetInsideSearchUi(document.activeElement));
-  }, [isTargetInsideSearchUi]);
+  const syncSearchSidebarFocusFromDom = useCallback(() => {
+    setIsSearchUiFocused(isTargetInsideSearchSidebar(document.activeElement));
+  }, [isTargetInsideSearchSidebar]);
 
   const handleSearchUiPointerDownCapture = useCallback(() => {
     if (blurUpdateTimerRef.current !== null) {
@@ -720,7 +729,7 @@ export function SearchReplacePanel() {
 
   const handleSearchUiBlurCapture = useCallback(
     (event: ReactFocusEvent<HTMLElement>) => {
-      if (isTargetInsideSearchUi(event.relatedTarget)) {
+      if (isTargetInsideSearchSidebar(event.relatedTarget)) {
         return;
       }
 
@@ -734,12 +743,12 @@ export function SearchReplacePanel() {
 
       blurUpdateTimerRef.current = window.setTimeout(() => {
         if (!isSearchUiPointerActive) {
-          syncSearchUiFocusFromDom();
+          syncSearchSidebarFocusFromDom();
         }
         blurUpdateTimerRef.current = null;
       }, 40);
     },
-    [isSearchUiPointerActive, isTargetInsideSearchUi, syncSearchUiFocusFromDom]
+    [isSearchUiPointerActive, isTargetInsideSearchSidebar, syncSearchSidebarFocusFromDom]
   );
 
   useEffect(() => {
@@ -750,7 +759,7 @@ export function SearchReplacePanel() {
     const handlePointerEnd = () => {
       setIsSearchUiPointerActive(false);
       window.requestAnimationFrame(() => {
-        syncSearchUiFocusFromDom();
+        syncSearchSidebarFocusFromDom();
       });
     };
 
@@ -761,11 +770,11 @@ export function SearchReplacePanel() {
       window.removeEventListener('pointerup', handlePointerEnd, true);
       window.removeEventListener('pointercancel', handlePointerEnd, true);
     };
-  }, [isSearchUiPointerActive, syncSearchUiFocusFromDom]);
+  }, [isSearchUiPointerActive, syncSearchSidebarFocusFromDom]);
 
   useEffect(() => {
     const handleGlobalPointerDown = (event: PointerEvent) => {
-      if (isTargetInsideSearchUi(event.target)) {
+      if (isTargetInsideSearchSidebar(event.target)) {
         return;
       }
 
@@ -776,9 +785,7 @@ export function SearchReplacePanel() {
     return () => {
       window.removeEventListener('pointerdown', handleGlobalPointerDown, true);
     };
-  }, [isTargetInsideSearchUi]);
-
-  const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
+  }, [isTargetInsideSearchSidebar]);
 
   useEffect(() => {
     return () => {
@@ -2006,12 +2013,20 @@ export function SearchReplacePanel() {
           return;
         }
 
+        if (event.currentTarget === searchInputRef.current) {
+          setResultPanelState('open');
+          if (!isSearching) {
+            void executeSearch(true);
+          }
+          return;
+        }
+
         const primaryStep = reverseSearch ? -1 : 1;
         const step = event.shiftKey ? -primaryStep : primaryStep;
         void navigateByStep(step);
       }
     },
-    [executeFilter, isFilterMode, isSearching, navigateByStep, reverseSearch]
+    [executeFilter, executeSearch, isFilterMode, isSearching, navigateByStep, reverseSearch]
   );
 
   const handleSelectMatch = useCallback(
@@ -2604,6 +2619,17 @@ export function SearchReplacePanel() {
     totalMatchCount,
     totalMatchedLineCount,
   ]);
+
+  useEffect(() => {
+    if (previousIsOpenRef.current && !isOpen) {
+      const targetTabId = activeTabId ?? previousActiveTabIdRef.current;
+      if (targetTabId) {
+        dispatchSearchClose(targetTabId);
+      }
+    }
+
+    previousIsOpenRef.current = isOpen;
+  }, [activeTabId, isOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3240,7 +3266,7 @@ export function SearchReplacePanel() {
             type="button"
             data-result-item="true"
             className={cn(
-              'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
+              'flex min-w-full w-max items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
               isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
             )}
             title={messages.lineColTitle(match.line, Math.max(1, match.column || 1))}
@@ -3257,7 +3283,7 @@ export function SearchReplacePanel() {
               {match.line}
             </span>
             <span
-              className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
+              className="pl-2 text-xs text-foreground whitespace-pre"
               style={resultListTextStyle}
             >
               {renderFilterPreview(match)}
@@ -3282,7 +3308,7 @@ export function SearchReplacePanel() {
           type="button"
           data-result-item="true"
           className={cn(
-            'flex w-full items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
+            'flex min-w-full w-max items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
             isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
           )}
           title={messages.lineColTitle(match.line, match.column)}
@@ -3299,7 +3325,7 @@ export function SearchReplacePanel() {
             {match.line}
           </span>
           <span
-            className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
+            className="pl-2 text-xs text-foreground whitespace-pre"
             style={resultListTextStyle}
           >
             {renderMatchPreview(match)}
@@ -3423,18 +3449,19 @@ export function SearchReplacePanel() {
       <div
         ref={searchSidebarContainerRef}
         className={cn(
-          'fixed right-0 z-40 transform-gpu overflow-x-hidden transition-transform duration-200 ease-out',
+          'fixed z-40 transform-gpu overflow-hidden transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
         style={{
           width: `${searchSidebarWidth}px`,
+          right: `${SEARCH_SIDEBAR_RIGHT_OFFSET}px`,
           top: searchSidebarTopOffset,
           bottom: searchSidebarBottomOffset,
         }}
       >
         <div
           className={cn(
-            'flex h-full flex-col border-l border-border p-3 shadow-2xl transition-colors',
+            'flex h-full flex-col overflow-y-auto border-l border-border p-3 shadow-2xl transition-colors',
             isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
             isOpen ? 'pointer-events-auto' : 'pointer-events-none'
           )}
@@ -3998,16 +4025,13 @@ export function SearchReplacePanel() {
       </div>
 
       {resultPanelState !== 'closed' && (
-        <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-2 pb-2">
+        <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-[35] px-2 pb-2">
         <div
           className={cn(
             'pointer-events-auto rounded-lg border border-border shadow-2xl transition-colors',
-            isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
+            'bg-background',
             resultPanelState === 'open' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           )}
-          onPointerDownCapture={handleSearchUiPointerDownCapture}
-          onFocusCapture={handleSearchUiFocusCapture}
-          onBlurCapture={handleSearchUiBlurCapture}
         >
           <button
             type="button"
@@ -4182,7 +4206,7 @@ export function SearchReplacePanel() {
 
           <div
             ref={resultListRef}
-            className="overflow-y-auto"
+            className="overflow-auto"
             style={{ maxHeight: `${resultPanelHeight}px` }}
             onScroll={handleResultListScroll}
           >
@@ -4245,15 +4269,11 @@ export function SearchReplacePanel() {
       )}
 
       {isResultPanelMinimized && (
-        <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-30">
+        <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-[35]">
           <div
             className={cn(
-              'pointer-events-auto flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs shadow-lg transition-colors',
-              isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65'
+              'pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs shadow-lg transition-colors'
             )}
-            onPointerDownCapture={handleSearchUiPointerDownCapture}
-            onFocusCapture={handleSearchUiFocusCapture}
-            onBlurCapture={handleSearchUiBlurCapture}
           >
             <span className="text-muted-foreground">
               {isFilterMode

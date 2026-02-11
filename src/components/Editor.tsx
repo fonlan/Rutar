@@ -5108,11 +5108,24 @@ export function Editor({ tab }: { tab: FileTab }) {
       void syncVisibleTokens(Math.max(1, tab.lineCount));
     };
 
+    const handleSearchClose = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId?: string }>;
+      const detail = customEvent.detail;
+
+      if (!detail || detail.tabId !== tab.id) {
+        return;
+      }
+
+      setSearchHighlight(null);
+    };
+
     window.addEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
     window.addEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
+    window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
     return () => {
       window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
       window.removeEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
+      window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
     };
   }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, setCursorPosition, syncVisibleTokens, tab.id, tab.lineCount]);
 
