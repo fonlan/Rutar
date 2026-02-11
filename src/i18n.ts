@@ -106,6 +106,7 @@ export type I18nKey =
   | 'settings.about.projectUrl'
   | 'settings.about.openLink'
   | 'settings.about.summary'
+  | 'settings.about.author'
   | 'settings.editorPrefsDesc'
   | 'settings.generalTabDesc'
   | 'settings.appearanceTabDesc'
@@ -291,8 +292,8 @@ const zhCN: Messages = {
   'settings.themeDesc': '切换应用主题。',
   'settings.theme.light': '浅色',
   'settings.theme.dark': '深色',
-  'settings.fontFamily': '字体族',
-  'settings.fontFamilyDesc': '编辑器使用的字体族。',
+  'settings.fontFamily': '字体',
+  'settings.fontFamilyDesc': '编辑器使用的字体。',
   'settings.fontSize': '字体大小',
   'settings.singleInstanceMode': '单实例模式',
   'settings.singleInstanceModeDesc': '启用后，双击关联文件或“使用 Rutar 打开”会复用当前窗口并新建标签页。更改后重启生效。',
@@ -305,6 +306,7 @@ const zhCN: Messages = {
   'settings.about.projectUrl': '项目地址',
   'settings.about.openLink': '打开链接',
   'settings.about.summary': 'Rutar 是一个基于 Tauri、React 和 Rust 构建的高性能代码编辑器。',
+  'settings.about.author': '作者',
   'settings.editorPrefsDesc': '编辑器偏好与体验',
   'settings.generalTabDesc': '语言与基础偏好',
   'settings.appearanceTabDesc': '主题、字体与编辑器显示',
@@ -503,6 +505,7 @@ const enUS: Messages = {
   'settings.about.projectUrl': 'Project URL',
   'settings.about.openLink': 'Open link',
   'settings.about.summary': 'Rutar is a high-performance code editor built with Tauri, React, and Rust.',
+  'settings.about.author': 'Author',
   'settings.editorPrefsDesc': 'Editor preferences and experience',
   'settings.generalTabDesc': 'Language and basic preferences',
   'settings.appearanceTabDesc': 'Theme, fonts, and editor visuals',
