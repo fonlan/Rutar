@@ -856,17 +856,31 @@ function alignScrollOffset(value: number) {
 }
 
 function isPointerOnScrollbar(element: HTMLElement, clientX: number, clientY: number) {
-  const verticalScrollbarWidth = element.offsetWidth - element.clientWidth;
-  const horizontalScrollbarHeight = element.offsetHeight - element.clientHeight;
+  const verticalScrollbarWidth = Math.max(0, element.offsetWidth - element.clientWidth);
+  const horizontalScrollbarHeight = Math.max(0, element.offsetHeight - element.clientHeight);
+  const hasVerticalScrollableRange = element.scrollHeight > element.clientHeight + 1;
+  const hasHorizontalScrollableRange = element.scrollWidth > element.clientWidth + 1;
+  const effectiveVerticalHitWidth = verticalScrollbarWidth > 0 ? verticalScrollbarWidth : hasVerticalScrollableRange ? 14 : 0;
+  const effectiveHorizontalHitHeight =
+    horizontalScrollbarHeight > 0 ? horizontalScrollbarHeight : hasHorizontalScrollableRange ? 14 : 0;
 
-  if (verticalScrollbarWidth <= 0 && horizontalScrollbarHeight <= 0) {
+  if (effectiveVerticalHitWidth <= 0 && effectiveHorizontalHitHeight <= 0) {
     return false;
   }
 
   const rect = element.getBoundingClientRect();
-  const onVerticalScrollbar = verticalScrollbarWidth > 0 && clientX >= rect.right - verticalScrollbarWidth;
+  const withinVerticalBounds = clientY >= rect.top && clientY <= rect.bottom;
+  const withinHorizontalBounds = clientX >= rect.left && clientX <= rect.right;
+  const onVerticalScrollbar =
+    effectiveVerticalHitWidth > 0 &&
+    withinVerticalBounds &&
+    clientX >= rect.right - effectiveVerticalHitWidth &&
+    clientX <= rect.right;
   const onHorizontalScrollbar =
-    horizontalScrollbarHeight > 0 && clientY >= rect.bottom - horizontalScrollbarHeight;
+    effectiveHorizontalHitHeight > 0 &&
+    withinHorizontalBounds &&
+    clientY >= rect.bottom - effectiveHorizontalHitHeight &&
+    clientY <= rect.bottom;
 
   return onVerticalScrollbar || onHorizontalScrollbar;
 }
@@ -1655,6 +1669,11 @@ export function Editor({ tab }: { tab: FileTab }) {
         setLineNumberMultiSelection((prev) => (prev.length === 0 ? prev : []));
       }
       const currentElement = contentRef.current;
+      const pointerOnEditorScrollbar =
+        !isLargeReadOnlyMode &&
+        currentElement &&
+        isTextareaInputElement(currentElement) &&
+        isPointerOnScrollbar(currentElement, event.clientX, event.clientY);
 
       if (
         !isLargeReadOnlyMode &&
@@ -1679,6 +1698,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         currentElement &&
         isTextareaInputElement(currentElement) &&
         event.button === 0 &&
+        !pointerOnEditorScrollbar &&
         !event.altKey &&
         !event.shiftKey &&
         !event.metaKey &&
@@ -1797,7 +1817,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       const editorElement = contentRef.current;
-      if (!isPointerOnScrollbar(editorElement, event.clientX, event.clientY)) {
+      if (!pointerOnEditorScrollbar) {
         if (
           DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG &&
           event.isPrimary &&
@@ -1812,6 +1832,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
+      textDragMoveStateRef.current = null;
       isScrollbarDragRef.current = true;
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
@@ -1828,6 +1849,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       return;
     }
 
+    textDragMoveStateRef.current = null;
     isScrollbarDragRef.current = true;
     if (contentRef.current) {
       contentRef.current.style.userSelect = 'none';

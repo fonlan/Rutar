@@ -102,6 +102,11 @@ option {
   scrollbar-gutter: stable;
 }
 
+.editor-scroll-stable::-webkit-scrollbar-track,
+.editor-input-layer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 
 /* 语法高亮主题 (GitHub Light 风格) */
 .whitespace-pre {

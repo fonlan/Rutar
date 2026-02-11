@@ -2669,6 +2669,16 @@ export function SearchReplacePanel() {
   }, [activeTabId, isOpen]);
 
   useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    setIsSearchUiFocused(false);
+    setIsSearchUiPointerActive(false);
+    setIsSearchUiPinnedActive(false);
+  }, [isOpen]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadFilterRuleGroups = async () => {
@@ -3488,13 +3498,16 @@ export function SearchReplacePanel() {
         data-rutar-search-sidebar="true"
         className={cn(
           'fixed z-40 transform-gpu overflow-hidden transition-transform duration-200 ease-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+          isOpen ? 'pointer-events-auto' : 'pointer-events-none'
         )}
         style={{
           width: `${searchSidebarWidth}px`,
           right: `${SEARCH_SIDEBAR_RIGHT_OFFSET}px`,
           top: searchSidebarTopOffset,
           bottom: searchSidebarBottomOffset,
+          transform: isOpen
+            ? 'translateX(0)'
+            : `translateX(calc(100% + ${SEARCH_SIDEBAR_RIGHT_OFFSET}px))`,
         }}
       >
         <div
