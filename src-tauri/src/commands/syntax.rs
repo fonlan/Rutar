@@ -63,6 +63,9 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
                 "py" | "pyw" => Some(tree_sitter_python::LANGUAGE.into()),
                 "json" | "jsonc" => Some(tree_sitter_json::LANGUAGE.into()),
+                "ini" | "cfg" | "conf" | "cnf" | "properties" => {
+                    Some(tree_sitter_ini::LANGUAGE.into())
+                }
                 "html" | "htm" | "xhtml" => Some(tree_sitter_html::LANGUAGE.into()),
                 "css" | "scss" | "sass" | "less" => Some(tree_sitter_css::LANGUAGE.into()),
                 "sh" | "bash" | "zsh" => Some(tree_sitter_bash::LANGUAGE.into()),
@@ -90,6 +93,7 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
         "json" => Some(tree_sitter_json::LANGUAGE.into()),
+        "ini" => Some(tree_sitter_ini::LANGUAGE.into()),
         "html" => Some(tree_sitter_html::LANGUAGE.into()),
         "css" => Some(tree_sitter_css::LANGUAGE.into()),
         "bash" => Some(tree_sitter_bash::LANGUAGE.into()),
@@ -101,5 +105,31 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{create_parser, get_language_from_path, normalize_syntax_override};
+    use std::path::PathBuf;
+
+    #[test]
+    fn ini_extension_should_resolve_language() {
+        let path = Some(PathBuf::from("settings.ini"));
+        assert!(get_language_from_path(&path).is_some());
+    }
+
+    #[test]
+    fn ini_syntax_override_should_be_supported() {
+        let normalized = normalize_syntax_override(Some("INI"));
+        assert_eq!(normalized.ok(), Some(Some("ini".to_string())));
+    }
+
+    #[test]
+    fn ini_language_should_create_parser() {
+        let path = Some(PathBuf::from("settings.ini"));
+        let language = get_language_from_path(&path);
+        let parser = create_parser(language);
+        assert!(parser.is_some());
     }
 }

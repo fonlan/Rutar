@@ -11,11 +11,15 @@ struct LeafToken {
 enum LeafTokenContext {
     Key,
     Value,
+    IniSectionName,
+    Comment,
 }
 
 fn contextualize_leaf_kind(kind: &str, context: Option<LeafTokenContext>) -> String {
     match context {
         Some(LeafTokenContext::Key) => format!("key_{kind}"),
+        Some(LeafTokenContext::IniSectionName) if kind == "text" => "section_name_text".to_string(),
+        Some(LeafTokenContext::Comment) => format!("comment_{kind}"),
         _ => kind.to_string(),
     }
 }
@@ -69,14 +73,21 @@ fn collect_leaf_tokens(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
+            let child_node = cursor.node();
             let next_context = match cursor.field_name() {
                 Some("key") => Some(LeafTokenContext::Key),
                 Some("value") => Some(LeafTokenContext::Value),
-                _ => context,
+                _ => match child_node.kind() {
+                    "setting_name" => Some(LeafTokenContext::Key),
+                    "setting_value" => Some(LeafTokenContext::Value),
+                    "section_name" => Some(LeafTokenContext::IniSectionName),
+                    "comment" => Some(LeafTokenContext::Comment),
+                    _ => context,
+                },
             };
 
             collect_leaf_tokens(
-                cursor.node(),
+                child_node,
                 range_start_byte,
                 range_end_byte,
                 next_context,
@@ -275,4 +286,38 @@ pub(super) fn get_syntax_token_lines_impl(
 ) -> Result<Vec<Vec<SyntaxToken>>, String> {
     let tokens = get_syntax_tokens_impl(state, id, start_line, end_line)?;
     Ok(split_tokens_by_line(tokens))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_tokens_with_gaps, collect_leaf_tokens};
+    use ropey::Rope;
+    use tree_sitter::Parser;
+
+    #[test]
+    fn ini_tokens_should_include_key_value_section_and_comment() {
+        let source = "[editor]\nname = rutar\nenabled = true\n; comment\n";
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_ini::LANGUAGE.into())
+            .expect("set ini parser");
+
+        let tree = parser.parse(source, None).expect("parse ini");
+        let mut leaves = Vec::new();
+        collect_leaf_tokens(tree.root_node(), 0, source.len(), None, &mut leaves);
+
+        let rope = Rope::from_str(source);
+        let tokens = build_tokens_with_gaps(&rope, leaves, 0, source.len());
+
+        let token_types: Vec<String> = tokens
+            .into_iter()
+            .filter_map(|token| token.r#type)
+            .collect();
+
+        assert!(token_types.iter().any(|kind| kind == "section_name_text"));
+        assert!(token_types.iter().any(|kind| kind == "key_setting_name"));
+        assert!(token_types.iter().any(|kind| kind == "setting_value"));
+        assert!(token_types.iter().any(|kind| kind == "comment_text"));
+    }
 }
