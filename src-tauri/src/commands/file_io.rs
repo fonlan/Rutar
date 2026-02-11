@@ -675,6 +675,14 @@ pub(super) fn read_dir_impl(path: String) -> Result<Vec<DirEntry>, String> {
     Ok(result)
 }
 
+pub(super) fn read_dir_if_directory_impl(path: String) -> Result<Option<Vec<DirEntry>>, String> {
+    if !PathBuf::from(&path).is_dir() {
+        return Ok(None);
+    }
+
+    read_dir_impl(path).map(Some)
+}
+
 pub(super) fn open_in_file_manager_impl(path: String) -> Result<(), String> {
     let target_path = PathBuf::from(path);
 

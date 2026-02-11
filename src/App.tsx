@@ -340,11 +340,14 @@ function App() {
   const openIncomingPaths = useCallback(async (paths: string[]) => {
     for (const incomingPath of paths) {
       try {
-        const entries = await invoke<any[]>('read_dir', { path: incomingPath });
-        setFolder(incomingPath, entries);
-        addRecentFolderPath(incomingPath);
-        continue;
-      } catch {
+        const entries = await invoke<any[] | null>('read_dir_if_directory', { path: incomingPath });
+        if (entries) {
+          setFolder(incomingPath, entries);
+          addRecentFolderPath(incomingPath);
+          continue;
+        }
+      } catch (error) {
+        console.error(`Failed to check incoming directory path: ${incomingPath}`, error);
       }
 
       try {

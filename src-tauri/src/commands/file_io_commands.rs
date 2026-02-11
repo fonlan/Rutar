@@ -99,6 +99,11 @@ pub fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
 }
 
 #[tauri::command]
+pub fn read_dir_if_directory(path: String) -> Result<Option<Vec<DirEntry>>, String> {
+    file_io::read_dir_if_directory_impl(path)
+}
+
+#[tauri::command]
 pub fn open_in_file_manager(path: String) -> Result<(), String> {
     file_io::open_in_file_manager_impl(path)
 }
