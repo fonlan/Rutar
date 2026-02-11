@@ -245,6 +245,28 @@ pub(super) async fn open_file_impl(
     path: String,
 ) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
+
+    if let Some(existing) = state
+        .documents
+        .iter()
+        .find(|entry| entry.path.as_ref() == Some(&path_buf))
+    {
+        return Ok(FileInfo {
+            id: existing.key().clone(),
+            path: path.clone(),
+            name: path_buf
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            encoding: existing.encoding.name().to_string(),
+            line_ending: existing.line_ending.label().to_string(),
+            line_count: existing.rope.len_lines(),
+            large_file_mode: existing.rope.len_bytes() > LARGE_FILE_THRESHOLD_BYTES,
+            syntax_override: existing.syntax_override.clone(),
+        });
+    }
+
     let snapshot = read_disk_file_snapshot(&path_buf)?;
 
     let id = Uuid::new_v4().to_string();

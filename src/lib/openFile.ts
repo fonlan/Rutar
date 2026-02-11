@@ -27,28 +27,28 @@ export async function openFilePath(path: string) {
   openingPaths.add(path);
 
   try {
-  const state = useStore.getState();
-  const existing = state.tabs.find((tab) => tab.path === path);
-  if (existing) {
-    state.setActiveTab(existing.id);
+    const fileInfo = await invoke<FileTab>('open_file', { path });
+    const latestState = useStore.getState();
+    const existedTab = latestState.tabs.find((tab) => tab.id === fileInfo.id);
+
+    if (existedTab) {
+      latestState.setActiveTab(fileInfo.id);
+      addRecentFilePath(path);
+      return;
+    }
+
+    const activeTab = latestState.tabs.find((tab) => tab.id === latestState.activeTabId);
+
+    if (activeTab && isReusableBlankTab(activeTab)) {
+      patchTabWithFileInfo(activeTab.id, fileInfo);
+      latestState.setActiveTab(fileInfo.id);
+      await invoke('close_file', { id: activeTab.id });
+      addRecentFilePath(path);
+      return;
+    }
+
+    latestState.addTab(fileInfo);
     addRecentFilePath(path);
-    return;
-  }
-
-  const fileInfo = await invoke<FileTab>('open_file', { path });
-  const latestState = useStore.getState();
-  const activeTab = latestState.tabs.find((tab) => tab.id === latestState.activeTabId);
-
-  if (activeTab && isReusableBlankTab(activeTab)) {
-    patchTabWithFileInfo(activeTab.id, fileInfo);
-    latestState.setActiveTab(fileInfo.id);
-    await invoke('close_file', { id: activeTab.id });
-    addRecentFilePath(path);
-    return;
-  }
-
-  latestState.addTab(fileInfo);
-  addRecentFilePath(path);
   } finally {
     openingPaths.delete(path);
   }
