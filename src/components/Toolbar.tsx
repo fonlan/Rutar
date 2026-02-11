@@ -379,7 +379,11 @@ export function Toolbar() {
             });
 
             if (selected && typeof selected === 'string') {
-                 const entries = await invoke<any[]>('read_dir', { path: selected });
+                 const entries = await invoke<any[] | null>('read_dir_if_directory', { path: selected });
+                 if (!entries) {
+                    return;
+                 }
+
                  setFolder(selected, entries);
                  addRecentFolderPath(selected);
             }
@@ -403,7 +407,11 @@ export function Toolbar() {
 
     const handleOpenRecentFolder = useCallback(async (path: string) => {
         try {
-            const entries = await invoke<any[]>('read_dir', { path });
+            const entries = await invoke<any[] | null>('read_dir_if_directory', { path });
+            if (!entries) {
+                return;
+            }
+
             setFolder(path, entries);
             addRecentFolderPath(path);
         } catch (error) {
