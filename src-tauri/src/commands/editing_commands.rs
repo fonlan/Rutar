@@ -115,3 +115,20 @@ pub fn replace_rectangular_selection_text(
         collapse_to_start,
     )
 }
+
+#[tauri::command]
+pub fn get_rectangular_selection_text(
+    text: String,
+    start_line: usize,
+    end_line: usize,
+    start_column: usize,
+    end_column: usize,
+) -> Result<String, String> {
+    editing::get_rectangular_selection_text_impl(
+        text,
+        start_line,
+        end_line,
+        start_column,
+        end_column,
+    )
+}

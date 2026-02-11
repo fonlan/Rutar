@@ -496,6 +496,48 @@ pub(super) fn replace_rectangular_selection_text_impl(
     })
 }
 
+pub(super) fn get_rectangular_selection_text_impl(
+    text: String,
+    start_line: usize,
+    end_line: usize,
+    start_column: usize,
+    end_column: usize,
+) -> Result<String, String> {
+    let source_units: Vec<u16> = text.encode_utf16().collect();
+    let line_starts = build_line_start_offsets_utf16(&source_units);
+
+    let safe_start_line = start_line.min(end_line).max(1);
+    let safe_end_line = start_line.max(end_line).max(1);
+    let safe_start_column = start_column.min(end_column).max(1);
+    let safe_end_column = start_column.max(end_column).max(1);
+
+    let mut pieces: Vec<u16> = Vec::new();
+
+    for line in safe_start_line..=safe_end_line {
+        if line > safe_start_line {
+            pieces.push(b'\n' as u16);
+        }
+
+        let Some((line_start, line_end)) =
+            get_line_bounds_by_line_number_utf16(&source_units, &line_starts, line)
+        else {
+            continue;
+        };
+
+        let segment_start =
+            get_offset_for_column_in_line_utf16(line_start, line_end, safe_start_column);
+        let segment_end =
+            get_offset_for_column_in_line_utf16(line_start, line_end, safe_end_column);
+
+        if segment_start < segment_end {
+            pieces.extend_from_slice(&source_units[segment_start..segment_end]);
+        }
+    }
+
+    String::from_utf16(&pieces)
+        .map_err(|error| format!("Failed to convert rectangular selection text result: {error}"))
+}
+
 pub(super) fn replace_line_range_impl(
     state: State<'_, AppState>,
     id: String,

@@ -1492,6 +1492,25 @@ export function Editor({ tab }: { tab: FileTab }) {
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const currentElement = contentRef.current;
+
+      if (
+        !isLargeReadOnlyMode &&
+        currentElement &&
+        isTextareaInputElement(currentElement) &&
+        event.button === 2 &&
+        rectangularSelectionRef.current
+      ) {
+        textDragMoveStateRef.current = null;
+        pointerSelectionActiveRef.current = false;
+        if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+          setPointerSelectionNativeHighlightMode(false);
+        }
+        verticalSelectionRef.current = null;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       if (
         !isLargeReadOnlyMode &&
         currentElement &&
@@ -2061,6 +2080,28 @@ export function Editor({ tab }: { tab: FileTab }) {
     },
     [normalizedRectangularSelection]
   );
+
+  const getRectangularSelectionTextFromBackend = useCallback(async () => {
+    const element = contentRef.current;
+    if (!element || !normalizedRectangularSelection) {
+      return '';
+    }
+
+    const text = normalizeSegmentText(getEditableText(element));
+
+    try {
+      return await invoke<string>('get_rectangular_selection_text', {
+        text,
+        startLine: normalizedRectangularSelection.startLine,
+        endLine: normalizedRectangularSelection.endLine,
+        startColumn: normalizedRectangularSelection.startColumn,
+        endColumn: normalizedRectangularSelection.endColumn,
+      });
+    } catch (error) {
+      console.error('Failed to get rectangular selection text from backend:', error);
+      return getRectangularSelectionText(text);
+    }
+  }, [getRectangularSelectionText, normalizedRectangularSelection]);
 
   const getSelectedEditorText = useCallback(() => {
     const element = contentRef.current;
@@ -2828,6 +2869,28 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
+      if ((action === 'copy' || action === 'cut') && normalizedRectangularSelection) {
+        const selected = await getRectangularSelectionTextFromBackend();
+        if (!selected) {
+          setEditorContextMenu(null);
+          return;
+        }
+
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(selected).catch(() => {
+            console.warn('Failed to write rectangular selection to clipboard.');
+          });
+        }
+
+        if (action === 'cut') {
+          void replaceRectangularSelection('');
+          syncSelectionAfterInteraction();
+        }
+
+        setEditorContextMenu(null);
+        return;
+      }
+
       const succeeded = runEditorContextCommand(action);
 
       setEditorContextMenu(null);
@@ -2835,7 +2898,15 @@ export function Editor({ tab }: { tab: FileTab }) {
         syncSelectionAfterInteraction();
       }
     },
-    [isEditorContextMenuActionDisabled, runEditorContextCommand, syncSelectionAfterInteraction, tryPasteTextIntoEditor]
+    [
+      getRectangularSelectionTextFromBackend,
+      isEditorContextMenuActionDisabled,
+      normalizedRectangularSelection,
+      replaceRectangularSelection,
+      runEditorContextCommand,
+      syncSelectionAfterInteraction,
+      tryPasteTextIntoEditor,
+    ]
   );
 
   const hasContextBookmark =
@@ -3095,7 +3166,9 @@ export function Editor({ tab }: { tab: FileTab }) {
         return;
       }
 
-      const selectedText = getSelectedEditorText();
+      const selectedText = normalizedRectangularSelection
+        ? await getRectangularSelectionTextFromBackend()
+        : getSelectedEditorText();
       if (!selectedText) {
         setEditorContextMenu(null);
         return;
@@ -3140,6 +3213,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     },
     [
       editorContextMenu?.hasSelection,
+      getRectangularSelectionTextFromBackend,
       getSelectedEditorText,
       isLargeReadOnlyMode,
       normalizedRectangularSelection,
