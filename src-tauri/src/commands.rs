@@ -245,3 +245,11 @@ pub fn get_outline(
 ) -> Result<Vec<outline::OutlineNode>, String> {
     outline::get_outline_impl(state, id, file_type)
 }
+
+#[tauri::command]
+pub fn filter_outline_nodes(
+    nodes: Vec<outline::OutlineNode>,
+    keyword: String,
+) -> Vec<outline::OutlineNode> {
+    outline::filter_outline_nodes_impl(nodes, keyword)
+}

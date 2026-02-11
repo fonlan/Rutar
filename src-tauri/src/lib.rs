@@ -211,6 +211,7 @@ pub fn run() {
             commands::search_commands::search_in_document,
             commands::get_document_version,
             commands::get_outline,
+            commands::filter_outline_nodes,
             commands::list_system_fonts,
             commands::load_config,
             commands::save_config,

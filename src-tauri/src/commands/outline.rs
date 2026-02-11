@@ -2,7 +2,7 @@ use crate::state::AppState;
 use tauri::State;
 use tree_sitter::{Language, Parser};
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OutlineNode {
     label: String,
@@ -10,6 +10,41 @@ pub struct OutlineNode {
     line: usize,
     column: usize,
     children: Vec<OutlineNode>,
+}
+
+fn filter_outline_node_by_keyword(node: &OutlineNode, keyword: &str) -> Option<OutlineNode> {
+    let normalized_label = node.label.to_lowercase();
+    let is_matched = normalized_label.contains(keyword);
+
+    let filtered_children = node
+        .children
+        .iter()
+        .filter_map(|child| filter_outline_node_by_keyword(child, keyword))
+        .collect::<Vec<OutlineNode>>();
+
+    if !is_matched && filtered_children.is_empty() {
+        return None;
+    }
+
+    Some(OutlineNode {
+        label: node.label.clone(),
+        node_type: node.node_type.clone(),
+        line: node.line,
+        column: node.column,
+        children: filtered_children,
+    })
+}
+
+pub fn filter_outline_nodes_impl(nodes: Vec<OutlineNode>, keyword: String) -> Vec<OutlineNode> {
+    let normalized_keyword = keyword.trim().to_lowercase();
+    if normalized_keyword.is_empty() {
+        return nodes;
+    }
+
+    nodes
+        .iter()
+        .filter_map(|node| filter_outline_node_by_keyword(node, normalized_keyword.as_str()))
+        .collect()
 }
 
 #[derive(Clone, Copy)]

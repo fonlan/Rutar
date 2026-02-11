@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, FileCode2, FileJson, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
@@ -17,32 +18,6 @@ function getNodeIcon(nodeType: string) {
   return <FileCode2 className="w-3.5 h-3.5 text-muted-foreground/70" />;
 }
 
-function filterOutlineNodes(nodes: OutlineNode[], keyword: string): OutlineNode[] {
-  if (!keyword) {
-    return nodes;
-  }
-
-  const filterNode = (node: OutlineNode): OutlineNode | null => {
-    const matched = node.label.toLowerCase().includes(keyword);
-    const filteredChildren = node.children
-      .map((child) => filterNode(child))
-      .filter((child): child is OutlineNode => child !== null);
-
-    if (!matched && filteredChildren.length === 0) {
-      return null;
-    }
-
-    return {
-      ...node,
-      children: filteredChildren,
-    };
-  };
-
-  return nodes
-    .map((node) => filterNode(node))
-    .filter((node): node is OutlineNode => node !== null);
-}
-
 export function OutlineSidebar({
   nodes,
   activeType,
@@ -59,6 +34,7 @@ export function OutlineSidebar({
   const outlineWidth = useStore((state) => state.outlineWidth);
   const setOutlineWidth = useStore((state) => state.setOutlineWidth);
   const [searchValue, setSearchValue] = useState('');
+  const [filteredNodes, setFilteredNodes] = useState<OutlineNode[]>(nodes);
   const [treeExpandSignal, setTreeExpandSignal] = useState({ version: 0, expanded: true });
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
@@ -78,10 +54,38 @@ export function OutlineSidebar({
 
   const normalizedSearchValue = useMemo(() => searchValue.trim().toLowerCase(), [searchValue]);
 
-  const filteredNodes = useMemo(
-    () => filterOutlineNodes(nodes, normalizedSearchValue),
-    [nodes, normalizedSearchValue]
-  );
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!normalizedSearchValue) {
+        setFilteredNodes(nodes);
+        return;
+      }
+
+      try {
+        const next = await invoke<OutlineNode[]>('filter_outline_nodes', {
+          nodes,
+          keyword: normalizedSearchValue,
+        });
+
+        if (!cancelled) {
+          setFilteredNodes(Array.isArray(next) ? next : []);
+        }
+      } catch (error) {
+        console.error('Failed to filter outline nodes:', error);
+        if (!cancelled) {
+          setFilteredNodes([]);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nodes, normalizedSearchValue]);
 
   const hasActiveSearch = normalizedSearchValue.length > 0;
   const searchPlaceholder = tr('outline.searchPlaceholder');
