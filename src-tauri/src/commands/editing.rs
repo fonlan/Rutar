@@ -161,6 +161,13 @@ pub struct PairOffsetsResultPayload {
     pub right_offset: usize,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceRectangularSelectionResultPayload {
+    pub next_text: String,
+    pub caret_offset: usize,
+}
+
 fn is_quote_u16(value: u16) -> bool {
     value == b'\'' as u16 || value == b'"' as u16
 }
@@ -351,6 +358,142 @@ pub(super) fn find_matching_pair_offsets_impl(
             right_offset,
         }),
     )
+}
+
+fn normalize_line_text_for_rectangular_edit(value: &str) -> String {
+    value.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn build_line_start_offsets_utf16(units: &[u16]) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(64);
+    starts.push(0);
+
+    for (index, unit) in units.iter().enumerate() {
+        if *unit == b'\n' as u16 {
+            starts.push(index + 1);
+        }
+    }
+
+    starts
+}
+
+fn get_line_bounds_by_line_number_utf16(
+    units: &[u16],
+    starts: &[usize],
+    line_number: usize,
+) -> Option<(usize, usize)> {
+    let index = line_number.saturating_sub(1);
+    if index >= starts.len() {
+        return None;
+    }
+
+    let start = starts[index];
+    let end = if index + 1 < starts.len() {
+        starts[index + 1].saturating_sub(1)
+    } else {
+        units.len()
+    };
+
+    Some((start, end))
+}
+
+fn get_offset_for_column_in_line_utf16(line_start: usize, line_end: usize, column: usize) -> usize {
+    let safe_column = column.max(1);
+    let line_length = line_end.saturating_sub(line_start);
+    line_start + line_length.min(safe_column.saturating_sub(1))
+}
+
+pub(super) fn replace_rectangular_selection_text_impl(
+    text: String,
+    start_line: usize,
+    end_line: usize,
+    start_column: usize,
+    end_column: usize,
+    insert_text: String,
+    collapse_to_start: bool,
+) -> Result<ReplaceRectangularSelectionResultPayload, String> {
+    let source_units: Vec<u16> = text.encode_utf16().collect();
+    let line_starts = build_line_start_offsets_utf16(&source_units);
+
+    let normalized_insert = normalize_line_text_for_rectangular_edit(&insert_text);
+    let raw_rows: Vec<Vec<u16>> = normalized_insert
+        .split('\n')
+        .map(|row| row.encode_utf16().collect())
+        .collect();
+
+    let safe_start_line = start_line.min(end_line).max(1);
+    let safe_end_line = start_line.max(end_line).max(1);
+    let safe_start_column = start_column.min(end_column).max(1);
+    let safe_end_column = start_column.max(end_column).max(1);
+
+    let row_count = safe_end_line
+        .saturating_sub(safe_start_line)
+        .saturating_add(1);
+    let rows: Vec<Vec<u16>> = (0..row_count)
+        .map(|index| {
+            if raw_rows.is_empty() {
+                Vec::new()
+            } else {
+                raw_rows[index.min(raw_rows.len().saturating_sub(1))].clone()
+            }
+        })
+        .collect();
+
+    let mut pieces: Vec<u16> =
+        Vec::with_capacity(source_units.len().saturating_add(insert_text.len()));
+    let mut cursor = 0usize;
+    let mut built_len = 0usize;
+    let mut caret_offset = 0usize;
+
+    for line in safe_start_line..=safe_end_line {
+        let Some((line_start, line_end)) =
+            get_line_bounds_by_line_number_utf16(&source_units, &line_starts, line)
+        else {
+            continue;
+        };
+
+        let segment_start =
+            get_offset_for_column_in_line_utf16(line_start, line_end, safe_start_column);
+        let segment_end =
+            get_offset_for_column_in_line_utf16(line_start, line_end, safe_end_column);
+
+        if segment_start > cursor {
+            pieces.extend_from_slice(&source_units[cursor..segment_start]);
+            built_len = built_len.saturating_add(segment_start.saturating_sub(cursor));
+        }
+
+        let row_index = line.saturating_sub(safe_start_line);
+        let replacement_row = rows
+            .get(row_index)
+            .map(|row| row.as_slice())
+            .unwrap_or_default();
+        let replacement_len = replacement_row.len();
+        pieces.extend_from_slice(replacement_row);
+        built_len = built_len.saturating_add(replacement_len);
+
+        cursor = segment_end;
+
+        if line == safe_end_line {
+            let collapse_len = if collapse_to_start {
+                replacement_len
+            } else {
+                0
+            };
+            caret_offset = built_len.saturating_sub(collapse_len);
+        }
+    }
+
+    if cursor < source_units.len() {
+        pieces.extend_from_slice(&source_units[cursor..]);
+    }
+
+    let next_text = String::from_utf16(&pieces)
+        .map_err(|error| format!("Failed to convert rectangular replacement result: {error}"))?;
+
+    Ok(ReplaceRectangularSelectionResultPayload {
+        next_text,
+        caret_offset,
+    })
 }
 
 pub(super) fn replace_line_range_impl(

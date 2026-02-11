@@ -103,6 +103,11 @@ interface PairOffsetsResultPayload {
   rightOffset: number;
 }
 
+interface ReplaceRectangularSelectionResultPayload {
+  nextText: string;
+  caretOffset: number;
+}
+
 interface TextDragMoveState {
   pointerId: number;
   startClientX: number;
@@ -2091,7 +2096,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     return normalizeLineText(selection.toString());
   }, [getRectangularSelectionText, normalizedRectangularSelection]);
 
-  const replaceRectangularSelection = useCallback(
+  const replaceRectangularSelectionLocally = useCallback(
     (insertText: string, options?: { collapseToStart?: boolean }) => {
       const element = contentRef.current;
       if (!element || !normalizedRectangularSelection) {
@@ -2159,6 +2164,57 @@ export function Editor({ tab }: { tab: FileTab }) {
       return true;
     },
     [clearRectangularSelection, normalizedRectangularSelection, syncSelectionState]
+  );
+
+  const replaceRectangularSelection = useCallback(
+    async (insertText: string, options?: { collapseToStart?: boolean }) => {
+      const element = contentRef.current;
+      if (!element || !normalizedRectangularSelection) {
+        return false;
+      }
+
+      const text = normalizeSegmentText(getEditableText(element));
+
+      try {
+        const result = await invoke<ReplaceRectangularSelectionResultPayload>(
+          'replace_rectangular_selection_text',
+          {
+            text,
+            startLine: normalizedRectangularSelection.startLine,
+            endLine: normalizedRectangularSelection.endLine,
+            startColumn: normalizedRectangularSelection.startColumn,
+            endColumn: normalizedRectangularSelection.endColumn,
+            insertText,
+            collapseToStart: options?.collapseToStart === true,
+          }
+        );
+
+        const nextText = normalizeSegmentText(result?.nextText ?? text);
+        const caretLogicalOffset = Math.max(
+          0,
+          Math.min(nextText.length, Math.floor(result?.caretOffset ?? 0))
+        );
+
+        setInputLayerText(element, nextText);
+        const layerCaretOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
+        setCaretToCodeUnitOffset(element, layerCaretOffset);
+        clearRectangularSelection();
+        dispatchEditorInputEvent(element);
+        window.requestAnimationFrame(() => {
+          syncSelectionState();
+        });
+        return true;
+      } catch (error) {
+        console.error('Failed to replace rectangular selection with backend command:', error);
+        return replaceRectangularSelectionLocally(insertText, options);
+      }
+    },
+    [
+      clearRectangularSelection,
+      normalizedRectangularSelection,
+      replaceRectangularSelectionLocally,
+      syncSelectionState,
+    ]
   );
 
   const updateRectangularSelectionFromPoint = useCallback(
@@ -2637,11 +2693,13 @@ export function Editor({ tab }: { tab: FileTab }) {
             console.warn('Failed to write rectangular selection to clipboard.');
           });
         }
-        return replaceRectangularSelection('');
+        void replaceRectangularSelection('');
+        return true;
       }
 
       if (action === 'delete') {
-        return replaceRectangularSelection('');
+        void replaceRectangularSelection('');
+        return true;
       }
 
       if (action === 'paste') {
@@ -3069,7 +3127,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       if (normalizedRectangularSelection) {
-        replaceRectangularSelection(nextText);
+        void replaceRectangularSelection(nextText);
       } else {
         const replaced = replaceSelectionWithText(contentRef.current, nextText);
         if (replaced) {
@@ -3181,21 +3239,21 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (key === 'Backspace' || key === 'Delete') {
         event.preventDefault();
         event.stopPropagation();
-        replaceRectangularSelection('');
+        void replaceRectangularSelection('');
         return true;
       }
 
       if (key === 'Tab') {
         event.preventDefault();
         event.stopPropagation();
-        replaceRectangularSelection('\t');
+        void replaceRectangularSelection('\t');
         return true;
       }
 
       if (!event.altKey && !event.ctrlKey && !event.metaKey && key.length === 1) {
         event.preventDefault();
         event.stopPropagation();
-        replaceRectangularSelection(key);
+        void replaceRectangularSelection(key);
         return true;
       }
 
@@ -4632,7 +4690,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       event.clipboardData?.setData('text/plain', rectangularText);
 
       if (cut) {
-        replaceRectangularSelection('');
+        void replaceRectangularSelection('');
       }
     };
 
@@ -4652,7 +4710,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const pasted = event.clipboardData?.getData('text/plain') ?? '';
       event.preventDefault();
       event.stopPropagation();
-      replaceRectangularSelection(pasted);
+      void replaceRectangularSelection(pasted);
     };
 
     element.addEventListener('copy', handleCopy);

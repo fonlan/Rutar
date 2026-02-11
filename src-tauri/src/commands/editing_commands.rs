@@ -94,3 +94,24 @@ pub fn find_matching_pair_offsets(
 ) -> Result<Option<editing::PairOffsetsResultPayload>, String> {
     editing::find_matching_pair_offsets_impl(text, offset)
 }
+
+#[tauri::command]
+pub fn replace_rectangular_selection_text(
+    text: String,
+    start_line: usize,
+    end_line: usize,
+    start_column: usize,
+    end_column: usize,
+    insert_text: String,
+    collapse_to_start: bool,
+) -> Result<editing::ReplaceRectangularSelectionResultPayload, String> {
+    editing::replace_rectangular_selection_text_impl(
+        text,
+        start_line,
+        end_line,
+        start_column,
+        end_column,
+        insert_text,
+        collapse_to_start,
+    )
+}
