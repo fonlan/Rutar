@@ -197,6 +197,7 @@ pub fn run() {
             commands::editing_commands::replace_line_range,
             commands::editing_commands::toggle_line_comments,
             commands::editing_commands::convert_text_base64,
+            commands::editing_commands::find_matching_pair_offsets,
             commands::editing_commands::cleanup_document,
             commands::editing_commands::format_document,
             commands::search_commands::search_first_in_document,

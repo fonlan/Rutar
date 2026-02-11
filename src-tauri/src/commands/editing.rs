@@ -154,6 +154,205 @@ pub(super) fn edit_text_impl(
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairOffsetsResultPayload {
+    pub left_offset: usize,
+    pub right_offset: usize,
+}
+
+fn is_quote_u16(value: u16) -> bool {
+    value == b'\'' as u16 || value == b'"' as u16
+}
+
+fn matching_opening_bracket_u16(value: u16) -> Option<u16> {
+    if value == b')' as u16 {
+        Some(b'(' as u16)
+    } else if value == b']' as u16 {
+        Some(b'[' as u16)
+    } else if value == b'}' as u16 {
+        Some(b'{' as u16)
+    } else {
+        None
+    }
+}
+
+fn matching_closing_bracket_u16(value: u16) -> Option<u16> {
+    if value == b'(' as u16 {
+        Some(b')' as u16)
+    } else if value == b'[' as u16 {
+        Some(b']' as u16)
+    } else if value == b'{' as u16 {
+        Some(b'}' as u16)
+    } else {
+        None
+    }
+}
+
+fn is_escaped_utf16_unit(units: &[u16], index: usize) -> bool {
+    if index == 0 || index > units.len() {
+        return false;
+    }
+
+    let mut backslash_count = 0usize;
+    let mut cursor = index;
+
+    while cursor > 0 {
+        let previous = units[cursor - 1];
+        if previous != b'\\' as u16 {
+            break;
+        }
+
+        backslash_count = backslash_count.saturating_add(1);
+        cursor -= 1;
+    }
+
+    backslash_count % 2 == 1
+}
+
+fn count_unescaped_quotes_before_utf16(units: &[u16], index: usize, quote: u16) -> usize {
+    let mut count = 0usize;
+
+    for cursor in 0..index {
+        if units[cursor] == quote && !is_escaped_utf16_unit(units, cursor) {
+            count = count.saturating_add(1);
+        }
+    }
+
+    count
+}
+
+fn find_matching_quote_index_utf16(units: &[u16], index: usize) -> Option<usize> {
+    let quote = *units.get(index)?;
+    if !is_quote_u16(quote) || is_escaped_utf16_unit(units, index) {
+        return None;
+    }
+
+    let count_before = count_unescaped_quotes_before_utf16(units, index, quote);
+    let is_opening_quote = count_before % 2 == 0;
+
+    if is_opening_quote {
+        for cursor in (index + 1)..units.len() {
+            if units[cursor] == quote && !is_escaped_utf16_unit(units, cursor) {
+                return Some(cursor);
+            }
+        }
+
+        return None;
+    }
+
+    let mut cursor = index;
+    while cursor > 0 {
+        cursor -= 1;
+        if units[cursor] == quote && !is_escaped_utf16_unit(units, cursor) {
+            return Some(cursor);
+        }
+    }
+
+    None
+}
+
+fn find_matching_bracket_index_utf16(units: &[u16], index: usize) -> Option<usize> {
+    let ch = *units.get(index)?;
+
+    if let Some(closing) = matching_closing_bracket_u16(ch) {
+        let mut depth = 1usize;
+
+        for cursor in (index + 1)..units.len() {
+            let current = units[cursor];
+
+            if current == ch {
+                depth = depth.saturating_add(1);
+                continue;
+            }
+
+            if current == closing {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+        }
+
+        return None;
+    }
+
+    if let Some(opening) = matching_opening_bracket_u16(ch) {
+        let mut depth = 1usize;
+        let mut cursor = index;
+
+        while cursor > 0 {
+            cursor -= 1;
+            let current = units[cursor];
+
+            if current == ch {
+                depth = depth.saturating_add(1);
+                continue;
+            }
+
+            if current == opening {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn find_matching_pair_near_offset_utf16(units: &[u16], offset: usize) -> Option<(usize, usize)> {
+    let safe_offset = offset.min(units.len());
+    let mut candidate_indexes = Vec::with_capacity(2);
+
+    if safe_offset > 0 {
+        candidate_indexes.push(safe_offset - 1);
+    }
+
+    if safe_offset < units.len() {
+        candidate_indexes.push(safe_offset);
+    }
+
+    for index in candidate_indexes {
+        let current = units[index];
+
+        let matched = if matching_closing_bracket_u16(current).is_some()
+            || matching_opening_bracket_u16(current).is_some()
+        {
+            find_matching_bracket_index_utf16(units, index)
+        } else if is_quote_u16(current) {
+            find_matching_quote_index_utf16(units, index)
+        } else {
+            None
+        };
+
+        if let Some(matched_index) = matched {
+            return Some((index, matched_index));
+        }
+    }
+
+    None
+}
+
+pub(super) fn find_matching_pair_offsets_impl(
+    text: String,
+    offset: usize,
+) -> Result<Option<PairOffsetsResultPayload>, String> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    if units.is_empty() {
+        return Ok(None);
+    }
+
+    let matched = find_matching_pair_near_offset_utf16(&units, offset);
+    Ok(
+        matched.map(|(left_offset, right_offset)| PairOffsetsResultPayload {
+            left_offset,
+            right_offset,
+        }),
+    )
+}
+
 pub(super) fn replace_line_range_impl(
     state: State<'_, AppState>,
     id: String,

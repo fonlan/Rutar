@@ -86,3 +86,11 @@ pub fn toggle_line_comments(
 pub fn convert_text_base64(text: String, action: String) -> Result<String, String> {
     editing::convert_text_base64_impl(text, action)
 }
+
+#[tauri::command]
+pub fn find_matching_pair_offsets(
+    text: String,
+    offset: usize,
+) -> Result<Option<editing::PairOffsetsResultPayload>, String> {
+    editing::find_matching_pair_offsets_impl(text, offset)
+}

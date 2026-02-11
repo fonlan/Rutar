@@ -98,6 +98,11 @@ interface ToggleLineCommentsBackendResult {
   selectionEndChar: number;
 }
 
+interface PairOffsetsResultPayload {
+  leftOffset: number;
+  rightOffset: number;
+}
+
 interface TextDragMoveState {
   pointerId: number;
   startClientX: number;
@@ -138,17 +143,6 @@ const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
 const HUGE_EDITABLE_WINDOW_UNLOCK_MS = 260;
 const LARGE_FILE_EDIT_INTENT_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab']);
 const EMPTY_LINE_PLACEHOLDER = '\u200B';
-const OPENING_BRACKETS: Record<string, string> = {
-  '(': ')',
-  '[': ']',
-  '{': '}',
-};
-const CLOSING_BRACKETS: Record<string, string> = {
-  ')': '(',
-  ']': '[',
-  '}': '{',
-};
-const QUOTE_CHARACTERS = new Set(["'", '"']);
 const SEARCH_HIGHLIGHT_CLASS = 'rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70';
 const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
@@ -749,135 +743,6 @@ function replaceSelectionWithText(element: EditorInputElement, text: string) {
   return true;
 }
 
-function isEscapedCharacter(text: string, index: number) {
-  if (index <= 0 || index > text.length) {
-    return false;
-  }
-
-  let backslashCount = 0;
-  let cursor = index - 1;
-
-  while (cursor >= 0 && text[cursor] === '\\') {
-    backslashCount += 1;
-    cursor -= 1;
-  }
-
-  return backslashCount % 2 === 1;
-}
-
-function findMatchingBracketIndex(text: string, index: number) {
-  const char = text[index];
-  if (!char) {
-    return null;
-  }
-
-  const closing = OPENING_BRACKETS[char];
-  if (closing) {
-    let depth = 0;
-    for (let cursor = index + 1; cursor < text.length; cursor += 1) {
-      const current = text[cursor];
-      if (current === char) {
-        depth += 1;
-      } else if (current === closing) {
-        if (depth === 0) {
-          return cursor;
-        }
-        depth -= 1;
-      }
-    }
-    return null;
-  }
-
-  const opening = CLOSING_BRACKETS[char];
-  if (!opening) {
-    return null;
-  }
-
-  let depth = 0;
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const current = text[cursor];
-    if (current === char) {
-      depth += 1;
-    } else if (current === opening) {
-      if (depth === 0) {
-        return cursor;
-      }
-      depth -= 1;
-    }
-  }
-
-  return null;
-}
-
-function countUnescapedQuotesBefore(text: string, index: number, quote: string) {
-  let count = 0;
-
-  for (let cursor = 0; cursor < index; cursor += 1) {
-    if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
-      count += 1;
-    }
-  }
-
-  return count;
-}
-
-function findMatchingQuoteIndex(text: string, index: number) {
-  const quote = text[index];
-  if (!QUOTE_CHARACTERS.has(quote) || isEscapedCharacter(text, index)) {
-    return null;
-  }
-
-  const countBefore = countUnescapedQuotesBefore(text, index, quote);
-  const isOpeningQuote = countBefore % 2 === 0;
-
-  if (isOpeningQuote) {
-    for (let cursor = index + 1; cursor < text.length; cursor += 1) {
-      if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
-        return cursor;
-      }
-    }
-    return null;
-  }
-
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    if (text[cursor] === quote && !isEscapedCharacter(text, cursor)) {
-      return cursor;
-    }
-  }
-
-  return null;
-}
-
-function findMatchingPairNearOffset(text: string, offset: number): [number, number] | null {
-  const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
-  const candidateIndexes: number[] = [];
-
-  if (safeOffset > 0) {
-    candidateIndexes.push(safeOffset - 1);
-  }
-
-  if (safeOffset < text.length) {
-    candidateIndexes.push(safeOffset);
-  }
-
-  for (const index of candidateIndexes) {
-    const char = text[index];
-
-    let matchedIndex: number | null = null;
-    if (OPENING_BRACKETS[char] || CLOSING_BRACKETS[char]) {
-      matchedIndex = findMatchingBracketIndex(text, index);
-    } else if (QUOTE_CHARACTERS.has(char)) {
-      matchedIndex = findMatchingQuoteIndex(text, index);
-    }
-
-    if (matchedIndex !== null) {
-      return [index, matchedIndex];
-    }
-  }
-
-  return null;
-}
-
 function codeUnitOffsetToLineColumn(text: string, offset: number) {
   const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
   const prefix = text.slice(0, safeOffset);
@@ -1081,6 +946,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const textDragCursorAppliedRef = useRef(false);
   const pointerSelectionActiveRef = useRef(false);
   const selectionChangeRafRef = useRef<number | null>(null);
+  const pairHighlightRequestIdRef = useRef(0);
   const editableSegmentRef = useRef<EditorSegmentState>({
     startLine: 0,
     endLine: 0,
@@ -2064,7 +1930,10 @@ export function Editor({ tab }: { tab: FileTab }) {
     setCursorPosition(tab.id, safeLine, safeColumn);
   }, [isHugeEditableMode, setCursorPosition, tab.id, tab.lineCount]);
 
-  const updatePairHighlightsFromSelection = useCallback(() => {
+  const updatePairHighlightsFromSelection = useCallback(async () => {
+    const requestId = pairHighlightRequestIdRef.current + 1;
+    pairHighlightRequestIdRef.current = requestId;
+
     if (!isPairHighlightEnabled || !contentRef.current) {
       setPairHighlights((prev) => (prev.length === 0 ? prev : []));
       return;
@@ -2079,13 +1948,33 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     const text = normalizeSegmentText(getEditableText(contentRef.current));
 
-    const matched = findMatchingPairNearOffset(text, selectionOffsets.end);
+    let matched: PairOffsetsResultPayload | null = null;
+    try {
+      matched = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
+        text,
+        offset: selectionOffsets.end,
+      });
+    } catch (error) {
+      if (requestId === pairHighlightRequestIdRef.current) {
+        setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+      }
+      console.error('Failed to find matching pair offsets:', error);
+      return;
+    }
+
+    if (requestId !== pairHighlightRequestIdRef.current) {
+      return;
+    }
+
     if (!matched) {
       setPairHighlights((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
-    const sortedIndexes = matched[0] <= matched[1] ? matched : [matched[1], matched[0]];
+    const sortedIndexes =
+      matched.leftOffset <= matched.rightOffset
+        ? [matched.leftOffset, matched.rightOffset]
+        : [matched.rightOffset, matched.leftOffset];
     const nextHighlights = sortedIndexes.map((offset) => {
       const local = codeUnitOffsetToLineColumn(text, offset);
       const absoluteLine = isHugeEditableMode
@@ -2098,12 +1987,14 @@ export function Editor({ tab }: { tab: FileTab }) {
       };
     });
 
-    setPairHighlights((prev) => (arePairHighlightPositionsEqual(prev, nextHighlights) ? prev : nextHighlights));
+    setPairHighlights((prev) =>
+      arePairHighlightPositionsEqual(prev, nextHighlights) ? prev : nextHighlights
+    );
   }, [isHugeEditableMode, isPairHighlightEnabled]);
 
   const syncSelectionState = useCallback(() => {
     updateCursorPositionFromSelection();
-    updatePairHighlightsFromSelection();
+    void updatePairHighlightsFromSelection();
   }, [updateCursorPositionFromSelection, updatePairHighlightsFromSelection]);
 
   const clearVerticalSelectionState = useCallback(() => {
