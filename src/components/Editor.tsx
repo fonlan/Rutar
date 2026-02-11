@@ -159,6 +159,8 @@ const TEXT_SELECTION_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-blue-400/35 ring-1 ring-blue-500/30 dark:bg-blue-500/30 dark:ring-blue-300/30';
 const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
+const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
+const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
 const DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG = true;
 const USE_NATIVE_TEXT_SELECTION_HIGHLIGHT = true;
 const EMPTY_BOOKMARKS: number[] = [];
@@ -1389,6 +1391,159 @@ export function Editor({ tab }: { tab: FileTab }) {
 
     return textDragMeasureCanvasRef.current.getContext('2d');
   }, []);
+
+  const measureTextWidthByEditorStyle = useCallback(
+    (element: HTMLTextAreaElement, text: string) => {
+      if (!text) {
+        return 0;
+      }
+
+      const context = getTextDragMeasureContext();
+      if (!context) {
+        return 0;
+      }
+
+      const style = window.getComputedStyle(element);
+      const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
+      const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : '';
+      const fontWeight = style.fontWeight && style.fontWeight !== 'normal' ? `${style.fontWeight} ` : '';
+      const fontSize = style.fontSize || `${renderedFontSizePx}px`;
+      const fontFamily = style.fontFamily || settings.fontFamily;
+      context.font = `${fontStyle}${fontVariant}${fontWeight}${fontSize} ${fontFamily}`;
+      return context.measureText(text).width;
+    },
+    [getTextDragMeasureContext, renderedFontSizePx, settings.fontFamily]
+  );
+
+  const estimateLineTextForNavigation = useCallback(
+    (lineNumber: number, incomingLineText: string) => {
+      if (incomingLineText) {
+        return incomingLineText;
+      }
+
+      if (!contentRef.current || lineNumber <= 0) {
+        return '';
+      }
+
+      const allText = getEditableText(contentRef.current);
+      if (!allText) {
+        return '';
+      }
+
+      const lines = allText.split('\n');
+      const lineIndex = lineNumber - 1;
+      if (lineIndex < 0 || lineIndex >= lines.length) {
+        return '';
+      }
+
+      return lines[lineIndex] ?? '';
+    },
+    []
+  );
+
+  const getFallbackSearchSidebarOcclusionPx = useCallback(() => {
+    const sidebarElement = document.querySelector<HTMLElement>('[data-rutar-search-sidebar="true"]');
+    if (!sidebarElement) {
+      return 0;
+    }
+
+    const rect = sidebarElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, window.innerWidth - rect.left);
+  }, []);
+
+  const ensureSearchMatchVisibleHorizontally = useCallback(
+    (
+      scrollElement: HTMLDivElement | HTMLTextAreaElement | null,
+      lineNumber: number,
+      columnNumber: number,
+      matchLength: number,
+      incomingLineText: string,
+      occludedRightPx: number,
+      lineListElement?: HTMLDivElement
+    ) => {
+      if (!scrollElement || wordWrap) {
+        return;
+      }
+
+      const textareaElement = contentRef.current;
+      if (!textareaElement) {
+        return;
+      }
+
+      const lineText = estimateLineTextForNavigation(lineNumber, incomingLineText);
+      const zeroBasedStart = Math.max(0, columnNumber - 1);
+      const safeStart = Math.min(zeroBasedStart, lineText.length);
+      const safeLength = Math.max(1, matchLength || 1);
+      const safeEnd = Math.min(lineText.length, safeStart + safeLength);
+
+      const prefixWidth = measureTextWidthByEditorStyle(textareaElement, lineText.slice(0, safeStart));
+      const matchWidth = Math.max(
+        measureTextWidthByEditorStyle(textareaElement, lineText.slice(safeStart, safeEnd)),
+        measureTextWidthByEditorStyle(textareaElement, lineText.charAt(safeStart) || ' ')
+      );
+
+      const style = window.getComputedStyle(textareaElement);
+      const paddingLeft = Number.parseFloat(style.paddingLeft || '0') || 0;
+      const paddingRight = Number.parseFloat(style.paddingRight || '0') || 0;
+
+      const fallbackOccludedRightPx = getFallbackSearchSidebarOcclusionPx();
+      const effectiveOccludedRight = Math.max(0, occludedRightPx, fallbackOccludedRightPx);
+      const baseVisibleWidth = Math.max(
+        0,
+        scrollElement.clientWidth - paddingLeft - paddingRight - SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX * 2
+      );
+      const availableVisibleWidth = Math.max(
+        SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX,
+        baseVisibleWidth - effectiveOccludedRight
+      );
+
+      const targetStartX = Math.max(0, prefixWidth - SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX);
+      const targetEndX = Math.max(
+        targetStartX,
+        prefixWidth + matchWidth + SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX
+      );
+
+      let nextScrollLeft = scrollElement.scrollLeft;
+      const viewportStartX = nextScrollLeft;
+      const viewportEndX = viewportStartX + availableVisibleWidth;
+
+      if (targetEndX > viewportEndX) {
+        nextScrollLeft = targetEndX - availableVisibleWidth;
+      } else if (targetStartX < viewportStartX) {
+        nextScrollLeft = targetStartX;
+      }
+
+      const maxScrollableWidthByElement = Math.max(0, scrollElement.scrollWidth - scrollElement.clientWidth);
+      const maxScrollableWidthByTextarea = Math.max(0, textareaElement.scrollWidth - textareaElement.clientWidth);
+      const maxScrollableWidthByList = lineListElement
+        ? Math.max(0, lineListElement.scrollWidth - lineListElement.clientWidth)
+        : 0;
+      const maxScrollableWidth = Math.max(
+        maxScrollableWidthByElement,
+        maxScrollableWidthByTextarea,
+        maxScrollableWidthByList
+      );
+
+      const alignedNextScrollLeft = alignScrollOffset(Math.max(0, Math.min(nextScrollLeft, maxScrollableWidth)));
+      if (Math.abs(scrollElement.scrollLeft - alignedNextScrollLeft) > 0.001) {
+        scrollElement.scrollLeft = alignedNextScrollLeft;
+      }
+
+      if (lineListElement && Math.abs(lineListElement.scrollLeft - alignedNextScrollLeft) > 0.001) {
+        lineListElement.scrollLeft = alignedNextScrollLeft;
+      }
+    },
+    [
+      estimateLineTextForNavigation,
+      getFallbackSearchSidebarOcclusionPx,
+      measureTextWidthByEditorStyle,
+      wordWrap,
+    ]
+  );
 
   const estimateDropOffsetForTextareaPoint = useCallback(
     (element: HTMLTextAreaElement, text: string, clientX: number, clientY: number) => {
@@ -4994,6 +5149,8 @@ export function Editor({ tab }: { tab: FileTab }) {
         line?: number;
         column?: number;
         length?: number;
+        lineText?: string;
+        occludedRightPx?: number;
         source?: string;
       }>;
       const detail = customEvent.detail;
@@ -5005,6 +5162,10 @@ export function Editor({ tab }: { tab: FileTab }) {
       const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
+      const targetLineText = typeof detail.lineText === 'string' ? detail.lineText : '';
+      const targetOccludedRightPx = Number.isFinite(detail.occludedRightPx)
+        ? Math.max(0, Math.floor(detail.occludedRightPx as number))
+        : 0;
       const shouldMoveCaretToLineStart = detail.source === 'outline';
       const targetCaretColumn = shouldMoveCaretToLineStart ? 1 : targetColumn;
       setActiveLineNumber(targetLine);
@@ -5056,6 +5217,16 @@ export function Editor({ tab }: { tab: FileTab }) {
           contentRef.current.scrollTop = targetScrollTop;
           contentRef.current.focus();
 
+          ensureSearchMatchVisibleHorizontally(
+            scrollContainerRef.current,
+            targetLine,
+            targetColumn,
+            targetLength,
+            targetLineText,
+            targetOccludedRightPx,
+            listElement
+          );
+
           window.requestAnimationFrame(() => {
             placeCaretAtTargetPosition();
             window.setTimeout(() => {
@@ -5092,6 +5263,16 @@ export function Editor({ tab }: { tab: FileTab }) {
         contentRef.current.scrollTop = targetScrollTop;
         contentRef.current.focus();
 
+        ensureSearchMatchVisibleHorizontally(
+          contentRef.current,
+          targetLine,
+          targetColumn,
+          targetLength,
+          targetLineText,
+          targetOccludedRightPx,
+          listElement
+        );
+
         window.requestAnimationFrame(() => {
           placeCaretAtTargetPosition();
         });
@@ -5127,7 +5308,16 @@ export function Editor({ tab }: { tab: FileTab }) {
       window.removeEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
     };
-  }, [isHugeEditableMode, isLargeReadOnlyMode, itemSize, setCursorPosition, syncVisibleTokens, tab.id, tab.lineCount]);
+  }, [
+    ensureSearchMatchVisibleHorizontally,
+    isHugeEditableMode,
+    isLargeReadOnlyMode,
+    itemSize,
+    setCursorPosition,
+    syncVisibleTokens,
+    tab.id,
+    tab.lineCount,
+  ]);
 
   useEffect(() => {
     const handleForcedRefresh = (event: Event) => {

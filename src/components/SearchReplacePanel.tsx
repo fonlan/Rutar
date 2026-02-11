@@ -250,7 +250,7 @@ function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
   );
 }
 
-function dispatchNavigateToMatch(tabId: string, match: SearchMatch) {
+function dispatchNavigateToMatch(tabId: string, match: SearchMatch, occludedRightPx = 0) {
   const matchLength = Math.max(0, match.endChar - match.startChar);
 
   window.dispatchEvent(
@@ -260,12 +260,21 @@ function dispatchNavigateToMatch(tabId: string, match: SearchMatch) {
         line: match.line,
         column: match.column,
         length: matchLength,
+        lineText: match.lineText,
+        occludedRightPx: Math.max(0, occludedRightPx),
       },
     })
   );
 }
 
-function dispatchNavigateToLine(tabId: string, line: number, column: number, length: number) {
+function dispatchNavigateToLine(
+  tabId: string,
+  line: number,
+  column: number,
+  length: number,
+  lineText = '',
+  occludedRightPx = 0
+) {
   window.dispatchEvent(
     new CustomEvent('rutar:navigate-to-line', {
       detail: {
@@ -273,6 +282,8 @@ function dispatchNavigateToLine(tabId: string, line: number, column: number, len
         line,
         column,
         length,
+        lineText,
+        occludedRightPx: Math.max(0, occludedRightPx),
       },
     })
   );
@@ -702,6 +713,24 @@ export function SearchReplacePanel() {
 
     return !!searchSidebarContainerRef.current?.contains(target);
   }, []);
+
+  const getSearchSidebarOccludedRightPx = useCallback(() => {
+    if (!isOpen) {
+      return 0;
+    }
+
+    const sidebarElement = searchSidebarContainerRef.current;
+    if (!sidebarElement) {
+      return 0;
+    }
+
+    const rect = sidebarElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, window.innerWidth - rect.left);
+  }, [isOpen, searchSidebarContainerRef]);
 
   const syncSearchSidebarFocusFromDom = useCallback(() => {
     setIsSearchUiFocused(isTargetInsideSearchSidebar(document.activeElement));
@@ -1668,18 +1697,20 @@ export function SearchReplacePanel() {
         return;
       }
 
+      const occludedRightPx = getSearchSidebarOccludedRightPx();
+
       if (pendingNavigateDispatchRafRef.current !== null) {
         window.cancelAnimationFrame(pendingNavigateDispatchRafRef.current);
         pendingNavigateDispatchRafRef.current = null;
       }
 
-      dispatchNavigateToMatch(activeTab.id, targetMatch);
+      dispatchNavigateToMatch(activeTab.id, targetMatch, occludedRightPx);
       pendingNavigateDispatchRafRef.current = window.requestAnimationFrame(() => {
-        dispatchNavigateToMatch(activeTab.id, targetMatch);
+        dispatchNavigateToMatch(activeTab.id, targetMatch, getSearchSidebarOccludedRightPx());
         pendingNavigateDispatchRafRef.current = null;
       });
     },
-    [activeTab]
+    [activeTab, getSearchSidebarOccludedRightPx]
   );
 
   const navigateToFilterMatch = useCallback(
@@ -1687,6 +1718,8 @@ export function SearchReplacePanel() {
       if (!activeTab) {
         return;
       }
+
+      const occludedRightPx = getSearchSidebarOccludedRightPx();
 
       if (pendingNavigateDispatchRafRef.current !== null) {
         window.cancelAnimationFrame(pendingNavigateDispatchRafRef.current);
@@ -1697,19 +1730,23 @@ export function SearchReplacePanel() {
         activeTab.id,
         targetMatch.line,
         Math.max(1, targetMatch.column || 1),
-        Math.max(0, targetMatch.length || 0)
+        Math.max(0, targetMatch.length || 0),
+        targetMatch.lineText || '',
+        occludedRightPx
       );
       pendingNavigateDispatchRafRef.current = window.requestAnimationFrame(() => {
         dispatchNavigateToLine(
           activeTab.id,
           targetMatch.line,
           Math.max(1, targetMatch.column || 1),
-          Math.max(0, targetMatch.length || 0)
+          Math.max(0, targetMatch.length || 0),
+          targetMatch.lineText || '',
+          getSearchSidebarOccludedRightPx()
         );
         pendingNavigateDispatchRafRef.current = null;
       });
     },
-    [activeTab]
+    [activeTab, getSearchSidebarOccludedRightPx]
   );
 
   const hasMoreMatches = chunkCursorRef.current !== null;
@@ -3448,6 +3485,7 @@ export function SearchReplacePanel() {
     <>
       <div
         ref={searchSidebarContainerRef}
+        data-rutar-search-sidebar="true"
         className={cn(
           'fixed z-40 transform-gpu overflow-hidden transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full'
