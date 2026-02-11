@@ -1,16 +1,14 @@
-mod state;
 mod commands;
+mod state;
 
 use state::AppState;
-use tauri::{
-    AppHandle,
-    Emitter,
-    Manager,
-    PhysicalSize,
-    Size,
-    WebviewWindow,
-    WindowEvent,
-};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, PhysicalSize, Size, WebviewWindow, WindowEvent};
+
+#[derive(Clone, serde::Serialize)]
+struct ExternalFileChangeEventPayload {
+    id: String,
+}
 
 #[tauri::command]
 fn show_main_window_when_ready(window: WebviewWindow) -> Result<(), String> {
@@ -124,6 +122,30 @@ fn setup_main_window_state_tracking(app: &AppHandle) {
     });
 }
 
+fn setup_external_file_change_tracking(app: &AppHandle) {
+    let app_handle = app.clone();
+
+    let _ = std::thread::Builder::new()
+        .name("rutar-external-change-tracker".to_string())
+        .spawn(move || loop {
+            let changed_ids =
+                commands::collect_external_file_change_document_ids(app_handle.state::<AppState>());
+
+            if !changed_ids.is_empty() {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    for id in changed_ids {
+                        let payload = ExternalFileChangeEventPayload { id };
+                        if let Err(error) = window.emit("rutar://external-file-changed", payload) {
+                            eprintln!("failed to emit external file change event: {error}");
+                        }
+                    }
+                }
+            }
+
+            std::thread::sleep(Duration::from_millis(1200));
+        });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let startup_paths = collect_valid_startup_paths_from_args(std::env::args().skip(1));
@@ -135,6 +157,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             setup_main_window_state_tracking(app.handle());
+            setup_external_file_change_tracking(app.handle());
             Ok(())
         });
 
@@ -148,9 +171,10 @@ pub fn run() {
     if let Err(err) = builder
         .manage(AppState::new(startup_paths))
         .invoke_handler(tauri::generate_handler![
-            commands::file_io_commands::open_file, 
+            commands::file_io_commands::open_file,
             commands::file_io_commands::get_visible_lines,
             commands::file_io_commands::get_visible_lines_chunk,
+            commands::file_io_commands::get_bookmark_line_previews,
             commands::get_syntax_tokens,
             commands::file_io_commands::close_file,
             commands::file_io_commands::save_file,
@@ -170,12 +194,16 @@ pub fn run() {
             commands::editing_commands::get_edit_history_state,
             commands::editing_commands::edit_text,
             commands::editing_commands::replace_line_range,
+            commands::editing_commands::toggle_line_comments,
+            commands::editing_commands::convert_text_base64,
             commands::editing_commands::cleanup_document,
             commands::editing_commands::format_document,
             commands::search_commands::search_first_in_document,
             commands::search_commands::search_in_document_chunk,
             commands::search_commands::step_result_filter_search_in_document,
             commands::search_commands::search_count_in_document,
+            commands::search_commands::replace_all_in_document,
+            commands::search_commands::replace_current_in_document,
             commands::search_commands::filter_in_document_chunk,
             commands::search_commands::step_result_filter_search_in_filter_document,
             commands::search_commands::filter_count_in_document,

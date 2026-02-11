@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_kotlin_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "class_declaration" => {
             let name = node
@@ -29,7 +32,12 @@ pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &st
                 }
 
                 if child.kind() == "class_body" || child.kind() == "enum_class_body" {
-                    collect_symbol_outline_nodes(child, source, OutlineFileType::Kotlin, &mut children);
+                    collect_symbol_outline_nodes(
+                        child,
+                        source,
+                        OutlineFileType::Kotlin,
+                        &mut children,
+                    );
                     break;
                 }
             }
@@ -63,7 +71,12 @@ pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &st
                 }
 
                 if child.kind() == "class_body" {
-                    collect_symbol_outline_nodes(child, source, OutlineFileType::Kotlin, &mut children);
+                    collect_symbol_outline_nodes(
+                        child,
+                        source,
+                        OutlineFileType::Kotlin,
+                        &mut children,
+                    );
                     break;
                 }
             }
@@ -90,7 +103,12 @@ pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &st
                 }
 
                 if child.kind() == "function_body" {
-                    collect_symbol_outline_nodes(child, source, OutlineFileType::Kotlin, &mut children);
+                    collect_symbol_outline_nodes(
+                        child,
+                        source,
+                        OutlineFileType::Kotlin,
+                        &mut children,
+                    );
                     break;
                 }
             }
@@ -111,7 +129,12 @@ pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &st
                 }
 
                 if child.kind() == "block" {
-                    collect_symbol_outline_nodes(child, source, OutlineFileType::Kotlin, &mut children);
+                    collect_symbol_outline_nodes(
+                        child,
+                        source,
+                        OutlineFileType::Kotlin,
+                        &mut children,
+                    );
                     break;
                 }
             }
@@ -182,8 +205,3 @@ pub(super) fn build_kotlin_outline_node(node: tree_sitter::Node<'_>, source: &st
         _ => None,
     }
 }
-
-
-
-
-

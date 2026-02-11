@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_csharp_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_csharp_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "namespace_declaration" | "file_scoped_namespace_declaration" => {
             let name = node
@@ -180,8 +183,3 @@ pub(super) fn build_csharp_outline_node(node: tree_sitter::Node<'_>, source: &st
         _ => None,
     }
 }
-
-
-
-
-

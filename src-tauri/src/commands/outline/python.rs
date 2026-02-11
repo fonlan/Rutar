@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_python_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_python_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "decorated_definition" => node
             .child_by_field_name("definition")
@@ -46,8 +49,3 @@ pub(super) fn build_python_outline_node(node: tree_sitter::Node<'_>, source: &st
         _ => None,
     }
 }
-
-
-
-
-

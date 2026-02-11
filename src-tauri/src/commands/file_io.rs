@@ -24,6 +24,19 @@ fn build_file_fingerprint(metadata: &std::fs::Metadata) -> FileFingerprint {
     }
 }
 
+pub(super) fn has_external_file_change_by_snapshot(
+    path: &PathBuf,
+    saved_fingerprint: Option<FileFingerprint>,
+) -> bool {
+    let metadata = match fs::metadata(path) {
+        Ok(value) => value,
+        Err(_) => return saved_fingerprint.is_some(),
+    };
+
+    let current_fingerprint = build_file_fingerprint(&metadata);
+    saved_fingerprint != Some(current_fingerprint)
+}
+
 fn read_disk_file_snapshot(path: &PathBuf) -> Result<DiskFileSnapshot, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
     let metadata = file.metadata().map_err(|e| e.to_string())?;
@@ -227,7 +240,10 @@ fn count_word_stats(rope: &Rope) -> WordCountInfo {
     }
 }
 
-pub(super) async fn open_file_impl(state: State<'_, AppState>, path: String) -> Result<FileInfo, String> {
+pub(super) async fn open_file_impl(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
     let snapshot = read_disk_file_snapshot(&path_buf)?;
 
@@ -309,6 +325,41 @@ pub(super) fn get_visible_lines_chunk_impl(
     }
 }
 
+pub(super) fn get_bookmark_line_previews_impl(
+    state: State<'_, AppState>,
+    id: String,
+    lines: Vec<usize>,
+) -> Result<Vec<String>, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let rope = &doc.rope;
+        let len = rope.len_lines();
+        let mut previews = Vec::with_capacity(lines.len());
+
+        for line_number in lines {
+            if line_number == 0 || line_number > len {
+                previews.push(String::new());
+                continue;
+            }
+
+            let line_idx = line_number - 1;
+            let mut text = rope.line(line_idx).to_string();
+
+            if text.ends_with('\n') {
+                text.pop();
+                if text.ends_with('\r') {
+                    text.pop();
+                }
+            }
+
+            previews.push(text);
+        }
+
+        Ok(previews)
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn get_visible_lines_impl(
     state: State<'_, AppState>,
     id: String,
@@ -364,7 +415,11 @@ pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Re
     }
 }
 
-pub(super) async fn save_file_as_impl(state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
+pub(super) async fn save_file_as_impl(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
     let path_buf = PathBuf::from(&path);
 
     if let Some(mut doc) = state.documents.get_mut(&id) {
@@ -392,7 +447,11 @@ pub(super) async fn save_file_as_impl(state: State<'_, AppState>, id: String, pa
     }
 }
 
-pub(super) fn convert_encoding_impl(state: State<'_, AppState>, id: String, new_encoding: String) -> Result<(), String> {
+pub(super) fn convert_encoding_impl(
+    state: State<'_, AppState>,
+    id: String,
+    new_encoding: String,
+) -> Result<(), String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let label = new_encoding.as_bytes();
         let encoding = Encoding::for_label(label)
@@ -410,7 +469,11 @@ pub(super) fn convert_encoding_impl(state: State<'_, AppState>, id: String, new_
     }
 }
 
-pub(super) fn set_line_ending_impl(state: State<'_, AppState>, id: String, new_line_ending: String) -> Result<(), String> {
+pub(super) fn set_line_ending_impl(
+    state: State<'_, AppState>,
+    id: String,
+    new_line_ending: String,
+) -> Result<(), String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let line_ending = LineEnding::from_label(&new_line_ending)
             .ok_or_else(|| format!("Unsupported line ending: {}", new_line_ending))?;
@@ -500,13 +563,10 @@ pub(super) fn has_external_file_change_impl(
         return Err("Document not found".to_string());
     };
 
-    let metadata = match fs::metadata(path) {
-        Ok(value) => value,
-        Err(_) => return Ok(saved_fingerprint.is_some()),
-    };
-
-    let current_fingerprint = build_file_fingerprint(&metadata);
-    Ok(saved_fingerprint != Some(current_fingerprint))
+    Ok(has_external_file_change_by_snapshot(
+        &path,
+        saved_fingerprint,
+    ))
 }
 
 pub(super) fn acknowledge_external_file_change_impl(
@@ -589,6 +649,22 @@ pub(super) fn read_dir_impl(path: String) -> Result<Vec<DirEntry>, String> {
             is_dir: path.is_dir(),
         });
     }
+
+    result.sort_by(|left, right| {
+        if left.is_dir != right.is_dir {
+            return if left.is_dir {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+
+        let left_lower = left.name.to_lowercase();
+        let right_lower = right.name.to_lowercase();
+        left_lower
+            .cmp(&right_lower)
+            .then_with(|| left.name.cmp(&right.name))
+    });
 
     Ok(result)
 }

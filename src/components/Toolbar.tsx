@@ -98,16 +98,6 @@ const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     isDirty: false,
 };
 
-function sortFolderEntries(entries: any[]) {
-    entries.sort((left, right) => {
-        if (left.is_dir === right.is_dir) {
-            return left.name.localeCompare(right.name);
-        }
-
-        return left.is_dir ? -1 : 1;
-    });
-}
-
 function pathBaseName(path: string) {
     const normalizedPath = path.trim().replace(/[\\/]+$/, '');
     const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
@@ -384,7 +374,6 @@ export function Toolbar() {
 
             if (selected && typeof selected === 'string') {
                  const entries = await invoke<any[]>('read_dir', { path: selected });
-                 sortFolderEntries(entries);
                  setFolder(selected, entries);
                  addRecentFolderPath(selected);
             }
@@ -409,7 +398,6 @@ export function Toolbar() {
     const handleOpenRecentFolder = useCallback(async (path: string) => {
         try {
             const entries = await invoke<any[]>('read_dir', { path });
-            sortFolderEntries(entries);
             setFolder(path, entries);
             addRecentFolderPath(path);
         } catch (error) {

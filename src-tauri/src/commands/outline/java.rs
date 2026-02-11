@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_java_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_java_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "class_declaration"
         | "interface_declaration"
@@ -90,8 +93,3 @@ pub(super) fn build_java_outline_node(node: tree_sitter::Node<'_>, source: &str)
         _ => None,
     }
 }
-
-
-
-
-

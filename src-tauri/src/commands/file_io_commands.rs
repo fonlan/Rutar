@@ -26,6 +26,15 @@ pub fn get_visible_lines(
 }
 
 #[tauri::command]
+pub fn get_bookmark_line_previews(
+    state: State<'_, AppState>,
+    id: String,
+    lines: Vec<usize>,
+) -> Result<Vec<String>, String> {
+    file_io::get_bookmark_line_previews_impl(state, id, lines)
+}
+
+#[tauri::command]
 pub fn close_file(state: State<'_, AppState>, id: String) {
     file_io::close_file_impl(state, id)
 }
@@ -36,17 +45,29 @@ pub async fn save_file(state: State<'_, AppState>, id: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub async fn save_file_as(state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
+pub async fn save_file_as(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
     file_io::save_file_as_impl(state, id, path).await
 }
 
 #[tauri::command]
-pub fn convert_encoding(state: State<'_, AppState>, id: String, new_encoding: String) -> Result<(), String> {
+pub fn convert_encoding(
+    state: State<'_, AppState>,
+    id: String,
+    new_encoding: String,
+) -> Result<(), String> {
     file_io::convert_encoding_impl(state, id, new_encoding)
 }
 
 #[tauri::command]
-pub fn set_line_ending(state: State<'_, AppState>, id: String, new_line_ending: String) -> Result<(), String> {
+pub fn set_line_ending(
+    state: State<'_, AppState>,
+    id: String,
+    new_line_ending: String,
+) -> Result<(), String> {
     file_io::set_line_ending_impl(state, id, new_line_ending)
 }
 
@@ -91,7 +112,10 @@ pub fn has_external_file_change(state: State<'_, AppState>, id: String) -> Resul
 }
 
 #[tauri::command]
-pub fn acknowledge_external_file_change(state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub fn acknowledge_external_file_change(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     file_io::acknowledge_external_file_change_impl(state, id)
 }
 

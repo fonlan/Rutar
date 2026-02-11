@@ -1,8 +1,8 @@
-use std::path::PathBuf;
 use quick_xml::events::Event;
 use quick_xml::{Reader, Writer};
 use regex::Regex;
 use serde::Serialize;
+use std::path::PathBuf;
 use tree_sitter::{Language, Parser};
 
 #[derive(Clone, Copy)]
@@ -263,7 +263,10 @@ fn reindent_text(source: &str, target_width: usize) -> String {
     }
 }
 
-fn serialize_json_pretty_with_indent<T: Serialize>(value: &T, indent_width: usize) -> Result<String, String> {
+fn serialize_json_pretty_with_indent<T: Serialize>(
+    value: &T,
+    indent_width: usize,
+) -> Result<String, String> {
     let indent = vec![b' '; indent_width.max(1)];
     let mut output = Vec::new();
     let formatter = serde_json::ser::PrettyFormatter::with_indent(&indent);
@@ -277,7 +280,8 @@ fn serialize_json_pretty_with_indent<T: Serialize>(value: &T, indent_width: usiz
 }
 
 fn format_json(source: &str, mode: FormatMode, tab_width: usize) -> Result<String, String> {
-    let value: serde_json::Value = serde_json::from_str(source).map_err(|e| format!("Invalid JSON: {}", e))?;
+    let value: serde_json::Value =
+        serde_json::from_str(source).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     match mode {
         FormatMode::Beautify => serialize_json_pretty_with_indent(&value, tab_width),
@@ -286,16 +290,19 @@ fn format_json(source: &str, mode: FormatMode, tab_width: usize) -> Result<Strin
 }
 
 fn format_yaml(source: &str, mode: FormatMode, tab_width: usize) -> Result<String, String> {
-    let value: serde_yaml::Value = serde_yaml::from_str(source).map_err(|e| format!("Invalid YAML: {}", e))?;
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(source).map_err(|e| format!("Invalid YAML: {}", e))?;
 
     match mode {
         FormatMode::Beautify => {
-            let pretty = serde_yaml::to_string(&value).map_err(|e| format!("Failed to serialize YAML: {}", e))?;
+            let pretty = serde_yaml::to_string(&value)
+                .map_err(|e| format!("Failed to serialize YAML: {}", e))?;
             let without_header = strip_yaml_header(&pretty);
             Ok(reindent_text(&without_header, tab_width))
         }
         FormatMode::Minify => {
-            let json_value = serde_json::to_value(&value).map_err(|e| format!("Failed to minify YAML: {}", e))?;
+            let json_value = serde_json::to_value(&value)
+                .map_err(|e| format!("Failed to minify YAML: {}", e))?;
             serde_json::to_string(&json_value).map_err(|e| e.to_string())
         }
     }
@@ -306,11 +313,13 @@ fn format_toml(source: &str, mode: FormatMode, tab_width: usize) -> Result<Strin
 
     match mode {
         FormatMode::Beautify => {
-            let pretty = toml::to_string_pretty(&value).map_err(|e| format!("Failed to serialize TOML: {}", e))?;
+            let pretty = toml::to_string_pretty(&value)
+                .map_err(|e| format!("Failed to serialize TOML: {}", e))?;
             Ok(reindent_text(pretty.trim_end_matches('\n'), tab_width))
         }
         FormatMode::Minify => {
-            let compact = toml::to_string(&value).map_err(|e| format!("Failed to minify TOML: {}", e))?;
+            let compact =
+                toml::to_string(&value).map_err(|e| format!("Failed to minify TOML: {}", e))?;
             Ok(compact
                 .replace(['\r', '\n'], " ")
                 .split_whitespace()
@@ -349,7 +358,11 @@ fn format_xml(source: &str, mode: FormatMode, tab_width: usize) -> Result<String
                     .map_err(|e| format!("Failed to write XML event: {}", e))?;
             }
             Err(error) => {
-                return Err(format!("Invalid XML at {}: {}", reader.buffer_position(), error));
+                return Err(format!(
+                    "Invalid XML at {}: {}",
+                    reader.buffer_position(),
+                    error
+                ));
             }
         }
     }
@@ -398,15 +411,21 @@ fn extract_html_tag_name(tag_line: &str) -> Option<String> {
     Some(inner[..end].to_ascii_lowercase())
 }
 
-fn format_html_fallback(source: &str, mode: FormatMode, tab_width: usize) -> Result<String, String> {
-    let spacing_regex = Regex::new(r">\s*<").map_err(|e| format!("Failed to build HTML spacing regex: {}", e))?;
+fn format_html_fallback(
+    source: &str,
+    mode: FormatMode,
+    tab_width: usize,
+) -> Result<String, String> {
+    let spacing_regex =
+        Regex::new(r">\s*<").map_err(|e| format!("Failed to build HTML spacing regex: {}", e))?;
 
     match mode {
         FormatMode::Beautify => {
             let normalized = spacing_regex.replace_all(source, ">\n<");
             let indent_unit = " ".repeat(tab_width.max(1));
             let mut indent_level = 0usize;
-            let mut formatted = String::with_capacity(source.len().saturating_add(source.len() / 4));
+            let mut formatted =
+                String::with_capacity(source.len().saturating_add(source.len() / 4));
 
             for raw_line in normalized.lines() {
                 let line = raw_line.trim();
@@ -426,7 +445,9 @@ fn format_html_fallback(source: &str, mode: FormatMode, tab_width: usize) -> Res
                 let is_self_closing = line.ends_with("/>");
                 let is_declaration = line.starts_with("<!") || line.starts_with("<?");
                 let closes_same_line = line.contains("</");
-                let is_void = extract_html_tag_name(line).as_deref().is_some_and(is_html_void_tag);
+                let is_void = extract_html_tag_name(line)
+                    .as_deref()
+                    .is_some_and(is_html_void_tag);
 
                 let should_indent_after = line.starts_with('<')
                     && !is_closing_tag
@@ -495,13 +516,21 @@ pub(super) fn format_document_text(
     document_path: &Option<PathBuf>,
     tab_width: u8,
 ) -> Result<String, String> {
-    let format_mode =
-        parse_format_mode(mode).ok_or_else(|| "Unsupported format mode. Use beautify or minify".to_string())?;
+    let format_mode = parse_format_mode(mode)
+        .ok_or_else(|| "Unsupported format mode. Use beautify or minify".to_string())?;
     let file_format = resolve_structured_format(file_syntax, file_path, file_name, document_path)
-        .ok_or_else(|| "Only JSON, YAML, XML, HTML, and TOML files are supported".to_string())?;
+        .ok_or_else(|| {
+        "Only JSON, YAML, XML, HTML, and TOML files are supported".to_string()
+    })?;
     let preserve_comments = should_preserve_comments(source, file_format);
 
-    format_structured_text(source, file_format, format_mode, tab_width, preserve_comments)
+    format_structured_text(
+        source,
+        file_format,
+        format_mode,
+        tab_width,
+        preserve_comments,
+    )
 }
 
 #[cfg(test)]
@@ -511,7 +540,15 @@ mod tests {
     #[test]
     fn format_yaml_should_preserve_comments_and_succeed() {
         let source = "name: app\n# keep this comment\nenabled: true\n";
-        let result = format_document_text(source, "beautify", None, None, Some("config.yaml"), &None, 2);
+        let result = format_document_text(
+            source,
+            "beautify",
+            None,
+            None,
+            Some("config.yaml"),
+            &None,
+            2,
+        );
 
         let formatted = result.expect("expected formatting to succeed");
         assert!(formatted.contains("# keep this comment"));
@@ -520,7 +557,8 @@ mod tests {
     #[test]
     fn format_toml_should_preserve_comments_and_succeed() {
         let source = "title = \"Rutar\"\n# keep this comment\nversion = \"1.0.0\"\n";
-        let result = format_document_text(source, "beautify", None, None, Some("Cargo.toml"), &None, 2);
+        let result =
+            format_document_text(source, "beautify", None, None, Some("Cargo.toml"), &None, 2);
 
         let formatted = result.expect("expected formatting to succeed");
         assert!(formatted.contains("# keep this comment"));
@@ -529,7 +567,15 @@ mod tests {
     #[test]
     fn format_yaml_should_keep_working_without_comments() {
         let source = "name: app\nfeatures:\n  - editor\n";
-        let result = format_document_text(source, "beautify", None, None, Some("config.yaml"), &None, 2);
+        let result = format_document_text(
+            source,
+            "beautify",
+            None,
+            None,
+            Some("config.yaml"),
+            &None,
+            2,
+        );
 
         assert!(result.is_ok());
     }
@@ -537,7 +583,8 @@ mod tests {
     #[test]
     fn format_html_should_beautify_even_when_not_well_formed_xml() {
         let source = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Rutar</title></head><body><h1>Hello</h1></body></html>";
-        let result = format_document_text(source, "beautify", None, None, Some("index.html"), &None, 2);
+        let result =
+            format_document_text(source, "beautify", None, None, Some("index.html"), &None, 2);
 
         let formatted = result.expect("expected HTML formatting to succeed");
         assert!(formatted.contains("\n"));
@@ -547,7 +594,8 @@ mod tests {
     #[test]
     fn format_html_should_minify_document() {
         let source = "<html>\n  <body>\n    <h1>Hello</h1>\n  </body>\n</html>\n";
-        let result = format_document_text(source, "minify", None, None, Some("index.htm"), &None, 2);
+        let result =
+            format_document_text(source, "minify", None, None, Some("index.htm"), &None, 2);
 
         let formatted = result.expect("expected HTML minify to succeed");
         assert_eq!(formatted, "<html><body><h1>Hello</h1></body></html>");

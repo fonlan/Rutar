@@ -1,4 +1,5 @@
 use super::*;
+use base64::Engine as _;
 
 fn point_for_char(rope: &Rope, char_idx: usize) -> Point {
     let clamped = char_idx.min(rope.len_chars());
@@ -193,6 +194,346 @@ pub(super) fn replace_line_range_impl(
     }
 }
 
+fn encode_base64_utf8(value: &str) -> String {
+    base64::engine::general_purpose::STANDARD.encode(value.as_bytes())
+}
+
+fn decode_base64_utf8(value: &str) -> Result<String, String> {
+    let mut normalized = String::with_capacity(value.len());
+
+    for ch in value.chars() {
+        if ch.is_whitespace() {
+            continue;
+        }
+
+        match ch {
+            '-' => normalized.push('+'),
+            '_' => normalized.push('/'),
+            _ => normalized.push(ch),
+        }
+    }
+
+    if normalized.is_empty() {
+        return Ok(String::new());
+    }
+
+    let remainder = normalized.len() % 4;
+    if remainder == 1 {
+        return Err("Invalid base64 text".to_string());
+    }
+
+    if remainder > 0 {
+        normalized.push_str("=".repeat(4 - remainder).as_str());
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(normalized)
+        .map_err(|_| "Invalid base64 text".to_string())?;
+
+    String::from_utf8(bytes).map_err(|_| "Invalid UTF-8 text".to_string())
+}
+
+pub(super) fn convert_text_base64_impl(text: String, action: String) -> Result<String, String> {
+    match action.as_str() {
+        "base64_encode" => Ok(encode_base64_utf8(&text)),
+        "base64_decode" => decode_base64_utf8(&text),
+        _ => Err("Unsupported base64 action".to_string()),
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToggleLineCommentsResultPayload {
+    pub(super) changed: bool,
+    pub(super) line_count: usize,
+    pub(super) document_version: u64,
+    pub(super) selection_start_char: usize,
+    pub(super) selection_end_char: usize,
+}
+
+struct ToggleLineCommentsComputation {
+    start_char: usize,
+    old_text: String,
+    new_text: String,
+    selection_start_char: usize,
+    selection_end_char: usize,
+}
+
+fn split_indent_and_body<'a>(line: &'a str) -> (&'a str, &'a str) {
+    let body_start = line
+        .char_indices()
+        .find_map(|(index, ch)| {
+            if ch.is_whitespace() {
+                None
+            } else {
+                Some(index)
+            }
+        })
+        .unwrap_or(line.len());
+
+    (&line[..body_start], &line[body_start..])
+}
+
+fn is_line_commented_by_prefix(line: &str, prefix: &str) -> bool {
+    let (_, body) = split_indent_and_body(line);
+    body == prefix
+        || body.starts_with(&format!("{} ", prefix))
+        || body.starts_with(&format!("{}\t", prefix))
+}
+
+fn add_line_comment_prefix(line: &str, prefix: &str) -> String {
+    let (indent, body) = split_indent_and_body(line);
+
+    if body.trim().is_empty() {
+        return line.to_string();
+    }
+
+    format!("{indent}{prefix} {body}")
+}
+
+fn remove_line_comment_prefix(line: &str, prefix: &str) -> String {
+    let (indent, body) = split_indent_and_body(line);
+
+    if body.trim().is_empty() {
+        return line.to_string();
+    }
+
+    if is_line_commented_by_prefix(line, prefix) {
+        if body == prefix {
+            return indent.to_string();
+        }
+
+        if let Some(after_prefix) = body.strip_prefix(prefix) {
+            if after_prefix.starts_with(' ') || after_prefix.starts_with('\t') {
+                return format!("{indent}{}", &after_prefix[1..]);
+            }
+
+            return format!("{indent}{after_prefix}");
+        }
+    }
+
+    line.to_string()
+}
+
+fn map_offset_across_line_transformation(
+    old_lines: &[String],
+    new_lines: &[String],
+    old_offset: usize,
+) -> usize {
+    let safe_offset = old_offset;
+    let mut old_cursor = 0usize;
+    let mut new_cursor = 0usize;
+
+    for (index, old_line) in old_lines.iter().enumerate() {
+        let new_line = new_lines.get(index).cloned().unwrap_or_default();
+        let old_line_len = old_line.chars().count();
+        let new_line_len = new_line.chars().count();
+        let old_line_end = old_cursor + old_line_len;
+
+        if safe_offset <= old_line_end {
+            return new_cursor + (safe_offset - old_cursor).min(new_line_len);
+        }
+
+        old_cursor = old_line_end;
+        new_cursor += new_line_len;
+
+        if index < old_lines.len().saturating_sub(1) {
+            old_cursor += 1;
+            new_cursor += 1;
+
+            if safe_offset <= old_cursor {
+                return new_cursor;
+            }
+        }
+    }
+
+    new_cursor
+}
+
+fn build_char_to_byte_starts(text: &str) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(text.chars().count() + 1);
+    starts.push(0);
+
+    for (byte_index, _) in text.char_indices().skip(1) {
+        starts.push(byte_index);
+    }
+
+    starts.push(text.len());
+    starts
+}
+
+fn resolve_selection_line_range_chars(
+    chars: &[char],
+    start_offset: usize,
+    end_offset: usize,
+    is_collapsed: bool,
+) -> (usize, usize, usize, usize) {
+    let len = chars.len();
+    let safe_start = start_offset.min(len);
+    let safe_end = end_offset.min(len);
+    let selection_start = safe_start.min(safe_end);
+    let selection_end = safe_start.max(safe_end);
+
+    let mut line_start = 0usize;
+    if selection_start > 0 {
+        for index in (0..selection_start).rev() {
+            if chars[index] == '\n' {
+                line_start = index + 1;
+                break;
+            }
+        }
+    }
+
+    let mut effective_selection_end = selection_end;
+    if !is_collapsed
+        && effective_selection_end > line_start
+        && chars.get(effective_selection_end.saturating_sub(1)) == Some(&'\n')
+    {
+        effective_selection_end = effective_selection_end.saturating_sub(1);
+    }
+
+    let mut line_end = len;
+    for (index, ch) in chars.iter().enumerate().skip(effective_selection_end) {
+        if *ch == '\n' {
+            line_end = index;
+            break;
+        }
+    }
+
+    (
+        line_start,
+        line_end.max(line_start),
+        selection_start,
+        selection_end,
+    )
+}
+
+fn compute_toggle_line_comments(
+    source: &str,
+    start_char: usize,
+    end_char: usize,
+    is_collapsed: bool,
+    prefix: &str,
+) -> Option<ToggleLineCommentsComputation> {
+    if prefix.trim().is_empty() {
+        return None;
+    }
+
+    let chars: Vec<char> = source.chars().collect();
+    let char_to_byte = build_char_to_byte_starts(source);
+    let (line_start, line_end, selection_start, selection_end) =
+        resolve_selection_line_range_chars(&chars, start_char, end_char, is_collapsed);
+
+    let selected_block = source
+        .get(*char_to_byte.get(line_start)?..*char_to_byte.get(line_end)?)
+        .unwrap_or_default();
+
+    let selected_lines: Vec<String> = selected_block
+        .split('\n')
+        .map(|line| line.to_string())
+        .collect();
+    let has_non_empty_line = selected_lines.iter().any(|line| !line.trim().is_empty());
+    if !has_non_empty_line {
+        return None;
+    }
+
+    let should_uncomment = selected_lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .all(|line| is_line_commented_by_prefix(line, prefix));
+
+    let transformed_lines: Vec<String> = selected_lines
+        .iter()
+        .map(|line| {
+            if line.trim().is_empty() {
+                return line.to_string();
+            }
+
+            if should_uncomment {
+                remove_line_comment_prefix(line, prefix)
+            } else {
+                add_line_comment_prefix(line, prefix)
+            }
+        })
+        .collect();
+
+    let transformed_block = transformed_lines.join("\n");
+    if transformed_block == selected_block {
+        return None;
+    }
+
+    let selection_start_in_block = selection_start.saturating_sub(line_start);
+    let selection_end_in_block = selection_end.saturating_sub(line_start);
+    let next_selection_start = line_start
+        + map_offset_across_line_transformation(
+            &selected_lines,
+            &transformed_lines,
+            selection_start_in_block,
+        );
+    let next_selection_end = line_start
+        + map_offset_across_line_transformation(
+            &selected_lines,
+            &transformed_lines,
+            selection_end_in_block,
+        );
+
+    Some(ToggleLineCommentsComputation {
+        start_char: line_start,
+        old_text: selected_block.to_string(),
+        new_text: transformed_block,
+        selection_start_char: next_selection_start,
+        selection_end_char: next_selection_end,
+    })
+}
+
+pub(super) fn toggle_line_comments_impl(
+    state: State<'_, AppState>,
+    id: String,
+    start_char: usize,
+    end_char: usize,
+    is_collapsed: bool,
+    prefix: String,
+) -> Result<ToggleLineCommentsResultPayload, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        let source = doc.rope.to_string();
+        let source_len = doc.rope.len_chars();
+        let safe_start = start_char.min(source_len);
+        let safe_end = end_char.min(source_len);
+
+        let Some(computation) =
+            compute_toggle_line_comments(&source, safe_start, safe_end, is_collapsed, &prefix)
+        else {
+            return Ok(ToggleLineCommentsResultPayload {
+                changed: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                selection_start_char: safe_start.min(safe_end),
+                selection_end_char: safe_start.max(safe_end),
+            });
+        };
+
+        let operation = EditOperation {
+            start_char: computation.start_char,
+            old_text: computation.old_text,
+            new_text: computation.new_text,
+        };
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        Ok(ToggleLineCommentsResultPayload {
+            changed: true,
+            line_count: doc.rope.len_lines(),
+            document_version: doc.document_version,
+            selection_start_char: computation.selection_start_char,
+            selection_end_char: computation.selection_end_char,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 #[derive(Clone, Copy)]
 enum DocumentCleanupAction {
     RemoveEmptyLines,
@@ -246,7 +587,10 @@ fn build_pinyin_sort_key(line: &str) -> String {
 fn cleanup_document_lines(source: &str, action: DocumentCleanupAction) -> String {
     let normalized = text_utils::normalize_to_lf(source);
     let had_terminal_newline = normalized.ends_with('\n');
-    let mut lines: Vec<String> = normalized.split('\n').map(|line| line.to_string()).collect();
+    let mut lines: Vec<String> = normalized
+        .split('\n')
+        .map(|line| line.to_string())
+        .collect();
 
     if had_terminal_newline {
         lines.pop();
@@ -269,15 +613,18 @@ fn cleanup_document_lines(source: &str, action: DocumentCleanupAction) -> String
 
             unique_lines
         }
-        DocumentCleanupAction::TrimLeadingWhitespace => {
-            lines.into_iter().map(|line| line.trim_start().to_string()).collect()
-        }
-        DocumentCleanupAction::TrimTrailingWhitespace => {
-            lines.into_iter().map(|line| line.trim_end().to_string()).collect()
-        }
-        DocumentCleanupAction::TrimSurroundingWhitespace => {
-            lines.into_iter().map(|line| line.trim().to_string()).collect()
-        }
+        DocumentCleanupAction::TrimLeadingWhitespace => lines
+            .into_iter()
+            .map(|line| line.trim_start().to_string())
+            .collect(),
+        DocumentCleanupAction::TrimTrailingWhitespace => lines
+            .into_iter()
+            .map(|line| line.trim_end().to_string())
+            .collect(),
+        DocumentCleanupAction::TrimSurroundingWhitespace => lines
+            .into_iter()
+            .map(|line| line.trim().to_string())
+            .collect(),
         DocumentCleanupAction::SortLinesAscending => {
             lines.sort();
             lines
@@ -427,7 +774,8 @@ mod tests {
     #[test]
     fn trim_surrounding_whitespace_should_trim_both_sides_per_line() {
         let source = "  a  \n\tb\n";
-        let result = cleanup_document_lines(source, DocumentCleanupAction::TrimSurroundingWhitespace);
+        let result =
+            cleanup_document_lines(source, DocumentCleanupAction::TrimSurroundingWhitespace);
 
         assert_eq!(result, "a\nb\n");
     }
@@ -469,7 +817,8 @@ mod tests {
     #[test]
     fn sort_lines_by_pinyin_ascending_should_sort_chinese_lines_by_pinyin() {
         let source = "赵\n李\n王\n张\n";
-        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinAscending);
+        let result =
+            cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinAscending);
 
         assert_eq!(result, "李\n王\n张\n赵\n");
     }
@@ -477,7 +826,8 @@ mod tests {
     #[test]
     fn sort_lines_by_pinyin_descending_should_sort_chinese_lines_by_pinyin_reverse() {
         let source = "赵\n李\n王\n张\n";
-        let result = cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinDescending);
+        let result =
+            cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinDescending);
 
         assert_eq!(result, "赵\n张\n王\n李\n");
     }

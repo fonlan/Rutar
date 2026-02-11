@@ -92,7 +92,11 @@ pub(super) fn build_c_family_outline_node(
         }
         "field_declaration" => {
             let mut function_declarators = Vec::new();
-            collect_named_descendants_by_kind(node, "function_declarator", &mut function_declarators);
+            collect_named_descendants_by_kind(
+                node,
+                "function_declarator",
+                &mut function_declarators,
+            );
 
             if !function_declarators.is_empty() {
                 let mut method_names = Vec::new();
@@ -264,8 +268,3 @@ pub(super) fn build_c_family_outline_node(
         _ => None,
     }
 }
-
-
-
-
-

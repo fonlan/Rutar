@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use tree_sitter::{Language, Parser};
 
-pub(super) fn normalize_syntax_override(syntax_override: Option<&str>) -> Result<Option<String>, String> {
+pub(super) fn normalize_syntax_override(
+    syntax_override: Option<&str>,
+) -> Result<Option<String>, String> {
     let Some(raw_value) = syntax_override else {
         return Ok(None);
     };
@@ -22,7 +24,10 @@ pub(super) fn normalize_syntax_override(syntax_override: Option<&str>) -> Result
     Err(format!("Unsupported syntax override: {raw_value}"))
 }
 
-pub(super) fn resolve_document_language(path: &Option<PathBuf>, syntax_override: Option<&str>) -> Option<Language> {
+pub(super) fn resolve_document_language(
+    path: &Option<PathBuf>,
+    syntax_override: Option<&str>,
+) -> Option<Language> {
     if let Some(syntax_key) = syntax_override {
         if syntax_key == "plain_text" {
             return None;

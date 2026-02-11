@@ -34,8 +34,6 @@ import { getSearchPanelMessages } from '@/i18n';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
-const MAX_LINE_RANGE = 2147483647;
-
 type SearchMode = 'literal' | 'regex' | 'wildcard';
 type SearchOpenMode = 'find' | 'replace' | 'filter';
 type SearchResultPanelState = 'closed' | 'minimized' | 'open';
@@ -114,11 +112,6 @@ interface SearchOpenEventDetail {
   mode?: SearchOpenMode;
 }
 
-interface SearchRegexResult {
-  regex: RegExp | null;
-  errorMessage: string | null;
-}
-
 interface SearchRunResult {
   matches: SearchMatch[];
   documentVersion: number;
@@ -158,6 +151,18 @@ interface SearchFirstBackendResult {
 interface SearchCountBackendResult {
   totalMatches: number;
   matchedLines: number;
+  documentVersion: number;
+}
+
+interface ReplaceAllBackendResult {
+  replacedCount: number;
+  lineCount: number;
+  documentVersion: number;
+}
+
+interface ReplaceCurrentBackendResult {
+  replaced: boolean;
+  lineCount: number;
   documentVersion: number;
 }
 
@@ -379,60 +384,8 @@ function cssColor(value: string | undefined, fallback: string) {
   return value;
 }
 
-function escapeRegexLiteral(keyword: string) {
-  return keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function wildcardToRegexSource(keyword: string) {
-  let regexSource = '';
-
-  for (const char of keyword) {
-    if (char === '*') {
-      regexSource += '.*';
-      continue;
-    }
-
-    if (char === '?') {
-      regexSource += '.';
-      continue;
-    }
-
-    regexSource += escapeRegexLiteral(char);
-  }
-
-  return regexSource;
-}
-
-function buildSearchRegex(keyword: string, mode: SearchMode, caseSensitive: boolean, useGlobal: boolean): SearchRegexResult {
-  if (!keyword) {
-    return {
-      regex: null,
-      errorMessage: null,
-    };
-  }
-
-  const source = mode === 'regex' ? keyword : mode === 'wildcard' ? wildcardToRegexSource(keyword) : escapeRegexLiteral(keyword);
-  const flags = `${caseSensitive ? '' : 'i'}${useGlobal ? 'g' : ''}`;
-
-  try {
-    return {
-      regex: new RegExp(source, flags),
-      errorMessage: null,
-    };
-  } catch (error) {
-    return {
-      regex: null,
-      errorMessage: error instanceof Error ? error.message : null,
-    };
-  }
-}
-
 function getSearchModeValue(mode: SearchMode) {
   return mode;
-}
-
-function getUnicodeScalarLength(value: string) {
-  return [...value].length;
 }
 
 function buildResultFilterRanges(lineText: string, keyword: string, caseSensitive: boolean) {
@@ -1973,27 +1926,24 @@ export function SearchReplacePanel() {
 
     const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, searchResult.matches.length - 1);
     const targetMatch = searchResult.matches[boundedCurrentIndex];
-    let replacementText = replaceValue;
 
-    if (searchMode === 'regex') {
-      const regexResult = buildSearchRegex(keyword, searchMode, caseSensitive, false);
-      if (!regexResult.regex) {
-        setErrorMessage(regexResult.errorMessage || messages.invalidRegex);
+    try {
+      const result = await invoke<ReplaceCurrentBackendResult>('replace_current_in_document', {
+        id: activeTab.id,
+        keyword,
+        mode: getSearchModeValue(searchMode),
+        caseSensitive,
+        replaceValue,
+        targetStart: targetMatch.start,
+        targetEnd: targetMatch.end,
+      });
+
+      if (!result.replaced) {
+        setFeedbackMessage(messages.noReplaceMatches);
         return;
       }
 
-      replacementText = targetMatch.text.replace(regexResult.regex, replaceValue);
-    }
-
-    try {
-      const newLineCount = await invoke<number>('edit_text', {
-        id: activeTab.id,
-        startChar: targetMatch.startChar,
-        endChar: targetMatch.endChar,
-        newText: replacementText,
-      });
-
-      const safeLineCount = Math.max(1, newLineCount);
+      const safeLineCount = Math.max(1, result.lineCount ?? activeTab.lineCount);
       updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
       dispatchEditorForceRefresh(activeTab.id, safeLineCount);
       setFeedbackMessage(messages.replacedCurrent);
@@ -2013,7 +1963,6 @@ export function SearchReplacePanel() {
     caseSensitive,
     executeSearch,
     keyword,
-    messages.invalidRegex,
     messages.noReplaceMatches,
     messages.replaceFailed,
     messages.replacedCurrent,
@@ -2035,70 +1984,28 @@ export function SearchReplacePanel() {
     }
 
     try {
-      let replacementCount = 0;
+      const result = await invoke<ReplaceAllBackendResult>('replace_all_in_document', {
+        id: activeTab.id,
+        keyword,
+        mode: getSearchModeValue(searchMode),
+        caseSensitive,
+        replaceValue,
+        resultFilterKeyword: backendResultFilterKeyword,
+        resultFilterCaseSensitive: caseSensitive,
+      });
 
-      if (searchMode === 'regex') {
-        const regexResult = buildSearchRegex(keyword, searchMode, caseSensitive, true);
-        if (!regexResult.regex) {
-          setErrorMessage(regexResult.errorMessage || messages.invalidRegex);
-          return;
-        }
+      const replacedCount = result.replacedCount ?? 0;
+      const safeLineCount = Math.max(1, result.lineCount ?? activeTab.lineCount);
 
-        const rawText = await invoke<string>('get_visible_lines', {
-          id: activeTab.id,
-          startLine: 0,
-          endLine: MAX_LINE_RANGE,
-        });
-
-        const sourceText = rawText || '';
-        const replacementText = sourceText.replace(regexResult.regex, () => {
-          replacementCount += 1;
-          return replaceValue;
-        });
-
-        if (replacementCount === 0) {
-          setFeedbackMessage(messages.textUnchanged);
-          return;
-        }
-
-        const newLineCount = await invoke<number>('replace_line_range', {
-          id: activeTab.id,
-          startLine: 0,
-          endLine: MAX_LINE_RANGE,
-          newText: replacementText,
-        });
-
-        const safeLineCount = Math.max(1, newLineCount);
-        updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
-        dispatchEditorForceRefresh(activeTab.id, safeLineCount);
-      } else {
-        let charDelta = 0;
-        const replacementCharCount = getUnicodeScalarLength(replaceValue);
-        let finalLineCount = activeTab.lineCount;
-
-        for (const match of searchResult.matches) {
-          const adjustedStart = match.startChar + charDelta;
-          const adjustedEnd = match.endChar + charDelta;
-
-          const newLineCount = await invoke<number>('edit_text', {
-            id: activeTab.id,
-            startChar: adjustedStart,
-            endChar: adjustedEnd,
-            newText: replaceValue,
-          });
-
-          finalLineCount = Math.max(1, newLineCount);
-          charDelta += replacementCharCount - (match.endChar - match.startChar);
-          replacementCount += 1;
-        }
-
-        if (replacementCount > 0) {
-          updateTab(activeTab.id, { lineCount: finalLineCount, isDirty: true });
-          dispatchEditorForceRefresh(activeTab.id, finalLineCount);
-        }
+      if (replacedCount === 0) {
+        setFeedbackMessage(messages.noReplaceMatches);
+        return;
       }
 
-      setFeedbackMessage(messages.replacedAll(searchResult.matches.length));
+      updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
+      dispatchEditorForceRefresh(activeTab.id, safeLineCount);
+
+      setFeedbackMessage(messages.replacedAll(replacedCount));
       setCurrentMatchIndex(0);
       await executeSearch(true);
     } catch (error) {
@@ -2107,14 +2014,13 @@ export function SearchReplacePanel() {
     }
   }, [
     activeTab,
+    backendResultFilterKeyword,
     caseSensitive,
     executeSearch,
     keyword,
-    messages.invalidRegex,
     messages.noReplaceMatches,
     messages.replaceAllFailed,
     messages.replacedAll,
-    messages.textUnchanged,
     replaceValue,
     searchMode,
     updateTab,

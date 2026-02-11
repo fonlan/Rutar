@@ -82,11 +82,6 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
             if (!isOpen && children.length === 0) {
                 try {
                     const result = await invoke<any[]>('read_dir', { path: entry.path });
-                    // Sort: dirs first, then files
-                    result.sort((a, b) => {
-                        if (a.is_dir === b.is_dir) return a.name.localeCompare(b.name);
-                        return a.is_dir ? -1 : 1;
-                    });
                     setChildren(result);
                 } catch (e) {
                     console.error(e);

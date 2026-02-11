@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_rust_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_rust_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     let source_text = source
         .get(node.start_byte()..node.end_byte())
         .unwrap_or("")
@@ -56,12 +59,7 @@ pub(super) fn build_rust_outline_node(node: tree_sitter::Node<'_>, source: &str)
                 format!("static {}", name)
             };
 
-            Some(build_outline_node(
-                static_label,
-                "static",
-                node,
-                Vec::new(),
-            ))
+            Some(build_outline_node(static_label, "static", node, Vec::new()))
         }
         "type_item" => {
             let name = node
@@ -204,8 +202,3 @@ pub(super) fn build_rust_outline_node(node: tree_sitter::Node<'_>, source: &str)
         _ => None,
     }
 }
-
-
-
-
-

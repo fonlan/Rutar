@@ -90,6 +90,14 @@ interface TextSelectionState {
   end: number;
 }
 
+interface ToggleLineCommentsBackendResult {
+  changed: boolean;
+  lineCount: number;
+  documentVersion: number;
+  selectionStartChar: number;
+  selectionEndChar: number;
+}
+
 interface TextDragMoveState {
   pointerId: number;
   startClientX: number;
@@ -201,111 +209,6 @@ function isVerticalSelectionShortcut(event: {
   );
 }
 
-function resolveSelectionLineRange(
-  text: string,
-  startOffset: number,
-  endOffset: number,
-  isCollapsed: boolean
-) {
-  const safeStart = Math.max(0, Math.min(text.length, Math.floor(startOffset)));
-  const safeEnd = Math.max(0, Math.min(text.length, Math.floor(endOffset)));
-  const selectionStart = Math.min(safeStart, safeEnd);
-  const selectionEnd = Math.max(safeStart, safeEnd);
-
-  const lineStart = text.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
-
-  let effectiveSelectionEnd = selectionEnd;
-  if (!isCollapsed && effectiveSelectionEnd > lineStart && text[effectiveSelectionEnd - 1] === '\n') {
-    effectiveSelectionEnd -= 1;
-  }
-
-  const nextLineBreak = text.indexOf('\n', effectiveSelectionEnd);
-  const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
-
-  return {
-    start: lineStart,
-    end: Math.max(lineStart, lineEnd),
-  };
-}
-
-function splitIndentAndBody(line: string) {
-  const matched = line.match(/^(\s*)(.*)$/);
-  return {
-    indent: matched?.[1] ?? '',
-    body: matched?.[2] ?? line,
-  };
-}
-
-function isLineCommentedByPrefix(line: string, prefix: string) {
-  const { body } = splitIndentAndBody(line);
-  return body === prefix || body.startsWith(`${prefix} `) || body.startsWith(`${prefix}\t`);
-}
-
-function addLineCommentPrefix(line: string, prefix: string) {
-  const { indent, body } = splitIndentAndBody(line);
-
-  if (!body.trim()) {
-    return line;
-  }
-
-  return `${indent}${prefix} ${body}`;
-}
-
-function removeLineCommentPrefix(line: string, prefix: string) {
-  const { indent, body } = splitIndentAndBody(line);
-
-  if (!body.trim()) {
-    return line;
-  }
-
-  if (isLineCommentedByPrefix(line, prefix)) {
-    if (body === prefix) {
-      return indent;
-    }
-
-    if (body.startsWith(prefix)) {
-      const afterPrefix = body.slice(prefix.length);
-      if (afterPrefix.startsWith(' ') || afterPrefix.startsWith('\t')) {
-        return `${indent}${afterPrefix.slice(1)}`;
-      }
-      return `${indent}${afterPrefix}`;
-    }
-  }
-
-  return line;
-}
-
-function mapOffsetAcrossLineTransformation(oldLines: string[], newLines: string[], oldOffset: number) {
-  const safeOffset = Math.max(0, Math.floor(oldOffset));
-
-  let oldCursor = 0;
-  let newCursor = 0;
-
-  for (let index = 0; index < oldLines.length; index += 1) {
-    const oldLine = oldLines[index] ?? '';
-    const newLine = newLines[index] ?? '';
-    const oldLineEnd = oldCursor + oldLine.length;
-
-    if (safeOffset <= oldLineEnd) {
-      return newCursor + Math.min(safeOffset - oldCursor, newLine.length);
-    }
-
-    oldCursor = oldLineEnd;
-    newCursor += newLine.length;
-
-    if (index < oldLines.length - 1) {
-      oldCursor += 1;
-      newCursor += 1;
-
-      if (safeOffset <= oldCursor) {
-        return newCursor;
-      }
-    }
-  }
-
-  return newCursor;
-}
-
 function normalizeEditorText(value: string) {
   const normalized = value.replace(/\r\n/g, "\n");
   return normalized === "\n" ? "" : normalized;
@@ -321,44 +224,6 @@ function normalizeEditableLineText(value: string) {
 
 function normalizeSegmentText(value: string) {
   return normalizeEditorText((value || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
-}
-
-function encodeBase64Utf8(value: string) {
-  const bytes = new TextEncoder().encode(value || '');
-  let binary = '';
-
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary);
-}
-
-function decodeBase64Utf8(value: string) {
-  const normalized =
-    (value || '')
-      .replace(/\s+/g, '')
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-  if (!normalized) {
-    return '';
-  }
-
-  const remainder = normalized.length % 4;
-  if (remainder === 1) {
-    return null;
-  }
-
-  const padded = remainder === 0 ? normalized : `${normalized}${'='.repeat(4 - remainder)}`;
-
-  try {
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
 }
 
 function toInputLayerText(value: string) {
@@ -3267,7 +3132,9 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, []);
 
   const handleConvertSelectionFromContext = useCallback(
-    (action: 'base64_encode' | 'base64_decode' | 'copy_base64_encode' | 'copy_base64_decode') => {
+    async (
+      action: 'base64_encode' | 'base64_decode' | 'copy_base64_encode' | 'copy_base64_decode'
+    ) => {
       const shouldCopyResult = action === 'copy_base64_encode' || action === 'copy_base64_decode';
       const shouldDecode = action === 'base64_decode' || action === 'copy_base64_decode';
 
@@ -3284,16 +3151,19 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       let nextText = '';
 
-      if (!shouldDecode) {
-        nextText = encodeBase64Utf8(selectedText);
-      } else {
-        const decoded = decodeBase64Utf8(selectedText);
-        if (decoded === null) {
+      try {
+        nextText = await invoke<string>('convert_text_base64', {
+          text: selectedText,
+          action: shouldDecode ? 'base64_decode' : 'base64_encode',
+        });
+      } catch (error) {
+        if (shouldDecode) {
           triggerBase64DecodeErrorToast();
-          setEditorContextMenu(null);
-          return;
+        } else {
+          console.error('Failed to convert Base64 text:', error);
         }
-        nextText = decoded;
+        setEditorContextMenu(null);
+        return;
       }
 
       if (shouldCopyResult) {
@@ -3470,7 +3340,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, []);
 
   const toggleSelectedLinesComment = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
+    async (event: React.KeyboardEvent<HTMLDivElement>) => {
       const element = contentRef.current;
       if (!element) {
         return;
@@ -3478,7 +3348,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       let selectionOffsets = getSelectionOffsetsInElement(element);
       if (!selectionOffsets) {
-        const text = getEditableText(element);
+        const text = normalizeSegmentText(getEditableText(element));
         const layerEndOffset = mapLogicalOffsetToInputLayerOffset(text, text.length);
         setCaretToCodeUnitOffset(element, layerEndOffset);
         selectionOffsets = getSelectionOffsetsInElement(element);
@@ -3487,76 +3357,71 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (!selectionOffsets) {
         return;
       }
-
-      const currentText = getEditableText(element);
       const prefix = getLineCommentPrefixForSyntaxKey(activeSyntaxKey);
-      const lineRange = resolveSelectionLineRange(
-        currentText,
-        selectionOffsets.start,
-        selectionOffsets.end,
-        selectionOffsets.isCollapsed
-      );
 
-      const selectedBlock = currentText.slice(lineRange.start, lineRange.end);
-      const selectedLines = selectedBlock.split('\n');
-      const hasNonEmptyLine = selectedLines.some((line) => line.trim().length > 0);
-      if (!hasNonEmptyLine) {
-        return;
-      }
+      try {
+        const baseText = normalizeSegmentText(getEditableText(element));
+        const startChar = codeUnitOffsetToUnicodeScalarIndex(baseText, selectionOffsets.start);
+        const endChar = codeUnitOffsetToUnicodeScalarIndex(baseText, selectionOffsets.end);
 
-      const shouldUncomment = selectedLines
-        .filter((line) => line.trim().length > 0)
-        .every((line) => isLineCommentedByPrefix(line, prefix));
+        const result = await invoke<ToggleLineCommentsBackendResult>('toggle_line_comments', {
+          id: tab.id,
+          startChar,
+          endChar,
+          isCollapsed: selectionOffsets.isCollapsed,
+          prefix,
+        });
 
-      const transformedLines = selectedLines.map((line) => {
-        if (!line.trim()) {
-          return line;
+        if (!result.changed) {
+          return;
         }
 
-        if (shouldUncomment) {
-          return removeLineCommentPrefix(line, prefix);
+        const safeLineCount = Math.max(1, result.lineCount ?? tab.lineCount);
+        updateTab(tab.id, {
+          lineCount: safeLineCount,
+          isDirty: true,
+        });
+        dispatchDocumentUpdated(tab.id);
+
+        await loadTextFromBackend();
+        await syncVisibleTokens(safeLineCount);
+
+        const refreshedElement = contentRef.current;
+        if (refreshedElement) {
+          const refreshedText = normalizeSegmentText(getEditableText(refreshedElement));
+
+          const selectionStartLogical =
+            Math.max(0, Math.min(refreshedText.length, result.selectionStartChar ?? 0));
+          const selectionEndLogical =
+            Math.max(0, Math.min(refreshedText.length, result.selectionEndChar ?? selectionStartLogical));
+
+          const selectionStartLayer = mapLogicalOffsetToInputLayerOffset(refreshedText, selectionStartLogical);
+          const selectionEndLayer = mapLogicalOffsetToInputLayerOffset(refreshedText, selectionEndLogical);
+
+          if (selectionOffsets.isCollapsed) {
+            setCaretToCodeUnitOffset(refreshedElement, selectionEndLayer);
+          } else {
+            setSelectionToCodeUnitOffsets(refreshedElement, selectionStartLayer, selectionEndLayer);
+          }
+
+          syncSelectionAfterInteraction();
         }
 
-        return addLineCommentPrefix(line, prefix);
-      });
-
-      const transformedBlock = transformedLines.join('\n');
-      if (transformedBlock === selectedBlock) {
-        return;
+        event.preventDefault();
+        event.stopPropagation();
+      } catch (error) {
+        console.error('Failed to toggle line comments:', error);
       }
-
-      const nextText = `${currentText.slice(0, lineRange.start)}${transformedBlock}${currentText.slice(lineRange.end)}`;
-      setInputLayerText(element, nextText);
-
-      const nextSelectionStartLogical =
-        lineRange.start +
-        mapOffsetAcrossLineTransformation(
-          selectedLines,
-          transformedLines,
-          selectionOffsets.start - lineRange.start
-        );
-      const nextSelectionEndLogical =
-        lineRange.start +
-        mapOffsetAcrossLineTransformation(
-          selectedLines,
-          transformedLines,
-          selectionOffsets.end - lineRange.start
-        );
-
-      const nextSelectionStartLayer = mapLogicalOffsetToInputLayerOffset(nextText, nextSelectionStartLogical);
-      const nextSelectionEndLayer = mapLogicalOffsetToInputLayerOffset(nextText, nextSelectionEndLogical);
-
-      if (selectionOffsets.isCollapsed) {
-        setCaretToCodeUnitOffset(element, nextSelectionEndLayer);
-      } else {
-        setSelectionToCodeUnitOffsets(element, nextSelectionStartLayer, nextSelectionEndLayer);
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      dispatchEditorInputEvent(element);
     },
-    [activeSyntaxKey]
+    [
+      activeSyntaxKey,
+      loadTextFromBackend,
+      syncSelectionAfterInteraction,
+      syncVisibleTokens,
+      tab.id,
+      tab.lineCount,
+      updateTab,
+    ]
   );
 
   const handleEditableKeyDown = useCallback(
@@ -3588,7 +3453,7 @@ export function Editor({ tab }: { tab: FileTab }) {
 
       if (isToggleLineCommentShortcut(event)) {
         clearVerticalSelectionState();
-        toggleSelectedLinesComment(event);
+        void toggleSelectedLinesComment(event);
         return;
       }
 
@@ -5628,7 +5493,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   type="button"
                   className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
-                    handleConvertSelectionFromContext('base64_encode');
+                    void handleConvertSelectionFromContext('base64_encode');
                   }}
                 >
                   {convertBase64EncodeLabel}
@@ -5637,7 +5502,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   type="button"
                   className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
-                    handleConvertSelectionFromContext('base64_decode');
+                    void handleConvertSelectionFromContext('base64_decode');
                   }}
                 >
                   {convertBase64DecodeLabel}
@@ -5647,7 +5512,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   type="button"
                   className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
-                    handleConvertSelectionFromContext('copy_base64_encode');
+                    void handleConvertSelectionFromContext('copy_base64_encode');
                   }}
                 >
                   {copyBase64EncodeResultLabel}
@@ -5656,7 +5521,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                   type="button"
                   className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
-                    handleConvertSelectionFromContext('copy_base64_decode');
+                    void handleConvertSelectionFromContext('copy_base64_decode');
                   }}
                 >
                   {copyBase64DecodeResultLabel}

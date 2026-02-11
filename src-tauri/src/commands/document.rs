@@ -89,7 +89,12 @@ fn collect_leaf_tokens(
     }
 }
 
-fn push_plain_token(tokens: &mut Vec<SyntaxToken>, rope: &Rope, start_byte: usize, end_byte: usize) {
+fn push_plain_token(
+    tokens: &mut Vec<SyntaxToken>,
+    rope: &Rope,
+    start_byte: usize,
+    end_byte: usize,
+) {
     if start_byte >= end_byte {
         return;
     }
@@ -159,7 +164,10 @@ fn build_tokens_with_gaps(
     tokens
 }
 
-pub(super) fn get_document_version_impl(state: State<'_, AppState>, id: String) -> Result<u64, String> {
+pub(super) fn get_document_version_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<u64, String> {
     if let Some(doc) = state.documents.get(&id) {
         Ok(doc.document_version)
     } else {
@@ -197,7 +205,9 @@ pub(super) fn get_syntax_tokens_impl(
         if let Some(tree) = doc.tree.as_ref() {
             let mut leaves = Vec::new();
             collect_leaf_tokens(tree.root_node(), start_byte, end_byte, None, &mut leaves);
-            Ok(build_tokens_with_gaps(&doc.rope, leaves, start_byte, end_byte))
+            Ok(build_tokens_with_gaps(
+                &doc.rope, leaves, start_byte, end_byte,
+            ))
         } else {
             Ok(vec![SyntaxToken {
                 r#type: None,

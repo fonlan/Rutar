@@ -14,7 +14,12 @@ pub(super) fn build_javascript_outline_node(
 
             let mut children = Vec::new();
             if let Some(body) = node.child_by_field_name("body") {
-                collect_symbol_outline_nodes(body, source, OutlineFileType::Javascript, &mut children);
+                collect_symbol_outline_nodes(
+                    body,
+                    source,
+                    OutlineFileType::Javascript,
+                    &mut children,
+                );
             }
 
             Some(build_outline_node(
@@ -33,7 +38,12 @@ pub(super) fn build_javascript_outline_node(
 
             let mut children = Vec::new();
             if let Some(body) = node.child_by_field_name("body") {
-                collect_symbol_outline_nodes(body, source, OutlineFileType::Javascript, &mut children);
+                collect_symbol_outline_nodes(
+                    body,
+                    source,
+                    OutlineFileType::Javascript,
+                    &mut children,
+                );
             }
 
             Some(build_outline_node(
@@ -52,7 +62,12 @@ pub(super) fn build_javascript_outline_node(
 
             let mut children = Vec::new();
             if let Some(body) = node.child_by_field_name("body") {
-                collect_symbol_outline_nodes(body, source, OutlineFileType::Javascript, &mut children);
+                collect_symbol_outline_nodes(
+                    body,
+                    source,
+                    OutlineFileType::Javascript,
+                    &mut children,
+                );
             }
 
             Some(build_outline_node(
@@ -80,7 +95,12 @@ pub(super) fn build_javascript_outline_node(
 
             let mut children = Vec::new();
             if let Some(body) = value_node.child_by_field_name("body") {
-                collect_symbol_outline_nodes(body, source, OutlineFileType::Javascript, &mut children);
+                collect_symbol_outline_nodes(
+                    body,
+                    source,
+                    OutlineFileType::Javascript,
+                    &mut children,
+                );
             }
 
             Some(build_outline_node(
@@ -93,8 +113,3 @@ pub(super) fn build_javascript_outline_node(
         _ => None,
     }
 }
-
-
-
-
-

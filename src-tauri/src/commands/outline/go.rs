@@ -88,7 +88,10 @@ fn build_go_type_spec_outline_node(
     Some(build_outline_node(label, "type", spec_node, Vec::new()))
 }
 
-pub(super) fn build_go_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_go_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "const_declaration" => {
             let mut specs = Vec::new();
@@ -159,9 +162,9 @@ pub(super) fn build_go_outline_node(node: tree_sitter::Node<'_>, source: &str) -
                 .filter_map(|spec_node| build_go_type_spec_outline_node(spec_node, source, true))
                 .collect();
             children.extend(
-                type_specs
-                    .into_iter()
-                    .filter_map(|spec_node| build_go_type_spec_outline_node(spec_node, source, false)),
+                type_specs.into_iter().filter_map(|spec_node| {
+                    build_go_type_spec_outline_node(spec_node, source, false)
+                }),
             );
 
             if children.is_empty() {
@@ -252,7 +255,3 @@ pub(super) fn build_go_outline_node(node: tree_sitter::Node<'_>, source: &str) -
         _ => None,
     }
 }
-
-
-
-

@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_php_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_php_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "namespace_definition" => {
             let name = node
@@ -21,7 +24,11 @@ pub(super) fn build_php_outline_node(node: tree_sitter::Node<'_>, source: &str) 
                 children,
             ))
         }
-        "class_declaration" | "interface_declaration" | "trait_declaration" | "enum_declaration" | "enum" => {
+        "class_declaration"
+        | "interface_declaration"
+        | "trait_declaration"
+        | "enum_declaration"
+        | "enum" => {
             let name = node
                 .child_by_field_name("name")
                 .map(|name_node| get_node_text_preview(name_node, source, 80))
@@ -164,8 +171,3 @@ pub(super) fn build_php_outline_node(node: tree_sitter::Node<'_>, source: &str) 
         _ => None,
     }
 }
-
-
-
-
-

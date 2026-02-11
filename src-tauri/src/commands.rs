@@ -1,5 +1,6 @@
-﻿use crate::state::{default_line_ending, AppState, Document, EditOperation, LineEnding};
+use crate::state::{default_line_ending, AppState, Document, EditOperation, LineEnding};
 use chardetng::EncodingDetector;
+use dashmap::DashMap;
 use encoding_rs::Encoding;
 use memmap2::Mmap;
 use pinyin::ToPinyin;
@@ -7,43 +8,84 @@ use ropey::Rope;
 use std::collections::{BTreeSet, HashSet};
 use std::fs::{self, File};
 use std::process::Command;
+use std::sync::OnceLock;
 use tauri::State;
 use tree_sitter::{InputEdit, Point};
 use uuid::Uuid;
 
-mod search;
-pub(crate) mod search_commands;
-mod outline;
 mod config;
+mod constants;
 mod document;
-mod file_io;
-pub(crate) mod file_io_commands;
 mod editing;
 pub(crate) mod editing_commands;
+mod file_io;
+pub(crate) mod file_io_commands;
 mod formatting;
-mod syntax;
+mod outline;
+mod search;
+pub(crate) mod search_commands;
 mod settings;
-mod types;
+mod syntax;
 mod text_utils;
-mod constants;
+mod types;
 
+use self::constants::*;
 use self::search::*;
 pub use self::settings::AppConfig;
 pub use self::types::{
-    DirEntry,
-    EditHistoryState,
-    FileInfo,
-    SyntaxToken,
-    WordCountInfo,
-    WindowsFileAssociationStatus,
+    DirEntry, EditHistoryState, FileInfo, SyntaxToken, WindowsFileAssociationStatus, WordCountInfo,
 };
-use self::constants::*;
 
 #[derive(Clone, Copy)]
 pub struct PersistedWindowState {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub maximized: bool,
+}
+
+static EXTERNAL_CHANGE_NOTIFIED_IDS: OnceLock<DashMap<String, ()>> = OnceLock::new();
+
+fn external_change_notified_ids() -> &'static DashMap<String, ()> {
+    EXTERNAL_CHANGE_NOTIFIED_IDS.get_or_init(DashMap::new)
+}
+
+pub fn collect_external_file_change_document_ids(state: State<'_, AppState>) -> Vec<String> {
+    let cache = external_change_notified_ids();
+    let mut active_ids = HashSet::new();
+    let mut changed_ids = Vec::new();
+
+    for doc in state.documents.iter() {
+        let id = doc.key().clone();
+        active_ids.insert(id.clone());
+
+        let changed = doc
+            .path
+            .as_ref()
+            .map(|path| {
+                file_io::has_external_file_change_by_snapshot(path, doc.saved_file_fingerprint)
+            })
+            .unwrap_or(false);
+
+        if changed {
+            if cache.insert(id.clone(), ()).is_none() {
+                changed_ids.push(id);
+            }
+        } else {
+            cache.remove(&id);
+        }
+    }
+
+    let stale_ids: Vec<String> = cache
+        .iter()
+        .map(|entry| entry.key().clone())
+        .filter(|id| !active_ids.contains(id))
+        .collect();
+
+    for id in stale_ids {
+        cache.remove(&id);
+    }
+
+    changed_ids
 }
 
 #[tauri::command]
@@ -102,7 +144,9 @@ pub fn remove_windows_file_associations(extensions: Vec<String>) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn get_windows_file_association_status(extensions: Vec<String>) -> WindowsFileAssociationStatus {
+pub fn get_windows_file_association_status(
+    extensions: Vec<String>,
+) -> WindowsFileAssociationStatus {
     config::get_windows_file_association_status_impl(extensions)
 }
 
@@ -156,7 +200,10 @@ pub fn import_filter_rule_groups(path: String) -> Result<Vec<FilterRuleGroupConf
 }
 
 #[tauri::command]
-pub fn export_filter_rule_groups(path: String, groups: Vec<FilterRuleGroupConfig>) -> Result<(), String> {
+pub fn export_filter_rule_groups(
+    path: String,
+    groups: Vec<FilterRuleGroupConfig>,
+) -> Result<(), String> {
     config::export_filter_rule_groups_impl(path, groups)
 }
 
@@ -188,4 +235,3 @@ pub fn get_outline(
 ) -> Result<Vec<outline::OutlineNode>, String> {
     outline::get_outline_impl(state, id, file_type)
 }
-

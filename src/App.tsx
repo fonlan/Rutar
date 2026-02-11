@@ -15,16 +15,6 @@ import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
 let hasInitializedStartupTab = false;
 
-function sortFolderEntries(entries: any[]) {
-  entries.sort((a, b) => {
-    if (a.is_dir === b.is_dir) {
-      return a.name.localeCompare(b.name);
-    }
-
-    return a.is_dir ? -1 : 1;
-  });
-}
-
 function detectWindowsPlatform() {
   if (typeof navigator === 'undefined') {
     return false;
@@ -355,7 +345,6 @@ function App() {
     for (const incomingPath of paths) {
       try {
         const entries = await invoke<any[]>('read_dir', { path: incomingPath });
-        sortFolderEntries(entries);
         setFolder(incomingPath, entries);
         addRecentFolderPath(incomingPath);
         continue;
@@ -460,15 +449,6 @@ function App() {
       externalChangeCheckingTabIdsRef.current.delete(snapshotTab.id);
     }
   }, []);
-
-  const checkActiveTabForExternalChange = useCallback(() => {
-    const currentActiveTabId = useStore.getState().activeTabId;
-    if (!currentActiveTabId) {
-      return;
-    }
-
-    void checkTabForExternalChange(currentActiveTabId);
-  }, [checkTabForExternalChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -707,80 +687,45 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
     let disposed = false;
-    let unlistenResize: (() => void) | undefined;
-    const appWindow = getCurrentWindow();
-    let previousWindowState: { maximized: boolean; minimized: boolean } | null = null;
 
-    const readWindowState = async () => {
+    const setupExternalChangeListener = async () => {
       try {
-        const [maximized, minimized] = await Promise.all([
-          appWindow.isMaximized(),
-          appWindow.isMinimized(),
-        ]);
+        const unsubscribe = await listen<{ id?: string }>('rutar://external-file-changed', (event) => {
+          const changedTabId = typeof event.payload?.id === 'string' ? event.payload.id : null;
+          if (!changedTabId) {
+            return;
+          }
 
-        return { maximized, minimized };
-      } catch (error) {
-        console.error('Failed to read window state for external change check:', error);
-        return null;
-      }
-    };
+          const currentActiveTabId = useStore.getState().activeTabId;
+          if (changedTabId !== currentActiveTabId) {
+            return;
+          }
 
-    const handleWindowResize = async () => {
-      const currentWindowState = await readWindowState();
-      if (!currentWindowState) {
-        return;
-      }
-
-      const maximizedChanged = previousWindowState !== null
-        && previousWindowState.maximized !== currentWindowState.maximized;
-      const minimizedChanged = previousWindowState !== null
-        && previousWindowState.minimized !== currentWindowState.minimized;
-
-      previousWindowState = currentWindowState;
-
-      if (maximizedChanged || minimizedChanged) {
-        checkActiveTabForExternalChange();
-      }
-    };
-
-    const setupWindowResizeListener = async () => {
-      try {
-        previousWindowState = await readWindowState();
-        const unlisten = await appWindow.onResized(() => {
-          void handleWindowResize();
+          void checkTabForExternalChange(changedTabId);
         });
 
         if (disposed) {
-          unlisten();
+          unsubscribe();
           return;
         }
 
-        unlistenResize = unlisten;
+        unlisten = unsubscribe;
       } catch (error) {
-        console.error('Failed to register window resize listener:', error);
+        console.error('Failed to listen external file change event:', error);
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') {
-        return;
-      }
-
-      checkActiveTabForExternalChange();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    void setupWindowResizeListener();
+    void setupExternalChangeListener();
 
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (unlistenResize) {
-        unlistenResize();
+      if (unlisten) {
+        unlisten();
       }
     };
-  }, [checkActiveTabForExternalChange]);
+  }, [checkTabForExternalChange]);
 
   useEffect(() => {
     if (!activeTabId) {

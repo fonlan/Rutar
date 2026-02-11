@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) fn build_swift_outline_node(node: tree_sitter::Node<'_>, source: &str) -> Option<OutlineNode> {
+pub(super) fn build_swift_outline_node(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+) -> Option<OutlineNode> {
     match node.kind() {
         "class_declaration" => {
             let declaration_kind = node
@@ -157,8 +160,3 @@ pub(super) fn build_swift_outline_node(node: tree_sitter::Node<'_>, source: &str
         _ => None,
     }
 }
-
-
-
-
-

@@ -59,5 +59,30 @@ pub fn format_document(
     file_name: Option<String>,
     tab_width: Option<u8>,
 ) -> Result<usize, String> {
-    editing::format_document_impl(state, id, mode, file_syntax, file_path, file_name, tab_width)
+    editing::format_document_impl(
+        state,
+        id,
+        mode,
+        file_syntax,
+        file_path,
+        file_name,
+        tab_width,
+    )
+}
+
+#[tauri::command]
+pub fn toggle_line_comments(
+    state: State<'_, AppState>,
+    id: String,
+    start_char: usize,
+    end_char: usize,
+    is_collapsed: bool,
+    prefix: String,
+) -> Result<editing::ToggleLineCommentsResultPayload, String> {
+    editing::toggle_line_comments_impl(state, id, start_char, end_char, is_collapsed, prefix)
+}
+
+#[tauri::command]
+pub fn convert_text_base64(text: String, action: String) -> Result<String, String> {
+    editing::convert_text_base64_impl(text, action)
 }

@@ -49,30 +49,27 @@ export function BookmarkSidebar() {
 
     const lines = Array.from(new Set(sortedBookmarks));
 
-    const previews = await Promise.all(
-      lines.map(async (line) => {
-        try {
-          const lineArray = await invoke<string[]>('get_visible_lines_chunk', {
-            id: activeTabId,
-            startLine: Math.max(0, line - 1),
-            endLine: line,
-          });
+    try {
+      const previews = await invoke<string[]>('get_bookmark_line_previews', {
+        id: activeTabId,
+        lines,
+      });
 
-          const content = Array.isArray(lineArray) && lineArray.length > 0 ? lineArray[0] ?? '' : '';
-          return [line, normalizeBookmarkLinePreview(content)] as const;
-        } catch (error) {
-          console.error(`Failed to load bookmark line ${line}:`, error);
-          return [line, ''] as const;
-        }
-      })
-    );
+      const nextPreviewByNumber: Record<number, string> = {};
+      lines.forEach((line, index) => {
+        const preview = Array.isArray(previews) ? previews[index] ?? '' : '';
+        nextPreviewByNumber[line] = normalizeBookmarkLinePreview(preview);
+      });
 
-    const nextPreviewByNumber: Record<number, string> = {};
-    previews.forEach(([line, preview]) => {
-      nextPreviewByNumber[line] = preview;
-    });
-
-    setLinePreviewByNumber(nextPreviewByNumber);
+      setLinePreviewByNumber(nextPreviewByNumber);
+    } catch (error) {
+      console.error('Failed to load bookmark line previews:', error);
+      const fallbackPreviewByNumber: Record<number, string> = {};
+      lines.forEach((line) => {
+        fallbackPreviewByNumber[line] = '';
+      });
+      setLinePreviewByNumber(fallbackPreviewByNumber);
+    }
   }, [activeTabId, sortedBookmarks]);
 
   useEffect(() => {

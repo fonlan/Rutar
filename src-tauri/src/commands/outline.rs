@@ -1,4 +1,4 @@
-﻿use crate::state::AppState;
+use crate::state::AppState;
 use tauri::State;
 use tree_sitter::{Language, Parser};
 
@@ -125,7 +125,11 @@ fn second_named_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'
     None
 }
 
-fn get_node_first_line_preview(node: tree_sitter::Node<'_>, source: &str, max_len: usize) -> String {
+fn get_node_first_line_preview(
+    node: tree_sitter::Node<'_>,
+    source: &str,
+    max_len: usize,
+) -> String {
     let raw = source
         .get(node.start_byte()..node.end_byte())
         .unwrap_or("")
@@ -156,7 +160,10 @@ fn unwrap_yaml_wrapper_node<'tree>(mut node: tree_sitter::Node<'tree>) -> tree_s
 
 fn yaml_pair_key_value_nodes<'tree>(
     node: tree_sitter::Node<'tree>,
-) -> (Option<tree_sitter::Node<'tree>>, Option<tree_sitter::Node<'tree>>) {
+) -> (
+    Option<tree_sitter::Node<'tree>>,
+    Option<tree_sitter::Node<'tree>>,
+) {
     let key_node = node
         .child_by_field_name("key")
         .or_else(|| first_named_child(node))
@@ -181,7 +188,11 @@ fn append_yaml_collection_children(
         let mut mapping_cursor = normalized_node.walk();
         for mapping_child in normalized_node.children(&mut mapping_cursor) {
             if mapping_child.is_named() {
-                output.push(build_tree_sitter_outline_node(mapping_child, source, file_type));
+                output.push(build_tree_sitter_outline_node(
+                    mapping_child,
+                    source,
+                    file_type,
+                ));
             }
         }
         return;
@@ -195,16 +206,26 @@ fn append_yaml_collection_children(
             }
 
             let normalized_item = unwrap_yaml_wrapper_node(sequence_child);
-            if normalized_item.kind().contains("mapping") || normalized_item.kind().contains("sequence") {
+            if normalized_item.kind().contains("mapping")
+                || normalized_item.kind().contains("sequence")
+            {
                 append_yaml_collection_children(output, normalized_item, source, file_type);
             } else {
-                output.push(build_tree_sitter_outline_node(normalized_item, source, file_type));
+                output.push(build_tree_sitter_outline_node(
+                    normalized_item,
+                    source,
+                    file_type,
+                ));
             }
         }
         return;
     }
 
-    output.push(build_tree_sitter_outline_node(normalized_node, source, file_type));
+    output.push(build_tree_sitter_outline_node(
+        normalized_node,
+        source,
+        file_type,
+    ));
 }
 
 fn is_yaml_scalar_kind(kind: &str) -> bool {
@@ -302,7 +323,9 @@ fn extract_xml_element_name(node: tree_sitter::Node<'_>, source: &str) -> Option
             || kind_matches(child.kind(), "ETag")
         {
             if let Some(name_node) = named_child_by_kind(child, "Name") {
-                let name = get_node_text_preview(name_node, source, 80).trim().to_string();
+                let name = get_node_text_preview(name_node, source, 80)
+                    .trim()
+                    .to_string();
                 if !name.is_empty() {
                     return Some(name);
                 }
@@ -311,7 +334,9 @@ fn extract_xml_element_name(node: tree_sitter::Node<'_>, source: &str) -> Option
     }
 
     if let Some(name_node) = first_named_descendant_by_kind(node, "Name") {
-        let name = get_node_text_preview(name_node, source, 80).trim().to_string();
+        let name = get_node_text_preview(name_node, source, 80)
+            .trim()
+            .to_string();
         if !name.is_empty() {
             return Some(name);
         }
@@ -447,11 +472,17 @@ fn format_outline_label(
             "array" => "[]".to_string(),
             "pair" => {
                 if let Some(key_node) = first_named_child(node) {
-                    let key = get_node_text_preview(key_node, source, 60).trim_matches('"').to_string();
+                    let key = get_node_text_preview(key_node, source, 60)
+                        .trim_matches('"')
+                        .to_string();
 
                     if let Some(value_node) = second_named_child(node) {
                         if is_scalar_value_kind(file_type, value_node.kind()) {
-                            return format!("{}: {}", key, get_node_text_preview(value_node, source, 80));
+                            return format!(
+                                "{}: {}",
+                                key,
+                                get_node_text_preview(value_node, source, 80)
+                            );
                         }
                     }
 
@@ -480,7 +511,11 @@ fn format_outline_label(
 
                     if let Some(value_node) = value_node {
                         if is_scalar_value_kind(file_type, value_node.kind()) {
-                            return format!("{}: {}", key, get_node_text_preview(value_node, source, 80));
+                            return format!(
+                                "{}: {}",
+                                key,
+                                get_node_text_preview(value_node, source, 80)
+                            );
                         }
                     }
 
@@ -551,7 +586,11 @@ fn format_outline_label(
 
                     if let Some(value_node) = second_named_child(node) {
                         if is_scalar_value_kind(file_type, value_node.kind()) {
-                            return format!("{} = {}", key, get_node_text_preview(value_node, source, 80));
+                            return format!(
+                                "{} = {}",
+                                key,
+                                get_node_text_preview(value_node, source, 80)
+                            );
                         }
                     }
 
@@ -615,7 +654,9 @@ fn build_tree_sitter_outline_node(
                 if matches!(file_type, OutlineFileType::Yaml) {
                     append_yaml_collection_children(&mut children, value_node, source, file_type);
                 } else {
-                    children.push(build_tree_sitter_outline_node(value_node, source, file_type));
+                    children.push(build_tree_sitter_outline_node(
+                        value_node, source, file_type,
+                    ));
                 }
             }
         }
@@ -845,7 +886,6 @@ fn parse_ini_outline(source: &str) -> Vec<OutlineNode> {
     roots
 }
 
-
 pub fn get_outline_impl(
     state: State<'_, AppState>,
     id: String,
@@ -899,7 +939,10 @@ pub fn get_outline_impl(
         }
 
         let mut cursor = root_node.walk();
-        let named_children: Vec<_> = root_node.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root_node
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
 
         let start_node = if named_children.len() == 1 {
             named_children[0]
@@ -917,13 +960,11 @@ pub fn get_outline_impl(
     }
 }
 
-
 #[cfg(test)]
 mod outline_tests {
     use super::{
         build_symbol_outline_node, build_tree_sitter_outline_node, parse_ini_outline,
-        parse_outline_file_type, parse_xml_outline, OutlineFileType,
-        Parser,
+        parse_outline_file_type, parse_xml_outline, OutlineFileType, Parser,
     };
 
     fn collect_outline_labels(node: &super::OutlineNode, labels: &mut Vec<String>) {
@@ -1069,7 +1110,10 @@ word_wrap = true
 
         let root = tree.root_node();
         let mut cursor = root.walk();
-        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
         let start_node = if named_children.len() == 1 {
             named_children[0]
         } else {
@@ -1078,7 +1122,10 @@ word_wrap = true
 
         let outline = build_tree_sitter_outline_node(start_node, source, OutlineFileType::Json);
         assert_eq!(outline.label, "{}");
-        assert!(outline.children.iter().any(|node| node.label == "name: \"rutar\""));
+        assert!(outline
+            .children
+            .iter()
+            .any(|node| node.label == "name: \"rutar\""));
 
         let meta_pair = outline
             .children
@@ -1119,7 +1166,10 @@ items:
 
         let root = tree.root_node();
         let mut cursor = root.walk();
-        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
         let start_node = if named_children.len() == 1 {
             named_children[0]
         } else {
@@ -1153,7 +1203,10 @@ executors:
 
         let root = tree.root_node();
         let mut cursor = root.walk();
-        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
         let start_node = if named_children.len() == 1 {
             named_children[0]
         } else {
@@ -1192,7 +1245,10 @@ docker:
 
         let root = tree.root_node();
         let mut cursor = root.walk();
-        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
         let start_node = if named_children.len() == 1 {
             named_children[0]
         } else {
@@ -1235,7 +1291,10 @@ ip = "127.0.0.1"
 
         let root = tree.root_node();
         let mut cursor = root.walk();
-        let named_children: Vec<_> = root.children(&mut cursor).filter(|node| node.is_named()).collect();
+        let named_children: Vec<_> = root
+            .children(&mut cursor)
+            .filter(|node| node.is_named())
+            .collect();
         let start_node = if named_children.len() == 1 {
             named_children[0]
         } else {
@@ -1397,8 +1456,12 @@ type UserId = string;
             .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Typescript))
             .collect();
 
-        assert!(symbols.iter().any(|node| node.node_type == "interface" && node.label == "interface User"));
-        assert!(symbols.iter().any(|node| node.node_type == "type" && node.label == "type UserId"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "interface" && node.label == "interface User"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "type" && node.label == "type UserId"));
     }
 
     #[test]
@@ -1515,9 +1578,9 @@ export { Foo as Bar, Baz };
             .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Typescript))
             .collect();
 
-        assert!(symbols.iter().any(|node|
-            node.node_type == "export" && node.label == "export { Foo as Bar, Baz }"
-        ));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "export" && node.label == "export { Foo as Bar, Baz }"));
     }
 
     #[test]
@@ -1543,8 +1606,8 @@ declare namespace App.Core {
             .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Typescript))
             .collect();
 
-        assert!(symbols.iter().any(|node|
-            node.node_type == "namespace" && node.label == "declare namespace App.Core"
+        assert!(symbols.iter().any(
+            |node| node.node_type == "namespace" && node.label == "declare namespace App.Core"
         ));
     }
 
@@ -1574,11 +1637,20 @@ extern crate serde as serde_crate;
             .filter_map(|node| build_symbol_outline_node(node, source, OutlineFileType::Rust))
             .collect();
 
-        assert!(symbols.iter().any(|node| node.node_type == "module" && node.label == "mod inner"));
-        assert!(symbols.iter().any(|node| node.node_type == "static" && node.label == "static mut COUNTER"));
-        assert!(symbols.iter().any(|node| node.node_type == "type" && node.label == "type UserId"));
-        assert!(symbols.iter().any(|node| node.node_type == "macro" && node.label == "macro say_hello!"));
-        assert!(symbols.iter().any(|node| node.node_type == "extern_crate" && node.label == "extern crate serde as serde_crate"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "module" && node.label == "mod inner"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "static" && node.label == "static mut COUNTER"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "type" && node.label == "type UserId"));
+        assert!(symbols
+            .iter()
+            .any(|node| node.node_type == "macro" && node.label == "macro say_hello!"));
+        assert!(symbols.iter().any(|node| node.node_type == "extern_crate"
+            && node.label == "extern crate serde as serde_crate"));
 
         let module = symbols
             .iter()
@@ -2008,4 +2080,3 @@ typealias UserId = String
             .any(|node| node.node_type == "function" && node.label == "func execute()"));
     }
 }
-

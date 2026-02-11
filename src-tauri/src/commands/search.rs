@@ -1,11 +1,14 @@
-﻿use dashmap::DashMap;
+use dashmap::DashMap;
 use regex::RegexBuilder;
+use ropey::Rope;
 use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
 
+use super::editing::apply_operation;
 use super::FILTER_MAX_RANGES_PER_LINE;
 use crate::state::AppState;
 use crate::state::Document;
+use crate::state::EditOperation;
 use tauri::State;
 
 #[derive(serde::Serialize, Clone)]
@@ -48,6 +51,22 @@ pub struct SearchChunkResultPayload {
 pub struct SearchCountResultPayload {
     pub(super) total_matches: usize,
     pub(super) matched_lines: usize,
+    pub(super) document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceAllResultPayload {
+    pub(super) replaced_count: usize,
+    pub(super) line_count: usize,
+    pub(super) document_version: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceCurrentResultPayload {
+    pub(super) replaced: bool,
+    pub(super) line_count: usize,
     pub(super) document_version: u64,
 }
 
@@ -156,16 +175,20 @@ pub struct FilterResultFilterStepCacheEntry {
     pub(super) total_matched_lines: usize,
 }
 
-pub(super) static SEARCH_RESULT_FILTER_STEP_CACHE: OnceLock<DashMap<String, SearchResultFilterStepCacheEntry>> =
-    OnceLock::new();
-pub(super) static FILTER_RESULT_FILTER_STEP_CACHE: OnceLock<DashMap<String, FilterResultFilterStepCacheEntry>> =
-    OnceLock::new();
+pub(super) static SEARCH_RESULT_FILTER_STEP_CACHE: OnceLock<
+    DashMap<String, SearchResultFilterStepCacheEntry>,
+> = OnceLock::new();
+pub(super) static FILTER_RESULT_FILTER_STEP_CACHE: OnceLock<
+    DashMap<String, FilterResultFilterStepCacheEntry>,
+> = OnceLock::new();
 
-pub(super) fn search_result_filter_step_cache() -> &'static DashMap<String, SearchResultFilterStepCacheEntry> {
+pub(super) fn search_result_filter_step_cache(
+) -> &'static DashMap<String, SearchResultFilterStepCacheEntry> {
     SEARCH_RESULT_FILTER_STEP_CACHE.get_or_init(DashMap::new)
 }
 
-pub(super) fn filter_result_filter_step_cache() -> &'static DashMap<String, FilterResultFilterStepCacheEntry> {
+pub(super) fn filter_result_filter_step_cache(
+) -> &'static DashMap<String, FilterResultFilterStepCacheEntry> {
     FILTER_RESULT_FILTER_STEP_CACHE.get_or_init(DashMap::new)
 }
 
@@ -250,7 +273,11 @@ pub(super) fn normalize_result_filter_keyword(value: Option<String>) -> Option<S
     })
 }
 
-pub(super) fn matches_result_filter(line_text: &str, result_filter_keyword: Option<&str>, case_sensitive: bool) -> bool {
+pub(super) fn matches_result_filter(
+    line_text: &str,
+    result_filter_keyword: Option<&str>,
+    case_sensitive: bool,
+) -> bool {
     let Some(keyword) = result_filter_keyword else {
         return true;
     };
@@ -328,7 +355,9 @@ pub(super) fn parse_filter_apply_to(value: &str) -> Result<FilterApplyTo, String
     }
 }
 
-pub(super) fn compile_filter_rules(rules: Vec<FilterRuleInput>) -> Result<Vec<CompiledFilterRule>, String> {
+pub(super) fn compile_filter_rules(
+    rules: Vec<FilterRuleInput>,
+) -> Result<Vec<CompiledFilterRule>, String> {
     let mut compiled = Vec::new();
 
     for (rule_index, rule) in rules.into_iter().enumerate() {
@@ -381,9 +410,11 @@ pub(super) fn compile_filter_rules(rules: Vec<FilterRuleInput>) -> Result<Vec<Co
 pub(super) fn line_matches_filter_rule(line_text: &str, rule: &CompiledFilterRule) -> bool {
     match rule.match_mode {
         FilterMatchMode::Contains => line_text.contains(&rule.keyword),
-        FilterMatchMode::Regex | FilterMatchMode::Wildcard => {
-            rule.regex.as_ref().map(|regex| regex.is_match(line_text)).unwrap_or(false)
-        }
+        FilterMatchMode::Regex | FilterMatchMode::Wildcard => rule
+            .regex
+            .as_ref()
+            .map(|regex| regex.is_match(line_text))
+            .unwrap_or(false),
     }
 }
 
@@ -417,7 +448,10 @@ pub(super) fn collect_filter_rule_ranges(
 }
 
 pub(super) fn normalize_rope_line_text(line_text: &str) -> String {
-    line_text.trim_end_matches('\n').trim_end_matches('\r').to_string()
+    line_text
+        .trim_end_matches('\n')
+        .trim_end_matches('\r')
+        .to_string()
 }
 
 pub(super) fn build_filter_match_result(
@@ -430,10 +464,16 @@ pub(super) fn build_filter_match_result(
     let fallback_start_char = 0usize;
     let fallback_end_char = 0usize;
 
-    let (column, length) = if let Some((first_start, first_end)) = ranges_in_bytes.first().copied() {
-        let start_char = *byte_to_char.get(first_start).unwrap_or(&fallback_start_char);
+    let (column, length) = if let Some((first_start, first_end)) = ranges_in_bytes.first().copied()
+    {
+        let start_char = *byte_to_char
+            .get(first_start)
+            .unwrap_or(&fallback_start_char);
         let end_char = *byte_to_char.get(first_end).unwrap_or(&start_char);
-        (start_char.saturating_add(1), end_char.saturating_sub(start_char))
+        (
+            start_char.saturating_add(1),
+            end_char.saturating_sub(start_char),
+        )
     } else {
         (1usize, 0usize)
     };
@@ -477,14 +517,21 @@ pub(super) fn match_line_with_filter_rules(
         };
         let ranges = collect_filter_rule_ranges(line_text, rule, max_ranges);
 
-        return Some(build_filter_match_result(line_number, line_text, rule, ranges));
+        return Some(build_filter_match_result(
+            line_number,
+            line_text,
+            rule,
+            ranges,
+        ));
     }
 
     None
 }
 
 pub(super) fn line_matches_any_filter_rule(line_text: &str, rules: &[CompiledFilterRule]) -> bool {
-    rules.iter().any(|rule| line_matches_filter_rule(line_text, rule))
+    rules
+        .iter()
+        .any(|rule| line_matches_filter_rule(line_text, rule))
 }
 
 pub(super) fn compute_kmp_lps(pattern: &[u8]) -> Vec<usize> {
@@ -663,7 +710,10 @@ fn count_literal_matches(
     let haystack_bytes = text.as_bytes();
     let needle_bytes = needle.as_bytes();
 
-    if needle_bytes.is_empty() || haystack_bytes.is_empty() || needle_bytes.len() > haystack_bytes.len() {
+    if needle_bytes.is_empty()
+        || haystack_bytes.is_empty()
+        || needle_bytes.len() > haystack_bytes.len()
+    {
         return (0usize, 0usize);
     }
 
@@ -784,9 +834,13 @@ fn collect_regex_matches_chunk(
             break;
         }
 
-        if let Some(match_result) =
-            build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
-        {
+        if let Some(match_result) = build_match_result_from_offsets(
+            text,
+            line_starts,
+            byte_to_char,
+            absolute_start,
+            absolute_end,
+        ) {
             if !matches_result_filter(
                 &match_result.line_text,
                 result_filter_keyword,
@@ -831,9 +885,13 @@ fn collect_literal_matches_chunk(
             break;
         }
 
-        if let Some(match_result) =
-            build_match_result_from_offsets(text, line_starts, byte_to_char, absolute_start, absolute_end)
-        {
+        if let Some(match_result) = build_match_result_from_offsets(
+            text,
+            line_starts,
+            byte_to_char,
+            absolute_start,
+            absolute_end,
+        ) {
             if !matches_result_filter(
                 &match_result.line_text,
                 result_filter_keyword,
@@ -878,9 +936,14 @@ fn find_match_edge(
                     .map_err(|e| e.to_string())?;
 
                 if reverse {
-                    Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+                    Ok(regex
+                        .find_iter(text)
+                        .last()
+                        .map(|capture| (capture.start(), capture.end())))
                 } else {
-                    Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+                    Ok(regex
+                        .find(text)
+                        .map(|capture| (capture.start(), capture.end())))
                 }
             }
         }
@@ -892,9 +955,14 @@ fn find_match_edge(
                 .map_err(|e| e.to_string())?;
 
             if reverse {
-                Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+                Ok(regex
+                    .find_iter(text)
+                    .last()
+                    .map(|capture| (capture.start(), capture.end())))
             } else {
-                Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+                Ok(regex
+                    .find(text)
+                    .map(|capture| (capture.start(), capture.end())))
             }
         }
         "regex" => {
@@ -904,9 +972,14 @@ fn find_match_edge(
                 .map_err(|e| e.to_string())?;
 
             if reverse {
-                Ok(regex.find_iter(text).last().map(|capture| (capture.start(), capture.end())))
+                Ok(regex
+                    .find_iter(text)
+                    .last()
+                    .map(|capture| (capture.start(), capture.end())))
             } else {
-                Ok(regex.find(text).map(|capture| (capture.start(), capture.end())))
+                Ok(regex
+                    .find(text)
+                    .map(|capture| (capture.start(), capture.end())))
             }
         }
         _ => Err("Unsupported search mode".to_string()),
@@ -1018,6 +1091,43 @@ fn build_search_step_filtered_matches(
     Ok(matches)
 }
 
+fn replace_matches_by_char_ranges(
+    source_text: &str,
+    matches: &[SearchMatchResult],
+    replace_value: &str,
+) -> String {
+    if matches.is_empty() {
+        return source_text.to_string();
+    }
+
+    let mut rope = Rope::from_str(source_text);
+    let replacement_char_count = replace_value.chars().count() as isize;
+    let mut char_delta: isize = 0;
+
+    for item in matches {
+        let adjusted_start = (item.start_char as isize + char_delta).max(0) as usize;
+        let adjusted_end =
+            (item.end_char as isize + char_delta).max(adjusted_start as isize) as usize;
+
+        let rope_len_chars = rope.len_chars();
+        let start = adjusted_start.min(rope_len_chars);
+        let end = adjusted_end.min(rope_len_chars).max(start);
+
+        if start < end {
+            rope.remove(start..end);
+        }
+
+        if !replace_value.is_empty() {
+            rope.insert(start, replace_value);
+        }
+
+        let original_char_count = item.end_char.saturating_sub(item.start_char) as isize;
+        char_delta += replacement_char_count - original_char_count;
+    }
+
+    rope.to_string()
+}
+
 fn build_filter_step_filtered_matches(
     doc: &Document,
     rules: Vec<FilterRuleInput>,
@@ -1085,7 +1195,11 @@ fn lower_bound_filter_matches(matches: &[FilterLineMatchResult], target_line: us
     left
 }
 
-fn find_exact_search_match_index(matches: &[SearchMatchResult], start: usize, end: usize) -> Option<usize> {
+fn find_exact_search_match_index(
+    matches: &[SearchMatchResult],
+    start: usize,
+    end: usize,
+) -> Option<usize> {
     let mut index = lower_bound_search_matches(matches, start);
 
     while index < matches.len() && matches[index].start == start {
@@ -1130,7 +1244,13 @@ pub(super) fn search_first_in_document_impl(
 
         let first_match = find_match_edge(&source_text, &keyword, &mode, case_sensitive, reverse)?
             .and_then(|(start, end)| {
-                build_match_result_from_offsets(&source_text, &line_starts, &byte_to_char, start, end)
+                build_match_result_from_offsets(
+                    &source_text,
+                    &line_starts,
+                    &byte_to_char,
+                    start,
+                    end,
+                )
             });
 
         Ok(SearchFirstResultPayload {
@@ -1166,7 +1286,8 @@ pub(super) fn search_in_document_chunk_impl(
         }
 
         let effective_max = max_results.max(1);
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let (matches, next_offset) = match mode.as_str() {
             "literal" => {
                 if case_sensitive {
@@ -1269,7 +1390,8 @@ pub(super) fn search_count_in_document_impl(
             });
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let (total_matches, matched_lines) = match mode.as_str() {
             "literal" => {
                 if case_sensitive {
@@ -1427,7 +1549,12 @@ pub(super) fn step_result_filter_search_in_document_impl(
                         total_matched_lines,
                     },
                 );
-                (document_version, matches_arc, total_matches, total_matched_lines)
+                (
+                    document_version,
+                    matches_arc,
+                    total_matches,
+                    total_matched_lines,
+                )
             }
         } else {
             let computed_matches = build_search_step_filtered_matches(
@@ -1454,7 +1581,12 @@ pub(super) fn step_result_filter_search_in_document_impl(
                     total_matched_lines,
                 },
             );
-            (document_version, matches_arc, total_matches, total_matched_lines)
+            (
+                document_version,
+                matches_arc,
+                total_matches,
+                total_matched_lines,
+            )
         }
     };
 
@@ -1530,10 +1662,7 @@ pub(super) fn step_result_filter_search_in_document_impl(
     let target_match = matches.get(target_index).cloned();
 
     Ok(SearchResultFilterStepPayload {
-        batch_start_offset: target_match
-            .as_ref()
-            .map(|item| item.start)
-            .unwrap_or(0),
+        batch_start_offset: target_match.as_ref().map(|item| item.start).unwrap_or(0),
         target_match,
         document_version,
         target_index_in_batch: Some(0),
@@ -1561,7 +1690,8 @@ pub(super) fn filter_count_in_document_impl(
 
         let mut matched_lines = 0usize;
         let total_lines = doc.rope.len_lines();
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
 
         for line_index in 0..total_lines {
@@ -1612,7 +1742,8 @@ pub(super) fn filter_in_document_chunk_impl(
 
         let effective_max = max_results.max(1);
         let total_lines = doc.rope.len_lines();
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let mut line_index = start_line.min(total_lines);
         let mut matches: Vec<FilterLineMatchResult> = Vec::new();
@@ -1632,7 +1763,9 @@ pub(super) fn filter_in_document_chunk_impl(
                 continue;
             }
 
-            if let Some(filter_match) = match_line_with_filter_rules(line_number, &line_text, &compiled_rules) {
+            if let Some(filter_match) =
+                match_line_with_filter_rules(line_number, &line_text, &compiled_rules)
+            {
                 if matches.len() >= effective_max {
                     next_line = Some(line_index);
                     break;
@@ -1748,7 +1881,9 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
     let boundary_line = current_line.unwrap_or(usize::MAX);
     let target_index = if step > 0 {
         if let Some(line) = current_line {
-            if let Some(current_index) = find_exact_filter_match_index(matches, line, current_column) {
+            if let Some(current_index) =
+                find_exact_filter_match_index(matches, line, current_column)
+            {
                 Some((current_index + 1) % matches.len())
             } else {
                 let next_index = lower_bound_filter_matches(matches, line.saturating_add(1));
@@ -1814,6 +1949,155 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
     })
 }
 
+pub(super) fn replace_all_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    replace_value: String,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+) -> Result<ReplaceAllResultPayload, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        if keyword.is_empty() {
+            return Ok(ReplaceAllResultPayload {
+                replaced_count: 0,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+            });
+        }
+
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive =
+            result_filter_case_sensitive.unwrap_or(case_sensitive);
+
+        let matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            normalized_result_filter_keyword.as_deref(),
+            effective_result_filter_case_sensitive,
+        )?;
+
+        if matches.is_empty() {
+            return Ok(ReplaceAllResultPayload {
+                replaced_count: 0,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+            });
+        }
+
+        let source_text = doc.rope.to_string();
+        let next_text = replace_matches_by_char_ranges(&source_text, &matches, &replace_value);
+        let replaced_count = matches.len();
+
+        if source_text != next_text {
+            let operation = EditOperation {
+                start_char: 0,
+                old_text: source_text,
+                new_text: next_text,
+            };
+
+            apply_operation(&mut doc, &operation)?;
+            doc.undo_stack.push(operation);
+            doc.redo_stack.clear();
+        }
+
+        Ok(ReplaceAllResultPayload {
+            replaced_count,
+            line_count: doc.rope.len_lines(),
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+pub(super) fn replace_current_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    replace_value: String,
+    target_start: usize,
+    target_end: usize,
+) -> Result<ReplaceCurrentResultPayload, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        if keyword.is_empty() {
+            return Ok(ReplaceCurrentResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+            });
+        }
+
+        let matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            None,
+            case_sensitive,
+        )?;
+
+        let target_match = matches
+            .iter()
+            .find(|item| item.start == target_start && item.end == target_end)
+            .cloned();
+
+        let Some(target_match) = target_match else {
+            return Ok(ReplaceCurrentResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+            });
+        };
+
+        let replacement_text = if mode == "regex" {
+            let regex = RegexBuilder::new(&keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            regex
+                .replace(&target_match.text, replace_value.as_str())
+                .to_string()
+        } else {
+            replace_value
+        };
+
+        if replacement_text == target_match.text {
+            return Ok(ReplaceCurrentResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+            });
+        }
+
+        let operation = EditOperation {
+            start_char: target_match.start_char,
+            old_text: target_match.text,
+            new_text: replacement_text,
+        };
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        Ok(ReplaceCurrentResultPayload {
+            replaced: true,
+            line_count: doc.rope.len_lines(),
+            document_version: doc.document_version,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn search_in_document_impl(
     state: State<'_, AppState>,
     id: String,
@@ -1877,5 +2161,3 @@ pub(super) fn search_in_document_impl(
         Err("Document not found".to_string())
     }
 }
-
-
