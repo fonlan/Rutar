@@ -270,6 +270,8 @@ export const useStore = create<AppState>((set) => ({
 
     return {
       bookmarksByTab: nextBookmarks,
+      bookmarkSidebarOpen:
+        tabId === state.activeTabId && next.length === 0 ? false : state.bookmarkSidebarOpen,
     };
   }),
   toggleBookmark: (tabId, line) => set((state) => {
@@ -285,13 +287,19 @@ export const useStore = create<AppState>((set) => ({
       } else {
         nextBookmarks[tabId] = next;
       }
+
+      return {
+        bookmarksByTab: nextBookmarks,
+        bookmarkSidebarOpen:
+          tabId === state.activeTabId && next.length === 0 ? false : state.bookmarkSidebarOpen,
+      };
     } else {
       nextBookmarks[tabId] = [...existing, safeLine].sort((left, right) => left - right);
-    }
 
-    return {
-      bookmarksByTab: nextBookmarks,
-    };
+      return {
+        bookmarksByTab: nextBookmarks,
+      };
+    }
   }),
   setOutlineData: ({ outlineType, nodes, error }) => set({
     outlineType: outlineType,

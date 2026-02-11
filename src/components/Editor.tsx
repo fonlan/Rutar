@@ -1095,6 +1095,8 @@ export function Editor({ tab }: { tab: FileTab }) {
   const addBookmark = useStore((state) => state.addBookmark);
   const removeBookmark = useStore((state) => state.removeBookmark);
   const toggleBookmark = useStore((state) => state.toggleBookmark);
+  const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
+  const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
   const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
@@ -2932,9 +2934,16 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const handleLineNumberDoubleClick = useCallback(
     (line: number) => {
-      toggleBookmark(tab.id, line);
+      const safeLine = Math.max(1, Math.floor(line));
+      const hasBookmark = bookmarks.includes(safeLine);
+
+      toggleBookmark(tab.id, safeLine);
+
+      if (!hasBookmark && !bookmarkSidebarOpen) {
+        toggleBookmarkSidebar(true);
+      }
     },
-    [tab.id, toggleBookmark]
+    [bookmarkSidebarOpen, bookmarks, tab.id, toggleBookmark, toggleBookmarkSidebar]
   );
 
   const handleLineNumberWheel = useCallback(
