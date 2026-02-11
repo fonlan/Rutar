@@ -13,6 +13,15 @@ use tauri::State;
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct PreviewSegmentResult {
+    pub(super) text: String,
+    pub(super) is_primary_match: bool,
+    pub(super) is_secondary_match: bool,
+    pub(super) is_rule_match: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchMatchResult {
     pub(super) start: usize,
     pub(super) end: usize,
@@ -22,6 +31,8 @@ pub struct SearchMatchResult {
     pub(super) line: usize,
     pub(super) column: usize,
     pub(super) line_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) preview_segments: Option<Vec<PreviewSegmentResult>>,
 }
 
 #[derive(serde::Serialize)]
@@ -133,6 +144,8 @@ pub struct FilterLineMatchResult {
     pub(super) rule_index: usize,
     pub(super) style: FilterRuleStyleResult,
     pub(super) ranges: Vec<FilterMatchRangeResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) preview_segments: Option<Vec<PreviewSegmentResult>>,
 }
 
 #[derive(serde::Serialize)]
@@ -271,6 +284,204 @@ pub(super) fn normalize_result_filter_keyword(value: Option<String>) -> Option<S
             Some(trimmed.to_string())
         }
     })
+}
+
+fn collect_result_filter_ranges_by_char(
+    line_text: &str,
+    result_filter_keyword: Option<&str>,
+    case_sensitive: bool,
+) -> Vec<(usize, usize)> {
+    let Some(keyword) = result_filter_keyword else {
+        return Vec::new();
+    };
+
+    if keyword.is_empty() {
+        return Vec::new();
+    }
+
+    let mut ranges_in_bytes = Vec::new();
+
+    if case_sensitive {
+        for (start, matched) in line_text.match_indices(keyword) {
+            ranges_in_bytes.push((start, start + matched.len()));
+        }
+    } else {
+        let escaped = escape_regex_literal(keyword);
+        if let Ok(regex) = RegexBuilder::new(&escaped).case_insensitive(true).build() {
+            for capture in regex.find_iter(line_text) {
+                ranges_in_bytes.push((capture.start(), capture.end()));
+            }
+        }
+    }
+
+    if ranges_in_bytes.is_empty() {
+        return Vec::new();
+    }
+
+    let byte_to_char = build_byte_to_char_map(line_text);
+
+    ranges_in_bytes
+        .into_iter()
+        .filter_map(|(start, end)| {
+            let start_char = *byte_to_char.get(start)?;
+            let end_char = *byte_to_char.get(end)?;
+            if end_char > start_char {
+                Some((start_char, end_char))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn merge_ranges_by_char(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if ranges.is_empty() {
+        return ranges;
+    }
+
+    ranges.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        if end <= start {
+            continue;
+        }
+
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 {
+                if end > last.1 {
+                    last.1 = end;
+                }
+                continue;
+            }
+        }
+
+        merged.push((start, end));
+    }
+
+    merged
+}
+
+fn build_preview_segments_by_char(
+    line_text: &str,
+    primary_ranges: &[(usize, usize)],
+    secondary_ranges: &[(usize, usize)],
+    rule_ranges: &[(usize, usize)],
+) -> Vec<PreviewSegmentResult> {
+    if line_text.is_empty() {
+        return Vec::new();
+    }
+
+    let chars: Vec<char> = line_text.chars().collect();
+    let line_len = chars.len();
+    let mut boundaries: BTreeSet<usize> = BTreeSet::from([0usize, line_len]);
+
+    for (start, end) in primary_ranges
+        .iter()
+        .chain(secondary_ranges.iter())
+        .chain(rule_ranges.iter())
+    {
+        let safe_start = (*start).min(line_len);
+        let safe_end = (*end).min(line_len);
+        boundaries.insert(safe_start);
+        boundaries.insert(safe_end);
+    }
+
+    let sorted: Vec<usize> = boundaries.into_iter().collect();
+    let mut segments = Vec::new();
+
+    for window in sorted.windows(2) {
+        let start = window[0];
+        let end = window[1];
+
+        if end <= start {
+            continue;
+        }
+
+        let content: String = chars[start..end].iter().collect();
+        if content.is_empty() {
+            continue;
+        }
+
+        let is_primary_match = primary_ranges
+            .iter()
+            .any(|(range_start, range_end)| start >= *range_start && end <= *range_end);
+        let is_secondary_match = secondary_ranges
+            .iter()
+            .any(|(range_start, range_end)| start >= *range_start && end <= *range_end);
+        let is_rule_match = rule_ranges
+            .iter()
+            .any(|(range_start, range_end)| start >= *range_start && end <= *range_end);
+
+        segments.push(PreviewSegmentResult {
+            text: content,
+            is_primary_match,
+            is_secondary_match,
+            is_rule_match,
+        });
+    }
+
+    segments
+}
+
+fn build_search_match_preview_segments(
+    match_result: &SearchMatchResult,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Vec<PreviewSegmentResult> {
+    let line_text = match_result.line_text.as_str();
+
+    let start = match_result.column.saturating_sub(1);
+    let length = match_result
+        .end_char
+        .saturating_sub(match_result.start_char);
+    let primary_range = if length > 0 {
+        Some((start, start.saturating_add(length)))
+    } else {
+        None
+    };
+
+    let primary_ranges = primary_range.into_iter().collect::<Vec<(usize, usize)>>();
+    let secondary_ranges = collect_result_filter_ranges_by_char(
+        line_text,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+    );
+
+    build_preview_segments_by_char(line_text, &primary_ranges, &secondary_ranges, &[])
+}
+
+fn build_filter_match_preview_segments(
+    match_result: &FilterLineMatchResult,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Vec<PreviewSegmentResult> {
+    let line_text = match_result.line_text.as_str();
+    let secondary_ranges = collect_result_filter_ranges_by_char(
+        line_text,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+    );
+
+    let rule_ranges = if match_result.style.apply_to == "line" {
+        vec![(0usize, line_text.chars().count())]
+    } else {
+        let ranges = match_result
+            .ranges
+            .iter()
+            .filter_map(|range| {
+                if range.end_char > range.start_char {
+                    Some((range.start_char, range.end_char))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(usize, usize)>>();
+
+        merge_ranges_by_char(ranges)
+    };
+
+    build_preview_segments_by_char(line_text, &[], &secondary_ranges, &rule_ranges)
 }
 
 pub(super) fn matches_result_filter(
@@ -498,6 +709,7 @@ pub(super) fn build_filter_match_result(
         rule_index: rule.rule_index,
         style: rule.style.clone(),
         ranges,
+        preview_segments: None,
     }
 }
 
@@ -619,6 +831,7 @@ fn collect_regex_matches(
             line: line_index + 1,
             column: start_char.saturating_sub(line_start_char) + 1,
             line_text: get_line_text(text, line_starts, line_index),
+            preview_segments: None,
         });
     }
 
@@ -658,6 +871,7 @@ fn collect_literal_matches(
                 line: line_index + 1,
                 column: start_char.saturating_sub(line_start_char) + 1,
                 line_text: get_line_text(text, line_starts, line_index),
+                preview_segments: None,
             })
         })
         .collect()
@@ -802,6 +1016,7 @@ fn build_match_result_from_offsets(
         line: line_index + 1,
         column: start_char.saturating_sub(line_start_char) + 1,
         line_text: get_line_text(text, line_starts, line_index),
+        preview_segments: None,
     })
 }
 
@@ -1288,6 +1503,7 @@ pub(super) fn search_in_document_chunk_impl(
         let effective_max = max_results.max(1);
         let normalized_result_filter_keyword =
             normalize_result_filter_keyword(result_filter_keyword);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
         let (matches, next_offset) = match mode.as_str() {
             "literal" => {
                 if case_sensitive {
@@ -1298,7 +1514,7 @@ pub(super) fn search_in_document_chunk_impl(
                         &byte_to_char,
                         start_offset,
                         effective_max,
-                        normalized_result_filter_keyword.as_deref(),
+                        result_filter_keyword_ref,
                         case_sensitive,
                     )
                 } else {
@@ -1315,7 +1531,7 @@ pub(super) fn search_in_document_chunk_impl(
                         &byte_to_char,
                         start_offset,
                         effective_max,
-                        normalized_result_filter_keyword.as_deref(),
+                        result_filter_keyword_ref,
                         case_sensitive,
                     )
                 }
@@ -1334,7 +1550,7 @@ pub(super) fn search_in_document_chunk_impl(
                     &byte_to_char,
                     start_offset,
                     effective_max,
-                    normalized_result_filter_keyword.as_deref(),
+                    result_filter_keyword_ref,
                     case_sensitive,
                 )
             }
@@ -1351,7 +1567,7 @@ pub(super) fn search_in_document_chunk_impl(
                     &byte_to_char,
                     start_offset,
                     effective_max,
-                    normalized_result_filter_keyword.as_deref(),
+                    result_filter_keyword_ref,
                     case_sensitive,
                 )
             }
@@ -1360,8 +1576,17 @@ pub(super) fn search_in_document_chunk_impl(
             }
         };
 
+        let mut matches_with_preview = matches;
+        for item in matches_with_preview.iter_mut() {
+            item.preview_segments = Some(build_search_match_preview_segments(
+                item,
+                result_filter_keyword_ref,
+                case_sensitive,
+            ));
+        }
+
         Ok(SearchChunkResultPayload {
-            matches,
+            matches: matches_with_preview,
             document_version: doc.document_version,
             next_offset,
         })
@@ -1744,6 +1969,7 @@ pub(super) fn filter_in_document_chunk_impl(
         let total_lines = doc.rope.len_lines();
         let normalized_result_filter_keyword =
             normalize_result_filter_keyword(result_filter_keyword);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
         let result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let mut line_index = start_line.min(total_lines);
         let mut matches: Vec<FilterLineMatchResult> = Vec::new();
@@ -1756,20 +1982,26 @@ pub(super) fn filter_in_document_chunk_impl(
 
             if !matches_result_filter(
                 &line_text,
-                normalized_result_filter_keyword.as_deref(),
+                result_filter_keyword_ref,
                 result_filter_case_sensitive,
             ) {
                 line_index = line_index.saturating_add(1);
                 continue;
             }
 
-            if let Some(filter_match) =
+            if let Some(mut filter_match) =
                 match_line_with_filter_rules(line_number, &line_text, &compiled_rules)
             {
                 if matches.len() >= effective_max {
                     next_line = Some(line_index);
                     break;
                 }
+
+                filter_match.preview_segments = Some(build_filter_match_preview_segments(
+                    &filter_match,
+                    result_filter_keyword_ref,
+                    result_filter_case_sensitive,
+                ));
 
                 matches.push(filter_match);
             }

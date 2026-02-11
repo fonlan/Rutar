@@ -26,7 +26,6 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { cn } from '@/lib/utils';
@@ -72,6 +71,13 @@ interface FilterMatchRange {
   endChar: number;
 }
 
+interface PreviewSegment {
+  text: string;
+  isPrimaryMatch?: boolean;
+  isSecondaryMatch?: boolean;
+  isRuleMatch?: boolean;
+}
+
 interface FilterMatch {
   line: number;
   column: number;
@@ -80,6 +86,7 @@ interface FilterMatch {
   ruleIndex: number;
   style: FilterRuleStyle;
   ranges: FilterMatchRange[];
+  previewSegments?: PreviewSegment[];
 }
 
 interface FilterRuleInputPayload {
@@ -106,6 +113,7 @@ interface SearchMatch {
   line: number;
   column: number;
   lineText: string;
+  previewSegments?: PreviewSegment[];
 }
 
 interface SearchOpenEventDetail {
@@ -387,140 +395,51 @@ function cssColor(value: string | undefined, fallback: string) {
 function getSearchModeValue(mode: SearchMode) {
   return mode;
 }
-
-function buildResultFilterRanges(lineText: string, keyword: string, caseSensitive: boolean) {
-  const normalizedKeyword = keyword.trim();
-  if (!normalizedKeyword) {
-    return [] as Array<{ start: number; end: number }>;
-  }
-
-  const sourceText = caseSensitive ? lineText : lineText.toLowerCase();
-  const sourceKeyword = caseSensitive ? normalizedKeyword : normalizedKeyword.toLowerCase();
-  const ranges: Array<{ start: number; end: number }> = [];
-  let startIndex = 0;
-
-  while (startIndex <= sourceText.length) {
-    const hitIndex = sourceText.indexOf(sourceKeyword, startIndex);
-    if (hitIndex < 0) {
-      break;
-    }
-
-    const endIndex = hitIndex + sourceKeyword.length;
-    ranges.push({ start: hitIndex, end: endIndex });
-    startIndex = Math.max(endIndex, hitIndex + 1);
-  }
-
-  return ranges;
-}
-
-function buildSegmentBoundaries(lineLength: number, ranges: Array<{ start: number; end: number }>) {
-  const boundarySet = new Set<number>([0, Math.max(0, lineLength)]);
-
-  ranges.forEach((range) => {
-    boundarySet.add(Math.max(0, Math.min(lineLength, range.start)));
-    boundarySet.add(Math.max(0, Math.min(lineLength, range.end)));
-  });
-
-  return [...boundarySet].sort((left, right) => left - right);
-}
-
-function isSegmentInRanges(start: number, end: number, ranges: Array<{ start: number; end: number }>) {
-  return ranges.some((range) => start >= range.start && end <= range.end);
-}
-
-function renderMatchPreview(match: SearchMatch, resultFilterKeyword: string, caseSensitive: boolean) {
+function renderMatchPreview(match: SearchMatch) {
   const lineText = match.lineText || '';
-  const start = Math.max(0, Math.min(lineText.length, match.column - 1));
-  const length = Math.max(0, match.endChar - match.startChar);
-  const end = Math.min(lineText.length, start + length);
-  const secondaryRanges = buildResultFilterRanges(lineText, resultFilterKeyword, caseSensitive);
+  const previewSegments = match.previewSegments ?? [];
 
-  if (end <= start) {
-    if (secondaryRanges.length === 0) {
-      return <span>{lineText || ' '}</span>;
-    }
-
-    const boundaries = buildSegmentBoundaries(lineText.length, secondaryRanges);
-    const nodes: ReactNode[] = [];
-
-    for (let index = 0; index < boundaries.length - 1; index += 1) {
-      const segmentStart = boundaries[index];
-      const segmentEnd = boundaries[index + 1];
-      if (segmentEnd <= segmentStart) {
-        continue;
-      }
-
-      const content = lineText.slice(segmentStart, segmentEnd);
-      if (!content) {
-        continue;
-      }
-
-      const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
-      if (isSecondaryMatch) {
-        nodes.push(
-          <mark key={`secondary-${segmentStart}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
-            {content}
-          </mark>
-        );
-      } else {
-        nodes.push(<span key={`plain-${segmentStart}`}>{content}</span>);
-      }
-    }
-
-    return <>{nodes}</>;
+  if (previewSegments.length === 0) {
+    return <span>{lineText || ' '}</span>;
   }
 
-  const primaryRange = { start, end };
-  const boundaries = buildSegmentBoundaries(lineText.length, [primaryRange, ...secondaryRanges]);
-  const nodes: ReactNode[] = [];
+  return (
+    <>
+      {previewSegments.map((segment, index) => {
+        if (!segment.text) {
+          return null;
+        }
 
-  for (let index = 0; index < boundaries.length - 1; index += 1) {
-    const segmentStart = boundaries[index];
-    const segmentEnd = boundaries[index + 1];
-    if (segmentEnd <= segmentStart) {
-      continue;
-    }
+        if (segment.isSecondaryMatch) {
+          return (
+            <mark key={`secondary-${index}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
+              {segment.text}
+            </mark>
+          );
+        }
 
-    const content = lineText.slice(segmentStart, segmentEnd);
-    if (!content) {
-      continue;
-    }
+        if (segment.isPrimaryMatch) {
+          return (
+            <mark key={`primary-${index}`} className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
+              {segment.text}
+            </mark>
+          );
+        }
 
-    const isPrimaryMatch = isSegmentInRanges(segmentStart, segmentEnd, [primaryRange]);
-    const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
-
-    if (isSecondaryMatch) {
-      nodes.push(
-        <mark key={`secondary-${segmentStart}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
-          {content}
-        </mark>
-      );
-      continue;
-    }
-
-    if (isPrimaryMatch) {
-      nodes.push(
-        <mark key={`primary-${segmentStart}`} className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
-          {content}
-        </mark>
-      );
-      continue;
-    }
-
-    nodes.push(<span key={`plain-${segmentStart}`}>{content}</span>);
-  }
-
-  return <>{nodes}</>;
+        return <span key={`plain-${index}`}>{segment.text}</span>;
+      })}
+    </>
+  );
 }
 
-function renderFilterPreview(match: FilterMatch, resultFilterKeyword: string, caseSensitive: boolean) {
+function renderFilterPreview(match: FilterMatch) {
   const lineText = match.lineText || '';
+  const previewSegments = match.previewSegments ?? [];
   const style = match.style;
   const textColor = cssColor(style?.textColor, 'inherit');
   const bgColor = cssColor(style?.backgroundColor, 'transparent');
   const isBold = !!style?.bold;
   const isItalic = !!style?.italic;
-  const secondaryRanges = buildResultFilterRanges(lineText, resultFilterKeyword, caseSensitive);
   const secondaryHighlightBg = '#bae6fd';
 
   const applySegmentStyle = (isRuleMatch: boolean, isSecondaryMatch: boolean): CSSProperties => {
@@ -537,96 +456,28 @@ function renderFilterPreview(match: FilterMatch, resultFilterKeyword: string, ca
     return nextStyle;
   };
 
-  if (!style || style.applyTo === 'line') {
-    if (secondaryRanges.length === 0) {
-      return (
-        <span
-          style={{
-            color: textColor,
-            backgroundColor: bgColor,
-            fontWeight: isBold ? 700 : 400,
-            fontStyle: isItalic ? 'italic' : 'normal',
-          }}
-        >
-          {lineText || ' '}
-        </span>
-      );
-    }
-
-    const boundaries = buildSegmentBoundaries(lineText.length, secondaryRanges);
-    const nodes: ReactNode[] = [];
-
-    for (let index = 0; index < boundaries.length - 1; index += 1) {
-      const segmentStart = boundaries[index];
-      const segmentEnd = boundaries[index + 1];
-      if (segmentEnd <= segmentStart) {
-        continue;
-      }
-
-      const content = lineText.slice(segmentStart, segmentEnd);
-      if (!content) {
-        continue;
-      }
-
-      const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
-      nodes.push(
-        <span key={`line-segment-${segmentStart}`} style={applySegmentStyle(true, isSecondaryMatch)}>
-          {content}
-        </span>
-      );
-    }
-
-    return <>{nodes}</>;
-  }
-
-  const ranges = (match.ranges || [])
-    .map((range) => ({
-      start: Math.max(0, Math.min(lineText.length, range.startChar)),
-      end: Math.max(0, Math.min(lineText.length, range.endChar)),
-    }))
-    .filter((range) => range.end > range.start)
-    .sort((left, right) => left.start - right.start);
-
-  if (ranges.length === 0) {
+  if (previewSegments.length === 0) {
     return <span>{lineText || ' '}</span>;
   }
 
-  const mergedRanges: Array<{ start: number; end: number }> = [];
-  for (const range of ranges) {
-    const previous = mergedRanges[mergedRanges.length - 1];
-    if (!previous || range.start > previous.end) {
-      mergedRanges.push(range);
-      continue;
-    }
+  return (
+    <>
+      {previewSegments.map((segment, index) => {
+        if (!segment.text) {
+          return null;
+        }
 
-    previous.end = Math.max(previous.end, range.end);
-  }
-
-  const boundaries = buildSegmentBoundaries(lineText.length, [...mergedRanges, ...secondaryRanges]);
-  const nodes: ReactNode[] = [];
-
-  for (let index = 0; index < boundaries.length - 1; index += 1) {
-    const segmentStart = boundaries[index];
-    const segmentEnd = boundaries[index + 1];
-    if (segmentEnd <= segmentStart) {
-      continue;
-    }
-
-    const content = lineText.slice(segmentStart, segmentEnd);
-    if (!content) {
-      continue;
-    }
-
-    const isRuleMatch = isSegmentInRanges(segmentStart, segmentEnd, mergedRanges);
-    const isSecondaryMatch = isSegmentInRanges(segmentStart, segmentEnd, secondaryRanges);
-    nodes.push(
-      <span key={`segment-${segmentStart}`} style={applySegmentStyle(isRuleMatch, isSecondaryMatch)}>
-        {content}
-      </span>
-    );
-  }
-
-  return <>{nodes}</>;
+        return (
+          <span
+            key={`segment-${index}`}
+            style={applySegmentStyle(!!segment.isRuleMatch, !!segment.isSecondaryMatch)}
+          >
+            {segment.text}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 function matchModeLabel(mode: FilterRuleMatchMode, messages: ReturnType<typeof getSearchPanelMessages>) {
@@ -2956,15 +2807,6 @@ export function SearchReplacePanel() {
 
   const hasAppliedResultFilterKeyword = resultFilterKeyword.trim().length > 0;
 
-  const previewResultFilterKeyword = useMemo(() => {
-    const inputKeyword = resultFilterKeyword.trim();
-    if (inputKeyword) {
-      return inputKeyword;
-    }
-
-    return appliedResultFilterKeyword;
-  }, [appliedResultFilterKeyword, resultFilterKeyword]);
-
   const scrollResultItemIntoView = useCallback((itemIndex: number) => {
     const container = resultListRef.current;
     if (!container || itemIndex < 0) {
@@ -3306,7 +3148,7 @@ export function SearchReplacePanel() {
               className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
               style={resultListTextStyle}
             >
-              {renderFilterPreview(match, previewResultFilterKeyword, caseSensitive)}
+              {renderFilterPreview(match)}
             </span>
             {isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
           </button>
@@ -3348,7 +3190,7 @@ export function SearchReplacePanel() {
             className="min-w-0 flex-1 pl-2 text-xs text-foreground whitespace-pre overflow-hidden text-ellipsis"
             style={resultListTextStyle}
           >
-            {renderMatchPreview(match, previewResultFilterKeyword, caseSensitive)}
+            {renderMatchPreview(match)}
           </span>
           {isActive ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
         </button>
@@ -3364,8 +3206,6 @@ export function SearchReplacePanel() {
     keyword,
     matches,
     messages,
-    previewResultFilterKeyword,
-    caseSensitive,
     resultPanelState,
     visibleCurrentFilterMatchIndex,
     visibleCurrentMatchIndex,
