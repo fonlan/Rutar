@@ -6051,12 +6051,18 @@ export function Editor({ tab }: { tab: FileTab }) {
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  handleLineNumberClick(index + 1, event.shiftKey, event.ctrlKey || event.metaKey);
-                }}
-                onDoubleClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  handleLineNumberDoubleClick(index + 1);
+                  const lineNumber = index + 1;
+
+                  if (event.detail === 2) {
+                    handleLineNumberDoubleClick(lineNumber);
+                    return;
+                  }
+
+                  handleLineNumberClick(
+                    lineNumber,
+                    event.shiftKey,
+                    event.ctrlKey || event.metaKey
+                  );
                 }}
               >
                 {index + 1}
