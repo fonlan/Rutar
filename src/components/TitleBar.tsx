@@ -716,14 +716,14 @@ export function TitleBar() {
                                     return;
                                 }
 
-                                handleTabDoubleClick(event, tab);
+                                handleTabDoubleClick(event, tab as FileTab);
                             }}
                             onMouseEnter={(event) => {
                                 if (isPendingTab) {
                                     return;
                                 }
 
-                                handleTabPathTooltipEnter(event, tab);
+                                handleTabPathTooltipEnter(event, tab as FileTab);
                             }}
                             onMouseLeave={handleTabPathTooltipLeave}
                             onContextMenu={(event) => {
@@ -732,7 +732,7 @@ export function TitleBar() {
                                     return;
                                 }
 
-                                handleTabContextMenu(event, tab);
+                                handleTabContextMenu(event, tab as FileTab);
                             }}
                             className={cn(
                                 "group flex items-center h-full min-w-[100px] max-w-[200px] px-3 border-x rounded-none cursor-pointer relative overflow-visible bg-muted transition-colors pointer-events-auto z-0",
@@ -750,7 +750,10 @@ export function TitleBar() {
                                     className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
                                 />
                             )}
-                            <span className="truncate flex-1 text-[11px] font-medium">{tab.name}{tab.isDirty && '*'}</span>
+                            <span className="truncate flex-1 text-[11px] font-medium">
+                                {tab.name}
+                                {'isDirty' in tab && tab.isDirty ? '*' : ''}
+                            </span>
                             {!isPendingTab && (
                                 <button
                                     type="button"
@@ -769,7 +772,7 @@ export function TitleBar() {
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        void handleCloseTab(tab);
+                                        void handleCloseTab(tab as FileTab);
                                     }}
                                     className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
                                 >

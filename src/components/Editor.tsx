@@ -5970,7 +5970,10 @@ export function Editor({ tab }: { tab: FileTab }) {
                   style={{
                     ...style,
                     width: wordWrap ? '100%' : 'max-content',
-                    minWidth: '100%',
+                    minWidth:
+                      !wordWrap && isHugeEditableMode
+                        ? `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`
+                        : '100%',
                     paddingLeft: contentTextPadding,
                     paddingRight: contentTextRightPadding,
                     fontFamily: settings.fontFamily,
