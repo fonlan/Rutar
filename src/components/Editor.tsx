@@ -156,13 +156,13 @@ const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
 const RECTANGULAR_SELECTION_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-violet-300/45 text-black ring-1 ring-violet-500/40 dark:bg-violet-400/30 dark:ring-violet-300/40';
 const TEXT_SELECTION_HIGHLIGHT_CLASS =
-  'rounded-[2px] bg-blue-400/35 ring-1 ring-blue-500/30 dark:bg-blue-500/30 dark:ring-blue-300/30';
+  'bg-blue-400/35 dark:bg-blue-500/30';
 const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
 const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
-const DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG = true;
-const USE_NATIVE_TEXT_SELECTION_HIGHLIGHT = true;
+const DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG = false;
+const USE_NATIVE_TEXT_SELECTION_HIGHLIGHT = false;
 const EMPTY_BOOKMARKS: number[] = [];
 
 function isToggleLineCommentShortcut(event: {
@@ -986,6 +986,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
+  const useNativeTextSelectionHighlight = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT;
   const itemSize = lineHeightPx;
   const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
   const contentViewportLeftPx = lineNumberColumnWidthPx;
@@ -1408,7 +1409,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     if (enabled) {
-      element.style.setProperty('--editor-native-selection-bg', 'hsl(217 91% 60% / 0.32)');
+      element.style.setProperty('--editor-native-selection-bg', 'hsl(217 91% 60% / 0.28)');
       return;
     }
 
@@ -1698,7 +1699,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       ) {
         textDragMoveStateRef.current = null;
         pointerSelectionActiveRef.current = false;
-        if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        if (!useNativeTextSelectionHighlight) {
           setPointerSelectionNativeHighlightMode(false);
         }
         verticalSelectionRef.current = null;
@@ -1744,7 +1745,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       pointerSelectionActiveRef.current = false;
-      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      if (!useNativeTextSelectionHighlight) {
         setPointerSelectionNativeHighlightMode(false);
       }
       verticalSelectionRef.current = null;
@@ -1758,7 +1759,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         contentRef.current
       ) {
         event.stopPropagation();
-        if (USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        if (useNativeTextSelectionHighlight) {
           setPointerSelectionNativeHighlightMode(false);
         }
         const isTextarea = isTextareaInputElement(contentRef.current);
@@ -1838,7 +1839,7 @@ export function Editor({ tab }: { tab: FileTab }) {
           event.button === 0
         ) {
           pointerSelectionActiveRef.current = true;
-          if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+          if (!useNativeTextSelectionHighlight) {
             setPointerSelectionNativeHighlightMode(true);
             setTextSelectionHighlight((prev) => (prev === null ? prev : null));
           }
@@ -1851,7 +1852,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [isLargeReadOnlyMode, setPointerSelectionNativeHighlightMode]
+    [isLargeReadOnlyMode, resolveDropOffsetFromPointer, setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]
   );
 
   const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -2952,7 +2953,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const finalizePointerSelectionInteraction = useCallback(() => {
     if (!DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG) {
       pointerSelectionActiveRef.current = false;
-      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      if (!useNativeTextSelectionHighlight) {
         setPointerSelectionNativeHighlightMode(false);
       }
       return;
@@ -2962,7 +2963,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     pointerSelectionActiveRef.current = false;
 
     if (!wasPointerSelectionActive) {
-      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      if (!useNativeTextSelectionHighlight) {
         setPointerSelectionNativeHighlightMode(false);
       }
       return;
@@ -2971,12 +2972,18 @@ export function Editor({ tab }: { tab: FileTab }) {
     window.requestAnimationFrame(() => {
       handleScroll();
       syncSelectionState();
-      if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      if (!useNativeTextSelectionHighlight) {
         syncTextSelectionHighlight();
         setPointerSelectionNativeHighlightMode(false);
       }
     });
-  }, [handleScroll, setPointerSelectionNativeHighlightMode, syncSelectionState, syncTextSelectionHighlight]);
+  }, [
+    handleScroll,
+    setPointerSelectionNativeHighlightMode,
+    syncSelectionState,
+    syncTextSelectionHighlight,
+    useNativeTextSelectionHighlight,
+  ]);
 
   useEffect(() => {
     if (!normalizedRectangularSelection) {
@@ -2987,7 +2994,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   }, [normalizedRectangularSelection]);
 
   useEffect(() => {
-    if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+    if (!useNativeTextSelectionHighlight) {
       return;
     }
 
@@ -2996,7 +3003,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     } else {
       setPointerSelectionNativeHighlightMode(true);
     }
-  }, [normalizedRectangularSelection, setPointerSelectionNativeHighlightMode]);
+  }, [normalizedRectangularSelection, setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]);
 
   const hasSelectionInsideEditor = useCallback(() => {
     if (!contentRef.current) {
@@ -4412,7 +4419,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
-      const textSelectionRange = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT
+      const textSelectionRange = useNativeTextSelectionHighlight
         ? null
         : getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
 
@@ -4452,6 +4459,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       getRectangularHighlightRangeForLine,
       getTextSelectionHighlightRangeForLine,
       renderPlainLine,
+      useNativeTextSelectionHighlight,
     ]
   );
 
@@ -4917,7 +4925,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
-      const textSelectionRange = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT
+      const textSelectionRange = useNativeTextSelectionHighlight
         ? null
         : getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
 
@@ -5026,6 +5034,7 @@ export function Editor({ tab }: { tab: FileTab }) {
       getTextSelectionHighlightRangeForLine,
       getTokenTypeClass,
       renderTokens,
+      useNativeTextSelectionHighlight,
     ]
   );
 
@@ -5427,11 +5436,11 @@ export function Editor({ tab }: { tab: FileTab }) {
         window.clearTimeout(base64DecodeErrorToastTimerRef.current);
       }
 
-      if (USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+      if (useNativeTextSelectionHighlight) {
         setPointerSelectionNativeHighlightMode(false);
       }
     };
-  }, [setPointerSelectionNativeHighlightMode]);
+  }, [setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]);
 
   useEffect(() => {
     const flushSelectionChange = () => {
@@ -5448,7 +5457,7 @@ export function Editor({ tab }: { tab: FileTab }) {
         !pointerSelectionActiveRef.current
       ) {
         syncSelectionState();
-        if (!USE_NATIVE_TEXT_SELECTION_HIGHLIGHT) {
+        if (!useNativeTextSelectionHighlight) {
           syncTextSelectionHighlight();
         }
       }
@@ -5476,6 +5485,7 @@ export function Editor({ tab }: { tab: FileTab }) {
     hasSelectionInsideEditor,
     syncSelectionState,
     syncTextSelectionHighlight,
+    useNativeTextSelectionHighlight,
   ]);
 
   useEffect(() => {

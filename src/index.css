@@ -56,6 +56,19 @@
   line-height: inherit;
 }
 
+.editor-line mark {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  vertical-align: top;
+  border-radius: 0;
+}
+
+.editor-line mark > span {
+  display: inline-block;
+  vertical-align: top;
+}
+
 /* Editable input layer: keep glyphs hidden while preserving native selection */
 .editor-input-layer {
   display: block;
