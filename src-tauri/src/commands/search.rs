@@ -4,11 +4,10 @@ use ropey::Rope;
 use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
 
-use super::editing::apply_operation;
+use super::editing::{apply_operation, create_edit_operation};
 use super::FILTER_MAX_RANGES_PER_LINE;
 use crate::state::AppState;
 use crate::state::Document;
-use crate::state::EditOperation;
 use tauri::State;
 
 #[derive(serde::Serialize, Clone)]
@@ -2227,11 +2226,7 @@ pub(super) fn replace_all_in_document_impl(
         let replaced_count = matches.len();
 
         if source_text != next_text {
-            let operation = EditOperation {
-                start_char: 0,
-                old_text: source_text,
-                new_text: next_text,
-            };
+            let operation = create_edit_operation(&mut doc, 0, source_text, next_text);
 
             apply_operation(&mut doc, &operation)?;
             doc.undo_stack.push(operation);
@@ -2310,11 +2305,12 @@ pub(super) fn replace_current_in_document_impl(
             });
         }
 
-        let operation = EditOperation {
-            start_char: target_match.start_char,
-            old_text: target_match.text,
-            new_text: replacement_text,
-        };
+        let operation = create_edit_operation(
+            &mut doc,
+            target_match.start_char,
+            target_match.text,
+            replacement_text,
+        );
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);

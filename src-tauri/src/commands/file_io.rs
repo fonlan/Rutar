@@ -289,8 +289,11 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
         syntax_override: None,
         document_version: 0,
         saved_document_version: 0,
+        next_edit_operation_id: 1,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
+        saved_undo_depth: 0,
+        saved_undo_operation_id: None,
         parser: None,
         tree: None,
         language: None,
@@ -477,6 +480,7 @@ fn save_file_by_id(state: &State<'_, AppState>, id: &str) -> Result<(), String> 
             doc.saved_document_version = doc.document_version;
             doc.saved_encoding = doc.encoding.name().to_string();
             doc.saved_line_ending = doc.line_ending;
+            doc.mark_saved_undo_checkpoint();
             doc.saved_file_fingerprint = fs::metadata(&path)
                 .ok()
                 .map(|metadata| build_file_fingerprint(&metadata));
@@ -533,6 +537,7 @@ pub(super) async fn save_file_as_impl(
         doc.saved_document_version = doc.document_version;
         doc.saved_encoding = doc.encoding.name().to_string();
         doc.saved_line_ending = doc.line_ending;
+        doc.mark_saved_undo_checkpoint();
         if let Some(path) = &doc.path {
             doc.saved_file_fingerprint = fs::metadata(path)
                 .ok()
@@ -623,8 +628,11 @@ pub(super) fn new_file_impl(
         syntax_override: None,
         document_version: 0,
         saved_document_version: 0,
+        next_edit_operation_id: 1,
         undo_stack: Vec::new(),
         redo_stack: Vec::new(),
+        saved_undo_depth: 0,
+        saved_undo_operation_id: None,
         parser: None,
         tree: None,
         language: None,
@@ -708,8 +716,11 @@ pub(super) fn reload_file_from_disk_impl(
         doc.saved_line_ending = snapshot.line_ending;
         doc.document_version = 0;
         doc.saved_document_version = 0;
+        doc.next_edit_operation_id = 1;
         doc.undo_stack.clear();
         doc.redo_stack.clear();
+        doc.saved_undo_depth = 0;
+        doc.saved_undo_operation_id = None;
         doc.saved_file_fingerprint = Some(snapshot.fingerprint);
         configure_document_syntax(&mut doc, !snapshot.large_file_mode);
 

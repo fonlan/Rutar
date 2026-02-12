@@ -75,6 +75,20 @@ pub(super) fn apply_operation(doc: &mut Document, operation: &EditOperation) -> 
     Ok(())
 }
 
+pub(super) fn create_edit_operation(
+    doc: &mut Document,
+    start_char: usize,
+    old_text: String,
+    new_text: String,
+) -> EditOperation {
+    EditOperation {
+        operation_id: doc.allocate_edit_operation_id(),
+        start_char,
+        old_text,
+        new_text,
+    }
+}
+
 pub(super) fn undo_impl(state: State<'_, AppState>, id: String) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(operation) = doc.undo_stack.pop() {
@@ -112,7 +126,7 @@ pub(super) fn get_edit_history_state_impl(
         Ok(EditHistoryState {
             can_undo: !doc.undo_stack.is_empty(),
             can_redo: !doc.redo_stack.is_empty(),
-            is_dirty: doc.document_version != doc.saved_document_version
+            is_dirty: doc.has_unsaved_text_changes()
                 || doc.encoding.name() != doc.saved_encoding
                 || doc.line_ending != doc.saved_line_ending,
         })
@@ -138,11 +152,7 @@ pub(super) fn edit_text_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = EditOperation {
-            start_char: start,
-            old_text,
-            new_text,
-        };
+        let operation = create_edit_operation(&mut doc, start, old_text, new_text);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
@@ -562,11 +572,7 @@ pub(super) fn replace_line_range_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = EditOperation {
-            start_char,
-            old_text,
-            new_text,
-        };
+        let operation = create_edit_operation(&mut doc, start_char, old_text, new_text);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
@@ -896,11 +902,12 @@ pub(super) fn toggle_line_comments_impl(
             });
         };
 
-        let operation = EditOperation {
-            start_char: computation.start_char,
-            old_text: computation.old_text,
-            new_text: computation.new_text,
-        };
+        let operation = create_edit_operation(
+            &mut doc,
+            computation.start_char,
+            computation.old_text,
+            computation.new_text,
+        );
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
@@ -1062,11 +1069,7 @@ pub(super) fn cleanup_document_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = EditOperation {
-            start_char: 0,
-            old_text: source,
-            new_text: cleaned,
-        };
+        let operation = create_edit_operation(&mut doc, 0, source, cleaned);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
@@ -1103,11 +1106,7 @@ pub(super) fn format_document_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = EditOperation {
-            start_char: 0,
-            old_text: source,
-            new_text: formatted,
-        };
+        let operation = create_edit_operation(&mut doc, 0, source, formatted);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);

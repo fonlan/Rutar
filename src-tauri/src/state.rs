@@ -49,6 +49,7 @@ pub fn default_line_ending() -> LineEnding {
 
 #[derive(Clone)]
 pub struct EditOperation {
+    pub operation_id: u64,
     pub start_char: usize,
     pub old_text: String,
     pub new_text: String,
@@ -57,6 +58,7 @@ pub struct EditOperation {
 impl EditOperation {
     pub fn inverse(&self) -> Self {
         Self {
+            operation_id: self.operation_id,
             start_char: self.start_char,
             old_text: self.new_text.clone(),
             new_text: self.old_text.clone(),
@@ -74,13 +76,35 @@ pub struct Document {
     pub syntax_override: Option<String>,
     pub document_version: u64,
     pub saved_document_version: u64,
+    pub next_edit_operation_id: u64,
     pub undo_stack: Vec<EditOperation>,
     pub redo_stack: Vec<EditOperation>,
+    pub saved_undo_depth: usize,
+    pub saved_undo_operation_id: Option<u64>,
     pub parser: Option<Parser>,
     pub tree: Option<Tree>,
     pub language: Option<Language>,
     pub syntax_dirty: bool,
     pub saved_file_fingerprint: Option<FileFingerprint>,
+}
+
+impl Document {
+    pub fn allocate_edit_operation_id(&mut self) -> u64 {
+        let operation_id = self.next_edit_operation_id;
+        self.next_edit_operation_id = self.next_edit_operation_id.saturating_add(1);
+        operation_id
+    }
+
+    pub fn mark_saved_undo_checkpoint(&mut self) {
+        self.saved_undo_depth = self.undo_stack.len();
+        self.saved_undo_operation_id = self.undo_stack.last().map(|operation| operation.operation_id);
+    }
+
+    pub fn has_unsaved_text_changes(&self) -> bool {
+        self.saved_undo_depth != self.undo_stack.len()
+            || self.saved_undo_operation_id
+                != self.undo_stack.last().map(|operation| operation.operation_id)
+    }
 }
 
 pub struct AppState {
@@ -102,5 +126,102 @@ impl AppState {
             .lock()
             .expect("failed to lock startup paths");
         std::mem::take(&mut *paths)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{default_line_ending, Document, EditOperation};
+    use encoding_rs::UTF_8;
+    use ropey::Rope;
+
+    fn make_document() -> Document {
+        Document {
+            rope: Rope::new(),
+            encoding: UTF_8,
+            saved_encoding: UTF_8.name().to_string(),
+            line_ending: default_line_ending(),
+            saved_line_ending: default_line_ending(),
+            path: None,
+            syntax_override: None,
+            document_version: 0,
+            saved_document_version: 0,
+            next_edit_operation_id: 1,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_undo_depth: 0,
+            saved_undo_operation_id: None,
+            parser: None,
+            tree: None,
+            language: None,
+            syntax_dirty: false,
+            saved_file_fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn undo_checkpoint_should_restore_clean_state_after_pop_to_saved_marker() {
+        let mut document = make_document();
+        assert!(!document.has_unsaved_text_changes());
+
+        let first_operation = EditOperation {
+            operation_id: document.allocate_edit_operation_id(),
+            start_char: 0,
+            old_text: String::new(),
+            new_text: "a".to_string(),
+        };
+        document.undo_stack.push(first_operation);
+        assert!(document.has_unsaved_text_changes());
+
+        document.mark_saved_undo_checkpoint();
+        assert!(!document.has_unsaved_text_changes());
+
+        let second_operation = EditOperation {
+            operation_id: document.allocate_edit_operation_id(),
+            start_char: 1,
+            old_text: String::new(),
+            new_text: "b".to_string(),
+        };
+        document.undo_stack.push(second_operation);
+        assert!(document.has_unsaved_text_changes());
+
+        document.undo_stack.pop();
+        assert!(!document.has_unsaved_text_changes());
+    }
+
+    #[test]
+    fn undo_checkpoint_should_remain_dirty_for_branch_with_same_depth() {
+        let mut document = make_document();
+
+        let first_operation = EditOperation {
+            operation_id: document.allocate_edit_operation_id(),
+            start_char: 0,
+            old_text: String::new(),
+            new_text: "a".to_string(),
+        };
+        document.undo_stack.push(first_operation);
+
+        let second_operation = EditOperation {
+            operation_id: document.allocate_edit_operation_id(),
+            start_char: 1,
+            old_text: String::new(),
+            new_text: "b".to_string(),
+        };
+        document.undo_stack.push(second_operation);
+
+        document.mark_saved_undo_checkpoint();
+        assert!(!document.has_unsaved_text_changes());
+
+        document.undo_stack.pop();
+
+        let branch_operation = EditOperation {
+            operation_id: document.allocate_edit_operation_id(),
+            start_char: 1,
+            old_text: String::new(),
+            new_text: "c".to_string(),
+        };
+        document.undo_stack.push(branch_operation);
+
+        assert!(document.has_unsaved_text_changes());
     }
 }

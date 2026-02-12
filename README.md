@@ -98,6 +98,7 @@ npm run tauri build
 - `Save All` is enabled only when at least one tab has unsaved changes.
 - `Cut` and `Copy` are enabled only when text is selected in the active editor.
 - `Undo` / `Redo` are enabled only when corresponding history entries exist.
+- Unsaved-change state is anchored to the saved undo checkpoint (undo depth + top operation id), so undoing back to the saved snapshot automatically clears the dirty indicator.
 
 ## 📄 License
 
