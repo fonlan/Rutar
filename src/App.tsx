@@ -932,6 +932,7 @@ function App() {
       movedEnough: false,
       suppressNextContextMenu: false,
       clearTrailTimer: null as number | null,
+      clearPreviewTimer: null as number | null,
     };
 
     const directionThreshold = 18;
@@ -1001,6 +1002,21 @@ function App() {
       }, 180);
     };
 
+    const clearGesturePreview = () => {
+      dispatchGesturePreview('');
+    };
+
+    const scheduleGesturePreviewClear = () => {
+      if (state.clearPreviewTimer !== null) {
+        window.clearTimeout(state.clearPreviewTimer);
+      }
+
+      state.clearPreviewTimer = window.setTimeout(() => {
+        clearGesturePreview();
+        state.clearPreviewTimer = null;
+      }, 180);
+    };
+
     const drawTrailSegment = (fromX: number, fromY: number, toX: number, toY: number) => {
       if (!trailContext) {
         return;
@@ -1026,7 +1042,6 @@ function App() {
       state.trailLastY = 0;
       state.sequence = '';
       state.movedEnough = false;
-      dispatchGesturePreview('');
     };
 
     const appendDirection = (dx: number, dy: number, threshold: number) => {
@@ -1047,11 +1062,18 @@ function App() {
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!event.isPrimary || event.pointerType !== 'mouse' || event.button !== 2) {
+      const pointerType = event.pointerType?.toLowerCase();
+      if (pointerType && pointerType !== 'mouse') {
         return;
       }
 
-      const target = event.target as Element | null;
+      if (event.button !== 2 && (event.buttons & 2) !== 2) {
+        return;
+      }
+
+      const target = event.target instanceof Element
+        ? event.target
+        : event.composedPath().find((entry) => entry instanceof Element) as Element | undefined;
       if (!target?.closest(gestureAreaSelector)) {
         return;
       }
@@ -1066,11 +1088,16 @@ function App() {
       state.trailLastY = event.clientY;
       state.sequence = '';
       state.movedEnough = false;
-      dispatchGesturePreview('');
+      clearGesturePreview();
 
       if (state.clearTrailTimer !== null) {
         window.clearTimeout(state.clearTrailTimer);
         state.clearTrailTimer = null;
+      }
+
+      if (state.clearPreviewTimer !== null) {
+        window.clearTimeout(state.clearPreviewTimer);
+        state.clearPreviewTimer = null;
       }
 
       clearTrail();
@@ -1104,12 +1131,8 @@ function App() {
       }
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
-      if (!state.active || event.pointerId !== state.pointerId) {
-        return;
-      }
-
-      appendDirection(event.clientX - state.lastX, event.clientY - state.lastY, finalizeDirectionThreshold);
+    const finalizeGesture = (clientX: number, clientY: number) => {
+      appendDirection(clientX - state.lastX, clientY - state.lastY, finalizeDirectionThreshold);
 
       const pattern = state.sequence;
       const wasGestureAttempt = state.movedEnough || pattern.length > 0;
@@ -1117,14 +1140,36 @@ function App() {
 
       if (action) {
         state.suppressNextContextMenu = true;
-        event.preventDefault();
         executeMouseGestureAction(action);
       } else if (wasGestureAttempt) {
         state.suppressNextContextMenu = true;
       }
 
       scheduleTrailClear();
+
+      if (pattern.length > 0) {
+        scheduleGesturePreviewClear();
+      } else {
+        clearGesturePreview();
+      }
+
       reset();
+
+      return {
+        actionMatched: !!action,
+        wasGestureAttempt,
+      };
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!state.active || event.pointerId !== state.pointerId) {
+        return;
+      }
+
+      const { actionMatched, wasGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
+      if (actionMatched || wasGestureAttempt) {
+        event.preventDefault();
+      }
     };
 
     const handlePointerCancel = (event: PointerEvent) => {
@@ -1133,10 +1178,20 @@ function App() {
       }
 
       scheduleTrailClear();
+      clearGesturePreview();
       reset();
     };
 
     const handleContextMenu = (event: MouseEvent) => {
+      if (state.active) {
+        const { actionMatched, wasGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
+        if (actionMatched || wasGestureAttempt || state.suppressNextContextMenu) {
+          state.suppressNextContextMenu = false;
+          event.preventDefault();
+        }
+        return;
+      }
+
       if (!state.suppressNextContextMenu) {
         return;
       }
@@ -1145,24 +1200,30 @@ function App() {
       event.preventDefault();
     };
 
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('pointermove', handlePointerMove, true);
-    window.addEventListener('pointerup', handlePointerUp, true);
-    window.addEventListener('pointercancel', handlePointerCancel, true);
-    window.addEventListener('contextmenu', handleContextMenu, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointermove', handlePointerMove, true);
+    document.addEventListener('pointerup', handlePointerUp, true);
+    document.addEventListener('pointercancel', handlePointerCancel, true);
+    document.addEventListener('contextmenu', handleContextMenu, true);
     window.addEventListener('resize', syncTrailCanvasSize);
 
     return () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('pointermove', handlePointerMove, true);
-      window.removeEventListener('pointerup', handlePointerUp, true);
-      window.removeEventListener('pointercancel', handlePointerCancel, true);
-      window.removeEventListener('contextmenu', handleContextMenu, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('pointerup', handlePointerUp, true);
+      document.removeEventListener('pointercancel', handlePointerCancel, true);
+      document.removeEventListener('contextmenu', handleContextMenu, true);
       window.removeEventListener('resize', syncTrailCanvasSize);
 
       if (state.clearTrailTimer !== null) {
         window.clearTimeout(state.clearTrailTimer);
       }
+
+      if (state.clearPreviewTimer !== null) {
+        window.clearTimeout(state.clearPreviewTimer);
+      }
+
+      clearGesturePreview();
 
       trailCanvas.remove();
     };

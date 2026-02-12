@@ -27,6 +27,7 @@ export function StatusBar() {
     const cursorLine = activeCursorPosition?.line ?? 1;
     const cursorColumn = activeCursorPosition?.column ?? 1;
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const gesturePreviewLabel = tr('settings.mouseGestures');
     const [gesturePreview, setGesturePreview] = useState('');
 
     useEffect(() => {
@@ -135,7 +136,7 @@ export function StatusBar() {
                 {settings.mouseGesturesEnabled && gesturePreview && (
                     <>
                         <div className="w-[1px] h-3 bg-border" />
-                        <span>手势: {gesturePreview}</span>
+                        <span>{gesturePreviewLabel}: {gesturePreview}</span>
                     </>
                 )}
             </div>
