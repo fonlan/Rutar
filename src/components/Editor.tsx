@@ -3178,7 +3178,11 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
 
     if (action === 'delete') {
-      return replaceSelectionWithText(contentRef.current, '');
+      const deleted = replaceSelectionWithText(contentRef.current, '');
+      if (deleted) {
+        dispatchEditorInputEvent(contentRef.current);
+      }
+      return deleted;
     }
 
     if (action === 'copy' || action === 'cut') {
@@ -3194,7 +3198,11 @@ export function Editor({ tab }: { tab: FileTab }) {
       }
 
       if (action === 'cut') {
-        return replaceSelectionWithText(contentRef.current, '');
+        const cut = replaceSelectionWithText(contentRef.current, '');
+        if (cut) {
+          dispatchEditorInputEvent(contentRef.current);
+        }
+        return cut;
       }
 
       return true;
