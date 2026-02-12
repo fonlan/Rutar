@@ -980,6 +980,7 @@ export function Editor({ tab }: { tab: FileTab }) {
   const lineNumberMultiSelectionSet = useMemo(() => new Set(lineNumberMultiSelection), [lineNumberMultiSelection]);
 
   const fontSize = settings.fontSize || 14;
+  const tabSize = Number.isFinite(settings.tabWidth) ? Math.min(8, Math.max(1, Math.floor(settings.tabWidth))) : 4;
   const wordWrap = !!settings.wordWrap;
   const showLineNumbers = settings.showLineNumbers !== false;
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
@@ -1221,6 +1222,15 @@ export function Editor({ tab }: { tab: FileTab }) {
 
         if (contentRef.current) {
           setInputLayerText(contentRef.current, text);
+          // In huge editable mode, scrolling is controlled by the outer container.
+          // Keep textarea internal scroll at origin to avoid pointer/selection drift.
+          if (Math.abs(contentRef.current.scrollTop) > 0.001) {
+            contentRef.current.scrollTop = 0;
+          }
+
+          if (Math.abs(contentRef.current.scrollLeft) > 0.001) {
+            contentRef.current.scrollLeft = 0;
+          }
         }
 
         syncedTextRef.current = text;
@@ -5135,16 +5145,6 @@ export function Editor({ tab }: { tab: FileTab }) {
     }
   }, [isHugeEditableMode, isLargeReadOnlyMode, tab.id, usePlainLineRendering]);
 
-  useEffect(() => {
-    if (!isHugeEditableMode || !scrollContainerRef.current) {
-      return;
-    }
-
-    const scrollTop = scrollContainerRef.current.scrollTop;
-    if (contentRef.current && Math.abs(contentRef.current.scrollTop - scrollTop) > 0.001) {
-      contentRef.current.scrollTop = scrollTop;
-    }
-  }, [editableSegment.endLine, editableSegment.startLine, isHugeEditableMode]);
 
   useEffect(() => {
     window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
@@ -5667,7 +5667,6 @@ export function Editor({ tab }: { tab: FileTab }) {
         }
 
         if (contentRef.current) {
-          contentRef.current.scrollTop = targetScrollTop;
           contentRef.current.focus();
 
           ensureSearchMatchVisibleHorizontally(
@@ -5861,6 +5860,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                tabSize,
                 paddingLeft: contentTextPadding,
                 paddingRight: contentTextRightPadding,
                 paddingBottom: contentBottomSafetyPadding,
@@ -5897,6 +5897,7 @@ export function Editor({ tab }: { tab: FileTab }) {
             fontSize: `${renderedFontSizePx}px`,
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+            tabSize,
             paddingLeft: contentTextPadding,
             paddingRight: contentTextRightPadding,
             paddingBottom: contentBottomSafetyPadding,
@@ -5990,6 +5991,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                     className={wordWrap ? 'min-w-0 flex-1' : 'shrink-0'}
                     style={{
                       whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                      tabSize,
                     }}
                   >
                     {usePlainLineRendering
