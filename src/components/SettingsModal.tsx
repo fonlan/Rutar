@@ -55,9 +55,7 @@ const FALLBACK_WINDOWS_FILE_ASSOCIATION_EXTENSIONS = [
   '.toml',
   '.xml',
   '.ini',
-  '.cfg',
   '.conf',
-  '.csv',
 ];
 
 function normalizeWindowsFileAssociationExtension(value: string): string | null {
