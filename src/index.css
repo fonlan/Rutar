@@ -238,6 +238,31 @@ option {
   border-radius: 8px;
 }
 
+.markdown-preview .mermaid-host {
+  margin: 0.8rem 0;
+  overflow: auto;
+}
+
+.markdown-preview .mermaid-host svg {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.markdown-preview .mermaid-render-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #b91c1c;
+  padding: 0.7rem 0.9rem;
+}
+
+.dark .markdown-preview .mermaid-render-error {
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
 .markdown-preview hr {
   border: 0;
   border-top: 1px solid hsl(var(--border));

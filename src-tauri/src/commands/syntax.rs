@@ -13,7 +13,7 @@ pub(super) fn normalize_syntax_override(
         return Ok(None);
     }
 
-    if normalized == "plain_text" {
+    if normalized == "plain_text" || normalized == "markdown" {
         return Ok(Some(normalized));
     }
 
@@ -29,7 +29,7 @@ pub(super) fn resolve_document_language(
     syntax_override: Option<&str>,
 ) -> Option<Language> {
     if let Some(syntax_key) = syntax_override {
-        if syntax_key == "plain_text" {
+        if syntax_key == "plain_text" || syntax_key == "markdown" {
             return None;
         }
 
@@ -123,6 +123,12 @@ mod tests {
     fn ini_syntax_override_should_be_supported() {
         let normalized = normalize_syntax_override(Some("INI"));
         assert_eq!(normalized.ok(), Some(Some("ini".to_string())));
+    }
+
+    #[test]
+    fn markdown_syntax_override_should_be_supported() {
+        let normalized = normalize_syntax_override(Some("Markdown"));
+        assert_eq!(normalized.ok(), Some(Some("markdown".to_string())));
     }
 
     #[test]

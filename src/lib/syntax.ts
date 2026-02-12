@@ -2,6 +2,7 @@ import { FileTab, SyntaxKey } from '@/store/useStore';
 
 export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'plain_text', label: 'Plain Text' },
+  { value: 'markdown', label: 'Markdown' },
   { value: 'javascript', label: 'JavaScript' },
   { value: 'typescript', label: 'TypeScript' },
   { value: 'rust', label: 'Rust' },
@@ -27,6 +28,7 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
 const syntaxLabelByValue = new Map(SYNTAX_OPTIONS.map((item) => [item.value, item.label]));
 const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   plain_text: '#',
+  markdown: '#',
   python: '#',
   bash: '#',
   toml: '#',
@@ -93,6 +95,18 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'json':
     case 'jsonc':
       return 'json';
+    case 'md':
+    case 'markdown':
+    case 'mdown':
+    case 'mkd':
+    case 'mkdn':
+    case 'mdwn':
+    case 'mdtxt':
+    case 'mdtext':
+    case 'rmd':
+    case 'qmd':
+    case 'mdx':
+      return 'markdown';
     case 'ini':
     case 'cfg':
     case 'conf':

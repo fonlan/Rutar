@@ -10,9 +10,16 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      {
+        find: /^dayjs$/,
+        replacement: path.resolve(__dirname, "./src/lib/dayjs-mermaid-shim.ts"),
+      },
+      {
+        find: "@",
+        replacement: path.resolve(__dirname, "./src"),
+      },
+    ],
   },
   build: {
     rollupOptions: {
@@ -28,6 +35,10 @@ export default defineConfig(async () => ({
 
           if (id.includes("lucide-react")) {
             return "icons-vendor";
+          }
+
+          if (id.includes("mermaid")) {
+            return "mermaid-vendor";
           }
 
           if (id.includes("react") || id.includes("scheduler")) {

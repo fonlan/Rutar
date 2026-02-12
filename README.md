@@ -14,10 +14,11 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
 - **Recent Quick Access**: The toolbar `Open File` and `Open Folder` actions include dropdown arrows for opening recently used files and folders.
 - **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
+- **Markdown Syntax in Status Bar**: The status bar syntax selector includes `Markdown`; manual override to Markdown is accepted and can be used to drive preview behavior.
 - **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
 - **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
 - **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
-- **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, and shares editor vertical/horizontal scrolling behavior.
+- **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, supports Mermaid code-block diagram rendering, and shares editor vertical/horizontal scrolling behavior.
 
 ## Configuration
 
@@ -31,6 +32,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - `windowState` persists main window state across launches: if the window was maximized, only `maximized: true` is stored; when not maximized, `width` and `height` are stored and restored on next startup.
 - Main window startup uses hidden-first initialization (`visible: false` in `src-tauri/tauri.conf.json`), restores persisted window state first, and then lets frontend call `show_main_window_when_ready` after app shell render to reduce startup white-screen time and avoid visible size jump from default `800x600` to saved dimensions.
 - Main window keeps `dragDropEnabled: true` in `src-tauri/tauri.conf.json` so Tauri native file drag-open remains stable on Windows; editor text drag-move is handled by frontend pointer-driven logic to avoid WebView HTML5 drag-drop inconsistencies.
+- `src-tauri/tauri.conf.json` currently sets `app.security.freezePrototype` to `false` to avoid Mermaid runtime conflicts with `dayjs` in the WebView environment.
 - Frontend injects a lightweight startup splash (`boot-splash`) before React mount and removes it right after the main window reveal signal is sent, so users see loading feedback instead of a blank frame.
 
 ### Windows 11 Context Menu Integration
