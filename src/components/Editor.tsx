@@ -989,7 +989,11 @@ export function Editor({ tab }: { tab: FileTab }) {
   const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
   const contentViewportLeftPx = lineNumberColumnWidthPx;
   const contentViewportWidth = Math.max(0, width - contentViewportLeftPx);
-  const contentTextPadding = '0.375rem';
+  const contentTextPaddingPx = 6;
+  const editorScrollbarSafetyPaddingPx = 14;
+  const contentTextPadding = `${contentTextPaddingPx}px`;
+  const contentTextRightPadding = `${contentTextPaddingPx + editorScrollbarSafetyPaddingPx}px`;
+  const contentBottomSafetyPadding = `${editorScrollbarSafetyPaddingPx}px`;
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
@@ -5858,6 +5862,8 @@ export function Editor({ tab }: { tab: FileTab }) {
                 lineHeight: `${lineHeightPx}px`,
                 whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
                 paddingLeft: contentTextPadding,
+                paddingRight: contentTextRightPadding,
+                paddingBottom: contentBottomSafetyPadding,
                 resize: 'none',
                 overflowX: 'hidden',
                 overflowY: 'hidden',
@@ -5892,6 +5898,8 @@ export function Editor({ tab }: { tab: FileTab }) {
             lineHeight: `${lineHeightPx}px`,
             whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
             paddingLeft: contentTextPadding,
+            paddingRight: contentTextRightPadding,
+            paddingBottom: contentBottomSafetyPadding,
             resize: 'none',
           }}
           wrap={wordWrap ? 'soft' : 'off'}
@@ -5932,6 +5940,7 @@ export function Editor({ tab }: { tab: FileTab }) {
             style={{
               overflowX: isLargeReadOnlyMode ? horizontalOverflowMode : 'hidden',
               overflowY: isLargeReadOnlyMode ? 'auto' : 'hidden',
+              paddingBottom: contentBottomSafetyPadding,
             }}
             onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
             onPointerDown={isLargeReadOnlyMode ? handleReadOnlyListPointerDown : undefined}
@@ -5962,7 +5971,7 @@ export function Editor({ tab }: { tab: FileTab }) {
                     width: wordWrap ? '100%' : 'max-content',
                     minWidth: '100%',
                     paddingLeft: contentTextPadding,
-                    paddingRight: contentTextPadding,
+                    paddingRight: contentTextRightPadding,
                     fontFamily: settings.fontFamily,
                     fontSize: `${renderedFontSizePx}px`,
                     lineHeight: `${lineHeightPx}px`,
