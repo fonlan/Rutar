@@ -3,6 +3,7 @@ import {
     Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { openFilePath } from '@/lib/openFile';
@@ -577,13 +578,13 @@ export function Toolbar() {
             return;
         }
 
-        if (activeTab && navigator.clipboard?.readText) {
+        if (activeTab) {
             try {
-                const clipboardText = await navigator.clipboard.readText();
+                const clipboardText = await readClipboardText();
                 dispatchEditorPaste(activeTab.id, clipboardText);
                 return;
             } catch (error) {
-                console.warn('Failed to read clipboard text:', error);
+                console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
             }
         }
 

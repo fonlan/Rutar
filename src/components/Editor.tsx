@@ -1,6 +1,7 @@
 ﻿// @ts-nocheck
 import { VariableSizeList as List } from 'react-window';
 import { invoke } from '@tauri-apps/api/core';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
@@ -3297,13 +3298,11 @@ export function Editor({ tab }: { tab: FileTab }) {
       if (action === 'paste') {
         let pasted = false;
 
-        if (navigator.clipboard?.readText) {
-          try {
-            const clipboardText = await navigator.clipboard.readText();
-            pasted = tryPasteTextIntoEditor(clipboardText);
-          } catch (error) {
-            console.warn('Failed to read clipboard text:', error);
-          }
+        try {
+          const clipboardText = await readClipboardText();
+          pasted = tryPasteTextIntoEditor(clipboardText);
+        } catch (error) {
+          console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
         }
 
         if (!pasted) {
