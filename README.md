@@ -17,6 +17,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
 - **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
 - **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
+- **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, and shares editor vertical/horizontal scrolling behavior.
 
 ## Configuration
 
@@ -72,6 +73,8 @@ npm run tauri build
 ## 📂 Project Structure
 
 - `src/`: Frontend React application.
+- `src/components/MarkdownPreviewPanel.tsx`: Right-side live Markdown preview panel and scroll-follow behavior.
+- `src/lib/markdown.ts`: Markdown file detection helper used by preview features.
 - `src-tauri/`: Rust backend, IPC commands, and state management.
 - `src-tauri/src/commands/config.rs`: App config persistence, filter-group config, and Windows integration submodule.
 - `src-tauri/src/commands/document.rs`: Document version and syntax-token generation submodule.

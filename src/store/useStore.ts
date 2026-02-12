@@ -115,6 +115,8 @@ interface AppState {
   outlineWidth: number;
   bookmarkSidebarOpen: boolean;
   bookmarkSidebarWidth: number;
+  markdownPreviewOpen: boolean;
+  markdownPreviewWidthRatio: number;
   outlineType: OutlineType;
   outlineError: string | null;
   outlineNodes: OutlineNode[];
@@ -138,6 +140,8 @@ interface AppState {
   setOutlineWidth: (width: number) => void;
   toggleBookmarkSidebar: (open?: boolean) => void;
   setBookmarkSidebarWidth: (width: number) => void;
+  toggleMarkdownPreview: (open?: boolean) => void;
+  setMarkdownPreviewWidthRatio: (ratio: number) => void;
   addBookmark: (tabId: string, line: number) => void;
   removeBookmark: (tabId: string, line: number) => void;
   toggleBookmark: (tabId: string, line: number) => void;
@@ -180,6 +184,8 @@ export const useStore = create<AppState>((set) => ({
   outlineWidth: 288,
   bookmarkSidebarOpen: false,
   bookmarkSidebarWidth: 220,
+  markdownPreviewOpen: false,
+  markdownPreviewWidthRatio: 0.5,
   outlineType: null,
   outlineError: null,
   outlineNodes: [],
@@ -237,6 +243,12 @@ export const useStore = create<AppState>((set) => ({
   setOutlineWidth: (width) => set({ outlineWidth: width }),
   toggleBookmarkSidebar: (open) => set((state) => ({ bookmarkSidebarOpen: open ?? !state.bookmarkSidebarOpen })),
   setBookmarkSidebarWidth: (width) => set({ bookmarkSidebarWidth: width }),
+  toggleMarkdownPreview: (open) =>
+    set((state) => ({ markdownPreviewOpen: open ?? !state.markdownPreviewOpen })),
+  setMarkdownPreviewWidthRatio: (ratio) =>
+    set({
+      markdownPreviewWidthRatio: Math.max(0.2, Math.min(0.8, Number.isFinite(ratio) ? ratio : 0.5)),
+    }),
   addBookmark: (tabId, line) => set((state) => {
     const safeLine = Math.max(1, Math.floor(line));
     const existing = state.bookmarksByTab[tabId] ?? [];

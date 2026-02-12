@@ -10,6 +10,7 @@ import { openFilePaths } from '@/lib/openFile';
 import { type MouseGestureAction, type MouseGestureBinding, sanitizeMouseGestures } from '@/lib/mouseGestures';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
+import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
@@ -147,6 +148,7 @@ function App() {
   const sidebarOpen = useStore((state) => state.sidebarOpen);
   const outlineOpen = useStore((state) => state.outlineOpen);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
+  const markdownPreviewOpen = useStore((state) => state.markdownPreviewOpen);
   const outlineType = useStore((state) => state.outlineType);
   const outlineNodes = useStore((state) => state.outlineNodes);
   const outlineError = useStore((state) => state.outlineError);
@@ -155,6 +157,7 @@ function App() {
     sidebarOpen: boolean;
     outlineOpen: boolean;
     bookmarkSidebarOpen: boolean;
+    markdownPreviewOpen: boolean;
   }>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
   const externalChangeCheckingTabIdsRef = useRef<Set<string>>(new Set());
@@ -1239,6 +1242,7 @@ function App() {
         sidebarOpen,
         outlineOpen,
         bookmarkSidebarOpen,
+        markdownPreviewOpen,
       };
     }
 
@@ -1251,6 +1255,7 @@ function App() {
     const nextTabState = tabPanelStateRef.current[activeTabId];
     state.toggleSidebar(nextTabState?.sidebarOpen ?? state.sidebarOpen);
     state.toggleOutline(nextTabState?.outlineOpen ?? false);
+    state.toggleMarkdownPreview(nextTabState?.markdownPreviewOpen ?? false);
     const toggleBookmarkSidebar = (state as {
       toggleBookmarkSidebar?: (open?: boolean) => void;
     }).toggleBookmarkSidebar;
@@ -1269,8 +1274,9 @@ function App() {
       sidebarOpen,
       outlineOpen,
       bookmarkSidebarOpen,
+      markdownPreviewOpen,
     };
-  }, [activeTabId, bookmarkSidebarOpen, outlineOpen, sidebarOpen]);
+  }, [activeTabId, bookmarkSidebarOpen, markdownPreviewOpen, outlineOpen, sidebarOpen]);
 
   useEffect(() => {
     if (!activeTab || !outlineOpen) {
@@ -1374,14 +1380,17 @@ function App() {
         </Suspense>
         
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="flex-1 relative overflow-hidden" data-rutar-gesture-area="true">
-            {activeTab ? (
-              <Suspense fallback={editorFallback}>
-                <Editor key={activeTab.id} tab={activeTab} />
-              </Suspense>
-            ) : (
-              editorFallback
-            )}
+          <div className="flex-1 flex overflow-hidden relative">
+            <div className="min-w-0 flex-1 relative overflow-hidden" data-rutar-gesture-area="true">
+              {activeTab ? (
+                <Suspense fallback={editorFallback}>
+                  <Editor key={activeTab.id} tab={activeTab} />
+                </Suspense>
+              ) : (
+                editorFallback
+              )}
+            </div>
+            <MarkdownPreviewPanel open={markdownPreviewOpen} tab={activeTab ?? null} />
           </div>
           <Suspense fallback={null}>
             <StatusBar />

@@ -35,6 +35,7 @@ export type I18nKey =
   | 'toolbar.toggleWordWrap'
   | 'toolbar.bookmarkSidebar'
   | 'toolbar.outline'
+  | 'toolbar.preview'
   | 'toolbar.filter'
   | 'toolbar.format.beautify'
   | 'toolbar.format.minify'
@@ -58,6 +59,11 @@ export type I18nKey =
   | 'toolbar.disabled.noSelectedText'
   | 'toolbar.disabled.noUndoHistory'
   | 'toolbar.disabled.noRedoHistory'
+  | 'preview.title'
+  | 'preview.notMarkdown'
+  | 'preview.loading'
+  | 'preview.empty'
+  | 'preview.loadFailed'
   | 'bookmark.menu.title'
   | 'bookmark.add'
   | 'bookmark.remove'
@@ -235,6 +241,7 @@ const zhCN: Messages = {
   'toolbar.toggleWordWrap': '切换自动换行',
   'toolbar.bookmarkSidebar': '书签侧边栏',
   'toolbar.outline': '大纲',
+  'toolbar.preview': '实时预览',
   'toolbar.filter': '过滤',
   'toolbar.format.beautify': '格式化文档 (Ctrl+Alt+F)',
   'toolbar.format.minify': '最小化文档 (Ctrl+Alt+M)',
@@ -258,6 +265,11 @@ const zhCN: Messages = {
   'toolbar.disabled.noSelectedText': '当前没有选中文本',
   'toolbar.disabled.noUndoHistory': '当前没有可撤销的操作',
   'toolbar.disabled.noRedoHistory': '当前没有可重做的操作',
+  'preview.title': 'Markdown 预览',
+  'preview.notMarkdown': '仅支持 Markdown 文件预览。',
+  'preview.loading': '正在渲染预览...',
+  'preview.empty': '当前 Markdown 文档为空。',
+  'preview.loadFailed': '预览加载失败：',
   'bookmark.menu.title': '书签',
   'bookmark.add': '添加书签',
   'bookmark.remove': '删除书签',
@@ -434,6 +446,7 @@ const enUS: Messages = {
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
   'toolbar.bookmarkSidebar': 'Bookmark Sidebar',
   'toolbar.outline': 'Outline',
+  'toolbar.preview': 'Live Preview',
   'toolbar.filter': 'Filter',
   'toolbar.format.beautify': 'Beautify (Ctrl+Alt+F)',
   'toolbar.format.minify': 'Minify (Ctrl+Alt+M)',
@@ -457,6 +470,11 @@ const enUS: Messages = {
   'toolbar.disabled.noSelectedText': 'No selected text',
   'toolbar.disabled.noUndoHistory': 'No undo history',
   'toolbar.disabled.noRedoHistory': 'No redo history',
+  'preview.title': 'Markdown Preview',
+  'preview.notMarkdown': 'Preview is available for Markdown files only.',
+  'preview.loading': 'Rendering preview...',
+  'preview.empty': 'This Markdown document is empty.',
+  'preview.loadFailed': 'Failed to load preview:',
   'bookmark.menu.title': 'Bookmark',
   'bookmark.add': 'Add Bookmark',
   'bookmark.remove': 'Remove Bookmark',

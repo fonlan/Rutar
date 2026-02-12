@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text
+    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
@@ -128,6 +128,8 @@ export function Toolbar() {
     const outlineOpen = useStore((state) => state.outlineOpen);
     const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
     const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
+    const toggleMarkdownPreview = useStore((state) => state.toggleMarkdownPreview);
+    const markdownPreviewOpen = useStore((state) => state.markdownPreviewOpen);
     const setOutlineData = useStore((state) => state.setOutlineData);
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
@@ -971,6 +973,13 @@ export function Toolbar() {
                 onClick={() => void handleToggleOutline()}
                 active={outlineOpen}
                 disabled={!canOutline}
+            />
+            <ToolbarBtn
+                icon={PanelRightOpen}
+                title={tr('toolbar.preview')}
+                onClick={() => toggleMarkdownPreview()}
+                active={markdownPreviewOpen}
+                disabled={!activeTab}
             />
             <ToolbarBtn
                 icon={Text}
