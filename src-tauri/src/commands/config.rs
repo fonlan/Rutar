@@ -1226,3 +1226,206 @@ pub(super) fn export_filter_rule_groups_impl(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_rule(keyword: &str, match_mode: &str, apply_to: &str, text_color: &str) -> FilterRuleInput {
+        FilterRuleInput {
+            keyword: keyword.to_string(),
+            match_mode: match_mode.to_string(),
+            background_color: "#111111".to_string(),
+            text_color: text_color.to_string(),
+            bold: false,
+            italic: false,
+            apply_to: apply_to.to_string(),
+        }
+    }
+
+    #[test]
+    fn normalize_filter_rule_input_should_trim_and_normalize_fields() {
+        let normalized = normalize_filter_rule_input(make_rule("  error  ", "exists", "LINE", "  "));
+        assert!(normalized.is_some());
+
+        let normalized = normalized.expect("normalized rule should exist");
+        assert_eq!(normalized.keyword, "error");
+        assert_eq!(normalized.match_mode, "contains");
+        assert_eq!(normalized.apply_to, "line");
+        assert_eq!(normalized.text_color, DEFAULT_FILTER_RULE_TEXT);
+    }
+
+    #[test]
+    fn normalize_filter_rule_input_should_drop_invalid_rules() {
+        assert!(normalize_filter_rule_input(make_rule("   ", "contains", "line", "#fff")).is_none());
+        assert!(normalize_filter_rule_input(make_rule("x", "invalid", "line", "#fff")).is_none());
+        assert!(normalize_filter_rule_input(make_rule("x", "contains", "invalid", "#fff")).is_none());
+    }
+
+    #[test]
+    fn normalize_filter_rule_groups_should_keep_only_valid_groups_and_rules() {
+        let groups = vec![
+            FilterRuleGroupConfig {
+                name: "  ".to_string(),
+                rules: vec![make_rule("x", "contains", "line", "#fff")],
+            },
+            FilterRuleGroupConfig {
+                name: " Main ".to_string(),
+                rules: vec![
+                    make_rule(" ok ", "contains", "line", "#fff"),
+                    make_rule(" ", "contains", "line", "#fff"),
+                ],
+            },
+        ];
+
+        let normalized = normalize_filter_rule_groups(Some(groups));
+        assert!(normalized.is_some());
+
+        let normalized = normalized.expect("normalized groups should exist");
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].name, "Main");
+        assert_eq!(normalized[0].rules.len(), 1);
+        assert_eq!(normalized[0].rules[0].keyword, "ok");
+    }
+
+    #[test]
+    fn normalize_windows_file_association_extension_should_validate_and_normalize() {
+        assert_eq!(
+            normalize_windows_file_association_extension(" TXT "),
+            Some(".txt".to_string())
+        );
+        assert_eq!(
+            normalize_windows_file_association_extension("*.Md"),
+            Some(".md".to_string())
+        );
+        assert_eq!(normalize_windows_file_association_extension("."), None);
+        assert_eq!(normalize_windows_file_association_extension(".a!"), None);
+    }
+
+    #[test]
+    fn normalize_windows_file_association_extensions_should_dedup_and_fallback() {
+        let normalized = normalize_windows_file_association_extensions(Some(vec![
+            "txt".to_string(),
+            ".TXT".to_string(),
+            "*.md".to_string(),
+            "??".to_string(),
+        ]));
+        assert_eq!(normalized, vec![".md".to_string(), ".txt".to_string()]);
+
+        let fallback = normalize_windows_file_association_extensions(Some(vec![
+            " ".to_string(),
+            "*".to_string(),
+        ]));
+        assert_eq!(fallback, settings::default_windows_file_association_extensions());
+    }
+
+    #[test]
+    fn normalize_recent_paths_should_trim_dedup_and_limit_length() {
+        let mut source = vec!["  a  ".to_string(), "a".to_string(), " ".to_string()];
+        source.extend((0..(MAX_RECENT_PATHS + 5)).map(|i| format!("p{}", i)));
+
+        let normalized = normalize_recent_paths(Some(source));
+        assert_eq!(normalized[0], "a");
+        assert_eq!(normalized.len(), MAX_RECENT_PATHS);
+    }
+
+    #[test]
+    fn normalize_mouse_gesture_pattern_should_filter_and_uppercase() {
+        assert_eq!(normalize_mouse_gesture_pattern(" lrxdu9 "), "LRDU");
+        assert_eq!(normalize_mouse_gesture_pattern("123"), "");
+        assert_eq!(normalize_mouse_gesture_pattern("llllrrrruuuudddd"), "LLLLRRRR");
+    }
+
+    #[test]
+    fn normalize_mouse_gestures_should_handle_empty_invalid_and_duplicates() {
+        let empty = normalize_mouse_gestures(Some(Vec::new()));
+        assert!(empty.is_empty());
+
+        let normalized = normalize_mouse_gestures(Some(vec![
+            settings::MouseGestureConfig {
+                pattern: " l ".to_string(),
+                action: "previousTab".to_string(),
+            },
+            settings::MouseGestureConfig {
+                pattern: "L".to_string(),
+                action: "nextTab".to_string(),
+            },
+            settings::MouseGestureConfig {
+                pattern: "R".to_string(),
+                action: "invalid".to_string(),
+            },
+        ]));
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].pattern, "L");
+        assert_eq!(normalized[0].action, "previousTab");
+
+        let fallback = normalize_mouse_gestures(None);
+        assert!(!fallback.is_empty());
+    }
+
+    #[test]
+    fn normalize_window_state_should_drop_non_positive_dimensions() {
+        let normalized = normalize_window_state(Some(settings::WindowStateConfig {
+            width: Some(0),
+            height: Some(720),
+            maximized: true,
+        }))
+        .expect("window state should exist");
+
+        assert_eq!(normalized.width, None);
+        assert_eq!(normalized.height, Some(720));
+        assert!(normalized.maximized);
+    }
+
+    #[test]
+    fn normalize_app_config_should_apply_all_normalization_rules() {
+        let config = AppConfig {
+            language: "unknown".to_string(),
+            theme: "unknown".to_string(),
+            font_family: "  ".to_string(),
+            font_size: 100,
+            tab_width: 0,
+            new_file_line_ending: "bad".to_string(),
+            word_wrap: true,
+            double_click_close_tab: true,
+            show_line_numbers: true,
+            highlight_current_line: true,
+            single_instance_mode: true,
+            remember_window_state: true,
+            recent_files: vec!["  a  ".to_string(), "a".to_string()],
+            recent_folders: vec!["  b  ".to_string(), "b".to_string()],
+            windows_file_association_extensions: vec!["TXT".to_string()],
+            mouse_gestures_enabled: true,
+            mouse_gestures: vec![settings::MouseGestureConfig {
+                pattern: " l ".to_string(),
+                action: "previousTab".to_string(),
+            }],
+            window_state: Some(settings::WindowStateConfig {
+                width: Some(0),
+                height: Some(1),
+                maximized: false,
+            }),
+            filter_rule_groups: Some(vec![FilterRuleGroupConfig {
+                name: " Group ".to_string(),
+                rules: vec![make_rule(" key ", "contains", "line", "#fff")],
+            }]),
+        };
+
+        let normalized = normalize_app_config(config);
+        assert_eq!(normalized.language, DEFAULT_LANGUAGE);
+        assert_eq!(normalized.theme, DEFAULT_THEME);
+        assert_eq!(normalized.font_family, DEFAULT_FONT_FAMILY);
+        assert_eq!(normalized.font_size, 72);
+        assert_eq!(normalized.tab_width, 1);
+        assert_eq!(normalized.new_file_line_ending, default_line_ending().label());
+        assert_eq!(normalized.recent_files, vec!["a".to_string()]);
+        assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
+        assert_eq!(
+            normalized.windows_file_association_extensions,
+            vec![".txt".to_string()]
+        );
+        assert_eq!(normalized.mouse_gestures.len(), 1);
+        assert_eq!(normalized.mouse_gestures[0].pattern, "L");
+        assert!(normalized.filter_rule_groups.is_some());
+    }
+}

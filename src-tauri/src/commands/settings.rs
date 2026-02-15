@@ -179,3 +179,64 @@ pub(super) fn normalize_new_file_line_ending(label: Option<&str>) -> String {
         .label()
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_language_should_only_accept_supported_values() {
+        assert_eq!(normalize_language(Some("en-US")), "en-US");
+        assert_eq!(normalize_language(Some("zh-CN")), DEFAULT_LANGUAGE);
+        assert_eq!(normalize_language(Some("unknown")), DEFAULT_LANGUAGE);
+        assert_eq!(normalize_language(None), DEFAULT_LANGUAGE);
+    }
+
+    #[test]
+    fn normalize_theme_should_only_accept_dark_or_default() {
+        assert_eq!(normalize_theme(Some("dark")), "dark");
+        assert_eq!(normalize_theme(Some("light")), DEFAULT_THEME);
+        assert_eq!(normalize_theme(None), DEFAULT_THEME);
+    }
+
+    #[test]
+    fn normalize_tab_width_should_be_clamped_to_valid_range() {
+        assert_eq!(normalize_tab_width(0), 1);
+        assert_eq!(normalize_tab_width(4), 4);
+        assert_eq!(normalize_tab_width(9), 8);
+    }
+
+    #[test]
+    fn normalize_new_file_line_ending_should_fallback_to_platform_default() {
+        assert_eq!(normalize_new_file_line_ending(Some("lf")), "LF");
+        assert_eq!(
+            normalize_new_file_line_ending(Some("invalid")),
+            default_line_ending().label()
+        );
+        assert_eq!(
+            normalize_new_file_line_ending(None),
+            default_line_ending().label()
+        );
+    }
+
+    #[test]
+    fn app_config_default_should_use_expected_defaults() {
+        let config = AppConfig::default();
+
+        assert_eq!(config.language, DEFAULT_LANGUAGE);
+        assert_eq!(config.theme, DEFAULT_THEME);
+        assert_eq!(config.tab_width, DEFAULT_TAB_WIDTH);
+        assert_eq!(config.new_file_line_ending, default_line_ending().label());
+        assert_eq!(config.single_instance_mode, DEFAULT_SINGLE_INSTANCE_MODE);
+        assert!(config.remember_window_state);
+        assert!(config.mouse_gestures_enabled);
+        assert!(!config.mouse_gestures.is_empty());
+    }
+
+    #[test]
+    fn default_windows_file_association_extensions_should_be_non_empty_and_prefixed() {
+        let extensions = default_windows_file_association_extensions();
+        assert!(!extensions.is_empty());
+        assert!(extensions.iter().all(|item| item.starts_with('.')));
+    }
+}

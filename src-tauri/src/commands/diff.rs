@@ -206,3 +206,81 @@ pub(super) async fn compare_documents_by_line_impl(
         .await
         .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{build_line_diff_result, normalize_rope_line_text};
+
+    #[test]
+    fn normalize_rope_line_text_should_strip_trailing_newline_pairs() {
+        assert_eq!(normalize_rope_line_text("alpha\n".to_string()), "alpha");
+        assert_eq!(normalize_rope_line_text("beta\r\n".to_string()), "beta");
+        assert_eq!(normalize_rope_line_text("gamma".to_string()), "gamma");
+        assert_eq!(normalize_rope_line_text("delta\r".to_string()), "delta\r");
+    }
+
+    #[test]
+    fn build_line_diff_result_should_keep_equal_lines_without_diffs() {
+        let result = build_line_diff_result(
+            vec!["one".to_string(), "two".to_string()],
+            vec!["one".to_string(), "two".to_string()],
+        );
+
+        assert_eq!(result.source_line_count, 2);
+        assert_eq!(result.target_line_count, 2);
+        assert_eq!(result.aligned_line_count, 2);
+        assert_eq!(result.aligned_source_lines, vec!["one", "two"]);
+        assert_eq!(result.aligned_target_lines, vec!["one", "two"]);
+        assert_eq!(result.aligned_source_present, vec![true, true]);
+        assert_eq!(result.aligned_target_present, vec![true, true]);
+        assert!(result.diff_line_numbers.is_empty());
+        assert!(result.source_diff_line_numbers.is_empty());
+        assert!(result.target_diff_line_numbers.is_empty());
+    }
+
+    #[test]
+    fn build_line_diff_result_should_align_insertions_with_source_placeholders() {
+        let result = build_line_diff_result(
+            vec!["a".to_string(), "c".to_string()],
+            vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        );
+
+        assert_eq!(result.aligned_source_lines, vec!["a", "", "c"]);
+        assert_eq!(result.aligned_target_lines, vec!["a", "b", "c"]);
+        assert_eq!(result.aligned_source_present, vec![true, false, true]);
+        assert_eq!(result.aligned_target_present, vec![true, true, true]);
+        assert_eq!(result.diff_line_numbers, vec![2]);
+        assert!(result.source_diff_line_numbers.is_empty());
+        assert_eq!(result.target_diff_line_numbers, vec![2]);
+    }
+
+    #[test]
+    fn build_line_diff_result_should_align_deletions_with_target_placeholders() {
+        let result = build_line_diff_result(
+            vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            vec!["a".to_string(), "c".to_string()],
+        );
+
+        assert_eq!(result.aligned_source_lines, vec!["a", "b", "c"]);
+        assert_eq!(result.aligned_target_lines, vec!["a", "", "c"]);
+        assert_eq!(result.aligned_source_present, vec![true, true, true]);
+        assert_eq!(result.aligned_target_present, vec![true, false, true]);
+        assert_eq!(result.diff_line_numbers, vec![2]);
+        assert_eq!(result.source_diff_line_numbers, vec![2]);
+        assert!(result.target_diff_line_numbers.is_empty());
+    }
+
+    #[test]
+    fn build_line_diff_result_should_return_single_empty_row_for_empty_inputs() {
+        let result = build_line_diff_result(Vec::new(), Vec::new());
+
+        assert_eq!(result.source_line_count, 0);
+        assert_eq!(result.target_line_count, 0);
+        assert_eq!(result.aligned_line_count, 1);
+        assert_eq!(result.aligned_source_lines, vec![""]);
+        assert_eq!(result.aligned_target_lines, vec![""]);
+        assert_eq!(result.aligned_source_present, vec![true]);
+        assert_eq!(result.aligned_target_present, vec![true]);
+        assert!(result.diff_line_numbers.is_empty());
+    }
+}

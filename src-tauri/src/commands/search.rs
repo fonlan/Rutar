@@ -2389,3 +2389,142 @@ pub(super) fn search_in_document_impl(
         Err("Document not found".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_rule(keyword: &str, match_mode: &str, apply_to: &str) -> FilterRuleInput {
+        FilterRuleInput {
+            keyword: keyword.to_string(),
+            match_mode: match_mode.to_string(),
+            background_color: "#000000".to_string(),
+            text_color: "#ffffff".to_string(),
+            bold: false,
+            italic: false,
+            apply_to: apply_to.to_string(),
+        }
+    }
+
+    #[test]
+    fn find_line_index_by_offset_should_return_last_line_start_not_greater_than_offset() {
+        let starts = vec![0usize, 3, 8];
+        assert_eq!(find_line_index_by_offset(&starts, 0), 0);
+        assert_eq!(find_line_index_by_offset(&starts, 2), 0);
+        assert_eq!(find_line_index_by_offset(&starts, 3), 1);
+        assert_eq!(find_line_index_by_offset(&starts, 7), 1);
+        assert_eq!(find_line_index_by_offset(&starts, 99), 2);
+    }
+
+    #[test]
+    fn build_line_starts_should_record_start_offset_for_each_line() {
+        assert_eq!(build_line_starts(""), vec![0]);
+        assert_eq!(build_line_starts("a\nb\n"), vec![0, 2, 4]);
+        assert_eq!(build_line_starts("abc"), vec![0]);
+    }
+
+    #[test]
+    fn build_byte_to_char_map_should_map_multibyte_utf8_bytes_to_char_indices() {
+        let mapping = build_byte_to_char_map("a你b");
+        assert_eq!(mapping.len(), "a你b".len() + 1);
+        assert_eq!(mapping[0], 0);
+        assert_eq!(mapping[1], 1);
+        assert_eq!(mapping[2], 1);
+        assert_eq!(mapping[3], 1);
+        assert_eq!(mapping[4], 2);
+        assert_eq!(mapping[5], 3);
+    }
+
+    #[test]
+    fn get_line_text_should_strip_line_break_and_trailing_carriage_return() {
+        let text = "a\r\nb\n";
+        let starts = build_line_starts(text);
+        assert_eq!(get_line_text(text, &starts, 0), "a");
+        assert_eq!(get_line_text(text, &starts, 1), "b");
+    }
+
+    #[test]
+    fn normalize_result_filter_keyword_should_trim_and_drop_empty_values() {
+        assert_eq!(
+            normalize_result_filter_keyword(Some("  abc  ".to_string())),
+            Some("abc".to_string())
+        );
+        assert_eq!(normalize_result_filter_keyword(Some("   ".to_string())), None);
+        assert_eq!(normalize_result_filter_keyword(None), None);
+    }
+
+    #[test]
+    fn merge_ranges_by_char_should_sort_and_merge_overlapping_segments() {
+        let merged = merge_ranges_by_char(vec![(5, 7), (1, 3), (2, 4), (8, 8), (10, 12)]);
+        assert_eq!(merged, vec![(1, 4), (5, 7), (10, 12)]);
+    }
+
+    #[test]
+    fn escape_regex_literal_should_escape_regex_metacharacters() {
+        let escaped = escape_regex_literal(r".*+?^${}()|[]\");
+        assert_eq!(escaped, r"\.\*\+\?\^\$\{\}\(\)\|\[\]\\");
+    }
+
+    #[test]
+    fn wildcard_to_regex_source_should_translate_wildcards_and_escape_other_chars() {
+        let regex_source = wildcard_to_regex_source("a*b?.txt");
+        assert_eq!(regex_source, r"a.*b.\.txt");
+    }
+
+    #[test]
+    fn parse_filter_match_mode_should_support_aliases_and_reject_unknown_modes() {
+        assert!(matches!(
+            parse_filter_match_mode("contains"),
+            Ok(FilterMatchMode::Contains)
+        ));
+        assert!(matches!(
+            parse_filter_match_mode("exists"),
+            Ok(FilterMatchMode::Contains)
+        ));
+        assert!(matches!(
+            parse_filter_match_mode("regex"),
+            Ok(FilterMatchMode::Regex)
+        ));
+        assert!(matches!(
+            parse_filter_match_mode("wildcard"),
+            Ok(FilterMatchMode::Wildcard)
+        ));
+        assert!(parse_filter_match_mode("unknown").is_err());
+    }
+
+    #[test]
+    fn parse_filter_apply_to_should_support_line_and_match() {
+        assert!(matches!(
+            parse_filter_apply_to("line"),
+            Ok(FilterApplyTo::Line)
+        ));
+        assert!(matches!(
+            parse_filter_apply_to("match"),
+            Ok(FilterApplyTo::Match)
+        ));
+        assert!(parse_filter_apply_to("invalid").is_err());
+    }
+
+    #[test]
+    fn compile_filter_rules_should_skip_empty_rules_and_compile_wildcard_regex() {
+        let compiled = compile_filter_rules(vec![
+            make_rule("", "contains", "line"),
+            make_rule("warn*", "wildcard", "match"),
+        ])
+        .expect("rule compile should succeed");
+
+        assert_eq!(compiled.len(), 1);
+        assert!(matches!(compiled[0].match_mode, FilterMatchMode::Wildcard));
+        assert!(matches!(compiled[0].apply_to, FilterApplyTo::Match));
+        assert!(compiled[0].regex.is_some());
+    }
+
+    #[test]
+    fn collect_filter_rule_ranges_should_respect_max_limit() {
+        let compiled = compile_filter_rules(vec![make_rule("ab", "contains", "match")])
+            .expect("rule compile should succeed");
+        let ranges = collect_filter_rule_ranges("abxxabyyab", &compiled[0], 2);
+
+        assert_eq!(ranges, vec![(0, 2), (4, 6)]);
+    }
+}
