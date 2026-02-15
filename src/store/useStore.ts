@@ -11,6 +11,36 @@ export interface FileTab {
   largeFileMode: boolean;
   syntaxOverride?: SyntaxKey | null;
   isDirty?: boolean;
+  tabType?: 'file' | 'diff';
+  diffPayload?: DiffTabPayload;
+}
+
+export interface DiffTabPayload {
+  sourceTabId: string;
+  targetTabId: string;
+  sourceName: string;
+  targetName: string;
+  sourcePath: string;
+  targetPath: string;
+  alignedSourceLines: string[];
+  alignedTargetLines: string[];
+  alignedSourcePresent: boolean[];
+  alignedTargetPresent: boolean[];
+  diffLineNumbers: number[];
+  sourceDiffLineNumbers: number[];
+  targetDiffLineNumbers: number[];
+  sourceLineCount: number;
+  targetLineCount: number;
+  alignedLineCount: number;
+  // Backward compatibility for old in-memory diff payloads.
+  sourceContent?: string;
+  targetContent?: string;
+}
+
+export function isDiffTab(
+  tab?: FileTab | null
+): tab is FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload } {
+  return tab?.tabType === 'diff' && !!tab.diffPayload;
 }
 
 export type LineEnding = 'CRLF' | 'LF' | 'CR';
@@ -340,3 +370,4 @@ export const useStore = create<AppState>((set) => ({
     };
   }),
 }));
+

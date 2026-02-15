@@ -22,7 +22,7 @@ export function StatusBar() {
     const updateTab = useStore((state) => state.updateTab);
     const cursorPositionByTab = useStore((state) => state.cursorPositionByTab);
     const settings = useStore((state) => state.settings);
-    const activeTab = tabs.find(t => t.id === activeTabId);
+    const activeTab = tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff');
     const activeCursorPosition = activeTab ? cursorPositionByTab[activeTab.id] : null;
     const cursorLine = activeCursorPosition?.line ?? 1;
     const cursorColumn = activeCursorPosition?.column ?? 1;

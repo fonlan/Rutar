@@ -545,7 +545,10 @@ export function SearchReplacePanel() {
   const language = useStore((state) => state.settings.language);
   const fontFamily = useStore((state) => state.settings.fontFamily);
   const fontSize = useStore((state) => state.settings.fontSize);
-  const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [tabs, activeTabId]);
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff') ?? null,
+    [tabs, activeTabId]
+  );
   const messages = useMemo(
     () => getSearchPanelMessages(language),
     [language]

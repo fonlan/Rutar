@@ -134,7 +134,8 @@ export function Toolbar() {
     const setOutlineData = useStore((state) => state.setOutlineData);
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
-    const activeTab = tabs.find(t => t.id === activeTabId);
+    const activeTab = tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff');
+    const activeTabIdForActions = activeTab?.id ?? null;
     const activeTabLargeFileMode = !!activeTab?.largeFileMode;
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
@@ -190,17 +191,17 @@ export function Toolbar() {
     }, [tr]);
 
     const refreshSelectionState = useCallback(() => {
-        if (!activeTabId || activeTabLargeFileMode) {
+        if (!activeTabIdForActions || activeTabLargeFileMode) {
             setCanClipboardSelectionAction(false);
             return;
         }
 
         const editor = getActiveEditorElement();
         setCanClipboardSelectionAction(hasSelectionInEditorElement(editor));
-    }, [activeTabId, activeTabLargeFileMode]);
+    }, [activeTabIdForActions, activeTabLargeFileMode]);
 
     const refreshEditHistoryState = useCallback(async (targetTabId?: string) => {
-        const id = targetTabId ?? activeTabId;
+        const id = targetTabId ?? activeTabIdForActions;
         if (!id) {
             setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
             return;
@@ -222,18 +223,18 @@ export function Toolbar() {
                 setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
             }
         }
-    }, [activeTabId, updateTab]);
+    }, [activeTabIdForActions, updateTab]);
 
     useEffect(() => {
-        if (!activeTabId) {
+        if (!activeTabIdForActions) {
             setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
             setCanClipboardSelectionAction(false);
             return;
         }
 
-        void refreshEditHistoryState(activeTabId);
+        void refreshEditHistoryState(activeTabIdForActions);
         refreshSelectionState();
-    }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
+    }, [activeTabIdForActions, refreshEditHistoryState, refreshSelectionState]);
 
     useEffect(() => {
         if (!markdownPreviewOpen) {
@@ -261,21 +262,21 @@ export function Toolbar() {
 
         const handleDocumentUpdated = (event: Event) => {
             const customEvent = event as CustomEvent<{ tabId?: string }>;
-            if (!activeTabId || customEvent.detail?.tabId !== activeTabId) {
+            if (!activeTabIdForActions || customEvent.detail?.tabId !== activeTabIdForActions) {
                 return;
             }
 
-            void refreshEditHistoryState(activeTabId);
+            void refreshEditHistoryState(activeTabIdForActions);
             refreshSelectionState();
         };
 
         const handleForceRefresh = (event: Event) => {
             const customEvent = event as CustomEvent<{ tabId?: string }>;
-            if (!activeTabId || customEvent.detail?.tabId !== activeTabId) {
+            if (!activeTabIdForActions || customEvent.detail?.tabId !== activeTabIdForActions) {
                 return;
             }
 
-            void refreshEditHistoryState(activeTabId);
+            void refreshEditHistoryState(activeTabIdForActions);
             refreshSelectionState();
         };
 
@@ -292,7 +293,7 @@ export function Toolbar() {
                 selectionChangeRafRef.current = null;
             }
         };
-    }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
+    }, [activeTabIdForActions, refreshEditHistoryState, refreshSelectionState]);
 
     const recentFileItems = useMemo(
         () => recentFiles.map((path) => ({ path, name: pathBaseName(path) })),
@@ -414,13 +415,13 @@ export function Toolbar() {
 
         try {
             await openFilePath(path);
-            if (activeTabId) {
-                void refreshEditHistoryState(activeTabId);
+            if (activeTabIdForActions) {
+                void refreshEditHistoryState(activeTabIdForActions);
             }
         } catch (error) {
             console.error('Failed to open recent file:', error);
         }
-    }, [activeTabId, refreshEditHistoryState]);
+    }, [activeTabIdForActions, refreshEditHistoryState]);
 
     const handleOpenRecentFolder = useCallback(async (path: string) => {
         setRecentMenu(null);

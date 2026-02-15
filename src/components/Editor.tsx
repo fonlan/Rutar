@@ -894,7 +894,13 @@ function dispatchDocumentUpdated(tabId: string) {
   );
 }
 
-export function Editor({ tab }: { tab: FileTab }) {
+export function Editor({
+  tab,
+  diffHighlightLines = [],
+}: {
+  tab: FileTab;
+  diffHighlightLines?: number[];
+}) {
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
@@ -979,6 +985,15 @@ export function Editor({ tab }: { tab: FileTab }) {
 
   const syncedTextRef = useRef('');
   const lineNumberMultiSelectionSet = useMemo(() => new Set(lineNumberMultiSelection), [lineNumberMultiSelection]);
+  const diffHighlightLineSet = useMemo(
+    () =>
+      new Set(
+        (diffHighlightLines || [])
+          .filter((line) => Number.isFinite(line) && line > 0)
+          .map((line) => Math.floor(line))
+      ),
+    [diffHighlightLines]
+  );
 
   const fontSize = settings.fontSize || 14;
   const tabSize = Number.isFinite(settings.tabWidth) ? Math.min(8, Math.max(1, Math.floor(settings.tabWidth))) : 4;
@@ -5998,6 +6013,10 @@ export function Editor({ tab }: { tab: FileTab }) {
                     lineHeight: `${lineHeightPx}px`,
                   }}
                 className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
+                    diffHighlightLineSet.has(index + 1)
+                      ? 'bg-red-500/10 dark:bg-red-500/14'
+                      : ''
+                  } ${
                     outlineFlashLine === index + 1
                       ? 'bg-primary/15 dark:bg-primary/20'
                       : lineNumberMultiSelectionSet.has(index + 1)
@@ -6055,7 +6074,9 @@ export function Editor({ tab }: { tab: FileTab }) {
                   lineHeight: `${lineHeightPx}px`,
                 }}
                 className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
-                  bookmarks.includes(index + 1)
+                  diffHighlightLineSet.has(index + 1)
+                    ? 'text-red-600 dark:text-red-300 font-semibold'
+                    : bookmarks.includes(index + 1)
                     ? 'text-amber-500/90 font-semibold'
                     : lineNumberMultiSelectionSet.has(index + 1)
                     ? 'text-blue-600 dark:text-blue-300 font-semibold'

@@ -19,6 +19,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
 - **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
 - **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, supports Mermaid code-block diagram rendering, and shares editor vertical/horizontal scrolling behavior.
+- **Tab Diff Compare View**: Tab context menu supports two-step compare (set source tab, then compare target tab) and opens a dedicated diff tab with resizable left/right panels, line-level difference highlight, divider difference markers, and visible-range shadow. Missing lines are rendered as true placeholder rows so both sides stay strictly row-aligned. Both panels are editable, support per-panel save in header and `Ctrl+S` save for focused panel, and changes are written back to real documents via backend commands. The line alignment/diff calculation runs in Rust backend to keep large-file compare responsive.
 
 ## Configuration
 
@@ -76,10 +77,12 @@ npm run tauri build
 
 - `src/`: Frontend React application.
 - `src/components/MarkdownPreviewPanel.tsx`: Right-side live Markdown preview panel and scroll-follow behavior.
+- `src/components/DiffEditor.tsx`: Side-by-side diff tab renderer with draggable split layout, aligned placeholder rows, editable compare layer, and divider markers.
 - `src/lib/markdown.ts`: Markdown file detection helper used by preview features.
 - `src-tauri/`: Rust backend, IPC commands, and state management.
 - `src-tauri/src/commands/config.rs`: App config persistence, filter-group config, and Windows integration submodule.
 - `src-tauri/src/commands/document.rs`: Document version and syntax-token generation submodule.
+- `src-tauri/src/commands/diff.rs`: Backend line-based diff and aligned side-by-side compare payload generation.
 - `src-tauri/src/commands/file_io.rs`: File open/save/new operations and filesystem utility submodule.
 - `src-tauri/src/commands/editing.rs`: Edit/undo-redo, document cleanup, and structured format commands submodule.
 - `src-tauri/src/commands/formatting.rs`: Structured data formatting/minify helpers for JSON/YAML/XML/HTML/TOML.

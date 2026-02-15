@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 mod config;
 mod constants;
+mod diff;
 mod document;
 mod editing;
 pub(crate) mod editing_commands;
@@ -252,4 +253,13 @@ pub fn filter_outline_nodes(
     keyword: String,
 ) -> Vec<outline::OutlineNode> {
     outline::filter_outline_nodes_impl(nodes, keyword)
+}
+
+#[tauri::command]
+pub async fn compare_documents_by_line(
+    state: State<'_, AppState>,
+    source_id: String,
+    target_id: String,
+) -> Result<diff::LineDiffResult, String> {
+    diff::compare_documents_by_line_impl(state, source_id, target_id).await
 }

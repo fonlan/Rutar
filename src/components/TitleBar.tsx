@@ -67,6 +67,19 @@ interface FileOpenLoadingEventDetail {
     status: 'start' | 'end';
 }
 
+interface LineDiffComparisonResult {
+    alignedSourceLines: string[];
+    alignedTargetLines: string[];
+    alignedSourcePresent: boolean[];
+    alignedTargetPresent: boolean[];
+    diffLineNumbers: number[];
+    sourceDiffLineNumbers: number[];
+    targetDiffLineNumbers: number[];
+    sourceLineCount: number;
+    targetLineCount: number;
+    alignedLineCount: number;
+}
+
 const defaultTabFileIconConfig: TabFileIconConfig = {
     Icon: FileText,
     className: 'text-muted-foreground',
@@ -130,6 +143,10 @@ function pathBaseName(path: string) {
     return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
 }
 
+function isRegularFileTab(tab?: FileTab | null): tab is FileTab {
+    return !!tab && tab.tabType !== 'diff';
+}
+
 export function TitleBar() {
     const isReleaseBuild = import.meta.env.PROD;
     const tabs = useStore((state) => state.tabs);
@@ -143,6 +160,7 @@ export function TitleBar() {
     const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
     const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
     const [tabPathTooltip, setTabPathTooltip] = useState<TabPathTooltipState | null>(null);
+    const [compareSourceTabId, setCompareSourceTabId] = useState<string | null>(null);
     const [pendingOpenTabs, setPendingOpenTabs] = useState<PendingOpenTab[]>([]);
     const tabContextMenuRef = useRef<HTMLDivElement>(null);
     const tabPathTooltipRef = useRef<HTMLDivElement>(null);
@@ -158,6 +176,42 @@ export function TitleBar() {
     const contextMenuTabDirectory = contextMenuTab?.path
         ? getParentDirectoryPath(contextMenuTab.path)
         : null;
+    const compareSourceTab = compareSourceTabId
+        ? tabs.find((tab) => tab.id === compareSourceTabId) ?? null
+        : null;
+    const canSetCompareSource = isRegularFileTab(contextMenuTab);
+    const canCompareWithSelectedSource =
+        isRegularFileTab(contextMenuTab)
+        && isRegularFileTab(compareSourceTab)
+        && contextMenuTab.id !== compareSourceTab.id;
+    const setCompareSourceLabel = settings.language === 'zh-CN'
+        ? '设为对比源标签页'
+        : 'Set as compare source';
+    const clearCompareSourceLabel = settings.language === 'zh-CN'
+        ? '清除对比源标签页'
+        : 'Clear compare source';
+    const compareWithSourceLabel = compareSourceTab
+        ? (
+            settings.language === 'zh-CN'
+                ? `与“${compareSourceTab.name}”对比`
+                : `Compare with "${compareSourceTab.name}"`
+        )
+        : (
+            settings.language === 'zh-CN'
+                ? '与已选源标签页对比'
+                : 'Compare with selected source'
+        );
+    const compareSourceHintLabel = compareSourceTab
+        ? (
+            settings.language === 'zh-CN'
+                ? `已选源：${compareSourceTab.name}`
+                : `Source: ${compareSourceTab.name}`
+        )
+        : (
+            settings.language === 'zh-CN'
+                ? '未选择对比源'
+                : 'No compare source selected'
+        );
 
     const copyToClipboard = useCallback(async (text: string) => {
         if (!navigator.clipboard?.writeText) {
@@ -331,13 +385,92 @@ export function TitleBar() {
         }
     }, [addTab, closeTabs, settings.newFileLineEnding, tabs]);
 
+    const handleSetCompareSource = useCallback((tab: FileTab | null) => {
+        if (!isRegularFileTab(tab)) {
+            return;
+        }
+
+        if (compareSourceTabId === tab.id) {
+            setCompareSourceTabId(null);
+            return;
+        }
+
+        setCompareSourceTabId(tab.id);
+    }, [compareSourceTabId]);
+
+    const handleCreateDiffTab = useCallback(async (targetTab: FileTab | null) => {
+        if (!isRegularFileTab(targetTab) || !isRegularFileTab(compareSourceTab)) {
+            return;
+        }
+
+        if (targetTab.id === compareSourceTab.id) {
+            return;
+        }
+
+        const existingTab = tabs.find(
+            (tab) =>
+                tab.tabType === 'diff'
+                && tab.diffPayload
+                && tab.diffPayload.sourceTabId === compareSourceTab.id
+                && tab.diffPayload.targetTabId === targetTab.id
+        );
+
+        if (existingTab) {
+            setActiveTab(existingTab.id);
+            return;
+        }
+
+        try {
+            const lineDiff = await invoke<LineDiffComparisonResult>('compare_documents_by_line', {
+                sourceId: compareSourceTab.id,
+                targetId: targetTab.id,
+            });
+            const diffTabName = settings.language === 'zh-CN'
+                ? `对比: ${compareSourceTab.name} <> ${targetTab.name}`
+                : `Diff: ${compareSourceTab.name} <> ${targetTab.name}`;
+
+            addTab({
+                id: `diff:${compareSourceTab.id}:${targetTab.id}:${Date.now()}`,
+                name: diffTabName,
+                path: '',
+                encoding: compareSourceTab.encoding || 'UTF-8',
+                lineEnding: compareSourceTab.lineEnding,
+                lineCount: Math.max(1, lineDiff.alignedLineCount),
+                largeFileMode: false,
+                syntaxOverride: 'plain_text',
+                isDirty: false,
+                tabType: 'diff',
+                diffPayload: {
+                    sourceTabId: compareSourceTab.id,
+                    targetTabId: targetTab.id,
+                    sourceName: compareSourceTab.name,
+                    targetName: targetTab.name,
+                    sourcePath: compareSourceTab.path,
+                    targetPath: targetTab.path,
+                    alignedSourceLines: lineDiff.alignedSourceLines,
+                    alignedTargetLines: lineDiff.alignedTargetLines,
+                    alignedSourcePresent: lineDiff.alignedSourcePresent,
+                    alignedTargetPresent: lineDiff.alignedTargetPresent,
+                    diffLineNumbers: lineDiff.diffLineNumbers,
+                    sourceDiffLineNumbers: lineDiff.sourceDiffLineNumbers,
+                    targetDiffLineNumbers: lineDiff.targetDiffLineNumbers,
+                    sourceLineCount: Math.max(1, lineDiff.sourceLineCount),
+                    targetLineCount: Math.max(1, lineDiff.targetLineCount),
+                    alignedLineCount: Math.max(1, lineDiff.alignedLineCount),
+                },
+            });
+        } catch (error) {
+            console.error('Failed to create diff tab:', error);
+        }
+    }, [addTab, compareSourceTab, setActiveTab, settings.language, tabs]);
+
     const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();
         event.stopPropagation();
         setTabPathTooltip(null);
 
-        const menuWidth = 176;
-        const menuHeight = 212;
+        const menuWidth = 248;
+        const menuHeight = 332;
         const viewportPadding = 8;
 
         const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
@@ -542,6 +675,16 @@ export function TitleBar() {
             setTabContextMenu(null);
         }
     }, [tabContextMenu, tabs]);
+
+    useEffect(() => {
+        if (!compareSourceTabId) {
+            return;
+        }
+
+        if (!tabs.some((tab) => tab.id === compareSourceTabId && tab.tabType !== 'diff')) {
+            setCompareSourceTabId(null);
+        }
+    }, [compareSourceTabId, tabs]);
 
     useEffect(() => {
         if (!tabPathTooltip) {
@@ -807,6 +950,34 @@ export function TitleBar() {
                     className="fixed z-[80] min-w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
                     style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
                 >
+                    <div className="px-3 py-1 text-[11px] text-muted-foreground">
+                        {compareSourceHintLabel}
+                    </div>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setTabContextMenu(null);
+                            handleSetCompareSource(contextMenuTab);
+                        }}
+                        disabled={!canSetCompareSource}
+                    >
+                        {compareSourceTabId && contextMenuTab?.id === compareSourceTabId
+                            ? clearCompareSourceLabel
+                            : setCompareSourceLabel}
+                    </button>
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setTabContextMenu(null);
+                            void handleCreateDiffTab(contextMenuTab);
+                        }}
+                        disabled={!canCompareWithSelectedSource}
+                    >
+                        {compareWithSourceLabel}
+                    </button>
+                    <div className="my-1 h-px bg-border" />
                     <button
                         type="button"
                         className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"

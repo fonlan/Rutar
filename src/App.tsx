@@ -9,7 +9,7 @@ import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
 import { type MouseGestureAction, type MouseGestureBinding, sanitizeMouseGestures } from '@/lib/mouseGestures';
 import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
-import { FileTab, useStore, AppLanguage, AppTheme, LineEnding } from '@/store/useStore';
+import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, isDiffTab } from '@/store/useStore';
 import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
@@ -67,6 +67,10 @@ interface WindowsFileAssociationStatus {
 
 const Editor = lazy(async () => ({
   default: (await import('@/components/Editor')).Editor,
+}));
+
+const DiffEditor = lazy(async () => ({
+  default: (await import('@/components/DiffEditor')).DiffEditor,
 }));
 
 const SettingsModal = lazy(async () => ({
@@ -1233,6 +1237,7 @@ function App() {
   }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
   
   const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeFileTab = activeTab && !isDiffTab(activeTab) ? activeTab : null;
   const editorFallback = <div className="h-full w-full bg-background" aria-hidden="true" />;
 
   useEffect(() => {
@@ -1279,11 +1284,11 @@ function App() {
   }, [activeTabId, bookmarkSidebarOpen, markdownPreviewOpen, outlineOpen, sidebarOpen]);
 
   useEffect(() => {
-    if (!activeTab || !outlineOpen) {
+    if (!activeFileTab || !outlineOpen) {
       return;
     }
 
-    const outlineType = detectOutlineType(activeTab);
+    const outlineType = detectOutlineType(activeFileTab);
     if (outlineType) {
       return;
     }
@@ -1294,14 +1299,14 @@ function App() {
       nodes: [],
       error: null,
     });
-  }, [activeTab, outlineOpen, setOutlineData]);
+  }, [activeFileTab, outlineOpen, setOutlineData]);
 
   useEffect(() => {
-    if (!outlineOpen || !activeTab) {
+    if (!outlineOpen || !activeFileTab) {
       return;
     }
 
-    const outlineType = detectOutlineType(activeTab);
+    const outlineType = detectOutlineType(activeFileTab);
     if (!outlineType) {
       setOutlineData({
         outlineType: null,
@@ -1315,7 +1320,7 @@ function App() {
 
     const refreshTree = async () => {
       try {
-        const nodes = await loadOutline(activeTab, outlineType);
+        const nodes = await loadOutline(activeFileTab, outlineType);
         if (cancelled) {
           return;
         }
@@ -1343,7 +1348,7 @@ function App() {
 
     const handleDocumentUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ tabId?: string }>;
-      if (customEvent.detail?.tabId !== activeTab.id) {
+      if (customEvent.detail?.tabId !== activeFileTab.id) {
         return;
       }
 
@@ -1356,7 +1361,7 @@ function App() {
       cancelled = true;
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [activeTab, outlineOpen, setOutlineData]);
+  }, [activeFileTab, outlineOpen, setOutlineData]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden" data-rutar-app-root="true">
@@ -1384,13 +1389,17 @@ function App() {
             <div className="min-w-0 flex-1 relative overflow-hidden" data-rutar-gesture-area="true">
               {activeTab ? (
                 <Suspense fallback={editorFallback}>
-                  <Editor key={activeTab.id} tab={activeTab} />
+                  {isDiffTab(activeTab) ? (
+                    <DiffEditor key={activeTab.id} tab={activeTab} />
+                  ) : (
+                    <Editor key={activeTab.id} tab={activeTab} />
+                  )}
                 </Suspense>
               ) : (
                 editorFallback
               )}
             </div>
-            <MarkdownPreviewPanel open={markdownPreviewOpen} tab={activeTab ?? null} />
+            <MarkdownPreviewPanel open={markdownPreviewOpen} tab={activeFileTab} />
           </div>
           <Suspense fallback={null}>
             <StatusBar />
