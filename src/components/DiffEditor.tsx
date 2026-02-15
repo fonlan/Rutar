@@ -365,6 +365,20 @@ function buildCopyTextWithoutVirtualRows(
   return copiedParts.join('\n');
 }
 
+function getLineSelectionRange(lines: string[], rowIndex: number) {
+  const safeRowIndex = Math.max(0, Math.min(rowIndex, Math.max(0, lines.length - 1)));
+  let start = 0;
+  for (let index = 0; index < safeRowIndex; index += 1) {
+    start += (lines[index] ?? '').length + 1;
+  }
+
+  const lineLength = (lines[safeRowIndex] ?? '').length;
+  return {
+    start,
+    end: start + lineLength,
+  };
+}
+
 function reconcilePresenceAfterTextEdit(
   oldLines: string[],
   oldPresent: boolean[],
@@ -549,6 +563,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const lastEditAtRef = useRef(0);
   const deferredBackendDiffRef = useRef<LineDiffComparisonResult | null>(null);
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
+  const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const sourceTab = useMemo(
     () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
@@ -1223,6 +1239,38 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     []
   );
 
+  const handleLineNumberPointerDown = useCallback(
+    (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const snapshot = lineDiffRef.current;
+      const present = side === 'source'
+        ? snapshot.alignedSourcePresent
+        : snapshot.alignedTargetPresent;
+      if (!present[rowIndex]) {
+        return;
+      }
+
+      const textarea = side === 'source'
+        ? sourceTextareaRef.current
+        : targetTextareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      const lines = side === 'source'
+        ? snapshot.alignedSourceLines
+        : snapshot.alignedTargetLines;
+      const { start, end } = getLineSelectionRange(lines, rowIndex);
+
+      setActivePanel(side);
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(start, end);
+    },
+    []
+  );
+
   const availableWidth = Math.max(0, width);
   const contentWidth = Math.max(0, availableWidth - SPLITTER_WIDTH_PX);
   const minimumPairWidth = MIN_PANEL_WIDTH_PX * 2;
@@ -1405,9 +1453,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                         <div
                           key={`source-ln-${index}`}
                           className={cn(
-                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground',
+                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
+                            linePresent && 'cursor-pointer hover:bg-muted/40',
                             isDiffLine && 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300'
                           )}
+                          onPointerDown={(event) => {
+                            handleLineNumberPointerDown('source', index, event);
+                          }}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
@@ -1436,6 +1488,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                     </div>
 
                     <textarea
+                      ref={sourceTextareaRef}
                       value={sourcePanelText}
                       onChange={(event) => {
                         const target = event.currentTarget;
@@ -1517,9 +1570,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                         <div
                           key={`target-ln-${index}`}
                           className={cn(
-                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground',
+                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
+                            linePresent && 'cursor-pointer hover:bg-muted/40',
                             isDiffLine && 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300'
                           )}
+                          onPointerDown={(event) => {
+                            handleLineNumberPointerDown('target', index, event);
+                          }}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
@@ -1548,6 +1605,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                     </div>
 
                     <textarea
+                      ref={targetTextareaRef}
                       value={targetPanelText}
                       onChange={(event) => {
                         const target = event.currentTarget;
