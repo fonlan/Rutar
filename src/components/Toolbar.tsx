@@ -13,6 +13,7 @@ import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
+import { isMarkdownTab } from '@/lib/markdown';
 import { cn } from '@/lib/utils';
 
 function dispatchEditorForceRefresh(
@@ -138,6 +139,7 @@ export function Toolbar() {
     const canEdit = !!activeTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const canOutline = !!activeTab && !!detectOutlineType(activeTab);
+    const canMarkdownPreview = !!activeTab && isMarkdownTab(activeTab);
     const [canClipboardSelectionAction, setCanClipboardSelectionAction] = useState(false);
     const [editHistoryState, setEditHistoryState] = useState<EditHistoryState>(DEFAULT_EDIT_HISTORY_STATE);
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
@@ -167,11 +169,13 @@ export function Toolbar() {
     const noSelectedTextReason = tr('toolbar.disabled.noSelectedText');
     const noUndoHistoryReason = tr('toolbar.disabled.noUndoHistory');
     const noRedoHistoryReason = tr('toolbar.disabled.noRedoHistory');
+    const notMarkdownReason = tr('preview.notMarkdown');
     const saveDisabledReason = !activeTab ? noActiveDocumentReason : !canSaveActiveTab ? noUnsavedChangesReason : undefined;
     const saveAllDisabledReason = !canSaveAnyTab ? noUnsavedDocumentsReason : undefined;
     const cutCopyDisabledReason = !activeTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
     const undoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
     const redoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
+    const previewDisabledReason = !activeTab ? noActiveDocumentReason : !canMarkdownPreview ? notMarkdownReason : undefined;
 
     const formatWordCountResult = useCallback((result: WordCountInfo) => {
         const lines = [
@@ -230,6 +234,16 @@ export function Toolbar() {
         void refreshEditHistoryState(activeTabId);
         refreshSelectionState();
     }, [activeTabId, refreshEditHistoryState, refreshSelectionState]);
+
+    useEffect(() => {
+        if (!markdownPreviewOpen) {
+            return;
+        }
+
+        if (!canMarkdownPreview) {
+            toggleMarkdownPreview(false);
+        }
+    }, [canMarkdownPreview, markdownPreviewOpen, toggleMarkdownPreview]);
 
     useEffect(() => {
         const flushSelectionChange = () => {
@@ -978,8 +992,9 @@ export function Toolbar() {
                 icon={PanelRightOpen}
                 title={tr('toolbar.preview')}
                 onClick={() => toggleMarkdownPreview()}
-                active={markdownPreviewOpen}
-                disabled={!activeTab}
+                active={canMarkdownPreview && markdownPreviewOpen}
+                disabled={!canMarkdownPreview}
+                disabledReason={previewDisabledReason}
             />
             <ToolbarBtn
                 icon={Text}
