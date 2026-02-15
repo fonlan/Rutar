@@ -113,3 +113,30 @@ pub(super) fn build_javascript_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_javascript_outline_node_should_build_function_node() {
+        let source = "function run() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_javascript::LANGUAGE.into())
+            .expect("set javascript parser");
+        let tree = parser
+            .parse(source, None)
+            .expect("parse javascript source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "function_declaration", &mut nodes);
+        let function_node = nodes.into_iter().next().expect("function node should exist");
+
+        let outlined =
+            build_javascript_outline_node(function_node, source).expect("outline should exist");
+        assert_eq!(outlined.node_type, "function");
+        assert_eq!(outlined.label, "function run()");
+    }
+}

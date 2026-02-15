@@ -171,3 +171,31 @@ pub(super) fn build_php_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_php_outline_node_should_build_class_with_method_child() {
+        let source = "<?php class Service { function run() {} }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_php::LANGUAGE_PHP.into())
+            .expect("set php parser");
+        let tree = parser.parse(source, None).expect("parse php source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "class_declaration", &mut nodes);
+        let class_node = nodes.into_iter().next().expect("class node should exist");
+
+        let outlined = build_php_outline_node(class_node, source).expect("outline should exist");
+        assert_eq!(outlined.node_type, "class");
+        assert_eq!(outlined.label, "class Service");
+        assert!(outlined
+            .children
+            .iter()
+            .any(|node| node.node_type == "method" && node.label == "method run()"));
+    }
+}

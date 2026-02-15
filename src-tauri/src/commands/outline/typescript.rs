@@ -376,3 +376,30 @@ pub(super) fn build_typescript_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_typescript_outline_node_should_build_interface_node() {
+        let source = "interface User { id: number }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
+            .expect("set typescript parser");
+        let tree = parser
+            .parse(source, None)
+            .expect("parse typescript source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "interface_declaration", &mut nodes);
+        let interface_node = nodes.into_iter().next().expect("interface node should exist");
+
+        let outlined =
+            build_typescript_outline_node(interface_node, source).expect("outline should exist");
+        assert_eq!(outlined.node_type, "interface");
+        assert_eq!(outlined.label, "interface User");
+    }
+}

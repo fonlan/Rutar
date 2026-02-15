@@ -202,3 +202,22 @@ pub fn search_in_document(
 ) -> Result<SearchResultPayload, String> {
     search::search_in_document_impl(state, id, keyword, mode, case_sensitive)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_entrypoints_should_be_linkable() {
+        let _ = search_first_in_document as usize;
+        let _ = search_in_document_chunk as usize;
+        let _ = search_count_in_document as usize;
+        let _ = replace_all_in_document as usize;
+        let _ = replace_current_in_document as usize;
+        let _ = step_result_filter_search_in_document as usize;
+        let _ = filter_count_in_document as usize;
+        let _ = filter_in_document_chunk as usize;
+        let _ = step_result_filter_search_in_filter_document as usize;
+        let _ = search_in_document as usize;
+    }
+}

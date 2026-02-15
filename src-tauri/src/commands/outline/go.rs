@@ -255,3 +255,27 @@ pub(super) fn build_go_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_go_outline_node_should_build_function_node() {
+        let source = "func Run() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .expect("set go parser");
+        let tree = parser.parse(source, None).expect("parse go source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "function_declaration", &mut nodes);
+        let function_node = nodes.into_iter().next().expect("function node should exist");
+
+        let outlined = build_go_outline_node(function_node, source).expect("outline should exist");
+        assert_eq!(outlined.node_type, "function");
+        assert_eq!(outlined.label, "func Run()");
+    }
+}

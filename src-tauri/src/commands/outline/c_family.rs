@@ -268,3 +268,28 @@ pub(super) fn build_c_family_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_c_family_outline_node_should_build_function_for_c() {
+        let source = "int add(int a, int b) { return a + b; }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_c::LANGUAGE.into())
+            .expect("set c parser");
+        let tree = parser.parse(source, None).expect("parse c source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "function_definition", &mut nodes);
+        let function_node = nodes.into_iter().next().expect("function node should exist");
+
+        let outlined = build_c_family_outline_node(function_node, source, OutlineFileType::C)
+            .expect("outline should exist");
+        assert_eq!(outlined.node_type, "function");
+        assert_eq!(outlined.label, "fn add()");
+    }
+}

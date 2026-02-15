@@ -205,3 +205,32 @@ pub(super) fn build_kotlin_outline_node(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_kotlin_outline_node_should_build_class_with_function_child() {
+        let source = "class Service { fun run() {} }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())
+            .expect("set kotlin parser");
+        let tree = parser.parse(source, None).expect("parse kotlin source");
+        let root = tree.root_node();
+
+        let mut nodes = Vec::new();
+        collect_named_descendants_by_kind(root, "class_declaration", &mut nodes);
+        let class_node = nodes.into_iter().next().expect("class node should exist");
+
+        let outlined =
+            build_kotlin_outline_node(class_node, source).expect("outline should exist");
+        assert_eq!(outlined.node_type, "class");
+        assert_eq!(outlined.label, "class Service");
+        assert!(outlined
+            .children
+            .iter()
+            .any(|node| node.node_type == "function" && node.label == "fun run()"));
+    }
+}
