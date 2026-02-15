@@ -64,6 +64,12 @@ interface DiffContextMenuState {
   side: ActivePanel;
 }
 
+interface DiffHeaderContextMenuState {
+  x: number;
+  y: number;
+  side: ActivePanel;
+}
+
 type ActivePanel = 'source' | 'target';
 type DiffLineKind = 'insert' | 'delete' | 'modify';
 
@@ -76,6 +82,36 @@ const REFRESH_DEBOUNCE_MS = 120;
 const EDIT_DEBOUNCE_MS = 90;
 const INPUT_ACTIVE_HOLD_MS = 450;
 const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
+
+function getParentDirectoryPath(filePath: string): string | null {
+  const normalizedPath = filePath.trim();
+
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  if (separatorIndex === 0) {
+    return normalizedPath[0];
+  }
+
+  if (separatorIndex === 2 && /^[a-zA-Z]:[\\/]/.test(normalizedPath)) {
+    return normalizedPath.slice(0, 3);
+  }
+
+  return normalizedPath.slice(0, separatorIndex);
+}
+
+function pathBaseName(path: string) {
+  const normalizedPath = path.trim().replace(/[\\/]+$/, '');
+  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+  return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
+}
 
 function resolveAlignedDiffKind(
   index: number,
@@ -629,6 +665,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [sourceScroller, setSourceScroller] = useState<HTMLElement | null>(null);
   const [targetScroller, setTargetScroller] = useState<HTMLElement | null>(null);
   const [diffContextMenu, setDiffContextMenu] = useState<DiffContextMenuState | null>(null);
+  const [diffHeaderContextMenu, setDiffHeaderContextMenu] = useState<DiffHeaderContextMenuState | null>(null);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -659,6 +696,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const diffContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const diffHeaderContextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const sourceTab = useMemo(
     () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
@@ -668,10 +706,24 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     () => tabs.find((item) => item.id === tab.diffPayload.targetTabId && item.tabType !== 'diff') ?? null,
     [tab.diffPayload.targetTabId, tabs]
   );
+  const sourcePath = sourceTab?.path || tab.diffPayload.sourcePath || '';
+  const targetPath = targetTab?.path || tab.diffPayload.targetPath || '';
+  const sourceDisplayName = sourceTab?.name || tab.diffPayload.sourceName;
+  const targetDisplayName = targetTab?.name || tab.diffPayload.targetName;
 
   useEffect(() => {
     setActiveDiffPanel(tab.id, activePanel);
   }, [activePanel, setActiveDiffPanel, tab.id]);
+
+  const resolvePanelPath = useCallback(
+    (side: ActivePanel) => (side === 'source' ? sourcePath : targetPath),
+    [sourcePath, targetPath]
+  );
+
+  const resolvePanelDisplayName = useCallback(
+    (side: ActivePanel) => (side === 'source' ? sourceDisplayName : targetDisplayName),
+    [sourceDisplayName, targetDisplayName]
+  );
 
   const handleSourceScrollerRef = useCallback((element: HTMLElement | null) => {
     setSourceScroller((previous) => (previous === element ? previous : element));
@@ -1465,6 +1517,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         textarea.focus({ preventScroll: true });
       }
       setActivePanel(side);
+      setDiffHeaderContextMenu(null);
 
       const menuWidth = 176;
       const menuHeight = 168;
@@ -1485,6 +1538,89 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       });
     },
     []
+  );
+
+  const handleHeaderContextMenu = useCallback(
+    (side: ActivePanel, event: ReactMouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      setActivePanel(side);
+      setDiffContextMenu(null);
+
+      const menuWidth = 208;
+      const menuHeight = 172;
+      const viewportPadding = 8;
+      const x = Math.max(
+        viewportPadding,
+        Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+      );
+      const y = Math.max(
+        viewportPadding,
+        Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+      );
+
+      setDiffHeaderContextMenu({
+        x,
+        y,
+        side,
+      });
+    },
+    []
+  );
+
+  const copyTextToClipboard = useCallback(async (text: string) => {
+    if (!text || !navigator.clipboard?.writeText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error('Failed to write clipboard text:', error);
+    }
+  }, []);
+
+  const handleDiffHeaderContextMenuAction = useCallback(
+    async (
+      side: ActivePanel,
+      action: 'copy-file-name' | 'copy-directory' | 'copy-path' | 'open-containing-folder'
+    ) => {
+      const filePath = resolvePanelPath(side);
+      const fileName = filePath ? pathBaseName(filePath) : resolvePanelDisplayName(side);
+      const folderPath = filePath ? getParentDirectoryPath(filePath) : null;
+      setDiffHeaderContextMenu(null);
+
+      if (action === 'copy-file-name') {
+        await copyTextToClipboard(fileName);
+        return;
+      }
+
+      if (action === 'copy-directory') {
+        if (folderPath) {
+          await copyTextToClipboard(folderPath);
+        }
+        return;
+      }
+
+      if (action === 'copy-path') {
+        if (filePath) {
+          await copyTextToClipboard(filePath);
+        }
+        return;
+      }
+
+      if (!filePath) {
+        return;
+      }
+
+      try {
+        await invoke('open_in_file_manager', { path: filePath });
+      } catch (error) {
+        console.error('Failed to open file directory from diff header:', error);
+      }
+    },
+    [copyTextToClipboard, resolvePanelDisplayName, resolvePanelPath]
   );
 
   const handleCopyLinesToPanel = useCallback(
@@ -1665,23 +1801,33 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   useEffect(() => {
-    if (!diffContextMenu) {
+    if (!diffContextMenu && !diffHeaderContextMenu) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (diffContextMenuRef.current && target && !diffContextMenuRef.current.contains(target)) {
+      const clickedPanelMenu = !!(diffContextMenuRef.current && target && diffContextMenuRef.current.contains(target));
+      const clickedHeaderMenu = !!(
+        diffHeaderContextMenuRef.current
+        && target
+        && diffHeaderContextMenuRef.current.contains(target)
+      );
+
+      if (!clickedPanelMenu && !clickedHeaderMenu) {
         setDiffContextMenu(null);
+        setDiffHeaderContextMenu(null);
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDiffContextMenu(null);
+        setDiffHeaderContextMenu(null);
       }
     };
     const handleWindowBlur = () => {
       setDiffContextMenu(null);
+      setDiffHeaderContextMenu(null);
     };
 
     window.addEventListener('pointerdown', handlePointerDown, true);
@@ -1692,7 +1838,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       window.removeEventListener('keydown', handleEscape, true);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [diffContextMenu]);
+  }, [diffContextMenu, diffHeaderContextMenu]);
 
   const handleLineNumberPointerDown = useCallback(
     (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1830,6 +1976,21 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const pasteLabel = isZhCN ? '粘贴' : 'Paste';
   const copyToLeftLabel = isZhCN ? '复制到左侧' : 'Copy to Left';
   const copyToRightLabel = isZhCN ? '复制到右侧' : 'Copy to Right';
+  const copyFileNameLabel = isZhCN ? '复制文件名' : 'Copy File Name';
+  const copyDirectoryPathLabel = isZhCN ? '复制文件夹路径' : 'Copy Folder Path';
+  const copyFullPathLabel = isZhCN ? '复制完整路径' : 'Copy Full Path';
+  const openContainingFolderLabel = isZhCN ? '打开所在目录' : 'Open Containing Folder';
+  const diffHeaderMenuPath = diffHeaderContextMenu
+    ? resolvePanelPath(diffHeaderContextMenu.side)
+    : '';
+  const diffHeaderMenuFileName = diffHeaderContextMenu
+    ? (diffHeaderMenuPath
+      ? pathBaseName(diffHeaderMenuPath)
+      : resolvePanelDisplayName(diffHeaderContextMenu.side))
+    : '';
+  const diffHeaderMenuDirectory = diffHeaderMenuPath
+    ? getParentDirectoryPath(diffHeaderMenuPath)
+    : null;
 
   const renderUnavailable = (text: string) => (
     <div className="flex h-full items-center justify-center bg-muted/10 text-xs text-muted-foreground">
@@ -1854,9 +2015,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         <div className="flex min-w-0 items-center justify-between gap-2 px-2" style={{ width: leftWidthPx }}>
           <span
             className="min-w-0 truncate font-medium text-foreground"
-            title={sourceTab?.path || tab.diffPayload.sourcePath}
+            title={sourcePath}
+            onContextMenu={(event) => {
+              handleHeaderContextMenu('source', event);
+            }}
           >
-            {sourceTitlePrefix}: {sourceTab?.name || tab.diffPayload.sourceName}
+            {sourceTitlePrefix}: {sourceDisplayName}
           </span>
           <button
             type="button"
@@ -1886,9 +2050,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         <div className="flex min-w-0 items-center justify-between gap-2 px-2" style={{ width: rightWidthPx }}>
           <span
             className="min-w-0 truncate font-medium text-foreground"
-            title={targetTab?.path || tab.diffPayload.targetPath}
+            title={targetPath}
+            onContextMenu={(event) => {
+              handleHeaderContextMenu('target', event);
+            }}
           >
-            {targetTitlePrefix}: {targetTab?.name || tab.diffPayload.targetName}
+            {targetTitlePrefix}: {targetDisplayName}
           </span>
           <button
             type="button"
@@ -2197,6 +2364,55 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           <div className="mx-auto h-full w-px bg-border/90 shadow-[0_0_8px_rgba(0,0,0,0.18)]" />
         </div>
       </div>
+
+      {diffHeaderContextMenu && (
+        <div
+          ref={diffHeaderContextMenuRef}
+          className="fixed z-[96] w-52 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          style={{ left: diffHeaderContextMenu.x, top: diffHeaderContextMenu.y }}
+        >
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-file-name');
+            }}
+          >
+            {copyFileNameLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-directory');
+            }}
+            disabled={!diffHeaderMenuDirectory}
+          >
+            {copyDirectoryPathLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-path');
+            }}
+            disabled={!diffHeaderMenuPath}
+          >
+            {copyFullPathLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'open-containing-folder');
+            }}
+            disabled={!diffHeaderMenuPath}
+            title={diffHeaderMenuFileName}
+          >
+            {openContainingFolderLabel}
+          </button>
+        </div>
+      )}
 
       {diffContextMenu && (
         <div
