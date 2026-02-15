@@ -149,3 +149,63 @@ pub fn acknowledge_external_file_change(
 pub fn reload_file_from_disk(state: State<'_, AppState>, id: String) -> Result<FileInfo, String> {
     file_io::reload_file_from_disk_impl(state, id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn make_temp_dir_with_entries() -> (PathBuf, String, String) {
+        let root = std::env::temp_dir().join(format!(
+            "rutar-file-io-cmd-tests-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let child_dir = root.join("folder");
+        let child_file = root.join("file.txt");
+
+        fs::create_dir_all(&child_dir).expect("failed to create child directory");
+        fs::write(&child_file, "data").expect("failed to create child file");
+
+        (
+            root,
+            child_dir.to_string_lossy().to_string(),
+            child_file.to_string_lossy().to_string(),
+        )
+    }
+
+    #[test]
+    fn read_dir_wrapper_should_return_expected_sorted_entries() {
+        let (root, child_dir, child_file) = make_temp_dir_with_entries();
+        let root_path = root.to_string_lossy().to_string();
+
+        let entries = read_dir(root_path).expect("read_dir should succeed");
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].is_dir);
+        assert_eq!(entries[0].path, child_dir);
+        assert!(!entries[1].is_dir);
+        assert_eq!(entries[1].path, child_file);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn read_dir_if_directory_wrapper_should_return_none_for_file_path() {
+        let (root, _child_dir, child_file) = make_temp_dir_with_entries();
+        let root_path = root.to_string_lossy().to_string();
+
+        let dir_entries = read_dir_if_directory(root_path)
+            .expect("read_dir_if_directory should succeed for directory");
+        assert!(dir_entries.is_some());
+
+        let file_entries = read_dir_if_directory(child_file)
+            .expect("read_dir_if_directory should succeed for file");
+        assert!(file_entries.is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+}

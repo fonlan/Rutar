@@ -263,3 +263,21 @@ pub async fn compare_documents_by_line(
 ) -> Result<diff::LineDiffResult, String> {
     diff::compare_documents_by_line_impl(state, source_id, target_id).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::external_change_notified_ids;
+
+    #[test]
+    fn external_change_notified_ids_should_return_singleton_instance() {
+        let first = external_change_notified_ids();
+        let second = external_change_notified_ids();
+
+        assert!(std::ptr::eq(first, second));
+
+        first.clear();
+        first.insert("doc-1".to_string(), ());
+        assert!(second.contains_key("doc-1"));
+        second.clear();
+    }
+}

@@ -55,3 +55,70 @@ pub struct DirEntry {
     pub(super) path: String,
     pub(super) is_dir: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn syntax_token_serialization_should_skip_none_fields() {
+        let token = SyntaxToken {
+            r#type: Some("keyword".to_string()),
+            text: None,
+            start_byte: Some(3),
+            end_byte: None,
+        };
+
+        let value = serde_json::to_value(token).expect("serialization should succeed");
+        assert_eq!(value, json!({"type":"keyword","start_byte":3}));
+    }
+
+    #[test]
+    fn file_info_serialization_should_use_camel_case_and_optional_field() {
+        let info = FileInfo {
+            id: "1".to_string(),
+            path: "a.txt".to_string(),
+            name: "a.txt".to_string(),
+            encoding: "UTF-8".to_string(),
+            line_ending: "LF".to_string(),
+            line_count: 1,
+            large_file_mode: false,
+            syntax_override: Some("markdown".to_string()),
+        };
+
+        let value = serde_json::to_value(info).expect("serialization should succeed");
+        assert_eq!(
+            value,
+            json!({
+                "id":"1",
+                "path":"a.txt",
+                "name":"a.txt",
+                "encoding":"UTF-8",
+                "lineEnding":"LF",
+                "lineCount":1,
+                "largeFileMode":false,
+                "syntaxOverride":"markdown"
+            })
+        );
+    }
+
+    #[test]
+    fn edit_history_state_serialization_should_use_camel_case() {
+        let state = EditHistoryState {
+            can_undo: true,
+            can_redo: false,
+            is_dirty: true,
+        };
+
+        let value = serde_json::to_value(state).expect("serialization should succeed");
+        assert_eq!(
+            value,
+            json!({
+                "canUndo": true,
+                "canRedo": false,
+                "isDirty": true
+            })
+        );
+    }
+}

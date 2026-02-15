@@ -15,3 +15,31 @@ pub(super) const FILTER_MAX_RANGES_PER_LINE: usize = 256;
 pub(super) const DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS: &[&str] = &[
     ".txt", ".md", ".log", ".json", ".jsonc", ".yaml", ".yml", ".toml", ".xml", ".ini", ".conf",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thresholds_should_be_positive_and_consistent() {
+        assert!(LARGE_FILE_THRESHOLD_BYTES > 0);
+        assert!(ENCODING_DETECT_SAMPLE_BYTES > 0);
+        assert!(LARGE_FILE_THRESHOLD_BYTES >= ENCODING_DETECT_SAMPLE_BYTES);
+    }
+
+    #[test]
+    fn default_windows_file_association_extensions_should_be_unique_prefixed_and_lowercase() {
+        assert!(!DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS.is_empty());
+        assert!(DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS
+            .iter()
+            .all(|item| item.starts_with('.')));
+        assert!(DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS
+            .iter()
+            .all(|item| item.chars().all(|ch| !ch.is_ascii_uppercase())));
+
+        let mut unique = std::collections::BTreeSet::new();
+        for extension in DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS {
+            assert!(unique.insert(*extension));
+        }
+    }
+}

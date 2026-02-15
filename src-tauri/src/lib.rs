@@ -243,3 +243,53 @@ pub fn run() {
         eprintln!("error while running tauri application: {err}");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::collect_valid_startup_paths_from_args;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn make_temp_workspace() -> (PathBuf, String, String, String) {
+        let root = std::env::temp_dir().join(format!(
+            "rutar-lib-tests-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+
+        let existing_dir = root.join("folder");
+        let existing_file = root.join("file.txt");
+        let missing_file = root.join("missing.txt");
+
+        fs::create_dir_all(&existing_dir).expect("failed to create temp dir");
+        fs::write(&existing_file, "hello").expect("failed to create temp file");
+
+        (
+            root,
+            existing_file.to_string_lossy().to_string(),
+            existing_dir.to_string_lossy().to_string(),
+            missing_file.to_string_lossy().to_string(),
+        )
+    }
+
+    #[test]
+    fn collect_valid_startup_paths_from_args_should_keep_only_existing_non_option_paths() {
+        let (root, existing_file, existing_dir, missing_file) = make_temp_workspace();
+
+        let args = vec![
+            "--verbose".to_string(),
+            existing_file.clone(),
+            missing_file,
+            existing_dir.clone(),
+            "-x".to_string(),
+        ];
+
+        let paths = collect_valid_startup_paths_from_args(args);
+        assert_eq!(paths, vec![existing_file, existing_dir]);
+
+        let _ = fs::remove_dir_all(root);
+    }
+}
