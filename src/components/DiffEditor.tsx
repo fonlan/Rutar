@@ -57,6 +57,7 @@ interface EditHistoryState {
 }
 
 type ActivePanel = 'source' | 'target';
+type DiffLineKind = 'insert' | 'delete' | 'modify';
 
 const MIN_RATIO = 0.2;
 const MAX_RATIO = 0.8;
@@ -67,6 +68,57 @@ const REFRESH_DEBOUNCE_MS = 120;
 const EDIT_DEBOUNCE_MS = 90;
 const INPUT_ACTIVE_HOLD_MS = 450;
 const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
+
+function resolveAlignedDiffKind(
+  index: number,
+  alignedSourceLines: string[],
+  alignedTargetLines: string[],
+  alignedSourcePresent: boolean[],
+  alignedTargetPresent: boolean[]
+): DiffLineKind | null {
+  const sourcePresent = alignedSourcePresent[index] === true;
+  const targetPresent = alignedTargetPresent[index] === true;
+
+  if (!sourcePresent && targetPresent) {
+    return 'insert';
+  }
+
+  if (sourcePresent && !targetPresent) {
+    return 'delete';
+  }
+
+  const sourceLine = alignedSourceLines[index] ?? '';
+  const targetLine = alignedTargetLines[index] ?? '';
+  if (sourceLine !== targetLine) {
+    return 'modify';
+  }
+
+  return null;
+}
+
+function getDiffKindStyle(kind: DiffLineKind) {
+  switch (kind) {
+    case 'insert':
+      return {
+        lineNumberClass: 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/14 dark:text-emerald-300',
+        rowBackgroundClass: 'bg-emerald-500/10 dark:bg-emerald-500/12',
+        markerClass: 'bg-emerald-500 dark:bg-emerald-400',
+      };
+    case 'delete':
+      return {
+        lineNumberClass: 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300',
+        rowBackgroundClass: 'bg-red-500/10 dark:bg-red-500/12',
+        markerClass: 'bg-red-500 dark:bg-red-400',
+      };
+    case 'modify':
+    default:
+      return {
+        lineNumberClass: 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-300',
+        rowBackgroundClass: 'bg-amber-500/10 dark:bg-amber-500/12',
+        markerClass: 'bg-amber-500 dark:bg-amber-400',
+      };
+  }
+}
 
 function clampRatio(value: number) {
   return Math.max(MIN_RATIO, Math.min(MAX_RATIO, value));
@@ -1421,8 +1473,38 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         .sort((left, right) => left - right),
     [lineDiff.diffLineNumbers]
   );
-  const alignedDiffLineSet = useMemo(() => new Set(diffLineNumbers), [diffLineNumbers]);
+  const alignedDiffKindByLine = useMemo(() => {
+    const result = new Map<number, DiffLineKind>();
 
+    for (const lineNumber of diffLineNumbers) {
+      const index = lineNumber - 1;
+      if (index < 0 || index >= alignedLineCount) {
+        continue;
+      }
+
+      const kind = resolveAlignedDiffKind(
+        index,
+        lineDiff.alignedSourceLines,
+        lineDiff.alignedTargetLines,
+        lineDiff.alignedSourcePresent,
+        lineDiff.alignedTargetPresent
+      );
+      if (!kind) {
+        continue;
+      }
+
+      result.set(lineNumber, kind);
+    }
+
+    return result;
+  }, [
+    alignedLineCount,
+    diffLineNumbers,
+    lineDiff.alignedSourceLines,
+    lineDiff.alignedSourcePresent,
+    lineDiff.alignedTargetLines,
+    lineDiff.alignedTargetPresent,
+  ]);
   const sourceLineNumbers = useMemo(
     () => buildLineNumberByAlignedRow(lineDiff.alignedSourcePresent),
     [lineDiff.alignedSourcePresent]
@@ -1571,7 +1653,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                     style={{ width: `${lineNumberColumnWidth}px` }}
                   >
                     {Array.from({ length: alignedLineCount }).map((_, index) => {
-                      const isDiffLine = alignedDiffLineSet.has(index + 1);
+                      const diffKind = alignedDiffKindByLine.get(index + 1);
+                      const isDiffLine = Boolean(diffKind);
+                      const diffStyle = diffKind ? getDiffKindStyle(diffKind) : null;
                       const linePresent = lineDiff.alignedSourcePresent[index] === true;
                       const lineNumber = sourceLineNumbers[index] ?? 0;
                       const lineText = lineDiff.alignedSourceLines[index] ?? '';
@@ -1581,7 +1665,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
                             linePresent && 'cursor-pointer hover:bg-muted/40',
-                            isDiffLine && 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300'
+                            isDiffLine && diffStyle?.lineNumberClass
                           )}
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('source', index, event);
@@ -1601,16 +1685,19 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
                   <div className="relative min-w-0 flex-1">
                     <div className="pointer-events-none absolute inset-0 z-0">
-                      {Array.from(alignedDiffLineSet).map((lineNumber) => (
-                        <div
-                          key={`source-diff-bg-${lineNumber}`}
-                          className="absolute left-0 right-0 bg-red-500/10 dark:bg-red-500/12"
-                          style={{
-                            top: `${(lineNumber - 1) * rowHeightPx}px`,
-                            height: `${rowHeightPx}px`,
-                          }}
-                        />
-                      ))}
+                      {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
+                        const diffStyle = getDiffKindStyle(kind);
+                        return (
+                          <div
+                            key={`source-diff-bg-${lineNumber}`}
+                            className={cn('absolute left-0 right-0', diffStyle.rowBackgroundClass)}
+                            style={{
+                              top: `${(lineNumber - 1) * rowHeightPx}px`,
+                              height: `${rowHeightPx}px`,
+                            }}
+                          />
+                        );
+                      })}
                     </div>
 
                     <textarea
@@ -1688,7 +1775,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                     style={{ width: `${lineNumberColumnWidth}px` }}
                   >
                     {Array.from({ length: alignedLineCount }).map((_, index) => {
-                      const isDiffLine = alignedDiffLineSet.has(index + 1);
+                      const diffKind = alignedDiffKindByLine.get(index + 1);
+                      const isDiffLine = Boolean(diffKind);
+                      const diffStyle = diffKind ? getDiffKindStyle(diffKind) : null;
                       const linePresent = lineDiff.alignedTargetPresent[index] === true;
                       const lineNumber = targetLineNumbers[index] ?? 0;
                       const lineText = lineDiff.alignedTargetLines[index] ?? '';
@@ -1698,7 +1787,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
                             linePresent && 'cursor-pointer hover:bg-muted/40',
-                            isDiffLine && 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300'
+                            isDiffLine && diffStyle?.lineNumberClass
                           )}
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('target', index, event);
@@ -1718,16 +1807,19 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
                   <div className="relative min-w-0 flex-1">
                     <div className="pointer-events-none absolute inset-0 z-0">
-                      {Array.from(alignedDiffLineSet).map((lineNumber) => (
-                        <div
-                          key={`target-diff-bg-${lineNumber}`}
-                          className="absolute left-0 right-0 bg-red-500/10 dark:bg-red-500/12"
-                          style={{
-                            top: `${(lineNumber - 1) * rowHeightPx}px`,
-                            height: `${rowHeightPx}px`,
-                          }}
-                        />
-                      ))}
+                      {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
+                        const diffStyle = getDiffKindStyle(kind);
+                        return (
+                          <div
+                            key={`target-diff-bg-${lineNumber}`}
+                            className={cn('absolute left-0 right-0', diffStyle.rowBackgroundClass)}
+                            style={{
+                              top: `${(lineNumber - 1) * rowHeightPx}px`,
+                              height: `${rowHeightPx}px`,
+                            }}
+                          />
+                        );
+                      })}
                     </div>
 
                     <textarea
@@ -1790,16 +1882,19 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             }}
           />
 
-          {diffLineNumbers.map((lineNumber) => (
-            <div
-              key={`diff-marker-${lineNumber}`}
-              className="absolute left-0 right-0 h-[2px] bg-red-500 dark:bg-red-400"
-              style={{
-                top: `${(lineNumber / alignedLineCount) * 100}%`,
-                zIndex: 20,
-              }}
-            />
-          ))}
+          {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
+            const diffStyle = getDiffKindStyle(kind);
+            return (
+              <div
+                key={`diff-marker-${lineNumber}`}
+                className={cn('absolute left-0 right-0 h-[2px]', diffStyle.markerClass)}
+                style={{
+                  top: `${(lineNumber / alignedLineCount) * 100}%`,
+                  zIndex: 20,
+                }}
+              />
+            );
+          })}
         </div>
 
         <div
