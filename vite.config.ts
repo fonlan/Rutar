@@ -22,6 +22,7 @@ export default defineConfig(async () => ({
     ],
   },
   build: {
+    chunkSizeWarningLimit: 1700,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -29,19 +30,35 @@ export default defineConfig(async () => ({
             return undefined;
           }
 
-          if (id.includes("@tauri-apps")) {
+          const normalizedId = id.replaceAll("\\", "/");
+          const nodeModulesPrefix = "/node_modules/";
+          const packagePath = normalizedId.slice(
+            normalizedId.lastIndexOf(nodeModulesPrefix) + nodeModulesPrefix.length,
+          );
+          const packageName = packagePath.startsWith("@")
+            ? packagePath.split("/").slice(0, 2).join("/")
+            : packagePath.split("/")[0];
+
+          if (packageName.startsWith("@tauri-apps/")) {
             return "tauri-vendor";
           }
 
-          if (id.includes("lucide-react")) {
+          if (packageName === "lucide-react") {
             return "icons-vendor";
           }
 
-          if (id.includes("mermaid")) {
+          if (
+            packageName === "mermaid" ||
+            packageName.startsWith("@mermaid-js/")
+          ) {
             return "mermaid-vendor";
           }
 
-          if (id.includes("react") || id.includes("scheduler")) {
+          if (
+            packageName === "react" ||
+            packageName === "react-dom" ||
+            packageName === "scheduler"
+          ) {
             return "react-vendor";
           }
 
