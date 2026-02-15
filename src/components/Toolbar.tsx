@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { openFilePath } from '@/lib/openFile';
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from '@/lib/recentPaths';
-import { useStore, FileTab } from '@/store/useStore';
+import { useStore, FileTab, isDiffTab, type DiffPanelSide } from '@/store/useStore';
 import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
@@ -48,6 +48,22 @@ function dispatchEditorPaste(tabId: string, text: string) {
     );
 }
 
+function dispatchDiffPaste(diffTabId: string, panel: DiffPanelSide, text: string) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:diff-paste-text', {
+            detail: { diffTabId, panel, text },
+        })
+    );
+}
+
+function dispatchDiffHistoryAction(diffTabId: string, panel: DiffPanelSide, action: 'undo' | 'redo') {
+    window.dispatchEvent(
+        new CustomEvent('rutar:diff-history-action', {
+            detail: { diffTabId, panel, action },
+        })
+    );
+}
+
 function dispatchDocumentUpdated(tabId: string) {
     window.dispatchEvent(
         new CustomEvent('rutar:document-updated', {
@@ -58,6 +74,10 @@ function dispatchDocumentUpdated(tabId: string) {
 
 function getActiveEditorElement() {
     return document.querySelector('.editor-input-layer') as HTMLTextAreaElement | null;
+}
+
+function getDiffPanelEditorElement(panel: DiffPanelSide) {
+    return document.querySelector(`textarea[data-diff-panel="${panel}"]`) as HTMLTextAreaElement | null;
 }
 
 function hasSelectionInEditorElement(element: HTMLTextAreaElement | null) {
@@ -116,6 +136,7 @@ export function Toolbar() {
     const addTab = useStore((state) => state.addTab);
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
+    const activeDiffPanelByTab = useStore((state) => state.activeDiffPanelByTab);
     const closeTab = useStore((state) => state.closeTab);
     const updateTab = useStore((state) => state.updateTab);
     const setFolder = useStore((state) => state.setFolder);
@@ -134,10 +155,22 @@ export function Toolbar() {
     const setOutlineData = useStore((state) => state.setOutlineData);
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
-    const activeTab = tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff');
-    const activeTabIdForActions = activeTab?.id ?? null;
-    const activeTabLargeFileMode = !!activeTab?.largeFileMode;
-    const canEdit = !!activeTab;
+    const activeRootTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+    const activeTab = activeRootTab && activeRootTab.tabType !== 'diff' ? activeRootTab : null;
+    const activeDiffTab = activeRootTab && isDiffTab(activeRootTab) ? activeRootTab : null;
+    const activeDiffPanel: DiffPanelSide | null = activeDiffTab
+        ? activeDiffPanelByTab[activeDiffTab.id] ?? 'source'
+        : null;
+    const activeDiffPanelTabId = activeDiffTab
+        ? (activeDiffPanel === 'target' ? activeDiffTab.diffPayload.targetTabId : activeDiffTab.diffPayload.sourceTabId)
+        : null;
+    const activeDiffPanelTab = activeDiffPanelTabId
+        ? tabs.find((tab) => tab.id === activeDiffPanelTabId && tab.tabType !== 'diff') ?? null
+        : null;
+    const activeEditTab = activeTab ?? activeDiffPanelTab;
+    const activeTabIdForActions = activeEditTab?.id ?? null;
+    const activeTabLargeFileMode = !!activeEditTab?.largeFileMode;
+    const canEdit = !!activeEditTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const canOutline = !!activeTab && !!detectOutlineType(activeTab);
     const canMarkdownPreview = !!activeTab && isMarkdownTab(activeTab);
@@ -173,9 +206,9 @@ export function Toolbar() {
     const notMarkdownReason = tr('preview.notMarkdown');
     const saveDisabledReason = !activeTab ? noActiveDocumentReason : !canSaveActiveTab ? noUnsavedChangesReason : undefined;
     const saveAllDisabledReason = !canSaveAnyTab ? noUnsavedDocumentsReason : undefined;
-    const cutCopyDisabledReason = !activeTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
-    const undoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
-    const redoDisabledReason = !activeTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
+    const cutCopyDisabledReason = !activeEditTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
+    const undoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
+    const redoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
     const previewDisabledReason = !activeTab ? noActiveDocumentReason : !canMarkdownPreview ? notMarkdownReason : undefined;
 
     const formatWordCountResult = useCallback((result: WordCountInfo) => {
@@ -196,9 +229,11 @@ export function Toolbar() {
             return;
         }
 
-        const editor = getActiveEditorElement();
+        const editor = activeDiffTab && activeDiffPanel
+            ? getDiffPanelEditorElement(activeDiffPanel)
+            : getActiveEditorElement();
         setCanClipboardSelectionAction(hasSelectionInEditorElement(editor));
-    }, [activeTabIdForActions, activeTabLargeFileMode]);
+    }, [activeDiffPanel, activeDiffTab, activeTabIdForActions, activeTabLargeFileMode]);
 
     const refreshEditHistoryState = useCallback(async (targetTabId?: string) => {
         const id = targetTabId ?? activeTabIdForActions;
@@ -209,17 +244,38 @@ export function Toolbar() {
 
         try {
             const historyState = await invoke<EditHistoryState>('get_edit_history_state', { id });
-            const currentActiveTabId = useStore.getState().activeTabId;
-            if (currentActiveTabId === id) {
+            const storeState = useStore.getState();
+            const currentRootTab = storeState.tabs.find((tab) => tab.id === storeState.activeTabId);
+            const currentEditTargetId = currentRootTab && isDiffTab(currentRootTab)
+                ? (
+                    (storeState.activeDiffPanelByTab[currentRootTab.id] ?? 'source') === 'target'
+                        ? currentRootTab.diffPayload.targetTabId
+                        : currentRootTab.diffPayload.sourceTabId
+                )
+                : currentRootTab && currentRootTab.tabType !== 'diff'
+                    ? currentRootTab.id
+                    : null;
+            if (currentEditTargetId === id) {
                 setEditHistoryState(historyState);
             }
-            const currentTab = useStore.getState().tabs.find((tab) => tab.id === id);
+            const currentTab = storeState.tabs.find((tab) => tab.id === id);
             if (currentTab && currentTab.isDirty !== historyState.isDirty) {
                 updateTab(id, { isDirty: historyState.isDirty });
             }
         } catch (error) {
             console.warn('Failed to get edit history state:', error);
-            if (useStore.getState().activeTabId === id) {
+            const storeState = useStore.getState();
+            const currentRootTab = storeState.tabs.find((tab) => tab.id === storeState.activeTabId);
+            const currentEditTargetId = currentRootTab && isDiffTab(currentRootTab)
+                ? (
+                    (storeState.activeDiffPanelByTab[currentRootTab.id] ?? 'source') === 'target'
+                        ? currentRootTab.diffPayload.targetTabId
+                        : currentRootTab.diffPayload.sourceTabId
+                )
+                : currentRootTab && currentRootTab.tabType !== 'diff'
+                    ? currentRootTab.id
+                    : null;
+            if (currentEditTargetId === id) {
                 setEditHistoryState(DEFAULT_EDIT_HISTORY_STATE);
             }
         }
@@ -544,6 +600,11 @@ export function Toolbar() {
     }, [activeTab, addTab, closeTab, language, newFileLineEnding, persistTab, tabs.length]);
 
     const handleUndo = useCallback(async () => {
+        if (activeDiffTab && activeDiffPanel) {
+            dispatchDiffHistoryAction(activeDiffTab.id, activeDiffPanel, 'undo');
+            return;
+        }
+
         if (!activeTab) return;
         try {
             const newLineCount = await invoke<number>('undo', { id: activeTab.id });
@@ -555,9 +616,14 @@ export function Toolbar() {
         } catch (e) {
             console.warn(e);
         }
-    }, [activeTab, refreshEditHistoryState, updateTab]);
+    }, [activeDiffPanel, activeDiffTab, activeTab, refreshEditHistoryState, updateTab]);
 
     const handleRedo = useCallback(async () => {
+        if (activeDiffTab && activeDiffPanel) {
+            dispatchDiffHistoryAction(activeDiffTab.id, activeDiffPanel, 'redo');
+            return;
+        }
+
         if (!activeTab) return;
         try {
             const newLineCount = await invoke<number>('redo', { id: activeTab.id });
@@ -569,10 +635,12 @@ export function Toolbar() {
         } catch (e) {
             console.warn(e);
         }
-    }, [activeTab, refreshEditHistoryState, updateTab]);
+    }, [activeDiffPanel, activeDiffTab, activeTab, refreshEditHistoryState, updateTab]);
 
     const handleClipboardAction = useCallback(async (action: 'cut' | 'copy' | 'paste') => {
-        const editor = getActiveEditorElement();
+        const editor = activeDiffTab && activeDiffPanel
+            ? getDiffPanelEditorElement(activeDiffPanel)
+            : getActiveEditorElement();
         if (editor && document.activeElement !== editor) {
             editor.focus();
         }
@@ -595,6 +663,16 @@ export function Toolbar() {
             return;
         }
 
+        if (activeDiffTab && activeDiffPanel) {
+            try {
+                const clipboardText = await readClipboardText();
+                dispatchDiffPaste(activeDiffTab.id, activeDiffPanel, clipboardText);
+                return;
+            } catch (error) {
+                console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
+            }
+        }
+
         if (activeTab) {
             try {
                 const clipboardText = await readClipboardText();
@@ -610,7 +688,7 @@ export function Toolbar() {
         }
 
         console.warn('Paste command blocked. Use Ctrl+V in editor.');
-    }, [activeTab]);
+    }, [activeDiffPanel, activeDiffTab, activeTab]);
 
     const handleFind = useCallback(() => {
         if (!activeTab) return;

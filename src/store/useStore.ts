@@ -15,6 +15,8 @@ export interface FileTab {
   diffPayload?: DiffTabPayload;
 }
 
+export type DiffPanelSide = 'source' | 'target';
+
 export interface DiffTabPayload {
   sourceTabId: string;
   targetTabId: string;
@@ -138,6 +140,7 @@ const defaultNewFileLineEnding: LineEnding =
 interface AppState {
   tabs: FileTab[];
   activeTabId: string | null;
+  activeDiffPanelByTab: Record<string, DiffPanelSide>;
   settings: SettingsState;
   
   sidebarOpen: boolean;
@@ -159,6 +162,7 @@ interface AppState {
   addTab: (tab: FileTab) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  setActiveDiffPanel: (diffTabId: string, panel: DiffPanelSide) => void;
   updateTab: (id: string, updates: Partial<FileTab>) => void;
   
   toggleSettings: (open?: boolean) => void;
@@ -187,6 +191,7 @@ interface AppState {
 export const useStore = create<AppState>((set) => ({
   tabs: [],
   activeTabId: null,
+  activeDiffPanelByTab: {},
   settings: {
     isOpen: false,
     language: 'zh-CN',
@@ -232,11 +237,18 @@ export const useStore = create<AppState>((set) => ({
           ...state.cursorPositionByTab,
           [tab.id]: { line: 1, column: 1 },
         };
+    const nextActiveDiffPanelByTab = tab.tabType === 'diff'
+      ? {
+          ...state.activeDiffPanelByTab,
+          [tab.id]: state.activeDiffPanelByTab[tab.id] ?? 'source',
+        }
+      : state.activeDiffPanelByTab;
 
     return {
       tabs: [...state.tabs, tab],
       activeTabId: tab.id,
       cursorPositionByTab: nextCursorPositionByTab,
+      activeDiffPanelByTab: nextActiveDiffPanelByTab,
     };
   }),
   closeTab: (id) => set((state) => {
@@ -249,15 +261,30 @@ export const useStore = create<AppState>((set) => ({
     delete nextBookmarks[id];
     const nextCursorPositionByTab = { ...state.cursorPositionByTab };
     delete nextCursorPositionByTab[id];
+    const nextActiveDiffPanelByTab = { ...state.activeDiffPanelByTab };
+    delete nextActiveDiffPanelByTab[id];
 
     return {
       tabs: newTabs,
       activeTabId: newActiveId,
       cursorPositionByTab: nextCursorPositionByTab,
       bookmarksByTab: nextBookmarks,
+      activeDiffPanelByTab: nextActiveDiffPanelByTab,
     };
   }),
   setActiveTab: (id) => set({ activeTabId: id }),
+  setActiveDiffPanel: (diffTabId, panel) => set((state) => {
+    if (state.activeDiffPanelByTab[diffTabId] === panel) {
+      return state;
+    }
+
+    return {
+      activeDiffPanelByTab: {
+        ...state.activeDiffPanelByTab,
+        [diffTabId]: panel,
+      },
+    };
+  }),
   updateTab: (id, updates) => set((state) => ({
     tabs: state.tabs.map((t) => (t.id === id ? { ...t, ...updates } : t)),
   })),

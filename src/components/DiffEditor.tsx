@@ -13,7 +13,7 @@ import {
 import { saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
-import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
@@ -50,6 +50,10 @@ interface CaretSnapshot {
   lineNumber: number;
   selectionStart: number;
   selectionEnd: number;
+}
+
+interface EditHistoryState {
+  isDirty: boolean;
 }
 
 type ActivePanel = 'source' | 'target';
@@ -528,9 +532,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const tabs = useStore((state) => state.tabs);
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
+  const setActiveDiffPanel = useStore((state) => state.setActiveDiffPanel);
+  const persistedActivePanel = useStore((state) => state.activeDiffPanelByTab[tab.id]);
   const { ref: viewportRef, width } = useResizeObserver<HTMLDivElement>();
   const [splitRatio, setSplitRatio] = useState(DEFAULT_RATIO);
-  const [activePanel, setActivePanel] = useState<ActivePanel>('source');
+  const [activePanel, setActivePanel] = useState<ActivePanel>(
+    persistedActivePanel === 'target' ? 'target' : 'source'
+  );
   const [lineDiff, setLineDiff] = useState<LineDiffComparisonResult>(() => buildInitialDiff(tab.diffPayload));
   const [sourceViewport, setSourceViewport] = useState<ViewportMetrics>(DEFAULT_VIEWPORT);
   const [targetViewport, setTargetViewport] = useState<ViewportMetrics>(DEFAULT_VIEWPORT);
@@ -574,6 +582,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     () => tabs.find((item) => item.id === tab.diffPayload.targetTabId && item.tabType !== 'diff') ?? null,
     [tab.diffPayload.targetTabId, tabs]
   );
+
+  useEffect(() => {
+    setActiveDiffPanel(tab.id, activePanel);
+  }, [activePanel, setActiveDiffPanel, tab.id]);
 
   const handleSourceScrollerRef = useCallback((element: HTMLElement | null) => {
     setSourceScroller((previous) => (previous === element ? previous : element));
@@ -1017,6 +1029,78 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     await handleSavePanel(activePanel);
   }, [activePanel, handleSavePanel]);
 
+  const runPanelHistoryAction = useCallback(
+    async (side: ActivePanel, action: 'undo' | 'redo') => {
+      const panelTab = side === 'source' ? sourceTab : targetTab;
+      if (!panelTab) {
+        return;
+      }
+
+      setActivePanel(side);
+      const textarea = side === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (textarea && document.activeElement !== textarea) {
+        textarea.focus({ preventScroll: true });
+      }
+
+      if (sideCommitTimerRef.current[side] !== null) {
+        window.clearTimeout(sideCommitTimerRef.current[side] as number);
+        sideCommitTimerRef.current[side] = null;
+      }
+
+      await flushSideCommit(side);
+
+      try {
+        const nextLineCount = await invoke<number>(action, { id: panelTab.id });
+        let nextDirtyState = useStore.getState().tabs.find((item) => item.id === panelTab.id)?.isDirty ?? true;
+        try {
+          const historyState = await invoke<EditHistoryState>('get_edit_history_state', { id: panelTab.id });
+          nextDirtyState = historyState.isDirty;
+        } catch (error) {
+          console.warn('Failed to refresh panel history state:', error);
+        }
+
+        updateTab(panelTab.id, {
+          lineCount: Math.max(1, nextLineCount),
+          isDirty: nextDirtyState,
+        });
+        dispatchDocumentUpdated(panelTab.id);
+        scheduleDiffRefresh();
+      } catch (error) {
+        console.warn(`Failed to ${action} panel tab:`, error);
+      }
+    },
+    [flushSideCommit, scheduleDiffRefresh, sourceTab, targetTab, updateTab]
+  );
+
+  useEffect(() => {
+    const handleDiffToolbarHistory = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        diffTabId?: string;
+        panel?: DiffPanelSide;
+        action?: 'undo' | 'redo';
+      }>;
+      if (customEvent.detail?.diffTabId !== tab.id) {
+        return;
+      }
+
+      if (customEvent.detail.action !== 'undo' && customEvent.detail.action !== 'redo') {
+        return;
+      }
+
+      const targetPanel = customEvent.detail.panel === 'target'
+        ? 'target'
+        : customEvent.detail.panel === 'source'
+          ? 'source'
+          : activePanel;
+      void runPanelHistoryAction(targetPanel, customEvent.detail.action);
+    };
+
+    window.addEventListener('rutar:diff-history-action', handleDiffToolbarHistory as EventListener);
+    return () => {
+      window.removeEventListener('rutar:diff-history-action', handleDiffToolbarHistory as EventListener);
+    };
+  }, [activePanel, runPanelHistoryAction, tab.id]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) {
@@ -1188,6 +1272,48 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [capturePanelScrollSnapshot, scheduleSideCommit]
   );
+
+  const handlePanelPasteText = useCallback(
+    (side: ActivePanel, pastedText: string) => {
+      const textarea = side === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      const value = textarea.value ?? '';
+      const selectionStart = textarea.selectionStart ?? value.length;
+      const selectionEnd = textarea.selectionEnd ?? value.length;
+      const safeStart = Math.max(0, Math.min(selectionStart, value.length));
+      const safeEnd = Math.max(safeStart, Math.min(selectionEnd, value.length));
+      const nextValue = `${value.slice(0, safeStart)}${pastedText}${value.slice(safeEnd)}`;
+      const nextCaret = safeStart + pastedText.length;
+      setActivePanel(side);
+      textarea.focus({ preventScroll: true });
+      handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+    },
+    [handlePanelTextareaChange]
+  );
+
+  useEffect(() => {
+    const handleDiffToolbarPaste = (event: Event) => {
+      const customEvent = event as CustomEvent<{ diffTabId?: string; panel?: DiffPanelSide; text?: string }>;
+      if (customEvent.detail?.diffTabId !== tab.id) {
+        return;
+      }
+
+      const targetPanel = customEvent.detail.panel === 'target'
+        ? 'target'
+        : customEvent.detail.panel === 'source'
+          ? 'source'
+          : activePanel;
+      handlePanelPasteText(targetPanel, customEvent.detail.text ?? '');
+    };
+
+    window.addEventListener('rutar:diff-paste-text', handleDiffToolbarPaste as EventListener);
+    return () => {
+      window.removeEventListener('rutar:diff-paste-text', handleDiffToolbarPaste as EventListener);
+    };
+  }, [activePanel, handlePanelPasteText, tab.id]);
 
   const handlePanelTextareaKeyDown = useCallback(
     (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
