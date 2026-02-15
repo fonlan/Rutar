@@ -1,5 +1,5 @@
 ﻿import { invoke } from '@tauri-apps/api/core';
-import { Save } from 'lucide-react';
+import { ChevronDown, ChevronUp, Save } from 'lucide-react';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import {
   useCallback,
@@ -503,6 +503,35 @@ function getLineSelectionRange(lines: string[], rowIndex: number) {
   };
 }
 
+function getNextMatchedRow(
+  matchedRows: number[],
+  currentRow: number | null,
+  direction: 'next' | 'prev'
+) {
+  if (matchedRows.length === 0) {
+    return null;
+  }
+
+  if (currentRow === null) {
+    return direction === 'next'
+      ? matchedRows[0]
+      : matchedRows[matchedRows.length - 1];
+  }
+
+  const currentIndex = matchedRows.indexOf(currentRow);
+  if (currentIndex < 0) {
+    return direction === 'next'
+      ? matchedRows[0]
+      : matchedRows[matchedRows.length - 1];
+  }
+
+  if (direction === 'next') {
+    return matchedRows[(currentIndex + 1) % matchedRows.length];
+  }
+
+  return matchedRows[(currentIndex - 1 + matchedRows.length) % matchedRows.length];
+}
+
 function reconcilePresenceAfterTextEdit(
   oldLines: string[],
   oldPresent: boolean[],
@@ -666,6 +695,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [targetScroller, setTargetScroller] = useState<HTMLElement | null>(null);
   const [diffContextMenu, setDiffContextMenu] = useState<DiffContextMenuState | null>(null);
   const [diffHeaderContextMenu, setDiffHeaderContextMenu] = useState<DiffHeaderContextMenuState | null>(null);
+  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
+  const [targetSearchQuery, setTargetSearchQuery] = useState('');
+  const [sourceSearchMatchedRow, setSourceSearchMatchedRow] = useState<number | null>(null);
+  const [targetSearchMatchedRow, setTargetSearchMatchedRow] = useState<number | null>(null);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -1938,6 +1971,133 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const rowHeightPx = Math.max(22, Math.round(settings.fontSize * 1.6));
+  const normalizedSourceSearchQuery = sourceSearchQuery.trim().toLocaleLowerCase();
+  const normalizedTargetSearchQuery = targetSearchQuery.trim().toLocaleLowerCase();
+  const sourceSearchMatchedRows = useMemo(() => {
+    if (!normalizedSourceSearchQuery) {
+      return [];
+    }
+
+    const rows: number[] = [];
+    for (let index = 0; index < lineDiff.alignedSourceLines.length; index += 1) {
+      const lineText = (lineDiff.alignedSourceLines[index] ?? '').toLocaleLowerCase();
+      if (lineText.includes(normalizedSourceSearchQuery)) {
+        rows.push(index);
+      }
+    }
+    return rows;
+  }, [lineDiff.alignedSourceLines, normalizedSourceSearchQuery]);
+  const targetSearchMatchedRows = useMemo(() => {
+    if (!normalizedTargetSearchQuery) {
+      return [];
+    }
+
+    const rows: number[] = [];
+    for (let index = 0; index < lineDiff.alignedTargetLines.length; index += 1) {
+      const lineText = (lineDiff.alignedTargetLines[index] ?? '').toLocaleLowerCase();
+      if (lineText.includes(normalizedTargetSearchQuery)) {
+        rows.push(index);
+      }
+    }
+    return rows;
+  }, [lineDiff.alignedTargetLines, normalizedTargetSearchQuery]);
+  const sourceSearchCurrentRow = useMemo(() => {
+    if (sourceSearchMatchedRow === null) {
+      return null;
+    }
+
+    return sourceSearchMatchedRows.includes(sourceSearchMatchedRow)
+      ? sourceSearchMatchedRow
+      : null;
+  }, [sourceSearchMatchedRow, sourceSearchMatchedRows]);
+  const targetSearchCurrentRow = useMemo(() => {
+    if (targetSearchMatchedRow === null) {
+      return null;
+    }
+
+    return targetSearchMatchedRows.includes(targetSearchMatchedRow)
+      ? targetSearchMatchedRow
+      : null;
+  }, [targetSearchMatchedRow, targetSearchMatchedRows]);
+
+  useEffect(() => {
+    if (sourceSearchMatchedRow === null) {
+      return;
+    }
+
+    if (!sourceSearchMatchedRows.includes(sourceSearchMatchedRow)) {
+      setSourceSearchMatchedRow(null);
+    }
+  }, [sourceSearchMatchedRow, sourceSearchMatchedRows]);
+
+  useEffect(() => {
+    if (targetSearchMatchedRow === null) {
+      return;
+    }
+
+    if (!targetSearchMatchedRows.includes(targetSearchMatchedRow)) {
+      setTargetSearchMatchedRow(null);
+    }
+  }, [targetSearchMatchedRow, targetSearchMatchedRows]);
+
+  const jumpToPanelAlignedRow = useCallback(
+    (side: ActivePanel, rowIndex: number) => {
+      const snapshot = lineDiffRef.current;
+      const lines = side === 'source'
+        ? snapshot.alignedSourceLines
+        : snapshot.alignedTargetLines;
+      const textarea = side === 'source'
+        ? sourceTextareaRef.current
+        : targetTextareaRef.current;
+      const scroller = side === 'source'
+        ? sourceScroller
+        : targetScroller;
+      const safeRowIndex = Math.max(0, Math.min(rowIndex, Math.max(0, lines.length - 1)));
+      const { start, end } = getLineSelectionRange(lines, safeRowIndex);
+
+      if (textarea) {
+        const valueLength = textarea.value.length;
+        const safeStart = Math.max(0, Math.min(start, valueLength));
+        const safeEnd = Math.max(safeStart, Math.min(end, valueLength));
+        textarea.setSelectionRange(safeStart, safeEnd);
+      }
+
+      if (scroller) {
+        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const centeredScrollTop = safeRowIndex * rowHeightPx - Math.max(0, (scroller.clientHeight - rowHeightPx) / 2);
+        scroller.scrollTop = Math.max(0, Math.min(maxScrollTop, centeredScrollTop));
+      }
+
+      setActivePanel(side);
+    },
+    [rowHeightPx, sourceScroller, targetScroller]
+  );
+  const jumpSourceSearchMatch = useCallback(
+    (direction: 'next' | 'prev') => {
+      const nextRow = getNextMatchedRow(sourceSearchMatchedRows, sourceSearchMatchedRow, direction);
+      if (nextRow === null) {
+        return;
+      }
+
+      setSourceSearchMatchedRow(nextRow);
+      jumpToPanelAlignedRow('source', nextRow);
+    },
+    [jumpToPanelAlignedRow, sourceSearchMatchedRow, sourceSearchMatchedRows]
+  );
+  const jumpTargetSearchMatch = useCallback(
+    (direction: 'next' | 'prev') => {
+      const nextRow = getNextMatchedRow(targetSearchMatchedRows, targetSearchMatchedRow, direction);
+      if (nextRow === null) {
+        return;
+      }
+
+      setTargetSearchMatchedRow(nextRow);
+      jumpToPanelAlignedRow('target', nextRow);
+    },
+    [jumpToPanelAlignedRow, targetSearchMatchedRow, targetSearchMatchedRows]
+  );
+  const sourceSearchDisabled = sourceSearchMatchedRows.length === 0;
+  const targetSearchDisabled = targetSearchMatchedRows.length === 0;
   const lineNumberColumnWidth = Math.max(
     44,
     String(Math.max(lineDiff.sourceLineCount, lineDiff.targetLineCount, 1)).length * 10 + 16
@@ -1980,6 +2140,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const copyDirectoryPathLabel = isZhCN ? '复制文件夹路径' : 'Copy Folder Path';
   const copyFullPathLabel = isZhCN ? '复制完整路径' : 'Copy Full Path';
   const openContainingFolderLabel = isZhCN ? '打开所在目录' : 'Open Containing Folder';
+  const searchPlaceholderLabel = isZhCN ? '搜索关键字' : 'Search keyword';
+  const previousMatchLabel = isZhCN ? '上一个匹配' : 'Previous Match';
+  const nextMatchLabel = isZhCN ? '下一个匹配' : 'Next Match';
+  const noMatchLabel = isZhCN ? '未找到匹配' : 'No matches';
   const diffHeaderMenuPath = diffHeaderContextMenu
     ? resolvePanelPath(diffHeaderContextMenu.side)
     : '';
@@ -2022,23 +2186,76 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           >
             {sourceTitlePrefix}: {sourceDisplayName}
           </span>
-          <button
-            type="button"
-            className={cn(
-              'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
-              sourceTab?.isDirty
-                ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted'
-            )}
-            onClick={() => {
-              void handleSavePanel('source');
-            }}
-            disabled={!sourceTab}
-            title={`${saveLabel} (Ctrl+S)`}
-            aria-label={`${saveLabel} source panel`}
-          >
-            <Save className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <div className="relative w-44">
+              <input
+                type="text"
+                value={sourceSearchQuery}
+                onChange={(event) => {
+                  setSourceSearchQuery(event.currentTarget.value);
+                  setSourceSearchMatchedRow(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    jumpSourceSearchMatch('next');
+                  }
+                }}
+                placeholder={searchPlaceholderLabel}
+                aria-label={`${sourceTitlePrefix} ${searchPlaceholderLabel}`}
+                className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
+              />
+              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    jumpSourceSearchMatch('prev');
+                  }}
+                  disabled={sourceSearchDisabled}
+                  title={sourceSearchDisabled ? noMatchLabel : previousMatchLabel}
+                  aria-label={previousMatchLabel}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    jumpSourceSearchMatch('next');
+                  }}
+                  disabled={sourceSearchDisabled}
+                  title={sourceSearchDisabled ? noMatchLabel : nextMatchLabel}
+                  aria-label={nextMatchLabel}
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
+                sourceTab?.isDirty
+                  ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              )}
+              onClick={() => {
+                void handleSavePanel('source');
+              }}
+              disabled={!sourceTab}
+              title={`${saveLabel} (Ctrl+S)`}
+              aria-label={`${saveLabel} source panel`}
+            >
+              <Save className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         <div
@@ -2057,23 +2274,76 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           >
             {targetTitlePrefix}: {targetDisplayName}
           </span>
-          <button
-            type="button"
-            className={cn(
-              'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
-              targetTab?.isDirty
-                ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted'
-            )}
-            onClick={() => {
-              void handleSavePanel('target');
-            }}
-            disabled={!targetTab}
-            title={`${saveLabel} (Ctrl+S)`}
-            aria-label={`${saveLabel} target panel`}
-          >
-            <Save className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <div className="relative w-44">
+              <input
+                type="text"
+                value={targetSearchQuery}
+                onChange={(event) => {
+                  setTargetSearchQuery(event.currentTarget.value);
+                  setTargetSearchMatchedRow(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    jumpTargetSearchMatch('next');
+                  }
+                }}
+                placeholder={searchPlaceholderLabel}
+                aria-label={`${targetTitlePrefix} ${searchPlaceholderLabel}`}
+                className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
+              />
+              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    jumpTargetSearchMatch('prev');
+                  }}
+                  disabled={targetSearchDisabled}
+                  title={targetSearchDisabled ? noMatchLabel : previousMatchLabel}
+                  aria-label={previousMatchLabel}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    jumpTargetSearchMatch('next');
+                  }}
+                  disabled={targetSearchDisabled}
+                  title={targetSearchDisabled ? noMatchLabel : nextMatchLabel}
+                  aria-label={nextMatchLabel}
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
+                targetTab?.isDirty
+                  ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              )}
+              onClick={() => {
+                void handleSavePanel('target');
+              }}
+              disabled={!targetTab}
+              title={`${saveLabel} (Ctrl+S)`}
+              aria-label={`${saveLabel} target panel`}
+            >
+              <Save className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2115,7 +2385,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
                             linePresent && 'cursor-pointer hover:bg-muted/40',
-                            isDiffLine && diffStyle?.lineNumberClass
+                            isDiffLine && diffStyle?.lineNumberClass,
+                            sourceSearchCurrentRow === index
+                              && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
                           )}
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('source', index, event);
@@ -2148,6 +2420,16 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           />
                         );
                       })}
+                      {sourceSearchCurrentRow !== null && (
+                        <div
+                          key={`source-search-current-bg-${sourceSearchCurrentRow}`}
+                          className="absolute left-0 right-0 bg-sky-400/22 dark:bg-sky-300/20"
+                          style={{
+                            top: `${sourceSearchCurrentRow * rowHeightPx}px`,
+                            height: `${rowHeightPx}px`,
+                          }}
+                        />
+                      )}
                     </div>
 
                     <textarea
@@ -2240,7 +2522,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
                             linePresent && 'cursor-pointer hover:bg-muted/40',
-                            isDiffLine && diffStyle?.lineNumberClass
+                            isDiffLine && diffStyle?.lineNumberClass,
+                            targetSearchCurrentRow === index
+                              && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
                           )}
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('target', index, event);
@@ -2273,6 +2557,16 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           />
                         );
                       })}
+                      {targetSearchCurrentRow !== null && (
+                        <div
+                          key={`target-search-current-bg-${targetSearchCurrentRow}`}
+                          className="absolute left-0 right-0 bg-sky-400/22 dark:bg-sky-300/20"
+                          style={{
+                            top: `${targetSearchCurrentRow * rowHeightPx}px`,
+                            height: `${rowHeightPx}px`,
+                          }}
+                        />
+                      )}
                     </div>
 
                     <textarea
