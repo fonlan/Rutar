@@ -1,5 +1,6 @@
 ﻿import { invoke } from '@tauri-apps/api/core';
 import { Save } from 'lucide-react';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import {
   useCallback,
   useEffect,
@@ -8,6 +9,7 @@ import {
   useState,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { saveTab } from '@/lib/tabClose';
@@ -54,6 +56,12 @@ interface CaretSnapshot {
 
 interface EditHistoryState {
   isDirty: boolean;
+}
+
+interface DiffContextMenuState {
+  x: number;
+  y: number;
+  side: ActivePanel;
 }
 
 type ActivePanel = 'source' | 'target';
@@ -364,6 +372,30 @@ function getLineIndexFromTextOffset(text: string, offset: number) {
   return lineIndex;
 }
 
+function getSelectedLineRangeByOffset(text: string, selectionStart: number, selectionEnd: number) {
+  const safeStart = Math.max(0, Math.min(selectionStart, text.length));
+  const safeEnd = Math.max(0, Math.min(selectionEnd, text.length));
+
+  if (safeStart === safeEnd) {
+    const lineIndex = getLineIndexFromTextOffset(text, safeStart);
+    return {
+      startLine: lineIndex,
+      endLine: lineIndex,
+    };
+  }
+
+  const rangeStart = Math.min(safeStart, safeEnd);
+  const rangeEnd = Math.max(safeStart, safeEnd);
+  const inclusiveEndOffset = Math.max(rangeStart, rangeEnd - 1);
+  const startLine = getLineIndexFromTextOffset(text, rangeStart);
+  const endLine = getLineIndexFromTextOffset(text, inclusiveEndOffset);
+
+  return {
+    startLine,
+    endLine,
+  };
+}
+
 function buildCopyTextWithoutVirtualRows(
   text: string,
   selectionStart: number,
@@ -596,6 +628,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [targetViewport, setTargetViewport] = useState<ViewportMetrics>(DEFAULT_VIEWPORT);
   const [sourceScroller, setSourceScroller] = useState<HTMLElement | null>(null);
   const [targetScroller, setTargetScroller] = useState<HTMLElement | null>(null);
+  const [diffContextMenu, setDiffContextMenu] = useState<DiffContextMenuState | null>(null);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -625,6 +658,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
   const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const diffContextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const sourceTab = useMemo(
     () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
@@ -1417,6 +1451,249 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     []
   );
 
+  const handlePanelContextMenu = useCallback(
+    (side: ActivePanel, event: ReactMouseEvent<HTMLTextAreaElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const textarea = side === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      if (document.activeElement !== textarea) {
+        textarea.focus({ preventScroll: true });
+      }
+      setActivePanel(side);
+
+      const menuWidth = 176;
+      const menuHeight = 168;
+      const viewportPadding = 8;
+      const x = Math.max(
+        viewportPadding,
+        Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+      );
+      const y = Math.max(
+        viewportPadding,
+        Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+      );
+
+      setDiffContextMenu({
+        x,
+        y,
+        side,
+      });
+    },
+    []
+  );
+
+  const handleCopyLinesToPanel = useCallback(
+    (fromSide: ActivePanel, targetSide: ActivePanel) => {
+      if (fromSide === targetSide) {
+        return;
+      }
+
+      const destinationTab = targetSide === 'source' ? sourceTab : targetTab;
+      if (!destinationTab) {
+        return;
+      }
+
+      const sourceTextarea = fromSide === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (!sourceTextarea) {
+        return;
+      }
+
+      const sourceText = sourceTextarea.value ?? '';
+      const selectionStart = sourceTextarea.selectionStart ?? 0;
+      const selectionEnd = sourceTextarea.selectionEnd ?? selectionStart;
+      const { startLine, endLine } = getSelectedLineRangeByOffset(
+        sourceText,
+        selectionStart,
+        selectionEnd
+      );
+
+      let changed = false;
+      lastEditAtRef.current = Date.now();
+      capturePanelScrollSnapshot();
+      setLineDiff((previous) => {
+        const sourceLines = fromSide === 'source'
+          ? previous.alignedSourceLines
+          : previous.alignedTargetLines;
+        const sourcePresent = fromSide === 'source'
+          ? previous.alignedSourcePresent
+          : previous.alignedTargetPresent;
+
+        const nextSourceLines = [...previous.alignedSourceLines];
+        const nextSourcePresent = [...previous.alignedSourcePresent];
+        const nextTargetLines = [...previous.alignedTargetLines];
+        const nextTargetPresent = [...previous.alignedTargetPresent];
+
+        const destinationLines = targetSide === 'source' ? nextSourceLines : nextTargetLines;
+        const destinationPresent = targetSide === 'source' ? nextSourcePresent : nextTargetPresent;
+
+        const maxIndex = Math.min(sourceLines.length, destinationLines.length) - 1;
+        if (maxIndex < 0) {
+          return previous;
+        }
+
+        const safeStart = Math.max(0, Math.min(startLine, maxIndex));
+        const safeEnd = Math.max(safeStart, Math.min(endLine, maxIndex));
+
+        for (let rowIndex = safeStart; rowIndex <= safeEnd; rowIndex += 1) {
+          const sourceLine = sourceLines[rowIndex] ?? '';
+          const linePresent = sourcePresent[rowIndex] === true;
+          if (!linePresent) {
+            if (destinationLines[rowIndex] === '' && destinationPresent[rowIndex] === false) {
+              continue;
+            }
+
+            destinationLines[rowIndex] = '';
+            destinationPresent[rowIndex] = false;
+            changed = true;
+            continue;
+          }
+
+          if (destinationLines[rowIndex] === sourceLine && destinationPresent[rowIndex] === true) {
+            continue;
+          }
+
+          destinationLines[rowIndex] = sourceLine;
+          destinationPresent[rowIndex] = true;
+          changed = true;
+        }
+
+        if (!changed) {
+          return previous;
+        }
+
+        const metadata = buildAlignedDiffMetadata(
+          nextSourceLines,
+          nextTargetLines,
+          nextSourcePresent,
+          nextTargetPresent
+        );
+
+        const nextState = {
+          ...previous,
+          alignedSourceLines: nextSourceLines,
+          alignedTargetLines: nextTargetLines,
+          alignedSourcePresent: nextSourcePresent,
+          alignedTargetPresent: nextTargetPresent,
+          ...metadata,
+        };
+        lineDiffRef.current = nextState;
+        return nextState;
+      });
+
+      if (changed) {
+        scheduleSideCommit(targetSide);
+      }
+    },
+    [capturePanelScrollSnapshot, scheduleSideCommit, sourceTab, targetTab]
+  );
+
+  const runClipboardExecCommand = useCallback((command: 'copy' | 'cut' | 'paste') => {
+    try {
+      return document.execCommand(command);
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const handleDiffContextMenuClipboardAction = useCallback(
+    async (side: ActivePanel, action: 'copy' | 'cut' | 'paste') => {
+      const textarea = side === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (!textarea) {
+        setDiffContextMenu(null);
+        return;
+      }
+
+      if (document.activeElement !== textarea) {
+        textarea.focus({ preventScroll: true });
+      }
+      setActivePanel(side);
+
+      if (action === 'paste') {
+        try {
+          const clipboardText = await readClipboardText();
+          handlePanelPasteText(side, clipboardText);
+        } catch (error) {
+          console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
+          runClipboardExecCommand('paste');
+        }
+      } else {
+        runClipboardExecCommand(action);
+      }
+
+      setDiffContextMenu(null);
+    },
+    [handlePanelPasteText, runClipboardExecCommand]
+  );
+
+  const isCopyLinesToPanelDisabled = useCallback(
+    (fromSide: ActivePanel, targetSide: ActivePanel) => {
+      if (fromSide === targetSide) {
+        return true;
+      }
+
+      const destinationTab = targetSide === 'source' ? sourceTab : targetTab;
+      if (!destinationTab) {
+        return true;
+      }
+
+      const textarea = fromSide === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      if (!textarea) {
+        return true;
+      }
+
+      const snapshot = lineDiffRef.current;
+      const sourceLines = fromSide === 'source'
+        ? snapshot.alignedSourceLines
+        : snapshot.alignedTargetLines;
+      const destinationLines = targetSide === 'source'
+        ? snapshot.alignedSourceLines
+        : snapshot.alignedTargetLines;
+
+      const maxIndex = Math.min(sourceLines.length, destinationLines.length) - 1;
+      if (maxIndex < 0) {
+        return true;
+      }
+
+      return false;
+    },
+    [sourceTab, targetTab]
+  );
+
+  useEffect(() => {
+    if (!diffContextMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (diffContextMenuRef.current && target && !diffContextMenuRef.current.contains(target)) {
+        setDiffContextMenu(null);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setDiffContextMenu(null);
+      }
+    };
+    const handleWindowBlur = () => {
+      setDiffContextMenu(null);
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleEscape, true);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleEscape, true);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [diffContextMenu]);
+
   const handleLineNumberPointerDown = useCallback(
     (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -1547,6 +1824,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const targetTitlePrefix = 'Target';
   const sourceUnavailableLabel = 'Source tab closed';
   const targetUnavailableLabel = 'Target tab closed';
+  const isZhCN = settings.language === 'zh-CN';
+  const copyLabel = isZhCN ? '复制' : 'Copy';
+  const cutLabel = isZhCN ? '剪切' : 'Cut';
+  const pasteLabel = isZhCN ? '粘贴' : 'Paste';
+  const copyToLeftLabel = isZhCN ? '复制到左侧' : 'Copy to Left';
+  const copyToRightLabel = isZhCN ? '复制到右侧' : 'Copy to Right';
 
   const renderUnavailable = (text: string) => (
     <div className="flex h-full items-center justify-center bg-muted/10 text-xs text-muted-foreground">
@@ -1718,6 +2001,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       onCopy={(event) => {
                         handlePanelTextareaCopy('source', event);
                       }}
+                      onContextMenu={(event) => {
+                        handlePanelContextMenu('source', event);
+                      }}
                       onFocus={() => {
                         setActivePanel('source');
                       }}
@@ -1840,6 +2126,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       onCopy={(event) => {
                         handlePanelTextareaCopy('target', event);
                       }}
+                      onContextMenu={(event) => {
+                        handlePanelContextMenu('target', event);
+                      }}
                       onFocus={() => {
                         setActivePanel('target');
                       }}
@@ -1908,6 +2197,69 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           <div className="mx-auto h-full w-px bg-border/90 shadow-[0_0_8px_rgba(0,0,0,0.18)]" />
         </div>
       </div>
+
+      {diffContextMenu && (
+        <div
+          ref={diffContextMenuRef}
+          className="fixed z-[95] w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          style={{ left: diffContextMenu.x, top: diffContextMenu.y }}
+        >
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'copy');
+            }}
+          >
+            {copyLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'cut');
+            }}
+          >
+            {cutLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'paste');
+            }}
+          >
+            {pasteLabel}
+          </button>
+          <div className="my-1 h-px bg-border" />
+          {diffContextMenu.side === 'target' && (
+            <button
+              type="button"
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'source')}
+              onClick={() => {
+                handleCopyLinesToPanel(diffContextMenu.side, 'source');
+                setDiffContextMenu(null);
+              }}
+            >
+              {copyToLeftLabel}
+            </button>
+          )}
+          {diffContextMenu.side === 'source' && (
+            <button
+              type="button"
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'target')}
+              onClick={() => {
+                handleCopyLinesToPanel(diffContextMenu.side, 'target');
+                setDiffContextMenu(null);
+              }}
+            >
+              {copyToRightLabel}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
