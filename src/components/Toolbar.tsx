@@ -1026,7 +1026,7 @@ export function Toolbar() {
             {/* Search Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleFind} disabled={!activeTab} />
-            <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!canEdit} />
+            <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!activeTab} />
             <ToolbarBtn icon={FilterIcon} title={filterTitle} onClick={handleFilter} disabled={!activeTab} />
 
             {/* Format Group */}
