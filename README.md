@@ -66,6 +66,16 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
     npm run tauri dev
     ```
 
+3.  **Run Frontend Unit Tests**:
+    ```bash
+    npm run test
+    ```
+
+4.  **Run Frontend Unit Tests (Watch Mode)**:
+    ```bash
+    npm run test:watch
+    ```
+
 ### Build
 
 To create a production build:

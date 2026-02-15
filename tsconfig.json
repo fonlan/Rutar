@@ -11,6 +11,7 @@
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "types": ["vitest/globals"],
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
