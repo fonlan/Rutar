@@ -339,6 +339,91 @@ describe("TitleBar", () => {
     });
   });
 
+  it("shows and clears tab path tooltip on hover", async () => {
+    const tabWithPath = createTab({
+      id: "tab-tooltip-path",
+      name: "with-path.ts",
+      path: "C:\\repo\\with-path.ts",
+    });
+    const tabWithoutPath = createTab({
+      id: "tab-tooltip-empty",
+      name: "no-path.ts",
+      path: "",
+    });
+    useStore.setState({
+      tabs: [tabWithPath, tabWithoutPath],
+      activeTabId: tabWithPath.id,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(
+        () =>
+          ({
+            x: 100,
+            y: 80,
+            width: 120,
+            height: 24,
+            top: 80,
+            right: 220,
+            bottom: 104,
+            left: 100,
+            toJSON: () => ({}),
+          }) as DOMRect
+      );
+
+    render(<TitleBar />);
+
+    const withPathElement = screen.getByText("with-path.ts").closest("div.group.flex.items-center");
+    expect(withPathElement).not.toBeNull();
+    fireEvent.mouseEnter(withPathElement as Element);
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\repo\\with-path.ts")).toBeInTheDocument();
+    });
+
+    fireEvent.mouseLeave(withPathElement as Element);
+
+    await waitFor(() => {
+      expect(screen.queryByText("C:\\repo\\with-path.ts")).toBeNull();
+    });
+
+    const noPathElement = screen.getByText("no-path.ts").closest("div.group.flex.items-center");
+    expect(noPathElement).not.toBeNull();
+    fireEvent.mouseEnter(noPathElement as Element);
+
+    await waitFor(() => {
+      expect(screen.queryByText("C:\\repo\\with-path.ts")).toBeNull();
+    });
+
+    rectMock.mockRestore();
+  });
+
+  it("closes tab context menu when window loses focus", async () => {
+    const tab = createTab({ id: "tab-blur-close-menu", name: "blur.ts", path: "C:\\repo\\blur.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("blur.ts"), {
+      clientX: 138,
+      clientY: 96,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Copy File Name" })).toBeInTheDocument();
+    });
+
+    fireEvent.blur(window);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Copy File Name" })).toBeNull();
+    });
+  });
+
   it("shows compare action disabled when no compare source is selected", async () => {
     const tab = createTab({ id: "tab-no-source", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
     useStore.setState({
