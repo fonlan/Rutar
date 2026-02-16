@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toolbar } from "./Toolbar";
 import { useStore, type FileTab } from "@/store/useStore";
@@ -275,6 +275,79 @@ describe("Toolbar", () => {
     });
   });
 
+  it("clears recent file entries from split menu", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-d.ts", "C:\\repo\\recent-e.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    fireEvent.click(await screen.findByRole("button", { name: "Clear recent files" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.recentFiles).toEqual([]);
+    });
+    expect(screen.queryByTitle("C:\\repo\\recent-d.ts")).toBeNull();
+  });
+
+  it("closes opened recent file menu on titlebar pointerdown event", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-f.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\recent-f.ts")).toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("rutar:titlebar-pointerdown"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("C:\\repo\\recent-f.ts")).toBeNull();
+    });
+  });
+
+  it("logs recent file open error when split-menu item open fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    openFilePathMock.mockRejectedValueOnce(new Error("open-recent-file-failed"));
+
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-g.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-g.ts");
+    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to open recent file:", expect.any(Error));
+    });
+    expect(screen.queryByTitle("C:\\repo\\recent-g.ts")).toBeNull();
+    errorSpy.mockRestore();
+  });
+
   it("opens recent folder from split menu list item", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
@@ -331,6 +404,89 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(removeRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-b");
     });
+  });
+
+  it("clears recent folder entries from split menu", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-c", "C:\\repo\\folder-d"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    fireEvent.click(await screen.findByRole("button", { name: "Clear recent folders" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.recentFolders).toEqual([]);
+    });
+    expect(screen.queryByTitle("C:\\repo\\folder-c")).toBeNull();
+  });
+
+  it("closes opened recent folder menu on outside pointerdown", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-e"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\folder-e")).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("C:\\repo\\folder-e")).toBeNull();
+    });
+  });
+
+  it("logs recent folder open error when split-menu folder open fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-f"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "read_dir_if_directory") {
+        throw new Error("open-recent-folder-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    const recentFolderRow = await screen.findByTitle("C:\\repo\\folder-f");
+    fireEvent.click(recentFolderRow.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to open recent folder:", expect.any(Error));
+    });
+    expect(addRecentFolderPathMock).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it("shows unsupported format warning when Alt+F is triggered on unsupported syntax", async () => {
