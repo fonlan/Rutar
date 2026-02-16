@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DiffTabPayload } from '@/store/useStore';
 import { diffEditorTestUtils } from './DiffEditor';
 
@@ -60,6 +60,26 @@ describe('diffEditorTestUtils.resolveAlignedDiffKind', () => {
     expect(
       diffEditorTestUtils.resolveAlignedDiffKind(0, ['same'], ['same'], [true], [true])
     ).toBeNull();
+  });
+});
+
+describe('diffEditorTestUtils.getDiffKindStyle', () => {
+  it('returns style buckets by diff kind', () => {
+    expect(diffEditorTestUtils.getDiffKindStyle('insert').lineNumberClass).toContain('emerald');
+    expect(diffEditorTestUtils.getDiffKindStyle('delete').lineNumberClass).toContain('red');
+    expect(diffEditorTestUtils.getDiffKindStyle('modify').lineNumberClass).toContain('amber');
+  });
+});
+
+describe('diffEditorTestUtils clamp helpers', () => {
+  it('clamps split ratio and percentage values to safe ranges', () => {
+    expect(diffEditorTestUtils.clampRatio(0.1)).toBe(0.2);
+    expect(diffEditorTestUtils.clampRatio(0.5)).toBe(0.5);
+    expect(diffEditorTestUtils.clampRatio(0.9)).toBe(0.8);
+
+    expect(diffEditorTestUtils.clampPercent(-10)).toBe(0);
+    expect(diffEditorTestUtils.clampPercent(33.3)).toBe(33.3);
+    expect(diffEditorTestUtils.clampPercent(110)).toBe(100);
   });
 });
 
@@ -279,6 +299,64 @@ describe('diffEditorTestUtils.computeTextPatch', () => {
       startChar: 2,
       endChar: 2,
       newText: 'X',
+    });
+  });
+});
+
+describe('diffEditorTestUtils.bindScrollerViewport', () => {
+  it('returns default viewport when scroller is null', () => {
+    const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
+    const cleanup = diffEditorTestUtils.bindScrollerViewport(null, (value) => {
+      snapshots.push(value);
+    });
+
+    expect(snapshots).toEqual([{ topPercent: 0, heightPercent: 100 }]);
+    expect(typeof cleanup).toBe('function');
+  });
+
+  it('updates viewport on scroll and stops after cleanup', () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const disconnectMock = vi.fn();
+
+    class ResizeObserverMock {
+      observe = vi.fn();
+      disconnect = disconnectMock;
+      constructor(_callback: ResizeObserverCallback) {}
+    }
+
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: ResizeObserverMock,
+    });
+
+    const scroller = document.createElement('div');
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: 0 });
+
+    const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
+    const cleanup = diffEditorTestUtils.bindScrollerViewport(scroller, (value) => {
+      snapshots.push(value);
+    });
+
+    expect(snapshots.at(-1)).toEqual({ topPercent: 0, heightPercent: 20 });
+
+    scroller.scrollTop = 400;
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(snapshots.at(-1)?.topPercent).toBeCloseTo(40, 3);
+    expect(snapshots.at(-1)?.heightPercent).toBe(20);
+
+    const snapshotCountBeforeCleanup = snapshots.length;
+    cleanup();
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+
+    scroller.scrollTop = 500;
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(snapshots.length).toBe(snapshotCountBeforeCleanup);
+
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: originalResizeObserver,
     });
   });
 });
