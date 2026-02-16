@@ -165,6 +165,119 @@ describe("SettingsModal", () => {
     errorSpy.mockRestore();
   });
 
+  it("toggles Windows file associations on and off", async () => {
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({
+      windowsFileAssociationEnabled: false,
+      windowsFileAssociationExtensions: [".txt", ".md"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      if (command === "apply_windows_file_associations") {
+        return [".TXT", ".env", ".md"];
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+    fireEvent.click(await screen.findByRole("button", { name: "Windows File Associations" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("apply_windows_file_associations", {
+        language: "en-US",
+        extensions: [".md", ".txt"],
+        openSettingsPage: true,
+      });
+      expect(useStore.getState().settings.windowsFileAssociationEnabled).toBe(true);
+      expect(useStore.getState().settings.windowsFileAssociationExtensions).toEqual([".env", ".md", ".txt"]);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Windows File Associations" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("remove_windows_file_associations", {
+        extensions: [".env", ".md", ".txt"],
+      });
+      expect(useStore.getState().settings.windowsFileAssociationEnabled).toBe(false);
+    });
+  });
+
+  it("logs error when Windows file association toggle fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({
+      windowsFileAssociationEnabled: false,
+      windowsFileAssociationExtensions: [".txt"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      if (command === "apply_windows_file_associations") {
+        throw new Error("apply-association-failed");
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+    fireEvent.click(await screen.findByRole("button", { name: "Windows File Associations" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to update Windows file associations:",
+        expect.any(Error)
+      );
+      expect(useStore.getState().settings.windowsFileAssociationEnabled).toBe(false);
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("persists preset extension changes when Windows file associations are enabled", async () => {
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({
+      windowsFileAssociationEnabled: true,
+      windowsFileAssociationExtensions: [".txt", ".md"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      if (command === "apply_windows_file_associations") {
+        return [".md"];
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+    fireEvent.click(await screen.findByRole("button", { name: ".txt" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("remove_windows_file_associations", {
+        extensions: [".txt"],
+      });
+      expect(invokeMock).toHaveBeenCalledWith("apply_windows_file_associations", {
+        language: "en-US",
+        extensions: [".md"],
+      });
+      expect(useStore.getState().settings.windowsFileAssociationEnabled).toBe(true);
+      expect(useStore.getState().settings.windowsFileAssociationExtensions).toEqual([".md"]);
+    });
+  });
+
   it("adds a new mouse gesture with normalized pattern", async () => {
     useStore.getState().toggleSettings(true);
 
