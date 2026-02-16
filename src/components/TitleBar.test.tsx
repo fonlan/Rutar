@@ -487,6 +487,59 @@ describe("TitleBar", () => {
     expect(clipboardWriteTextMock).not.toHaveBeenCalled();
   });
 
+  it("returns early for copy-file-name action when context-menu tab name is empty", async () => {
+    const tab = createTab({ id: "tab-empty-copy-name", name: "", path: "" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const { container } = render(<TitleBar />);
+    const firstTab = container.querySelector("div.group.flex.items-center");
+    expect(firstTab).not.toBeNull();
+
+    fireEvent.contextMenu(firstTab as Element, {
+      clientX: 143,
+      clientY: 93,
+    });
+
+    const copyFileNameButton = await screen.findByRole("button", { name: "Copy File Name" });
+    const onClick = getReactOnClick(copyFileNameButton as HTMLButtonElement);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(clipboardWriteTextMock).not.toHaveBeenCalled();
+  });
+
+  it("returns early for copy-directory action when context-menu tab path is empty", async () => {
+    const tab = createTab({ id: "tab-empty-copy-dir", name: "untitled", path: "" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("untitled"), {
+      clientX: 144,
+      clientY: 94,
+    });
+
+    const copyDirectoryButton = await screen.findByRole("button", { name: "Copy Directory" });
+    expect(copyDirectoryButton).toBeDisabled();
+    const onClick = getReactOnClick(copyDirectoryButton as HTMLButtonElement);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(clipboardWriteTextMock).not.toHaveBeenCalled();
+  });
+
   it("returns early for open-containing-folder action when context-menu tab path is empty", async () => {
     const tab = createTab({ id: "tab-empty-open-folder", name: "untitled", path: "" });
     useStore.setState({
