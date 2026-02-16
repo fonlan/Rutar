@@ -52,6 +52,63 @@ describe('editorTestUtils shortcut helpers', () => {
       })
     ).toBe(false);
   });
+
+  it('detects large-file edit intent keys', () => {
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'a',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        isComposing: false,
+      } as never)
+    ).toBe(true);
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'Enter',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        isComposing: false,
+      } as never)
+    ).toBe(true);
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'v',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        isComposing: false,
+      } as never)
+    ).toBe(true);
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'c',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        isComposing: false,
+      } as never)
+    ).toBe(false);
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'x',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: true,
+        isComposing: false,
+      } as never)
+    ).toBe(false);
+    expect(
+      editorTestUtils.isLargeModeEditIntent({
+        key: 'a',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        isComposing: true,
+      } as never)
+    ).toBe(false);
+  });
 });
 
 describe('editorTestUtils text normalization helpers', () => {
@@ -70,6 +127,23 @@ describe('editorTestUtils text normalization helpers', () => {
   it('builds input-layer text with trailing placeholder for final newline', () => {
     expect(editorTestUtils.toInputLayerText('abc')).toBe('abc');
     expect(editorTestUtils.toInputLayerText('abc\n')).toBe(`abc\n${EMPTY_LINE_PLACEHOLDER}`);
+  });
+
+  it('reads and writes input-layer text for textarea and contenteditable-like nodes', () => {
+    const textarea = document.createElement('textarea');
+    const div = document.createElement('div');
+
+    expect(editorTestUtils.isTextareaInputElement(textarea)).toBe(true);
+    expect(editorTestUtils.isTextareaInputElement(div as never)).toBe(false);
+    expect(editorTestUtils.isTextareaInputElement(null)).toBe(false);
+
+    editorTestUtils.setInputLayerText(textarea, `a${EMPTY_LINE_PLACEHOLDER}\r\nb`);
+    expect(textarea.value).toBe('a\nb');
+    expect(editorTestUtils.getEditableText(textarea)).toBe('a\nb');
+
+    editorTestUtils.setInputLayerText(div as never, 'x\n');
+    expect(div.textContent).toBe(`x\n${EMPTY_LINE_PLACEHOLDER}`);
+    expect(editorTestUtils.getEditableText(div as never)).toBe('x\n');
   });
 });
 
@@ -100,6 +174,72 @@ describe('editorTestUtils offset and coordinate helpers', () => {
     expect(editorTestUtils.codeUnitOffsetToUnicodeScalarIndex(text, 2)).toBe(1);
     expect(editorTestUtils.codeUnitOffsetToUnicodeScalarIndex(text, 3)).toBe(2);
     expect(editorTestUtils.codeUnitOffsetToUnicodeScalarIndex(text, 4)).toBe(3);
+  });
+
+  it('handles caret line and selection offsets in textarea', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'a\nb\nc';
+    textarea.setSelectionRange(4, 4);
+    expect(editorTestUtils.getCaretLineInElement(textarea)).toBe(3);
+
+    textarea.setSelectionRange(2, 4, 'backward');
+    expect(editorTestUtils.getSelectionOffsetsInElement(textarea)).toEqual({
+      start: 2,
+      end: 4,
+      isCollapsed: false,
+    });
+
+    textarea.setSelectionRange(2, 4, 'forward');
+    expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(textarea)).toEqual({
+      anchor: 2,
+      focus: 4,
+    });
+
+    textarea.setSelectionRange(2, 4, 'backward');
+    expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(textarea)).toEqual({
+      anchor: 4,
+      focus: 2,
+    });
+  });
+
+  it('handles caret line and selection offsets in div text nodes', () => {
+    const div = document.createElement('div');
+    div.textContent = 'ab\ncd\nef';
+    document.body.appendChild(div);
+    const textNode = div.firstChild as Text;
+    const selection = window.getSelection();
+    if (!selection) {
+      throw new Error('Selection API unavailable in test environment');
+    }
+
+    selection.removeAllRanges();
+    const range = document.createRange();
+    range.setStart(textNode, 4);
+    range.collapse(true);
+    selection.addRange(range);
+    expect(editorTestUtils.getCaretLineInElement(div as never)).toBe(2);
+
+    const selectRange = document.createRange();
+    selectRange.setStart(textNode, 1);
+    selectRange.setEnd(textNode, 6);
+    selection.removeAllRanges();
+    selection.addRange(selectRange);
+    expect(editorTestUtils.getSelectionOffsetsInElement(div as never)).toEqual({
+      start: 1,
+      end: 6,
+      isCollapsed: false,
+    });
+    expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(div as never)).toEqual({
+      anchor: 1,
+      focus: 6,
+    });
+
+    selection.removeAllRanges();
+    expect(editorTestUtils.getSelectionOffsetsInElement(div as never)).toBeNull();
+    expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(div as never)).toBeNull();
+    expect(editorTestUtils.getCaretLineInElement(div as never)).toBeNull();
+
+    div.remove();
   });
 });
 

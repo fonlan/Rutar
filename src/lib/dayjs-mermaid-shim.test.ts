@@ -5,6 +5,7 @@ describe("dayjs-mermaid-shim", () => {
   it("supports strict format parsing and validity checks", () => {
     expect(dayjs("2026-02-15", "YYYY-MM-DD", true).isValid()).toBe(true);
     expect(dayjs("2026/02/15", "YYYY-MM-DD", true).isValid()).toBe(false);
+    expect(dayjs("2026/02/15", "YYYY-MM-DD", false).isValid()).toBe(true);
   });
 
   it("formats common tokens", () => {
@@ -69,5 +70,26 @@ describe("dayjs-mermaid-shim", () => {
     expect(base.startOf("hour").format("HH:mm:ss.SSS")).toBe("16:00:00.000");
     expect(base.startOf("minute").format("HH:mm:ss.SSS")).toBe("16:45:00.000");
     expect(base.endOf("minute").format("ss.SSS")).toBe("59.999");
+  });
+
+  it("covers endOf week/day/hour and unknown-unit fallback", () => {
+    const base = dayjs(new Date(2026, 7, 19, 16, 45, 30, 123));
+    const oneHour = 60 * 60 * 1000;
+    const oneDay = 24 * oneHour;
+    const oneWeek = 7 * oneDay;
+
+    expect(base.endOf("hour").valueOf() - base.startOf("hour").valueOf()).toBe(oneHour - 1);
+    expect(base.endOf("day").valueOf() - base.startOf("day").valueOf()).toBe(oneDay - 1);
+    expect(base.endOf("week").valueOf() - base.startOf("week").valueOf()).toBe(oneWeek - 1);
+    expect(base.endOf("unknown" as never).valueOf()).toBe(base.valueOf());
+  });
+
+  it("keeps clone when add receives non-finite value or invalid date", () => {
+    const base = dayjs(new Date(2026, 7, 19, 16, 45, 30, 123));
+    expect(base.add(Number.NaN, "day").valueOf()).toBe(base.valueOf());
+
+    const invalid = dayjs(null);
+    expect(invalid.add(1, "day").isValid()).toBe(false);
+    expect(invalid.startOf("day").isValid()).toBe(false);
   });
 });
