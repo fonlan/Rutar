@@ -706,6 +706,85 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("resizes search result panel and stops resizing after mouseup", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    const { container } = render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const resultList = await waitFor(() => {
+      const element = container.querySelector<HTMLDivElement>('div.overflow-auto[style*="max-height"]');
+      expect(element).toBeTruthy();
+      return element as HTMLDivElement;
+    });
+
+    const initialHeight = parseInt(resultList.style.maxHeight, 10);
+    const resizeHandle = screen.getByLabelText("Resize results panel");
+
+    fireEvent.mouseDown(resizeHandle, { clientY: 400 });
+    fireEvent.mouseMove(window, { clientY: 360 });
+
+    await waitFor(() => {
+      const nextHeight = parseInt(resultList.style.maxHeight, 10);
+      expect(nextHeight).toBeGreaterThan(initialHeight);
+    });
+
+    fireEvent.mouseUp(window);
+    const heightAfterMouseUp = resultList.style.maxHeight;
+    fireEvent.mouseMove(window, { clientY: 300 });
+    expect(resultList.style.maxHeight).toBe(heightAfterMouseUp);
+  });
+
   it("closes minimized search results panel from minimized-strip close button", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
