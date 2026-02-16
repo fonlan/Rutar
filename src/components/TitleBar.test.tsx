@@ -227,6 +227,46 @@ describe("TitleBar", () => {
     expect(useStore.getState().activeTabId).toBe("tab-drag-right");
   });
 
+  it("logs error when startDragging fails during tab drag", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const leftTab = createTab({ id: "tab-drag-error-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-error-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+    tauriWindowMocks.appWindow.startDragging.mockRejectedValueOnce(new Error("drag-start-failed"));
+
+    render(<TitleBar />);
+
+    const rightTabElement = screen.getByText("right.ts").closest("div.group.flex.items-center");
+    expect(rightTabElement).not.toBeNull();
+
+    fireEvent.pointerDown(rightTabElement as Element, {
+      isPrimary: true,
+      pointerType: "mouse",
+      button: 0,
+      pointerId: 101,
+      clientX: 40,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 101,
+      buttons: 1,
+      clientX: 54,
+      clientY: 20,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to drag window from tab:",
+        expect.objectContaining({ message: "drag-start-failed" })
+      );
+    });
+
+    errorSpy.mockRestore();
+  });
+
   it("closes tab from inline close button and keeps active tab unchanged on close-button pointer events", async () => {
     const leftTab = createTab({ id: "tab-left-close-btn", name: "left.ts", path: "C:\\repo\\left.ts" });
     const rightTab = createTab({ id: "tab-right-close-btn", name: "right.ts", path: "C:\\repo\\right.ts" });
