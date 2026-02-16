@@ -695,6 +695,208 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("runs filter query when filter action is triggered with non-empty rule", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [
+            {
+              line: 1,
+              column: 1,
+              length: 4,
+              lineText: "todo item",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          rules: [
+            {
+              keyword: "todo",
+              matchMode: "contains",
+              backgroundColor: "#fff7a8",
+              textColor: "#1f2937",
+              bold: false,
+              italic: false,
+              applyTo: "line",
+            },
+          ],
+          startLine: 0,
+        })
+      );
+    });
+  });
+
+  it("re-runs filter query from results panel refresh action", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [
+            {
+              line: 1,
+              column: 1,
+              length: 4,
+              lineText: "todo item",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+      ).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByTitle("Refresh filter results"));
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+      ).toHaveLength(2);
+    });
+  });
+
+  it("shows filter failure message when filter chunk command throws", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        throw new Error("filter-chunk-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Filter failed: filter-chunk-failed/)).toBeInTheDocument();
+    });
+  });
+
   it("saves filter rule group with normalized payload", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
