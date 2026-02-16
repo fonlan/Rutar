@@ -3,6 +3,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toolbar } from "./Toolbar";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
+import { message } from "@tauri-apps/plugin-dialog";
+import { openFilePath } from "@/lib/openFile";
+import { removeRecentFilePath } from "@/lib/recentPaths";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -43,6 +46,9 @@ vi.mock("@/lib/tabClose", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const messageMock = vi.mocked(message);
+const openFilePathMock = vi.mocked(openFilePath);
+const removeRecentFilePathMock = vi.mocked(removeRecentFilePath);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -154,5 +160,101 @@ describe("Toolbar", () => {
       expect(events[0]).toEqual({ mode: "find" });
     });
     window.removeEventListener("rutar:search-open", listener as EventListener);
+  });
+
+  it("opens recent file from split menu list item", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-a.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-a.ts");
+    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-a.ts");
+    });
+  });
+
+  it("removes recent file entry from split menu", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-b.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Bookmark" }));
+
+    await waitFor(() => {
+      expect(removeRecentFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-b.ts");
+    });
+  });
+
+  it("shows unsupported format warning when Alt+F is triggered on unsupported syntax", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "f",
+      code: "KeyF",
+      altKey: true,
+      ctrlKey: true,
+      metaKey: false,
+    });
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        "Only JSON, YAML, XML, HTML, and TOML are supported.",
+        expect.objectContaining({ title: "Settings", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows word count failure warning when backend returns error", async () => {
+    useStore.getState().addTab(createTab());
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "get_word_count_info") {
+        throw new Error("wc-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const wordCountWrapper = screen.getByTitle("Word Count");
+    fireEvent.click(wordCountWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        "Word count failed: wc-failed",
+        expect.objectContaining({ title: "Word Count", kind: "warning" })
+      );
+    });
   });
 });
