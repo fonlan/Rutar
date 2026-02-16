@@ -162,6 +162,52 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:search-open", listener as EventListener);
   });
 
+  it("dispatches search-open replace event on Ctrl+H", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    };
+    window.addEventListener("rutar:search-open", listener as EventListener);
+
+    fireEvent.keyDown(window, {
+      key: "h",
+      code: "KeyH",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(events[0]).toEqual({ mode: "replace" });
+    });
+    window.removeEventListener("rutar:search-open", listener as EventListener);
+  });
+
+  it("toggles line numbers on Alt+L", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({ showLineNumbers: false });
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "l",
+      code: "KeyL",
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.showLineNumbers).toBe(true);
+    });
+  });
+
   it("opens recent file from split menu list item", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
@@ -203,6 +249,30 @@ describe("Toolbar", () => {
     });
   });
 
+  it("closes opened recent file menu on Escape", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-c.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\recent-c.ts")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("C:\\repo\\recent-c.ts")).toBeNull();
+    });
+  });
+
   it("shows unsupported format warning when Alt+F is triggered on unsupported syntax", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     render(<Toolbar />);
@@ -213,6 +283,29 @@ describe("Toolbar", () => {
     fireEvent.keyDown(window, {
       key: "f",
       code: "KeyF",
+      altKey: true,
+      ctrlKey: true,
+      metaKey: false,
+    });
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        "Only JSON, YAML, XML, HTML, and TOML are supported.",
+        expect.objectContaining({ title: "Settings", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows unsupported format warning when Ctrl+Alt+M is triggered on unsupported syntax", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "m",
+      code: "KeyM",
       altKey: true,
       ctrlKey: true,
       metaKey: false,
