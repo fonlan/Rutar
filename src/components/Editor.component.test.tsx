@@ -58,6 +58,23 @@ async function waitForEditorTextarea(container: HTMLElement) {
   return container.querySelector('textarea.editor-input-layer') as HTMLTextAreaElement;
 }
 
+async function clickLineNumber(
+  container: HTMLElement,
+  lineNumber: number,
+  options?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; detail?: number }
+) {
+  await waitFor(() => {
+    expect(container.querySelectorAll('div.cursor-pointer.select-none').length).toBeGreaterThan(0);
+  });
+
+  const lineElement = Array.from(container.querySelectorAll('div.cursor-pointer.select-none')).find(
+    (element) => element.textContent === String(lineNumber)
+  );
+  expect(lineElement).toBeTruthy();
+
+  fireEvent.click(lineElement as Element, options ?? {});
+}
+
 describe('Editor component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
 
@@ -668,6 +685,92 @@ describe('Editor component', () => {
     } finally {
       restoreProperty(document, 'execCommand', originalExecCommand);
       warnSpy.mockRestore();
+    }
+  });
+
+  it('deletes selected line-number range with Delete key', async () => {
+    const tab = createTab({ id: 'tab-line-selection-delete' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    await clickLineNumber(container, 2, { ctrlKey: true });
+    fireEvent.keyDown(textarea, { key: 'Delete' });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: 'alpha\n',
+        })
+      );
+    });
+
+    expect(textarea.value).toBe('alpha\n');
+  });
+
+  it('copies selected line-number range with Ctrl+C without editing document', async () => {
+    const tab = createTab({ id: 'tab-line-selection-copy' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      await clickLineNumber(container, 2, { ctrlKey: true });
+      fireEvent.keyDown(textarea, { key: 'c', ctrlKey: true });
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('beta\n');
+      });
+
+      expect(
+        invokeMock.mock.calls.some(
+          (call) => call[0] === 'edit_text' || call[0] === 'replace_line_range'
+        )
+      ).toBe(false);
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('cuts selected line-number range with Ctrl+X and updates text', async () => {
+    const tab = createTab({ id: 'tab-line-selection-cut' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      await clickLineNumber(container, 1, { ctrlKey: true });
+      fireEvent.keyDown(textarea, { key: 'x', ctrlKey: true });
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('alpha\n');
+        expect(invokeMock).toHaveBeenCalledWith(
+          'edit_text',
+          expect.objectContaining({
+            id: tab.id,
+            newText: 'beta\n',
+          })
+        );
+      });
+
+      expect(textarea.value).toBe('beta\n');
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
     }
   });
 });
