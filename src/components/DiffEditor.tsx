@@ -677,6 +677,34 @@ function dispatchDocumentUpdated(tabId: string) {
   );
 }
 
+export const diffEditorTestUtils = {
+  getParentDirectoryPath,
+  pathBaseName,
+  resolveAlignedDiffKind,
+  getDiffKindStyle,
+  clampRatio,
+  clampPercent,
+  normalizeTextToLines,
+  buildFallbackDiffLineNumbers,
+  ensureBooleanArray,
+  normalizeLineDiffResult,
+  buildInitialDiff,
+  buildLineNumberByAlignedRow,
+  extractActualLines,
+  buildAlignedDiffMetadata,
+  findAlignedRowIndexByLineNumber,
+  getLineIndexFromTextOffset,
+  getSelectedLineRangeByOffset,
+  buildCopyTextWithoutVirtualRows,
+  getLineSelectionRange,
+  getNextMatchedRow,
+  reconcilePresenceAfterTextEdit,
+  inferTrailingNewlineFromLines,
+  serializeLines,
+  computeTextPatch,
+  bindScrollerViewport,
+};
+
 export function DiffEditor({ tab }: DiffEditorProps) {
   const tabs = useStore((state) => state.tabs);
   const settings = useStore((state) => state.settings);
