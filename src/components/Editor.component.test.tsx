@@ -661,6 +661,143 @@ describe('Editor component', () => {
     window.removeEventListener('rutar:document-updated', updatedListener as EventListener);
   });
 
+  it('returns early when toggle-line-comment backend reports unchanged', async () => {
+    const tab = createTab({ id: 'tab-key-toggle-comment-unchanged', lineCount: 6 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const updatedEvents: Array<{ tabId: string }> = [];
+    const updatedListener = (event: Event) => {
+      updatedEvents.push((event as CustomEvent).detail as { tabId: string });
+    };
+    window.addEventListener('rutar:document-updated', updatedListener as EventListener);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    fireEvent.keyDown(textarea, { key: '/', ctrlKey: true });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'toggle_line_comments',
+        expect.objectContaining({
+          id: tab.id,
+          isCollapsed: false,
+        })
+      );
+    });
+
+    expect(updatedEvents).toEqual([]);
+    expect(invokeMock.mock.calls.some((call) => call[0] === 'edit_text')).toBe(false);
+    expect(invokeMock.mock.calls.some((call) => call[0] === 'replace_line_range')).toBe(false);
+    window.removeEventListener('rutar:document-updated', updatedListener as EventListener);
+  });
+
+  it('logs error when toggle-line-comment backend throws', async () => {
+    const tab = createTab({ id: 'tab-key-toggle-comment-error' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'toggle_line_comments') {
+        throw new Error('toggle-failed');
+      }
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      return undefined;
+    });
+
+    try {
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      fireEvent.keyDown(textarea, { key: '/', ctrlKey: true });
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to toggle line comments:',
+          expect.any(Error)
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('restores caret for collapsed selection after toggle-line-comment succeeds', async () => {
+    const tab = createTab({ id: 'tab-key-toggle-comment-collapsed' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: true,
+          lineCount: 6,
+          documentVersion: 2,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'get_visible_lines') {
+        return '//alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      return undefined;
+    });
+
+    textarea.focus();
+    textarea.setSelectionRange(3, 3);
+    fireEvent.keyDown(textarea, { key: '/', ctrlKey: true });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'toggle_line_comments',
+        expect.objectContaining({
+          id: tab.id,
+          isCollapsed: true,
+        })
+      );
+      expect(textarea.selectionStart).toBe(0);
+      expect(textarea.selectionEnd).toBe(0);
+    });
+  });
+
   it('falls back to execCommand paste when clipboard plugin read fails', async () => {
     const tab = createTab({ id: 'tab-paste-fallback' });
     const { container } = render(<Editor tab={tab} />);
@@ -746,6 +883,34 @@ describe('Editor component', () => {
       ).toBe(false);
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('logs warning when line-number copy clipboard write fails', async () => {
+    const tab = createTab({ id: 'tab-line-selection-copy-warn' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockRejectedValue(new Error('clipboard-failed'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      await clickLineNumber(container, 2, { ctrlKey: true });
+      fireEvent.keyDown(textarea, { key: 'c', ctrlKey: true });
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('beta\n');
+      });
+      expect(warnSpy).toHaveBeenCalledWith('Failed to write line selection to clipboard.');
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+      warnSpy.mockRestore();
     }
   });
 
@@ -847,6 +1012,28 @@ describe('Editor component', () => {
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
     }
+  });
+
+  it('inserts newline on Enter and syncs text diff', async () => {
+    const tab = createTab({ id: 'tab-enter-insert-newline' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: false });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: '\n',
+        })
+      );
+      expect(textarea.value).toBe('alpha\n\nbeta\n');
+    });
   });
 
   it('deletes selected text from context menu and syncs edit', async () => {
