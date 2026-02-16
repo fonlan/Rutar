@@ -161,6 +161,88 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows validation error when saving group with empty name", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save Group" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Group" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please enter a rule group name/)).toBeInTheDocument();
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
+  });
+
+  it("shows validation error when saving group without non-empty rules", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Rule group name")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Rule group name"), {
+      target: { value: "empty-rules" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Group" }));
+
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
+    expect(screen.queryByRole("option", { name: "empty-rules" })).toBeNull();
+  });
+
+  it("shows validation error when loading filter group without selection", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Load Group" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Group" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please select a rule group/)).toBeInTheDocument();
+    });
+  });
+
   it("loads selected filter rule group into current rules", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
