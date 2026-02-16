@@ -155,6 +155,75 @@ describe("TitleBar", () => {
     });
   });
 
+  it("copies full path from tab context menu", async () => {
+    const tab = createTab({ id: "tab-path", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 150,
+      clientY: 100,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Copy Path" }));
+
+    await waitFor(() => {
+      expect(clipboardWriteTextMock).toHaveBeenCalledWith("C:\\repo\\src\\main.rs");
+    });
+  });
+
+  it("opens containing folder from tab context menu", async () => {
+    const tab = createTab({ id: "tab-open-dir", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 170,
+      clientY: 120,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Containing Folder" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("open_in_file_manager", {
+        path: "C:\\repo\\src\\main.rs",
+      });
+    });
+  });
+
+  it("closes tab context menu on Escape", async () => {
+    const tab = createTab({ id: "tab-escape", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 130,
+      clientY: 95,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Copy File Name" })).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Copy File Name" })).toBeNull();
+    });
+  });
+
   it("closes other tabs from tab context menu", async () => {
     const sourceTab = createTab({ id: "tab-source", name: "source.ts", path: "C:\\repo\\source.ts" });
     const targetTab = createTab({ id: "tab-target", name: "target.ts", path: "C:\\repo\\target.ts" });
