@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
 import { openFilePath } from "@/lib/openFile";
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
+import { detectOutlineType, loadOutline } from "@/lib/outline";
+import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -51,6 +53,10 @@ const openFilePathMock = vi.mocked(openFilePath);
 const addRecentFolderPathMock = vi.mocked(addRecentFolderPath);
 const removeRecentFilePathMock = vi.mocked(removeRecentFilePath);
 const removeRecentFolderPathMock = vi.mocked(removeRecentFolderPath);
+const detectOutlineTypeMock = vi.mocked(detectOutlineType);
+const loadOutlineMock = vi.mocked(loadOutline);
+const detectStructuredFormatSyntaxKeyMock = vi.mocked(detectStructuredFormatSyntaxKey);
+const isStructuredFormatSupportedMock = vi.mocked(isStructuredFormatSupported);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -77,6 +83,10 @@ describe("Toolbar", () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US", wordWrap: false });
+    detectOutlineTypeMock.mockReturnValue(null);
+    loadOutlineMock.mockResolvedValue([]);
+    detectStructuredFormatSyntaxKeyMock.mockReturnValue(null);
+    isStructuredFormatSupportedMock.mockReturnValue(false);
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "get_edit_history_state") {
         return {
@@ -209,6 +219,28 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:search-open", listener as EventListener);
   });
 
+  it("dispatches search-open filter event from toolbar filter button", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    };
+    window.addEventListener("rutar:search-open", listener as EventListener);
+
+    const filterWrapper = screen.getByTitle("Filter");
+    fireEvent.click(filterWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(events[0]).toEqual({ mode: "filter" });
+    });
+    window.removeEventListener("rutar:search-open", listener as EventListener);
+  });
+
   it("toggles line numbers on Alt+L", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({ showLineNumbers: false });
@@ -326,6 +358,74 @@ describe("Toolbar", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("redo", { id: "tab-toolbar" });
+    });
+  });
+
+  it("formats document from beautify and minify toolbar buttons when supported", async () => {
+    useStore.getState().addTab(createTab({ name: "data.json", path: "C:\\repo\\data.json" }));
+    isStructuredFormatSupportedMock.mockReturnValue(true);
+    detectStructuredFormatSyntaxKeyMock.mockReturnValue("json");
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "format_document") {
+        return payload?.mode === "beautify" ? 30 : 20;
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const beautifyWrapper = screen.getByTitle("Beautify (Ctrl+Alt+F)");
+    const minifyWrapper = screen.getByTitle("Minify (Ctrl+Alt+M)");
+    fireEvent.click(beautifyWrapper.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(minifyWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "format_document",
+        expect.objectContaining({ id: "tab-toolbar", mode: "beautify", fileSyntax: "json" })
+      );
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "format_document",
+        expect.objectContaining({ id: "tab-toolbar", mode: "minify", fileSyntax: "json" })
+      );
+    });
+  });
+
+  it("loads outline from toolbar outline button when outline is supported", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    detectOutlineTypeMock.mockReturnValue("typescript");
+    loadOutlineMock.mockResolvedValue([{ id: "n1", label: "fn main", children: [] }] as any);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const outlineWrapper = screen.getByTitle("Outline");
+    const outlineButton = outlineWrapper.querySelector("button") as HTMLButtonElement;
+    expect(outlineButton).not.toBeDisabled();
+    fireEvent.click(outlineButton);
+
+    await waitFor(() => {
+      expect(loadOutlineMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-toolbar" }),
+        "typescript"
+      );
+    });
+    await waitFor(() => {
+      expect(useStore.getState().outlineOpen).toBe(true);
     });
   });
 
