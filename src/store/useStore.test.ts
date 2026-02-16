@@ -148,4 +148,44 @@ describe("useStore", () => {
     useStore.getState().setCursorPosition("file-1", 2, 4);
     expect(useStore.getState().cursorPositionByTab).toBe(previousRef);
   });
+
+  it("updates sidebar and outline widths via dedicated setters", () => {
+    useStore.getState().setSidebarWidth(420);
+    useStore.getState().setOutlineWidth(360);
+
+    expect(useStore.getState().sidebarWidth).toBe(420);
+    expect(useStore.getState().outlineWidth).toBe(360);
+  });
+
+  it("keeps state reference when removing missing bookmark or setting same diff panel", () => {
+    const diffTab = createFileTab({
+      id: "diff-1",
+      tabType: "diff",
+      diffPayload: createDiffPayload(),
+    });
+    useStore.getState().addTab(diffTab);
+
+    const previousBookmarksRef = useStore.getState().bookmarksByTab;
+    useStore.getState().removeBookmark("diff-1", 9);
+    expect(useStore.getState().bookmarksByTab).toBe(previousBookmarksRef);
+
+    useStore.getState().setActiveDiffPanel("diff-1", "target");
+    const previousDiffPanelRef = useStore.getState().activeDiffPanelByTab;
+    useStore.getState().setActiveDiffPanel("diff-1", "target");
+    expect(useStore.getState().activeDiffPanelByTab).toBe(previousDiffPanelRef);
+  });
+
+  it("toggleBookmark removes only target line when other bookmarks remain", () => {
+    const fileTab = createFileTab({ id: "file-2", path: "" });
+    useStore.getState().addTab(fileTab);
+    useStore.getState().setActiveTab("file-2");
+    useStore.getState().toggleBookmarkSidebar(true);
+
+    useStore.getState().addBookmark("file-2", 2);
+    useStore.getState().addBookmark("file-2", 4);
+    useStore.getState().toggleBookmark("file-2", 2);
+
+    expect(useStore.getState().bookmarksByTab["file-2"]).toEqual([4]);
+    expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
+  });
 });
