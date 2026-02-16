@@ -276,6 +276,24 @@ describe('Editor component', () => {
     window.removeEventListener('rutar:document-updated', updatedListener as EventListener);
   });
 
+  it('runs sort action from context submenu and triggers cleanup command', async () => {
+    const tab = createTab({ id: 'tab-sort-action', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    fireEvent.contextMenu(textarea, { clientX: 185, clientY: 185 });
+    const sortMenuLabel = await screen.findByText('Sort');
+    fireEvent.mouseEnter(sortMenuLabel.closest('div') as Element);
+    fireEvent.click(screen.getByText('Sort Lines Ascending'));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('cleanup_document', {
+        id: tab.id,
+        action: 'sort_lines_ascending',
+      });
+    });
+  });
+
   it('converts selected text with Base64 Encode and replaces selection', async () => {
     const tab = createTab({ id: 'tab-base64-encode' });
     const { container } = render(<Editor tab={tab} />);
@@ -463,6 +481,80 @@ describe('Editor component', () => {
           action: 'base64_encode',
         });
         expect(writeText).toHaveBeenCalledWith('QkFTRTY0');
+      });
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('copies Base64 decode result to clipboard from context submenu', async () => {
+    const tab = createTab({ id: 'tab-base64-copy-decode-result' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'convert_text_base64') {
+        if (payload?.action === 'base64_decode') {
+          return 'decoded-text';
+        }
+        return '';
+      }
+
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      return undefined;
+    });
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      fireEvent.contextMenu(textarea, { clientX: 280, clientY: 210 });
+
+      const bookmarkMenuLabel = await screen.findByText('Bookmark');
+      fireEvent.mouseEnter(bookmarkMenuLabel.closest('div') as Element);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Base64 Decode Result' }));
+
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith('convert_text_base64', {
+          text: 'alpha',
+          action: 'base64_decode',
+        });
+        expect(writeText).toHaveBeenCalledWith('decoded-text');
       });
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
