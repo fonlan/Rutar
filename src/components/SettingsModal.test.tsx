@@ -16,6 +16,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 const invokeMock = vi.mocked(invoke);
 const openUrlMock = vi.mocked(openUrl);
 const originalUserAgent = window.navigator.userAgent;
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 function setUserAgent(value: string) {
   Object.defineProperty(window.navigator, "userAgent", {
@@ -47,10 +48,18 @@ describe("SettingsModal", () => {
         writeText: clipboardWriteTextMock,
       },
     });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   afterEach(() => {
     setUserAgent(originalUserAgent);
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: originalScrollIntoView,
+    });
   });
 
   it("renders null when modal is closed", async () => {
@@ -346,6 +355,46 @@ describe("SettingsModal", () => {
       expect(screen.getByText("Action")).toBeInTheDocument();
       expect(screen.getByText("Shortcut")).toBeInTheDocument();
       expect(screen.getByText("F3 / Shift + F3")).toBeInTheDocument();
+    });
+  });
+
+  it("selects font from suggestions with keyboard navigation", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
+    const input = await screen.findByPlaceholderText("Type or select a font family (system fonts supported)");
+    fireEvent.change(input, { target: { value: "casc" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.fontFamily.toLowerCase()).toContain("cascadia code");
+      expect(useStore.getState().settings.fontFamily.toLowerCase().startsWith("cascadia code")).toBe(true);
+    });
+  });
+
+  it("reorders and removes fonts in appearance font priority list", async () => {
+    useStore.getState().updateSettings({
+      fontFamily: "Consolas, Cascadia Code, Arial",
+    });
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
+
+    const moveDownButtons = await screen.findAllByRole("button", { name: "Move Font Down" });
+    fireEvent.click(moveDownButtons[0]);
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.fontFamily).toBe("Cascadia Code, Consolas, Arial");
+    });
+
+    const removeButtons = screen.getAllByRole("button", { name: "Remove Font" });
+    fireEvent.click(removeButtons[2]);
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.fontFamily).toBe("Cascadia Code, Consolas");
     });
   });
 
