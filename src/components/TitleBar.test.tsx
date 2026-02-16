@@ -133,4 +133,50 @@ describe("TitleBar", () => {
       expect(clipboardWriteTextMock).toHaveBeenCalledWith("main.rs");
     });
   });
+
+  it("copies parent directory from tab context menu", async () => {
+    const tab = createTab({ id: "tab-dir", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 140,
+      clientY: 90,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Copy Directory" }));
+
+    await waitFor(() => {
+      expect(clipboardWriteTextMock).toHaveBeenCalledWith("C:\\repo\\src");
+    });
+  });
+
+  it("closes other tabs from tab context menu", async () => {
+    const sourceTab = createTab({ id: "tab-source", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-target", name: "target.ts", path: "C:\\repo\\target.ts" });
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab],
+      activeTabId: sourceTab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 160,
+      clientY: 100,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close Other Tabs" }));
+
+    await waitFor(() => {
+      const { tabs, activeTabId } = useStore.getState();
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("tab-target");
+      expect(activeTabId).toBe("tab-target");
+    });
+  });
 });
