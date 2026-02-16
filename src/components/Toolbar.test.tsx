@@ -75,6 +75,11 @@ function createTab(partial?: Partial<FileTab>): FileTab {
   };
 }
 
+function getReactOnClick(button: HTMLButtonElement): (() => void) | undefined {
+  const propsKey = Object.keys(button as object).find((key) => key.startsWith("__reactProps$"));
+  return propsKey ? (button as any)[propsKey]?.onClick : undefined;
+}
+
 describe("Toolbar", () => {
   let initialState: ReturnType<typeof useStore.getState>;
 
@@ -649,6 +654,52 @@ describe("Toolbar", () => {
     });
   });
 
+  it("shows outline unsupported warning when no active tab is available", async () => {
+    render(<Toolbar />);
+
+    const outlineWrapper = screen.getByTitle((title) => title.includes("Outline"));
+    const outlineButton = outlineWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(outlineButton);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("Cannot open outline."),
+        expect.objectContaining({ title: "Outline", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows outline unsupported warning when outline type cannot be detected", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    detectOutlineTypeMock.mockReturnValue(null);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const outlineWrapper = screen.getByTitle("Outline");
+    const outlineButton = outlineWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(outlineButton);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("Cannot open outline."),
+        expect.objectContaining({ title: "Outline", kind: "warning" })
+      );
+    });
+  });
+
   it("closes outline when toolbar outline button is clicked while outline is open", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     useStore.getState().toggleOutline(true);
@@ -701,9 +752,7 @@ describe("Toolbar", () => {
 
     const wordCountWrapper = screen.getByTitle((title) => title.includes("Word Count"));
     const wordCountButton = wordCountWrapper.querySelector("button") as HTMLButtonElement;
-    const propsKey = Object.keys(wordCountButton as object).find((key) => key.startsWith("__reactProps$"));
-    expect(propsKey).toBeTruthy();
-    const onClick = (wordCountButton as any)[propsKey as string]?.onClick as (() => void) | undefined;
+    const onClick = getReactOnClick(wordCountButton);
     expect(onClick).toBeTypeOf("function");
 
     await act(async () => {
