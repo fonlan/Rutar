@@ -1036,6 +1036,48 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:document-updated", listener as EventListener);
   });
 
+  it("ignores document-updated event when payload tab id does not match active tab", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-event-active" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-event-active" });
+    });
+
+    const getHistoryCalls = () =>
+      invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === "get_edit_history_state" && (payload as { id?: string } | undefined)?.id === "tab-event-active"
+      ).length;
+
+    expect(getHistoryCalls()).toBe(1);
+    window.dispatchEvent(new CustomEvent("rutar:document-updated", { detail: { tabId: "tab-other" } }));
+
+    await waitFor(() => {
+      expect(getHistoryCalls()).toBe(1);
+    });
+  });
+
+  it("ignores force-refresh event when payload tab id does not match active tab", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-force-active" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-force-active" });
+    });
+
+    const getHistoryCalls = () =>
+      invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === "get_edit_history_state" && (payload as { id?: string } | undefined)?.id === "tab-force-active"
+      ).length;
+
+    expect(getHistoryCalls()).toBe(1);
+    window.dispatchEvent(new CustomEvent("rutar:force-refresh", { detail: { tabId: "tab-other" } }));
+
+    await waitFor(() => {
+      expect(getHistoryCalls()).toBe(1);
+    });
+  });
+
   it("closes active tab on Ctrl+W", async () => {
     useStore.getState().addTab(createTab({ id: "tab-a", name: "a.ts", path: "C:\\repo\\a.ts" }));
     useStore.getState().addTab(createTab({ id: "tab-b", name: "b.ts", path: "C:\\repo\\b.ts" }));
@@ -1367,6 +1409,22 @@ describe("Toolbar", () => {
     });
   });
 
+  it("returns early for format action when no active tab exists", async () => {
+    render(<Toolbar />);
+
+    const beautifyWrapper = screen.getByTitle((title) => title.includes("Beautify"));
+    const beautifyButton = beautifyWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(beautifyButton);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(invokeMock).not.toHaveBeenCalledWith("format_document", expect.anything());
+    expect(messageMock).not.toHaveBeenCalled();
+  });
+
   it("loads outline from toolbar outline button when outline is supported", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     detectOutlineTypeMock.mockReturnValue("typescript");
@@ -1620,6 +1678,31 @@ describe("Toolbar", () => {
       value: originalExecCommand ?? (() => false),
     });
     editor.remove();
+  });
+
+  it("refreshes clipboard selection state through selectionchange raf flush", async () => {
+    useStore.getState().addTab(createTab());
+    let rafCallback: FrameRequestCallback | null = null;
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      rafCallback = callback;
+      return 1;
+    });
+    try {
+      render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+      });
+
+      document.dispatchEvent(new Event("selectionchange"));
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+      expect(rafCallback).toBeTypeOf("function");
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+    } finally {
+      rafSpy.mockRestore();
+    }
   });
 
   it("dispatches paste-text event from paste button", async () => {
