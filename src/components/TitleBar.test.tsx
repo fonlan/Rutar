@@ -227,6 +227,86 @@ describe("TitleBar", () => {
     expect(useStore.getState().activeTabId).toBe("tab-drag-right");
   });
 
+  it("does not start dragging when pointermove reports no primary button", async () => {
+    const leftTab = createTab({ id: "tab-drag-nobutton-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-nobutton-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const rightTabElement = screen.getByText("right.ts").closest("div.group.flex.items-center");
+    expect(rightTabElement).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.pointerDown(rightTabElement as Element, {
+        isPrimary: true,
+        pointerType: "mouse",
+        button: 0,
+        pointerId: 111,
+        clientX: 40,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 111,
+        buttons: 0,
+        clientX: 54,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 111,
+        buttons: 1,
+        clientX: 70,
+        clientY: 20,
+      });
+      await Promise.resolve();
+    });
+
+    expect(tauriWindowMocks.appWindow.startDragging).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("right.ts"));
+    expect(useStore.getState().activeTabId).toBe("tab-drag-nobutton-right");
+  });
+
+  it("does not start dragging when pointermove distance is below drag threshold", async () => {
+    const leftTab = createTab({ id: "tab-drag-short-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-short-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const rightTabElement = screen.getByText("right.ts").closest("div.group.flex.items-center");
+    expect(rightTabElement).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.pointerDown(rightTabElement as Element, {
+        isPrimary: true,
+        pointerType: "mouse",
+        button: 0,
+        pointerId: 112,
+        clientX: 40,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 112,
+        buttons: 1,
+        clientX: 44,
+        clientY: 20,
+      });
+      await Promise.resolve();
+    });
+
+    expect(tauriWindowMocks.appWindow.startDragging).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("right.ts"));
+    expect(useStore.getState().activeTabId).toBe("tab-drag-short-right");
+  });
+
   it("logs error when startDragging fails during tab drag", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const leftTab = createTab({ id: "tab-drag-error-left", name: "left.ts", path: "C:\\repo\\left.ts" });
