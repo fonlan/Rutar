@@ -208,6 +208,88 @@ describe("SearchReplacePanel", () => {
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
+  it("navigates from replace-mode previous-match toolbar button", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_first_in_document") {
+        return {
+          firstMatch: {
+            start: 0,
+            end: 4,
+            startChar: 0,
+            endChar: 4,
+            text: "todo",
+            line: 1,
+            column: 1,
+            lineText: "todo item",
+          },
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    const navigateEvents: Array<{ line: number }> = [];
+    const listener = (event: Event) => {
+      navigateEvents.push((event as CustomEvent<{ line: number }>).detail);
+    };
+    window.addEventListener("rutar:navigate-to-line", listener as EventListener);
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Previous match"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_first_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          reverse: true,
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(navigateEvents.length).toBeGreaterThan(0);
+    });
+    window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
   it("navigates from find-mode previous/next toolbar buttons", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -295,6 +377,48 @@ describe("SearchReplacePanel", () => {
       expect(navigateEvents.length).toBeGreaterThan(eventsBeforeNext);
     });
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
+  it("switches search mode and toggles case/reverse options from toolbar controls", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    const literalButton = screen.getByRole("button", { name: "Literal" });
+    const regexButton = screen.getByRole("button", { name: "Regex" });
+    const wildcardButton = screen.getByRole("button", { name: "Wildcard" });
+    const caseSensitiveCheckbox = screen.getByLabelText("Case Sensitive");
+    const reverseSearchCheckbox = screen.getByLabelText("Reverse Search");
+
+    expect(literalButton.className).toContain("bg-primary/10");
+    expect(caseSensitiveCheckbox).not.toBeChecked();
+    expect(reverseSearchCheckbox).not.toBeChecked();
+
+    fireEvent.click(regexButton);
+    expect(regexButton.className).toContain("bg-primary/10");
+
+    fireEvent.click(wildcardButton);
+    expect(wildcardButton.className).toContain("bg-primary/10");
+
+    fireEvent.click(literalButton);
+    expect(literalButton.className).toContain("bg-primary/10");
+
+    fireEvent.click(caseSensitiveCheckbox);
+    expect(caseSensitiveCheckbox).toBeChecked();
+
+    fireEvent.click(reverseSearchCheckbox);
+    expect(reverseSearchCheckbox).toBeChecked();
   });
 
   it("shows search-results empty hint when opening result panel without keyword", async () => {
@@ -2328,6 +2452,84 @@ describe("SearchReplacePanel", () => {
               italic: false,
               applyTo: "line",
             },
+          ],
+          startLine: 0,
+        })
+      );
+    });
+  });
+
+  it("runs filter query with apply-to target switched to match", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [
+            {
+              line: 1,
+              column: 1,
+              length: 4,
+              lineText: "todo item",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "match",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Match only" }));
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          rules: [
+            expect.objectContaining({
+              keyword: "todo",
+              applyTo: "match",
+            }),
           ],
           startLine: 0,
         })
