@@ -644,6 +644,75 @@ describe("TitleBar", () => {
     });
   });
 
+  it("repositions tooltip horizontally when it overflows viewport right edge", async () => {
+    const tab = createTab({
+      id: "tab-tooltip-overflow-right",
+      name: "overflow-right.ts",
+      path: "C:\\repo\\overflow-right.ts",
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 160,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const className = this.className?.toString() ?? "";
+        if (className.includes("fixed z-[85]")) {
+          return {
+            x: 30,
+            y: 40,
+            width: 190,
+            height: 24,
+            top: 40,
+            right: 220,
+            bottom: 64,
+            left: 30,
+            toJSON: () => ({}),
+          } as DOMRect;
+        }
+
+        return {
+          x: 20,
+          y: 22,
+          width: 120,
+          height: 24,
+          top: 22,
+          right: 140,
+          bottom: 46,
+          left: 20,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+
+    render(<TitleBar />);
+
+    const tabElement = screen.getByText("overflow-right.ts").closest("div.group.flex.items-center");
+    expect(tabElement).not.toBeNull();
+    fireEvent.mouseEnter(tabElement as Element);
+
+    const tooltipText = await screen.findByText("C:\\repo\\overflow-right.ts");
+    await waitFor(() => {
+      const tooltipElement = tooltipText as HTMLElement;
+      const tooltipLeft = Number.parseFloat(tooltipElement.style.left);
+      expect(tooltipLeft).toBeGreaterThanOrEqual(8);
+      expect(tooltipLeft).toBeLessThanOrEqual(12);
+    });
+
+    rectMock.mockRestore();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+    });
+  });
+
   it("closes tab context menu when window loses focus", async () => {
     const tab = createTab({ id: "tab-blur-close-menu", name: "blur.ts", path: "C:\\repo\\blur.ts" });
     useStore.setState({
