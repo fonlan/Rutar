@@ -649,6 +649,80 @@ describe("Toolbar", () => {
     });
   });
 
+  it("shows word count info message when backend returns result", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-wordcount" }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "get_word_count_info") {
+        return {
+          wordCount: 12,
+          characterCount: 34,
+          characterCountNoSpaces: 30,
+          lineCount: 5,
+          paragraphCount: 2,
+        };
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-wordcount" });
+    });
+
+    const wordCountWrapper = screen.getByTitle("Word Count");
+    fireEvent.click(wordCountWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("Words"),
+        expect.objectContaining({ title: "Word Count", kind: "info" })
+      );
+    });
+  });
+
+  it("keeps split menu open when split-menu root ref becomes unavailable", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-root-null.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\recent-root-null.ts")).toBeInTheDocument();
+    });
+
+    const splitMenuRoot = openFileButtons[0].closest("div.relative.flex.items-center.flex-shrink-0");
+    expect(splitMenuRoot).not.toBeNull();
+    const fiberKey = Object.keys(splitMenuRoot as object).find((key) => key.startsWith("__reactFiber$"));
+    expect(fiberKey).toBeTruthy();
+    const fiberNode = (splitMenuRoot as any)[fiberKey as string];
+    const refObject = fiberNode?.ref as { current: HTMLDivElement | null } | null;
+    expect(refObject).toBeTruthy();
+    if (refObject) {
+      refObject.current = null;
+    }
+
+    fireEvent.pointerDown(document.body);
+    fireEvent(window, new Event("resize"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\recent-root-null.ts")).toBeInTheDocument();
+    });
+  });
+
   it("runs cut and copy through execCommand when editor has selection", async () => {
     useStore.getState().addTab(createTab());
 
