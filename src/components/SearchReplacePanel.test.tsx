@@ -282,6 +282,79 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("closes minimized search results panel from minimized-strip close button", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Minimize results"));
+
+    const minimizedOpenButton = await screen.findByTitle("Open search results");
+    const minimizedCloseButton = minimizedOpenButton.parentElement?.querySelector(
+      'button[title="Close results"]'
+    ) as HTMLButtonElement | null;
+    expect(minimizedCloseButton).not.toBeNull();
+    fireEvent.click(minimizedCloseButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("Open search results")).toBeNull();
+    });
+  });
+
   it("runs replace current with active search match", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -967,6 +1040,83 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByTitle("Minimize results")).toBeNull();
+    });
+  });
+
+  it("reopens minimized filter panel and re-runs filter query", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [
+            {
+              line: 1,
+              column: 1,
+              length: 4,
+              lineText: "todo item",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk").length
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.click(screen.getByTitle("Minimize results"));
+    await waitFor(() => {
+      expect(screen.getByTitle("Open filter results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Open filter results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
     });
   });
 
