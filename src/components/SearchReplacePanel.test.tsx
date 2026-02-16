@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchReplacePanel } from "./SearchReplacePanel";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -14,6 +15,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const openMock = vi.mocked(open);
+const saveMock = vi.mocked(save);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -258,6 +261,147 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("save_filter_rule_groups_config", {
         groups: [],
+      });
+    });
+  });
+
+  it("imports filter rule groups from selected json file", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\filter-groups.json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "import_filter_rule_groups") {
+        return [
+          {
+            name: "imported-group",
+            rules: [
+              {
+                keyword: "todo",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import Groups" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Groups" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("import_filter_rule_groups", {
+        path: "C:\\repo\\filter-groups.json",
+      });
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_filter_rule_groups_config", {
+        groups: [
+          {
+            name: "imported-group",
+            rules: [
+              {
+                keyword: "todo",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  it("exports normalized filter rule groups to selected path", async () => {
+    saveMock.mockResolvedValueOnce("C:\\repo\\filter-groups-export.json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "team-rules",
+            rules: [
+              {
+                keyword: "fixme",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "team-rules" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Groups" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("export_filter_rule_groups", {
+        path: "C:\\repo\\filter-groups-export.json",
+        groups: [
+          {
+            name: "team-rules",
+            rules: [
+              {
+                keyword: "fixme",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ],
       });
     });
   });
