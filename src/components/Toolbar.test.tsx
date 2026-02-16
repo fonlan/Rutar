@@ -4,6 +4,7 @@ import { Toolbar } from "./Toolbar";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
 import { message, open } from "@tauri-apps/plugin-dialog";
+import { readText as readClipboardText } from "@tauri-apps/plugin-clipboard-manager";
 import { openFilePath } from "@/lib/openFile";
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
 import { detectOutlineType, loadOutline } from "@/lib/outline";
@@ -60,6 +61,7 @@ const loadOutlineMock = vi.mocked(loadOutline);
 const detectStructuredFormatSyntaxKeyMock = vi.mocked(detectStructuredFormatSyntaxKey);
 const isStructuredFormatSupportedMock = vi.mocked(isStructuredFormatSupported);
 const saveTabMock = vi.mocked(saveTab);
+const readClipboardTextMock = vi.mocked(readClipboardText);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -91,6 +93,7 @@ describe("Toolbar", () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US", wordWrap: false });
+    readClipboardTextMock.mockResolvedValue("");
     detectOutlineTypeMock.mockReturnValue(null);
     loadOutlineMock.mockResolvedValue([]);
     detectStructuredFormatSyntaxKeyMock.mockReturnValue(null);
@@ -905,6 +908,82 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:paste-text", listener as EventListener);
   });
 
+  it("falls back to execCommand paste when clipboard read fails for active tab", async () => {
+    useStore.getState().addTab(createTab());
+    readClipboardTextMock.mockRejectedValue(new Error("clipboard-read-failed-tab"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to read clipboard text via Tauri clipboard plugin:",
+        expect.objectContaining({ message: "clipboard-read-failed-tab" })
+      );
+    });
+    expect(warnSpy).toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
+    warnSpy.mockRestore();
+  });
+
+  it("falls back to execCommand paste when clipboard read fails for diff tab", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
+    useStore.getState().addTab({
+      id: "tab-diff",
+      name: "a.ts ↔ b.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      isDirty: false,
+      tabType: "diff",
+      diffPayload: {
+        sourceTabId: "tab-source",
+        targetTabId: "tab-target",
+        sourceName: "a.ts",
+        targetName: "b.ts",
+        sourcePath: "C:\\repo\\a.ts",
+        targetPath: "C:\\repo\\b.ts",
+        alignedSourceLines: [""],
+        alignedTargetLines: [""],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
+    });
+    readClipboardTextMock.mockRejectedValue(new Error("clipboard-read-failed-diff"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
+    });
+
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to read clipboard text via Tauri clipboard plugin:",
+        expect.objectContaining({ message: "clipboard-read-failed-diff" })
+      );
+    });
+    expect(warnSpy).toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
+    warnSpy.mockRestore();
+  });
+
   it("toggles bookmark sidebar from toolbar button", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
@@ -918,6 +997,22 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
     });
+  });
+
+  it("returns early for bookmark sidebar handler when no active tab is available", async () => {
+    useStore.setState({ bookmarkSidebarOpen: false });
+    render(<Toolbar />);
+
+    const bookmarkWrapper = screen.getByTitle((title) => title.includes("Bookmark Sidebar"));
+    const bookmarkButton = bookmarkWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(bookmarkButton);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(useStore.getState().bookmarkSidebarOpen).toBe(false);
   });
 
   it("toggles markdown preview from toolbar for markdown tab", async () => {
