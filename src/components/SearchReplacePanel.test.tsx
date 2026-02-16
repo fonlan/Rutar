@@ -695,6 +695,125 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows empty filter-results hint when running filter with no valid rules", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Add rules and run filter to list matching lines here/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows no-filter-match hint when filter backend returns zero matches", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          startLine: 0,
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/No lines matched current filter rules/)).toBeInTheDocument();
+    });
+  });
+
+  it("minimizes and reopens filter results panel", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Minimize results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Open filter results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Open filter results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Close results"));
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("Minimize results")).toBeNull();
+    });
+  });
+
   it("runs filter query when filter action is triggered with non-empty rule", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
