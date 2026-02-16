@@ -649,6 +649,71 @@ describe("Toolbar", () => {
     });
   });
 
+  it("closes outline when toolbar outline button is clicked while outline is open", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    useStore.getState().toggleOutline(true);
+    detectOutlineTypeMock.mockReturnValue("typescript");
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const outlineWrapper = screen.getByTitle("Outline");
+    const outlineButton = outlineWrapper.querySelector("button") as HTMLButtonElement;
+    fireEvent.click(outlineButton);
+
+    await waitFor(() => {
+      expect(useStore.getState().outlineOpen).toBe(false);
+    });
+    expect(loadOutlineMock).not.toHaveBeenCalled();
+  });
+
+  it("shows outline warning and stores error when outline loading throws a non-error value", async () => {
+    useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
+    detectOutlineTypeMock.mockReturnValue("typescript");
+    loadOutlineMock.mockRejectedValue("outline-crashed");
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const outlineWrapper = screen.getByTitle("Outline");
+    const outlineButton = outlineWrapper.querySelector("button") as HTMLButtonElement;
+    fireEvent.click(outlineButton);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("outline-crashed"),
+        expect.objectContaining({ title: "Outline", kind: "warning" })
+      );
+    });
+    await waitFor(() => {
+      expect(useStore.getState().outlineError).toBe("outline-crashed");
+      expect(useStore.getState().outlineNodes).toEqual([]);
+      expect(useStore.getState().outlineType).toBe("typescript");
+    });
+  });
+
+  it("returns early for word count handler when no active tab is available", async () => {
+    render(<Toolbar />);
+
+    const wordCountWrapper = screen.getByTitle((title) => title.includes("Word Count"));
+    const wordCountButton = wordCountWrapper.querySelector("button") as HTMLButtonElement;
+    const propsKey = Object.keys(wordCountButton as object).find((key) => key.startsWith("__reactProps$"));
+    expect(propsKey).toBeTruthy();
+    const onClick = (wordCountButton as any)[propsKey as string]?.onClick as (() => void) | undefined;
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(invokeMock.mock.calls.some(([command]) => command === "get_word_count_info")).toBe(false);
+    expect(messageMock).not.toHaveBeenCalled();
+  });
+
   it("shows word count info message when backend returns result", async () => {
     useStore.getState().addTab(createTab({ id: "tab-wordcount" }));
     invokeMock.mockImplementation(async (command: string) => {
