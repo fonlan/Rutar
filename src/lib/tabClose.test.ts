@@ -63,6 +63,17 @@ describe("tabClose", () => {
     expect(updateTab).not.toHaveBeenCalled();
   });
 
+  it("saveTab returns false when save-as result is not a string", async () => {
+    saveDialogMock.mockResolvedValue(["C:\\repo\\a.ts"] as unknown as string);
+    const updateTab = vi.fn();
+
+    const ok = await saveTab(createTab({ path: "", name: "Untitled-2" }), updateTab);
+
+    expect(ok).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith("save_file_as", expect.anything());
+    expect(updateTab).not.toHaveBeenCalled();
+  });
+
   it("saveTab saves as new file and updates tab metadata", async () => {
     saveDialogMock.mockResolvedValue("C:\\repo\\new-name.ts");
     invokeMock.mockResolvedValue(undefined);
@@ -106,6 +117,18 @@ describe("tabClose", () => {
     });
   });
 
+  it("confirmTabClose falls back to Untitled display name", async () => {
+    requestTabCloseConfirmMock.mockResolvedValue("discard");
+
+    await confirmTabClose(createTab({ name: "", path: "", isDirty: true }), "zh-CN", true);
+
+    expect(requestTabCloseConfirmMock).toHaveBeenCalledWith({
+      language: "zh-CN",
+      tabName: "Untitled",
+      allowAllActions: true,
+    });
+  });
+
   it("ensureTabCanClose handles cancel/discard/save decisions", async () => {
     const updateTab = vi.fn();
     const tab = createTab({ isDirty: true });
@@ -120,6 +143,9 @@ describe("tabClose", () => {
     invokeMock.mockResolvedValue(undefined);
     await expect(ensureTabCanClose(tab, "zh-CN", updateTab)).resolves.toBe(true);
     expect(invokeMock).toHaveBeenCalledWith("save_file", { id: tab.id });
+
+    requestTabCloseConfirmMock.mockResolvedValueOnce("save_all");
+    await expect(ensureTabCanClose(tab, "zh-CN", updateTab)).resolves.toBe(true);
   });
 
   it("ensureTabCanClose returns false when save throws", async () => {
