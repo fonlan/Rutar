@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { SettingsModal } from "./SettingsModal";
 import { useStore } from "@/store/useStore";
 
@@ -13,9 +14,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const openUrlMock = vi.mocked(openUrl);
 
 describe("SettingsModal", () => {
   let initialState: ReturnType<typeof useStore.getState>;
+  let clipboardWriteTextMock: ReturnType<typeof vi.fn>;
 
   beforeAll(() => {
     initialState = useStore.getState();
@@ -29,6 +32,13 @@ describe("SettingsModal", () => {
       wordWrap: false,
     });
     invokeMock.mockResolvedValue(["Consolas", "Cascadia Code"]);
+    clipboardWriteTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: clipboardWriteTextMock,
+      },
+    });
   });
 
   it("renders null when modal is closed", async () => {
@@ -92,6 +102,30 @@ describe("SettingsModal", () => {
     await waitFor(() => {
       const gestures = useStore.getState().settings.mouseGestures;
       expect(gestures.some((gesture) => gesture.pattern === "RD")).toBe(true);
+    });
+  });
+
+  it("opens project url from about panel", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open link" }));
+
+    await waitFor(() => {
+      expect(openUrlMock).toHaveBeenCalledWith("https://github.com/fonlan/Rutar");
+    });
+  });
+
+  it("copies project url from about panel", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(clipboardWriteTextMock).toHaveBeenCalledWith("https://github.com/fonlan/Rutar");
     });
   });
 });
