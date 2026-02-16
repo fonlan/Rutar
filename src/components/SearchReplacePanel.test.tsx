@@ -967,6 +967,155 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("cancels pending previous-step loading when previous is clicked again during previous-step run", async () => {
+    let resolveLoadMore:
+      | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
+      | null = null;
+
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      const args = payload as Record<string, unknown> | undefined;
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        if (
+          args?.resultFilterKeyword === "line-filter" &&
+          (args?.startOffset as number | undefined) === 10
+        ) {
+          return await new Promise((resolve) => {
+            resolveLoadMore = resolve as (value: {
+              matches: unknown[];
+              documentVersion: number;
+              nextOffset: number | null;
+            }) => void;
+          });
+        }
+
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: 10,
+        };
+      }
+      if (command === "step_result_filter_search_in_document") {
+        return {
+          targetMatch: {
+            start: 100,
+            end: 104,
+            startChar: 100,
+            endChar: 104,
+            text: "todo",
+            line: 20,
+            column: 1,
+            lineText: "todo item",
+          },
+          documentVersion: 1,
+          batchStartOffset: 100,
+          targetIndexInBatch: null,
+          totalMatches: 2,
+          totalMatchedLines: 2,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+    fireEvent.keyDown(resultFilterInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          resultFilterKeyword: "line-filter",
+          startOffset: 0,
+        })
+      );
+    });
+
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    const previousButton = within(controlContainer).getByRole("button", { name: "Previous" });
+    fireEvent.click(previousButton);
+
+    await waitFor(() => {
+      expect(resolveLoadMore).not.toBeNull();
+    });
+
+    const stepCallCountBeforeCancel = invokeMock.mock.calls.filter(
+      ([command]) => command === "step_result_filter_search_in_document"
+    ).length;
+
+    fireEvent.click(previousButton);
+
+    await waitFor(() => {
+      const stepCallCountAfterCancel = invokeMock.mock.calls.filter(
+        ([command]) => command === "step_result_filter_search_in_document"
+      ).length;
+      expect(stepCallCountAfterCancel).toBe(stepCallCountBeforeCancel);
+    });
+
+    if (resolveLoadMore) {
+      (resolveLoadMore as (value: {
+        matches: unknown[];
+        documentVersion: number;
+        nextOffset: number | null;
+      }) => void)({
+        matches: [],
+        documentVersion: 1,
+        nextOffset: null,
+      });
+    }
+
+    await waitFor(() => {
+      expect(within(controlContainer).getByRole("button", { name: "Previous" })).toBeInTheDocument();
+    });
+  });
+
   it("stops result-filter search when stop button is clicked during running filter search", async () => {
     let resolveFilteredSearch:
       | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
