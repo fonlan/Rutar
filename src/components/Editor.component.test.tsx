@@ -58,6 +58,15 @@ async function waitForEditorTextarea(container: HTMLElement) {
   return container.querySelector('textarea.editor-input-layer') as HTMLTextAreaElement;
 }
 
+async function waitForEditorText(
+  textarea: HTMLTextAreaElement,
+  expectedText = 'alpha\nbeta\n'
+) {
+  await waitFor(() => {
+    expect(textarea.value).toBe(expectedText);
+  });
+}
+
 async function clickLineNumber(
   container: HTMLElement,
   lineNumber: number,
@@ -771,6 +780,141 @@ describe('Editor component', () => {
       expect(textarea.value).toBe('beta\n');
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('copies selected text from context menu', async () => {
+    const tab = createTab({ id: 'tab-context-copy' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      fireEvent.contextMenu(textarea, { clientX: 340, clientY: 260 });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('alpha');
+      });
+      expect(textarea.value).toBe('alpha\nbeta\n');
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('cuts selected text from context menu and syncs edit', async () => {
+    const tab = createTab({ id: 'tab-context-cut' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      textarea.focus();
+      textarea.setSelectionRange(0, textarea.value.length);
+      fireEvent.contextMenu(textarea, { clientX: 360, clientY: 280 });
+      fireEvent.click(await screen.findByRole('button', { name: 'Cut' }));
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('alpha\nbeta\n');
+        expect(invokeMock).toHaveBeenCalledWith(
+          'edit_text',
+          expect.objectContaining({
+            id: tab.id,
+            newText: '',
+          })
+        );
+      });
+
+      expect(textarea.value).toBe('');
+    } finally {
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('deletes selected text from context menu and syncs edit', async () => {
+    const tab = createTab({ id: 'tab-context-delete' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+    fireEvent.contextMenu(textarea, { clientX: 380, clientY: 300 });
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: '',
+        })
+      );
+    });
+
+    expect(textarea.value).toBe('');
+  });
+
+  it('selects all text from context menu action', async () => {
+    const tab = createTab({ id: 'tab-context-select-all' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(2, 2);
+    fireEvent.contextMenu(textarea, { clientX: 400, clientY: 320 });
+    fireEvent.click(await screen.findByRole('button', { name: 'Select All' }));
+
+    expect(textarea.selectionStart).toBe(0);
+    expect(textarea.selectionEnd).toBe(textarea.value.length);
+  });
+
+  it('pastes text from clipboard plugin without falling back to execCommand', async () => {
+    const tab = createTab({ id: 'tab-context-paste-plugin-success' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    readClipboardTextMock.mockResolvedValueOnce('ZZ');
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const execCommand = vi.fn(() => true);
+
+    try {
+      Object.defineProperty(document, 'execCommand', {
+        configurable: true,
+        value: execCommand,
+      });
+
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      fireEvent.contextMenu(textarea, { clientX: 420, clientY: 340 });
+      fireEvent.click(await screen.findByRole('button', { name: 'Paste' }));
+
+      await waitFor(() => {
+        expect(textarea.value).toBe('ZZ\nbeta\n');
+        expect(execCommand).not.toHaveBeenCalled();
+      });
+    } finally {
+      restoreProperty(document, 'execCommand', originalExecCommand);
     }
   });
 });
