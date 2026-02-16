@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toolbar } from "./Toolbar";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
-import { message } from "@tauri-apps/plugin-dialog";
+import { message, open } from "@tauri-apps/plugin-dialog";
 import { openFilePath } from "@/lib/openFile";
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
 import { detectOutlineType, loadOutline } from "@/lib/outline";
@@ -49,6 +49,7 @@ vi.mock("@/lib/tabClose", () => ({
 
 const invokeMock = vi.mocked(invoke);
 const messageMock = vi.mocked(message);
+const openMock = vi.mocked(open);
 const openFilePathMock = vi.mocked(openFilePath);
 const addRecentFolderPathMock = vi.mocked(addRecentFolderPath);
 const removeRecentFilePathMock = vi.mocked(removeRecentFilePath);
@@ -574,6 +575,28 @@ describe("Toolbar", () => {
     });
   });
 
+  it("opens file from primary split button using dialog result", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\from-dialog.ts");
+    useStore.getState().addTab(createTab());
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[0]);
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalledWith(
+        expect.objectContaining({ multiple: false, directory: false })
+      );
+    });
+    await waitFor(() => {
+      expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\from-dialog.ts");
+    });
+  });
+
   it("removes recent file entry from split menu", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
@@ -772,6 +795,46 @@ describe("Toolbar", () => {
     });
     await waitFor(() => {
       expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-a");
+    });
+  });
+
+  it("opens folder from primary split button using dialog result", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\folder-primary");
+    useStore.getState().addTab(createTab());
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "read_dir_if_directory") {
+        return [{ name: "index.ts", path: "C:\\repo\\folder-primary\\index.ts" }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[0]);
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalledWith(
+        expect.objectContaining({ multiple: false, directory: true })
+      );
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", {
+        path: "C:\\repo\\folder-primary",
+      });
+    });
+    await waitFor(() => {
+      expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-primary");
     });
   });
 
