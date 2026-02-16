@@ -340,6 +340,43 @@ describe("Toolbar", () => {
     });
   });
 
+  it("logs error when creating new file fails", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-new-file-error" }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "new_file") {
+        throw new Error("new-file-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-new-file-error" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      code: "KeyN",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to create new file:",
+        expect.objectContaining({ message: "new-file-failed" })
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
   it("opens file dialog on Ctrl+O and opens selected file", async () => {
     openMock.mockResolvedValueOnce("C:\\repo\\from-shortcut.ts");
     useStore.getState().addTab(createTab({ id: "tab-open-shortcut" }));
@@ -362,6 +399,31 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\from-shortcut.ts");
     });
+  });
+
+  it("logs error when open file dialog fails", async () => {
+    openMock.mockRejectedValueOnce(new Error("open-file-dialog-failed"));
+    useStore.getState().addTab(createTab({ id: "tab-open-file-error" }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-open-file-error" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "o",
+      code: "KeyO",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to open file:",
+        expect.objectContaining({ message: "open-file-dialog-failed" })
+      );
+    });
+    errorSpy.mockRestore();
   });
 
   it("triggers undo on Ctrl+Z", async () => {
@@ -2114,6 +2176,65 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-primary");
     });
+  });
+
+  it("keeps state unchanged when open folder primary returns null entries", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\folder-primary-empty");
+    useStore.getState().addTab(createTab());
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "read_dir_if_directory") {
+        if (payload?.path === "C:\\repo\\folder-primary-empty") {
+          return null;
+        }
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[0]);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", {
+        path: "C:\\repo\\folder-primary-empty",
+      });
+    });
+    expect(useStore.getState().folderPath).toBeNull();
+    expect(addRecentFolderPathMock).not.toHaveBeenCalledWith("C:\\repo\\folder-primary-empty");
+  });
+
+  it("logs error when open folder dialog fails", async () => {
+    openMock.mockRejectedValueOnce(new Error("open-folder-dialog-failed"));
+    useStore.getState().addTab(createTab());
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[0]);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to open folder:",
+        expect.objectContaining({ message: "open-folder-dialog-failed" })
+      );
+    });
+    errorSpy.mockRestore();
   });
 
   it("removes recent folder entry from split menu", async () => {
