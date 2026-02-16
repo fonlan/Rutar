@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { Editor } from './Editor';
 import { type FileTab, useStore } from '@/store/useStore';
 
@@ -21,6 +22,7 @@ vi.mock('@/hooks/useResizeObserver', () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const readClipboardTextMock = vi.mocked(readClipboardText);
 
 function restoreProperty(
   target: object,
@@ -65,6 +67,7 @@ describe('Editor component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    readClipboardTextMock.mockResolvedValue('');
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({
       language: 'en-US',
@@ -558,6 +561,113 @@ describe('Editor component', () => {
       });
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('toggles line comments with Ctrl+/ and updates tab metadata', async () => {
+    const tab = createTab({ id: 'tab-key-toggle-comment', lineCount: 6, path: 'C:\\repo\\main.ts' });
+    useStore.getState().addTab(tab);
+
+    const updatedEvents: Array<{ tabId: string }> = [];
+    const updatedListener = (event: Event) => {
+      updatedEvents.push((event as CustomEvent).detail as { tabId: string });
+    };
+    window.addEventListener('rutar:document-updated', updatedListener as EventListener);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: true,
+          lineCount: 7,
+          documentVersion: 2,
+          selectionStartChar: 0,
+          selectionEndChar: 3,
+        };
+      }
+
+      if (command === 'get_visible_lines') {
+        return '//alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+
+    fireEvent.keyDown(textarea, { key: '/', ctrlKey: true });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'toggle_line_comments',
+        expect.objectContaining({
+          id: tab.id,
+          startChar: 0,
+          endChar: 5,
+          isCollapsed: false,
+          prefix: '//',
+        })
+      );
+    });
+
+    const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
+    expect(currentTab?.lineCount).toBe(7);
+    expect(currentTab?.isDirty).toBe(true);
+    expect(updatedEvents).toContainEqual({ tabId: tab.id });
+    window.removeEventListener('rutar:document-updated', updatedListener as EventListener);
+  });
+
+  it('falls back to execCommand paste when clipboard plugin read fails', async () => {
+    const tab = createTab({ id: 'tab-paste-fallback' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const execCommand = vi.fn(() => false);
+
+    try {
+      readClipboardTextMock.mockRejectedValueOnce(new Error('clipboard-read-failed'));
+      Object.defineProperty(document, 'execCommand', {
+        configurable: true,
+        value: execCommand,
+      });
+
+      fireEvent.contextMenu(textarea, { clientX: 320, clientY: 260 });
+      fireEvent.click(await screen.findByRole('button', { name: 'Paste' }));
+
+      await waitFor(() => {
+        expect(execCommand).toHaveBeenCalledWith('paste');
+      });
+
+      const warnMessages = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      expect(
+        warnMessages.some((message) => message.includes('Failed to read clipboard text via Tauri clipboard plugin'))
+      ).toBe(true);
+      expect(
+        warnMessages.some((message) => message.includes('Paste command blocked. Use Ctrl+V in editor.'))
+      ).toBe(true);
+    } finally {
+      restoreProperty(document, 'execCommand', originalExecCommand);
+      warnSpy.mockRestore();
     }
   });
 });
