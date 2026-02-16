@@ -9,7 +9,7 @@ import { openFilePath } from "@/lib/openFile";
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
 import { detectOutlineType, loadOutline } from "@/lib/outline";
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
-import { saveTab } from "@/lib/tabClose";
+import { confirmTabClose, saveTab } from "@/lib/tabClose";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -60,6 +60,7 @@ const detectOutlineTypeMock = vi.mocked(detectOutlineType);
 const loadOutlineMock = vi.mocked(loadOutline);
 const detectStructuredFormatSyntaxKeyMock = vi.mocked(detectStructuredFormatSyntaxKey);
 const isStructuredFormatSupportedMock = vi.mocked(isStructuredFormatSupported);
+const confirmTabCloseMock = vi.mocked(confirmTabClose);
 const saveTabMock = vi.mocked(saveTab);
 const readClipboardTextMock = vi.mocked(readClipboardText);
 
@@ -94,6 +95,8 @@ describe("Toolbar", () => {
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US", wordWrap: false });
     readClipboardTextMock.mockResolvedValue("");
+    confirmTabCloseMock.mockResolvedValue("discard");
+    saveTabMock.mockResolvedValue(true);
     detectOutlineTypeMock.mockReturnValue(null);
     loadOutlineMock.mockResolvedValue([]);
     detectStructuredFormatSyntaxKeyMock.mockReturnValue(null);
@@ -815,6 +818,134 @@ describe("Toolbar", () => {
       expect(errorSpy).toHaveBeenCalledWith(
         "Failed to close tab:",
         expect.objectContaining({ message: "close-failed" })
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("keeps active tab when close confirmation returns cancel", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-cancel-close", name: "cancel.ts", path: "C:\\repo\\cancel.ts" }));
+    confirmTabCloseMock.mockResolvedValue("cancel");
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-cancel-close" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(confirmTabCloseMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-cancel-close" }),
+        "en-US",
+        false
+      );
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "close_file")).toBe(false);
+    expect(useStore.getState().tabs.some((tab) => tab.id === "tab-cancel-close")).toBe(true);
+  });
+
+  it("aborts close when save-before-close returns false", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-save-false", name: "save-false.ts", path: "C:\\repo\\save-false.ts" }));
+    confirmTabCloseMock.mockResolvedValue("save");
+    saveTabMock.mockResolvedValue(false);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-false" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(saveTabMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-save-false" }),
+        expect.any(Function)
+      );
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "close_file")).toBe(false);
+    expect(useStore.getState().tabs.some((tab) => tab.id === "tab-save-false")).toBe(true);
+  });
+
+  it("logs error and keeps tab when save-before-close throws", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-save-throw", name: "save-throw.ts", path: "C:\\repo\\save-throw.ts" }));
+    confirmTabCloseMock.mockResolvedValue("save");
+    saveTabMock.mockRejectedValue(new Error("save-before-close-failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-throw" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to save file before closing tab:",
+        expect.objectContaining({ message: "save-before-close-failed" })
+      );
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "close_file")).toBe(false);
+    expect(useStore.getState().tabs.some((tab) => tab.id === "tab-save-throw")).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it("logs per-tab save error when save-all persist for tab without path throws", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-untitled-throw",
+      name: "untitled",
+      path: "",
+      isDirty: true,
+    }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      return undefined;
+    });
+    saveTabMock.mockRejectedValue(new Error("save-all-untitled-failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-untitled-throw" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(saveTabMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-untitled-throw" }),
+        expect.any(Function)
+      );
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to save"),
+        expect.objectContaining({ message: "save-all-untitled-failed" })
       );
     });
     errorSpy.mockRestore();
