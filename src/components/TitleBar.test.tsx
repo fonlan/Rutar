@@ -329,6 +329,141 @@ describe("TitleBar", () => {
     });
   });
 
+  it("reuses existing diff tab when compare result tab already exists", async () => {
+    const sourceTab = createTab({ id: "tab-source-existing", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-target-existing", name: "target.ts", path: "C:\\repo\\target.ts" });
+    const diffTab: FileTab = {
+      id: "diff-existing",
+      name: "Diff: source.ts <> target.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      syntaxOverride: "plain_text" as const,
+      isDirty: false,
+      tabType: "diff" as const,
+      diffPayload: {
+        sourceTabId: "tab-source-existing",
+        targetTabId: "tab-target-existing",
+        sourceName: "source.ts",
+        targetName: "target.ts",
+        sourcePath: "C:\\repo\\source.ts",
+        targetPath: "C:\\repo\\target.ts",
+        alignedSourceLines: ["a"],
+        alignedTargetLines: ["b"],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
+    } as FileTab;
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: sourceTab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 180,
+      clientY: 120,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Set as compare source" }));
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 182,
+      clientY: 122,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: 'Compare with "source.ts"' }));
+
+    await waitFor(() => {
+      expect(useStore.getState().activeTabId).toBe("diff-existing");
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "compare_documents_by_line")
+    ).toBe(false);
+  });
+
+  it("disables copy directory and copy path for tab without path", async () => {
+    const tab = createTab({ id: "tab-no-path", name: "untitled", path: "" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("untitled"), {
+      clientX: 140,
+      clientY: 90,
+    });
+
+    expect(await screen.findByRole("button", { name: "Copy Directory" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Copy Path" })).toBeDisabled();
+  });
+
+  it("creates a new empty tab after closing all tabs from context menu", async () => {
+    const tabA = createTab({ id: "tab-close-all-a", name: "a.ts", path: "C:\\repo\\a.ts" });
+    const tabB = createTab({ id: "tab-close-all-b", name: "b.ts", path: "C:\\repo\\b.ts" });
+    useStore.setState({
+      tabs: [tabA, tabB],
+      activeTabId: tabA.id,
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "close_files") {
+        return undefined;
+      }
+      if (command === "new_file") {
+        return {
+          id: "tab-new-after-close-all",
+          name: "untitled",
+          path: "",
+          encoding: "UTF-8",
+          lineEnding: "LF",
+          lineCount: 1,
+          largeFileMode: false,
+          isDirty: false,
+        };
+      }
+      return undefined;
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("a.ts"), {
+      clientX: 170,
+      clientY: 110,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close All Tabs" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "close_files",
+        expect.objectContaining({
+          ids: expect.arrayContaining(["tab-close-all-a", "tab-close-all-b"]),
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "new_file",
+        expect.objectContaining({
+          newFileLineEnding: expect.any(String),
+        })
+      );
+    });
+    await waitFor(() => {
+      const tabs = useStore.getState().tabs;
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("tab-new-after-close-all");
+    });
+  });
+
   it("closes other tabs from tab context menu", async () => {
     const sourceTab = createTab({ id: "tab-source", name: "source.ts", path: "C:\\repo\\source.ts" });
     const targetTab = createTab({ id: "tab-target", name: "target.ts", path: "C:\\repo\\target.ts" });
