@@ -406,6 +406,87 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("skips import flow when dialog selection is cancelled", async () => {
+    openMock.mockResolvedValueOnce(null);
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import Groups" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Groups" }));
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalled();
+    });
+
+    expect(invokeMock.mock.calls.some(([command]) => command === "import_filter_rule_groups")).toBe(
+      false
+    );
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
+  });
+
+  it("skips export flow when no rule groups are available", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Export Groups" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Groups" }));
+
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(invokeMock.mock.calls.some(([command]) => command === "export_filter_rule_groups")).toBe(
+      false
+    );
+  });
+
+  it("closes opened panel when Escape is pressed globally", async () => {
+    useStore.getState().addTab(createTab());
+    const { container } = render(<SearchReplacePanel />);
+
+    const sidebar = container.querySelector('[data-rutar-search-sidebar="true"]') as HTMLDivElement;
+    expect(sidebar).not.toBeNull();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(sidebar.style.transform).toBe("translateX(0)");
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(sidebar.style.transform).toContain("translateX(calc");
+    });
+  });
+
   it("dispatches search-close when panel is closed", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
