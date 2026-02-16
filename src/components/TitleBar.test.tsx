@@ -460,6 +460,57 @@ describe("TitleBar", () => {
     rectMock.mockRestore();
   });
 
+  it("hides tab path tooltip when hovered path no longer matches any tab", async () => {
+    const tab = createTab({
+      id: "tab-tooltip-path-mismatch",
+      name: "mismatch.ts",
+      path: "C:\\repo\\mismatch.ts",
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(
+        () =>
+          ({
+            x: 100,
+            y: 80,
+            width: 120,
+            height: 24,
+            top: 80,
+            right: 220,
+            bottom: 104,
+            left: 100,
+            toJSON: () => ({}),
+          }) as DOMRect
+      );
+
+    render(<TitleBar />);
+
+    const tabElement = screen.getByText("mismatch.ts").closest("div.group.flex.items-center");
+    expect(tabElement).not.toBeNull();
+    fireEvent.mouseEnter(tabElement as Element);
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\repo\\mismatch.ts")).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().updateTab("tab-tooltip-path-mismatch", {
+        path: "C:\\repo\\renamed.ts",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("C:\\repo\\mismatch.ts")).toBeNull();
+    });
+
+    rectMock.mockRestore();
+  });
+
   it("keeps tab path tooltip visible after viewport resize and scroll events", async () => {
     const tab = createTab({
       id: "tab-tooltip-viewport",
@@ -782,6 +833,47 @@ describe("TitleBar", () => {
       clientY: 104,
     });
     await screen.findByRole("button", { name: "Set as compare source" });
+  });
+
+  it("clears compare source when selected source tab is removed", async () => {
+    const sourceTab = createTab({ id: "tab-compare-source-removed", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-compare-target-removed", name: "target.ts", path: "C:\\repo\\target.ts" });
+    useStore.setState({
+      tabs: [sourceTab, targetTab],
+      activeTabId: sourceTab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 180,
+      clientY: 120,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Set as compare source" }));
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 182,
+      clientY: 122,
+    });
+    const compareWithSourceButton = await screen.findByRole("button", { name: 'Compare with "source.ts"' });
+    expect(compareWithSourceButton).not.toBeDisabled();
+
+    fireEvent.pointerDown(document.body);
+
+    act(() => {
+      useStore.setState({
+        tabs: [targetTab],
+        activeTabId: targetTab.id,
+      });
+    });
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 184,
+      clientY: 124,
+    });
+
+    const fallbackCompareButton = await screen.findByRole("button", { name: "Compare with selected source" });
+    expect(fallbackCompareButton).toBeDisabled();
   });
 
   it("creates diff tab from compare context menu action", async () => {
