@@ -170,4 +170,31 @@ describe("StatusBar", () => {
 
     errorSpy.mockRestore();
   });
+
+  it("logs error when encoding conversion fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tab = createTab({ id: "tab-encoding-fail", path: "C:\\repo\\encoding-fail.ts" });
+    useStore.getState().addTab(tab);
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "convert_encoding") {
+        throw new Error("convert-encoding-failed");
+      }
+      return undefined;
+    });
+
+    const { container } = render(<StatusBar />);
+    const selects = container.querySelectorAll("select");
+    expect(selects.length).toBe(3);
+
+    fireEvent.change(selects[1], { target: { value: "GBK" } });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const currentTab = useStore.getState().tabs.find((item) => item.id === "tab-encoding-fail");
+    expect(currentTab?.encoding).toBe("UTF-8");
+    errorSpy.mockRestore();
+  });
 });

@@ -460,6 +460,56 @@ describe("TitleBar", () => {
     rectMock.mockRestore();
   });
 
+  it("keeps tab path tooltip visible after viewport resize and scroll events", async () => {
+    const tab = createTab({
+      id: "tab-tooltip-viewport",
+      name: "viewport.ts",
+      path: "C:\\repo\\viewport.ts",
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(
+        () =>
+          ({
+            x: -40,
+            y: 90,
+            width: 120,
+            height: 24,
+            top: 90,
+            right: 80,
+            bottom: 114,
+            left: -40,
+            toJSON: () => ({}),
+          }) as DOMRect
+      );
+
+    render(<TitleBar />);
+
+    const tabElement = screen.getByText("viewport.ts").closest("div.group.flex.items-center");
+    expect(tabElement).not.toBeNull();
+    fireEvent.mouseEnter(tabElement as Element);
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\repo\\viewport.ts")).toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+      window.dispatchEvent(new Event("scroll"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\repo\\viewport.ts")).toBeInTheDocument();
+    });
+
+    rectMock.mockRestore();
+  });
+
   it("closes tab context menu when window loses focus", async () => {
     const tab = createTab({ id: "tab-blur-close-menu", name: "blur.ts", path: "C:\\repo\\blur.ts" });
     useStore.setState({
@@ -974,6 +1024,23 @@ describe("TitleBar", () => {
     render(<TitleBar />);
 
     act(() => {
+      window.dispatchEvent(new CustomEvent("rutar:file-open-loading"));
+      window.dispatchEvent(
+        new CustomEvent("rutar:file-open-loading", {
+          detail: {
+            tabId: "pending:missing-path",
+            status: "start",
+          },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("rutar:file-open-loading", {
+          detail: {
+            path: "C:\\repo\\missing-tab-id.ts",
+            status: "start",
+          },
+        })
+      );
       window.dispatchEvent(
         new CustomEvent("rutar:file-open-loading", {
           detail: {
