@@ -126,6 +126,162 @@ describe("SearchReplacePanel", () => {
     expect(replaceModeButton.className).toContain("bg-primary/10");
   });
 
+  it("shows search-results empty hint when opening result panel without keyword", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Enter a keyword to list all matches here/)).toBeInTheDocument();
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "search_in_document_chunk")
+    ).toBe(false);
+  });
+
+  it("shows no-match hint when search result panel is opened with unmatched keyword", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 0,
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/No matches found\./)).toBeInTheDocument();
+    });
+  });
+
+  it("minimizes and reopens search results panel", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Minimize results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Open search results")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Open search results"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Minimize results")).toBeInTheDocument();
+    });
+  });
+
   it("runs replace current with active search match", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
