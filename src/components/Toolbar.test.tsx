@@ -101,6 +101,26 @@ describe("Toolbar", () => {
     expect(saveWrapper.querySelector("button")).toBeDisabled();
   });
 
+  it("shows no-active-document disabled reasons when no tab is open", () => {
+    render(<Toolbar />);
+
+    const saveWrapper = screen.getByTitle((title) => title.includes("Save (Ctrl+S)"));
+    expect(saveWrapper.getAttribute("title")).toContain("No active document");
+    expect(saveWrapper.querySelector("button")).toBeDisabled();
+
+    const undoWrapper = screen.getByTitle((title) => title.includes("Undo (Ctrl+Z)"));
+    expect(undoWrapper.getAttribute("title")).toContain("No active document");
+    expect(undoWrapper.querySelector("button")).toBeDisabled();
+
+    const previewWrapper = screen.getByTitle((title) => title.includes("Live Preview"));
+    expect(previewWrapper.getAttribute("title")).toContain("No active document");
+    expect(previewWrapper.querySelector("button")).toBeDisabled();
+
+    const wordCountWrapper = screen.getByTitle((title) => title.includes("Word Count"));
+    expect(wordCountWrapper.getAttribute("title")).toContain("No active document");
+    expect(wordCountWrapper.querySelector("button")).toBeDisabled();
+  });
+
   it("disables live preview for non-markdown tab and auto-closes preview panel", async () => {
     useStore.getState().addTab(createTab({ path: "C:\\repo\\main.ts", name: "main.ts" }));
     useStore.setState({ markdownPreviewOpen: true });
@@ -269,6 +289,39 @@ describe("Toolbar", () => {
       code: "KeyZ",
       ctrlKey: true,
       shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("redo", { id: "tab-toolbar" });
+    });
+  });
+
+  it("triggers redo on Ctrl+Y", async () => {
+    useStore.getState().addTab(createTab({ lineCount: 20 }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "redo") {
+        return 21;
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "y",
+      code: "KeyY",
+      ctrlKey: true,
+      shiftKey: false,
     });
 
     await waitFor(() => {
@@ -537,6 +590,52 @@ describe("Toolbar", () => {
       expect(useStore.getState().settings.recentFolders).toEqual([]);
     });
     expect(screen.queryByTitle("C:\\repo\\folder-c")).toBeNull();
+  });
+
+  it("closes recent folder split menu when toggled twice", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-c2"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\folder-c2")).toBeInTheDocument();
+    });
+
+    fireEvent.click(openFolderButtons[1]);
+    await waitFor(() => {
+      expect(screen.queryByTitle("C:\\repo\\folder-c2")).toBeNull();
+    });
+  });
+
+  it("shows no recent folders text and closes folder menu on outside pointerdown", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: [],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByText("No recent folders")).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByText("No recent folders")).toBeNull();
+    });
   });
 
   it("closes opened recent folder menu on outside pointerdown", async () => {
