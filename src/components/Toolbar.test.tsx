@@ -984,6 +984,121 @@ describe("Toolbar", () => {
     warnSpy.mockRestore();
   });
 
+  it("dispatches diff-paste-text event when pasting in diff tab", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
+    useStore.getState().addTab({
+      id: "tab-diff",
+      name: "a.ts ↔ b.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      isDirty: false,
+      tabType: "diff",
+      diffPayload: {
+        sourceTabId: "tab-source",
+        targetTabId: "tab-target",
+        sourceName: "a.ts",
+        targetName: "b.ts",
+        sourcePath: "C:\\repo\\a.ts",
+        targetPath: "C:\\repo\\b.ts",
+        alignedSourceLines: [""],
+        alignedTargetLines: [""],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
+    });
+    readClipboardTextMock.mockResolvedValue("diff-paste-content");
+
+    const pasteEvents: Array<{ diffTabId: string; panel: "source" | "target"; text: string }> = [];
+    const listener = (event: Event) => {
+      pasteEvents.push(
+        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; text: string }>).detail
+      );
+    };
+    window.addEventListener("rutar:diff-paste-text", listener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
+    });
+
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(pasteEvents[0]).toEqual({
+        diffTabId: "tab-diff",
+        panel: "source",
+        text: "diff-paste-content",
+      });
+    });
+    window.removeEventListener("rutar:diff-paste-text", listener as EventListener);
+  });
+
+  it("returns early when fallback execCommand paste succeeds", async () => {
+    const originalExecCommand = (document as Document & {
+      execCommand?: (command: string) => boolean;
+    }).execCommand;
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn((command: string) => command === "paste"),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    const pasteWrapper = screen.getByTitle((title) => title.includes("Paste"));
+    const pasteButton = pasteWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(pasteButton);
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(warnSpy).not.toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: originalExecCommand ?? (() => false),
+    });
+    warnSpy.mockRestore();
+  });
+
+  it("handles copy fallback when execCommand throws", async () => {
+    const originalExecCommand = (document as Document & {
+      execCommand?: (command: string) => boolean;
+    }).execCommand;
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => {
+        throw new Error("exec-command-copy-error");
+      }),
+    });
+
+    render(<Toolbar />);
+    const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
+    const copyButton = copyWrapper.querySelector("button") as HTMLButtonElement;
+    const onClick = getReactOnClick(copyButton);
+
+    await expect(
+      act(async () => {
+        onClick?.();
+      })
+    ).resolves.toBeUndefined();
+
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: originalExecCommand ?? (() => false),
+    });
+  });
+
   it("toggles bookmark sidebar from toolbar button", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
