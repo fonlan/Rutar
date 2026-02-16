@@ -98,6 +98,164 @@ describe("SearchReplacePanel", () => {
     expect(replaceModeButton.className).toContain("bg-primary/10");
   });
 
+  it("runs replace current with active search match", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "replace_current_in_document") {
+        return {
+          replaced: true,
+          lineCount: 10,
+          documentVersion: 2,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByTitle("Replace current match"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "replace_current_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          replaceValue: "done",
+          targetStart: 0,
+          targetEnd: 4,
+        })
+      );
+    });
+  });
+
+  it("runs replace all with active search keyword", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 2,
+          matchedLines: 2,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "replace_all_in_document") {
+        return {
+          replacedCount: 2,
+          lineCount: 10,
+          documentVersion: 2,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByTitle("Replace all matches"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "replace_all_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          replaceValue: "done",
+        })
+      );
+    });
+  });
+
   it("opens in filter mode and shows filter action UI", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
