@@ -252,4 +252,122 @@ describe("BookmarkSidebar", () => {
     expect(dispatched).toBe(false);
     expect(event.defaultPrevented).toBe(true);
   });
+  it("shows empty state when active tab has no bookmarks", async () => {
+    const tab = createTab({ id: "tab-bookmark-empty" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [] },
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No bookmarks")).toBeInTheDocument();
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("clears stale previews when bookmarks are removed", async () => {
+    const tab = createTab({ id: "tab-bookmark-clear-previews" });
+    invokeMock.mockResolvedValueOnce(["seed preview"]);
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [3] },
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("seed preview")).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.setState({
+        bookmarksByTab: { [tab.id]: [] },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No bookmarks")).toBeInTheDocument();
+    });
+  });
+
+  it("uses empty-line fallback when preview entry is missing in response array", async () => {
+    const tab = createTab({ id: "tab-bookmark-preview-missing" });
+    invokeMock.mockResolvedValueOnce([]);
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [6] },
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Line 6")).toBeInTheDocument();
+    });
+    expect(screen.getByText("(empty line)")).toBeInTheDocument();
+  });
+
+  it("uses empty-line fallback when preview response is not an array", async () => {
+    const tab = createTab({ id: "tab-bookmark-preview-not-array" });
+    invokeMock.mockResolvedValueOnce("not-array" as unknown as string[]);
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [9] },
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Line 9")).toBeInTheDocument();
+    });
+    expect(screen.getByText("(empty line)")).toBeInTheDocument();
+  });
+
+  it("shows resizing style while dragging resize separator", async () => {
+    const tab = createTab({ id: "tab-bookmark-resize" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [2] },
+    });
+
+    render(<BookmarkSidebar />);
+    const separator = await screen.findByLabelText("Resize bookmark sidebar");
+
+    act(() => {
+      fireEvent.pointerDown(separator, { clientX: 220 });
+    });
+
+    expect(separator.className).toContain("bg-primary/40");
+
+    act(() => {
+      fireEvent.pointerUp(window);
+    });
+  });
+  it("falls back to EMPTY_BOOKMARKS when active tab has no bookmark map entry", async () => {
+    const tab = createTab({ id: "tab-bookmark-missing-map" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: {},
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No bookmarks")).toBeInTheDocument();
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
 });
