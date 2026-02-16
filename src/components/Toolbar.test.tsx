@@ -679,6 +679,32 @@ describe("Toolbar", () => {
     });
   });
 
+  it("logs error when save action throws", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-save-error", name: "save-error.ts", path: "C:\\repo\\save-error.ts" }));
+    saveTabMock.mockRejectedValue(new Error("save-failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-error" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to save file:",
+        expect.objectContaining({ message: "save-failed" })
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
   it("triggers save all on Ctrl+Shift+S", async () => {
     useStore.getState().addTab(createTab({
       id: "tab-save-all",
@@ -715,6 +741,45 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("save_files", { ids: ["tab-save-all"] });
     });
+  });
+
+  it("ignores save_files result items that do not match dirty tabs", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-no-match",
+      name: "save-no-match.ts",
+      path: "C:\\repo\\save-no-match.ts",
+      isDirty: true,
+    }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      if (command === "save_files") {
+        return [{ id: "ghost-tab-id", success: true }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-no-match" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_files", { ids: ["tab-save-no-match"] });
+    });
+    expect(useStore.getState().tabs.find((tab) => tab.id === "tab-save-no-match")?.isDirty).toBe(true);
   });
 
   it("logs per-file error when save_files returns failed result item", async () => {
@@ -855,6 +920,57 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(updatedTabIds).toContain("tab-save-no-path");
     });
+    window.removeEventListener("rutar:document-updated", listener as EventListener);
+  });
+
+  it("skips refresh and document-updated when saving tab without path returns false", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-no-path-false",
+      name: "untitled-skip",
+      path: "",
+      isDirty: true,
+    }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      return undefined;
+    });
+    saveTabMock.mockResolvedValue(false);
+    const updatedTabIds: string[] = [];
+    const listener = (event: Event) => {
+      updatedTabIds.push((event as CustomEvent<{ tabId: string }>).detail.tabId);
+    };
+    window.addEventListener("rutar:document-updated", listener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-no-path-false" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(saveTabMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-save-no-path-false" }),
+        expect.any(Function)
+      );
+    });
+    const historyCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === "get_edit_history_state" && (payload as { id?: string } | undefined)?.id === "tab-save-no-path-false"
+    );
+    expect(historyCalls.length).toBe(1);
+    expect(updatedTabIds).not.toContain("tab-save-no-path-false");
     window.removeEventListener("rutar:document-updated", listener as EventListener);
   });
 
@@ -1919,6 +2035,45 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-a");
     });
+  });
+
+  it("keeps state unchanged when opening recent folder returns null entries", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-empty"],
+    });
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "read_dir_if_directory") {
+        if (payload?.path === "C:\\repo\\folder-empty") {
+          return null;
+        }
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    const recentItemRow = await screen.findByTitle("C:\\repo\\folder-empty");
+    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-empty" });
+    });
+    expect(useStore.getState().folderPath).toBeNull();
+    expect(addRecentFolderPathMock).not.toHaveBeenCalledWith("C:\\repo\\folder-empty");
   });
 
   it("opens folder from primary split button using dialog result", async () => {
