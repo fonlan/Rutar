@@ -278,6 +278,77 @@ describe("SettingsModal", () => {
     });
   });
 
+  it("adds and removes custom Windows file association extensions", async () => {
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({
+      windowsFileAssociationEnabled: false,
+      windowsFileAssociationExtensions: [".txt"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+
+    fireEvent.change(await screen.findByPlaceholderText("Custom extension, e.g. .env"), {
+      target: { value: ".sql" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.windowsFileAssociationExtensions).toEqual([".sql", ".txt"]);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /\.sql/i }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.windowsFileAssociationExtensions).toEqual([".txt"]);
+    });
+  });
+
+  it("updates appearance settings from appearance tab controls", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
+    fireEvent.change(await screen.findByDisplayValue("Light"), { target: { value: "dark" } });
+
+    const numberInputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(numberInputs[0], { target: { value: "18" } });
+    fireEvent.change(numberInputs[1], { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Show Line Numbers" }));
+    fireEvent.click(screen.getByRole("button", { name: "Highlight Current Line" }));
+
+    await waitFor(() => {
+      const { settings } = useStore.getState();
+      expect(settings.theme).toBe("dark");
+      expect(settings.fontSize).toBe(18);
+      expect(settings.tabWidth).toBe(8);
+      expect(settings.showLineNumbers).toBe(false);
+      expect(settings.highlightCurrentLine).toBe(false);
+    });
+  });
+
+  it("renders shortcut table in shortcuts tab", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Shortcuts/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Action")).toBeInTheDocument();
+      expect(screen.getByText("Shortcut")).toBeInTheDocument();
+      expect(screen.getByText("F3 / Shift + F3")).toBeInTheDocument();
+    });
+  });
+
   it("adds a new mouse gesture with normalized pattern", async () => {
     useStore.getState().toggleSettings(true);
 
