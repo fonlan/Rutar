@@ -126,6 +126,38 @@ describe("SearchReplacePanel", () => {
     expect(replaceModeButton.className).toContain("bg-primary/10");
   });
 
+  it("switches panel mode via find/replace/filter buttons", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Replace with")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+  });
+
   it("navigates from replace-mode next-match toolbar button", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -2453,6 +2485,83 @@ describe("SearchReplacePanel", () => {
               applyTo: "line",
             },
           ],
+          startLine: 0,
+        })
+      );
+    });
+  });
+
+  it("does not refresh filter query when toggle is clicked during searching", async () => {
+    let resolveFilterChunk!: (value: { matches: unknown[]; documentVersion: number; nextLine: null }) => void;
+    let hasFilterChunkResolver = false;
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return await new Promise<{ matches: unknown[]; documentVersion: number; nextLine: null }>((resolve) => {
+          resolveFilterChunk = resolve;
+          hasFilterChunkResolver = true;
+        });
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+
+    const filterButton = screen.getByTitle("Click Filter to run current rules");
+    fireEvent.click(filterButton);
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+      ).toHaveLength(1);
+    });
+
+    fireEvent.click(filterButton);
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+    ).toHaveLength(1);
+
+    expect(hasFilterChunkResolver).toBe(true);
+    resolveFilterChunk({
+      matches: [],
+      documentVersion: 1,
+      nextLine: null,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
           startLine: 0,
         })
       );
