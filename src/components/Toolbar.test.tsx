@@ -386,6 +386,75 @@ describe("Toolbar", () => {
     });
   });
 
+  it("closes active tab on Ctrl+W", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-a", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-b", name: "b.ts", path: "C:\\repo\\b.ts" }));
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-b" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_file", { id: "tab-b" });
+    });
+    await waitFor(() => {
+      expect(useStore.getState().tabs.some((tab) => tab.id === "tab-b")).toBe(false);
+    });
+  });
+
+  it("creates a blank tab when closing the last tab on Ctrl+W", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-only", name: "only.ts", path: "C:\\repo\\only.ts" }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "close_file") {
+        return undefined;
+      }
+      if (command === "new_file") {
+        return createTab({
+          id: "tab-new",
+          name: "untitled",
+          path: "",
+          isDirty: true,
+        });
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-only" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_file", { id: "tab-only" });
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("new_file", expect.any(Object));
+    });
+    await waitFor(() => {
+      expect(useStore.getState().tabs.some((tab) => tab.id === "tab-new")).toBe(true);
+    });
+  });
+
   it("formats document from beautify and minify toolbar buttons when supported", async () => {
     useStore.getState().addTab(createTab({ name: "data.json", path: "C:\\repo\\data.json" }));
     isStructuredFormatSupportedMock.mockReturnValue(true);
