@@ -123,4 +123,73 @@ describe("Sidebar", () => {
     });
     expect(screen.getByText("index.ts")).toBeInTheDocument();
   });
+  it("prevents native context menu on sidebar root", () => {
+    useStore.setState({
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\a.ts", name: "a.ts", is_dir: false }],
+    });
+
+    const { container } = render(<Sidebar />);
+    const root = container.firstElementChild as HTMLElement | null;
+    expect(root).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (root as HTMLElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("logs error when directory read fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockRejectedValue(new Error("read-dir-failed"));
+    useStore.setState({
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\src", name: "src", is_dir: true }],
+    });
+
+    render(<Sidebar />);
+    const srcNode = screen.getByText("src");
+    fireEvent.click(srcNode);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "read-dir-failed" })
+      );
+    });
+
+    fireEvent.click(srcNode);
+    fireEvent.click(srcNode);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+    });
+
+    errorSpy.mockRestore();
+  });
+
+  it("logs error when opening file path fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    openFilePathMock.mockRejectedValueOnce(new Error("open-file-failed"));
+    useStore.setState({
+      tabs: [],
+      activeTabId: null,
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\broken.ts", name: "broken.ts", is_dir: false }],
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByText("broken.ts"));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "open-file-failed" })
+      );
+    });
+
+    errorSpy.mockRestore();
+  });
 });
