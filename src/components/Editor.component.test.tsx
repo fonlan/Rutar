@@ -235,6 +235,25 @@ describe('Editor component', () => {
     expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
   });
 
+  it('prevents default and propagation on line-number mouse down', async () => {
+    const tab = createTab({ id: 'tab-line-number-mousedown', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+    await clickLineNumber(container, 1);
+
+    const lineOne = Array.from(container.querySelectorAll('div.cursor-pointer.select-none')).find(
+      (element) => element.textContent === '1'
+    );
+    expect(lineOne).toBeTruthy();
+
+    const mouseDownEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    lineOne?.dispatchEvent(mouseDownEvent);
+
+    expect(mouseDownEvent.defaultPrevented).toBe(true);
+  });
+
   it('runs cleanup action from context submenu and updates dirty line count', async () => {
     const tab = createTab({ id: 'tab-cleanup-action', lineCount: 9 });
     useStore.getState().addTab(tab);
@@ -303,6 +322,25 @@ describe('Editor component', () => {
     expect(current?.isDirty).toBe(true);
     expect(updatedEvents).toContainEqual({ tabId: tab.id });
     window.removeEventListener('rutar:document-updated', updatedListener as EventListener);
+  });
+
+  it('updates submenu alignment when hovering edit and convert menu groups', async () => {
+    const tab = createTab({ id: 'tab-context-submenu-hover' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    fireEvent.contextMenu(textarea, { clientX: 220, clientY: 180 });
+
+    const editLabel = await screen.findByText('Edit');
+    fireEvent.mouseEnter(editLabel.closest('div') as Element);
+
+    const convertLabel = await screen.findByText('Convert');
+    fireEvent.mouseEnter(convertLabel.closest('div') as Element);
+
+    expect(screen.getByRole('button', { name: 'Base64 Encode' })).toBeInTheDocument();
   });
 
   it('runs sort action from context submenu and triggers cleanup command', async () => {
