@@ -191,6 +191,32 @@ describe('Editor component', () => {
     expect(textarea?.value).toBe('alpha\nbeta\n');
   });
 
+  it('uses plain-line fetching path when largeFileMode is enabled', async () => {
+    const tab = createTab({
+      id: 'tab-large-file-mode',
+      lineCount: 5000,
+      largeFileMode: true,
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'get_visible_lines_chunk',
+        expect.objectContaining({
+          id: tab.id,
+        })
+      );
+    });
+
+    expect(
+      invokeMock.mock.calls.some(
+        ([command, payload]) => command === 'get_syntax_token_lines' && payload?.id === tab.id
+      )
+    ).toBe(false);
+  });
+
   it('shows disabled copy/cut/delete in context menu when there is no selection', async () => {
     const tab = createTab({ id: 'tab-context-disabled' });
     const { container } = render(<Editor tab={tab} />);
