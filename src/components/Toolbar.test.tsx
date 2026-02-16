@@ -717,6 +717,147 @@ describe("Toolbar", () => {
     });
   });
 
+  it("logs per-file error when save_files returns failed result item", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-failed-item",
+      name: "save-failed.ts",
+      path: "C:\\repo\\save-failed.ts",
+      isDirty: true,
+    }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      if (command === "save_files") {
+        return [{ id: "tab-save-failed-item", success: false, error: "disk full" }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-failed-item" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_files", { ids: ["tab-save-failed-item"] });
+    });
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save save-failed.ts:", "disk full");
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("logs batch error when save_files command throws", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-batch-error",
+      name: "save-batch-error.ts",
+      path: "C:\\repo\\save-batch-error.ts",
+      isDirty: true,
+    }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      if (command === "save_files") {
+        throw new Error("save-files-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-batch-error" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to batch save files:",
+        expect.objectContaining({ message: "save-files-failed" })
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("refreshes history and dispatches document-updated when saving tab without path succeeds", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-no-path",
+      name: "untitled-ok",
+      path: "",
+      isDirty: true,
+    }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      return undefined;
+    });
+    saveTabMock.mockResolvedValue(true);
+    const updatedTabIds: string[] = [];
+    const listener = (event: Event) => {
+      updatedTabIds.push((event as CustomEvent<{ tabId: string }>).detail.tabId);
+    };
+    window.addEventListener("rutar:document-updated", listener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-no-path" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(saveTabMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-save-no-path" }),
+        expect.any(Function)
+      );
+    });
+    await waitFor(() => {
+      const historyCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === "get_edit_history_state" && (payload as { id?: string } | undefined)?.id === "tab-save-no-path"
+      );
+      expect(historyCalls.length).toBeGreaterThanOrEqual(2);
+    });
+    await waitFor(() => {
+      expect(updatedTabIds).toContain("tab-save-no-path");
+    });
+    window.removeEventListener("rutar:document-updated", listener as EventListener);
+  });
+
   it("closes active tab on Ctrl+W", async () => {
     useStore.getState().addTab(createTab({ id: "tab-a", name: "a.ts", path: "C:\\repo\\a.ts" }));
     useStore.getState().addTab(createTab({ id: "tab-b", name: "b.ts", path: "C:\\repo\\b.ts" }));
