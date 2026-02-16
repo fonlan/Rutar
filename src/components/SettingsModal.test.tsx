@@ -295,6 +295,70 @@ describe("SettingsModal", () => {
     });
   });
 
+  it("toggles mouse gesture section visibility with switch state", async () => {
+    useStore.getState().updateSettings({
+      mouseGesturesEnabled: true,
+      mouseGestures: [{ pattern: "L", action: "previousTab" }],
+    });
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByText("Mouse Gestures"));
+    await screen.findByDisplayValue("L");
+
+    const gestureButtons = screen.getAllByRole("button", { name: "Mouse Gestures" });
+    fireEvent.click(gestureButtons[gestureButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(false);
+      expect(screen.queryByDisplayValue("L")).toBeNull();
+    });
+
+    const refreshedButtons = screen.getAllByRole("button", { name: "Mouse Gestures" });
+    fireEvent.click(refreshedButtons[refreshedButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+      expect(screen.getByDisplayValue("L")).toBeInTheDocument();
+    });
+  });
+
+  it("updates existing and new mouse gesture actions from action selectors", async () => {
+    useStore.getState().updateSettings({
+      mouseGesturesEnabled: true,
+      mouseGestures: [{ pattern: "L", action: "previousTab" }],
+    });
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByText("Mouse Gestures"));
+
+    const actionSelects = await screen.findAllByRole("combobox");
+    fireEvent.change(actionSelects[0], { target: { value: "closeCurrentTab" } });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGestures[0].action).toBe("closeCurrentTab");
+    });
+
+    fireEvent.change(actionSelects[actionSelects.length - 1], {
+      target: { value: "toggleSidebar" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("e.g. L, RD, UL"), {
+      target: { value: "du" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(
+        useStore
+          .getState()
+          .settings.mouseGestures.some(
+            (gesture) => gesture.pattern === "DU" && gesture.action === "toggleSidebar"
+          )
+      ).toBe(true);
+    });
+  });
+
   it("opens project url from about panel", async () => {
     useStore.getState().toggleSettings(true);
     render(<SettingsModal />);
