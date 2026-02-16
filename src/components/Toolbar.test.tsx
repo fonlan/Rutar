@@ -1312,6 +1312,61 @@ describe("Toolbar", () => {
     });
   });
 
+  it("shows unsupported format warning when syntax key cannot be detected", async () => {
+    useStore.getState().addTab(createTab({ name: "data.json", path: "C:\\repo\\data.json" }));
+    isStructuredFormatSupportedMock.mockReturnValue(true);
+    detectStructuredFormatSyntaxKeyMock.mockReturnValue(null);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const beautifyWrapper = screen.getByTitle("Beautify (Ctrl+Alt+F)");
+    fireEvent.click(beautifyWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        "Only JSON, YAML, XML, HTML, and TOML are supported.",
+        expect.objectContaining({ title: "Settings", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows format failure warning when backend throws non-error value", async () => {
+    useStore.getState().addTab(createTab({ name: "data.json", path: "C:\\repo\\data.json" }));
+    isStructuredFormatSupportedMock.mockReturnValue(true);
+    detectStructuredFormatSyntaxKeyMock.mockReturnValue("json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "format_document") {
+        throw "format-non-error-failed";
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const minifyWrapper = screen.getByTitle("Minify (Ctrl+Alt+M)");
+    fireEvent.click(minifyWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("format-non-error-failed"),
+        expect.objectContaining({ title: "Settings", kind: "warning" })
+      );
+    });
+  });
+
   it("loads outline from toolbar outline button when outline is supported", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     detectOutlineTypeMock.mockReturnValue("typescript");
