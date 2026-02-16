@@ -455,6 +455,93 @@ describe('Editor component', () => {
     });
   });
 
+  it('clears previous outline flash timer when navigate-to-outline is fired repeatedly', async () => {
+    const tab = createTab({ id: 'tab-navigate-outline-repeat', lineCount: 12 });
+    render(<Editor tab={tab} />);
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('rutar:navigate-to-outline', {
+            detail: {
+              tabId: tab.id,
+              line: 2,
+              column: 4,
+              length: 2,
+              lineText: 'beta',
+              source: 'outline',
+            },
+          })
+        );
+      });
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('rutar:navigate-to-outline', {
+            detail: {
+              tabId: tab.id,
+              line: 3,
+              column: 2,
+              length: 1,
+              lineText: 'gamma',
+              source: 'outline',
+            },
+          })
+        );
+      });
+
+      await waitFor(() => {
+        const cursor = useStore.getState().cursorPositionByTab[tab.id];
+        expect(cursor?.line).toBe(3);
+        expect(cursor?.column).toBe(1);
+        expect(clearTimeoutSpy).toHaveBeenCalled();
+      });
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
+  });
+
+  it('handles navigate-to-line event in huge-editable mode and updates scroll container', async () => {
+    const tab = createTab({ id: 'tab-navigate-huge-mode', lineCount: 22000 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'alpha\nbeta');
+
+    await waitFor(() => {
+      expect(container.querySelector('.editor-scroll-stable')).toBeTruthy();
+    });
+    const scrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+    const initialChunkCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) => command === 'get_visible_lines_chunk' && payload?.id === tab.id
+    ).length;
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 200,
+            column: 2,
+            length: 3,
+            lineText: 'beta',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      const chunkCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) => command === 'get_visible_lines_chunk' && payload?.id === tab.id
+      ).length;
+      expect(cursor?.line).toBe(200);
+      expect(cursor?.column).toBe(2);
+      expect(scrollContainer.scrollTop).toBeGreaterThan(0);
+      expect(chunkCalls).toBeGreaterThan(initialChunkCalls);
+    });
+  });
+
   it('keeps search highlight until search-close is sent for active tab', async () => {
     const tab = createTab({ id: 'tab-search-close-event', lineCount: 12 });
     const { container } = render(<Editor tab={tab} />);
