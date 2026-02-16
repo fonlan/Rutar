@@ -5,7 +5,7 @@ import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
 import { openFilePath } from "@/lib/openFile";
-import { removeRecentFilePath } from "@/lib/recentPaths";
+import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -48,7 +48,9 @@ vi.mock("@/lib/tabClose", () => ({
 const invokeMock = vi.mocked(invoke);
 const messageMock = vi.mocked(message);
 const openFilePathMock = vi.mocked(openFilePath);
+const addRecentFolderPathMock = vi.mocked(addRecentFolderPath);
 const removeRecentFilePathMock = vi.mocked(removeRecentFilePath);
+const removeRecentFolderPathMock = vi.mocked(removeRecentFolderPath);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -270,6 +272,64 @@ describe("Toolbar", () => {
 
     await waitFor(() => {
       expect(screen.queryByTitle("C:\\repo\\recent-c.ts")).toBeNull();
+    });
+  });
+
+  it("opens recent folder from split menu list item", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-a"],
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "read_dir_if_directory") {
+        return [{ name: "main.ts", path: "C:\\repo\\folder-a\\main.ts" }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+
+    const recentFolderRow = await screen.findByTitle("C:\\repo\\folder-a");
+    fireEvent.click(recentFolderRow.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-a" });
+    });
+    await waitFor(() => {
+      expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-a");
+    });
+  });
+
+  it("removes recent folder entry from split menu", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-b"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Bookmark" }));
+
+    await waitFor(() => {
+      expect(removeRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-b");
     });
   });
 
