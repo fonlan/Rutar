@@ -2624,6 +2624,91 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("reorders filter rules via move buttons and drag-drop", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    const { container } = render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "first" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Rule" }));
+    fireEvent.change(screen.getAllByPlaceholderText("Filter keyword")[1], {
+      target: { value: "second" },
+    });
+
+    fireEvent.click(screen.getAllByTitle("Move down")[0]);
+    fireEvent.click(screen.getAllByTitle("Move up")[1]);
+
+    const dataTransferStore: Record<string, string> = {};
+    const dataTransfer = {
+      effectAllowed: "move",
+      dropEffect: "move",
+      setData: vi.fn((type: string, value: string) => {
+        dataTransferStore[type] = value;
+      }),
+      getData: vi.fn((type: string) => dataTransferStore[type] || ""),
+    };
+
+    const dragHandles = container.querySelectorAll<HTMLElement>('[draggable="true"]');
+    const ruleInputs = screen.getAllByPlaceholderText("Filter keyword");
+    const ruleCards = ruleInputs.map((input) => input.parentElement as HTMLElement);
+
+    fireEvent.dragStart(dragHandles[0], { dataTransfer });
+    fireEvent.dragOver(ruleCards[1], { dataTransfer });
+    fireEvent.drop(ruleCards[1], { dataTransfer });
+    fireEvent.dragEnd(dragHandles[0]);
+
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          rules: expect.arrayContaining([
+            expect.objectContaining({ keyword: "first" }),
+            expect.objectContaining({ keyword: "second" }),
+          ]),
+        })
+      );
+    });
+  });
+
   it("re-runs filter query from results panel refresh action", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
