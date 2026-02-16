@@ -129,6 +129,42 @@ describe("SettingsModal", () => {
     });
   });
 
+  it("logs error when opening project url fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    openUrlMock.mockRejectedValueOnce(new Error("open-failed"));
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open link" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to open project URL:",
+        expect.any(Error)
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("logs error when copying project url fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    clipboardWriteTextMock.mockRejectedValueOnce(new Error("copy-failed"));
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to copy project URL:",
+        expect.any(Error)
+      );
+    });
+    errorSpy.mockRestore();
+  });
+
   it("closes modal when clicking backdrop", async () => {
     useStore.getState().toggleSettings(true);
     render(<SettingsModal />);
@@ -138,6 +174,17 @@ describe("SettingsModal", () => {
 
     await waitFor(() => {
       expect(useStore.getState().settings.isOpen).toBe(false);
+    });
+  });
+
+  it("keeps modal open when clicking inside dialog content", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.mouseDown(screen.getByRole("dialog"));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.isOpen).toBe(true);
     });
   });
 
