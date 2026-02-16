@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
@@ -27,9 +27,23 @@ function createTab(partial?: Partial<FileTab>): FileTab {
 
 describe("MarkdownPreviewPanel", () => {
   let initialState: ReturnType<typeof useStore.getState>;
+  const requestAnimationFrameSpy = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+  const cancelAnimationFrameSpy = vi
+    .spyOn(window, "cancelAnimationFrame")
+    .mockImplementation(() => undefined);
 
   beforeAll(() => {
     initialState = useStore.getState();
+  });
+
+  afterAll(() => {
+    requestAnimationFrameSpy.mockRestore();
+    cancelAnimationFrameSpy.mockRestore();
   });
 
   beforeEach(() => {
@@ -91,5 +105,83 @@ describe("MarkdownPreviewPanel", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("forwards preview wheel events to editor scroller", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    const gestureArea = document.createElement("div");
+    gestureArea.setAttribute("data-rutar-gesture-area", "true");
+    const editorScroller = document.createElement("div");
+    editorScroller.className = "editor-scroll-stable";
+    gestureArea.appendChild(editorScroller);
+    document.body.appendChild(gestureArea);
+
+    Object.defineProperty(editorScroller, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(editorScroller, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(editorScroller, "scrollWidth", { configurable: true, value: 800 });
+    Object.defineProperty(editorScroller, "clientWidth", { configurable: true, value: 200 });
+    editorScroller.scrollTop = 100;
+    editorScroller.scrollLeft = 40;
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
+    fireEvent.wheel(previewScroller, { deltaY: 60, deltaX: 25 });
+
+    expect(editorScroller.scrollTop).toBe(160);
+    expect(editorScroller.scrollLeft).toBe(65);
+
+    gestureArea.remove();
+  });
+
+  it("updates width ratio when dragging resize handle", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+
+    render(
+      <div data-testid="layout-root">
+        <MarkdownPreviewPanel open={true} tab={markdownTab} />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const resizeHandle = screen.getByRole("separator", { name: "Resize markdown preview panel" });
+    const previewPanel = resizeHandle.closest("[aria-hidden]") as HTMLDivElement;
+    const parentElement = previewPanel.parentElement as HTMLDivElement;
+    vi.spyOn(parentElement, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 600,
+      width: 1000,
+      height: 600,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(resizeHandle, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(resizeHandle, "releasePointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    fireEvent.pointerDown(resizeHandle, { pointerId: 7, clientX: 600 });
+    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.4, 4);
+
+    fireEvent.pointerMove(document, { pointerId: 7, clientX: 20 });
+    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.8, 4);
+
+    fireEvent.pointerUp(document, { pointerId: 7 });
+    expect(document.body.style.cursor).toBe("");
+    expect(document.body.style.userSelect).toBe("");
   });
 });
