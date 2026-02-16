@@ -510,6 +510,140 @@ describe("TitleBar", () => {
     rectMock.mockRestore();
   });
 
+  it("flips tooltip placement from bottom to top when tooltip overflows below viewport", async () => {
+    const tab = createTab({
+      id: "tab-tooltip-bottom-to-top",
+      name: "flip-bottom.ts",
+      path: "C:\\repo\\flip-bottom.ts",
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 100,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const className = this.className?.toString() ?? "";
+        if (className.includes("fixed z-[85]")) {
+          return {
+            x: 12,
+            y: 80,
+            width: 160,
+            height: 40,
+            top: 80,
+            right: 172,
+            bottom: 120,
+            left: 12,
+            toJSON: () => ({}),
+          } as DOMRect;
+        }
+
+        return {
+          x: 20,
+          y: 30,
+          width: 120,
+          height: 24,
+          top: 30,
+          right: 140,
+          bottom: 54,
+          left: 20,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+
+    render(<TitleBar />);
+
+    const tabElement = screen.getByText("flip-bottom.ts").closest("div.group.flex.items-center");
+    expect(tabElement).not.toBeNull();
+    fireEvent.mouseEnter(tabElement as Element);
+
+    const tooltipText = await screen.findByText("C:\\repo\\flip-bottom.ts");
+    await waitFor(() => {
+      const tooltipElement = tooltipText as HTMLElement;
+      expect(tooltipElement.style.transform).toBe("translate(-50%, -100%)");
+    });
+
+    rectMock.mockRestore();
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: originalInnerHeight,
+    });
+  });
+
+  it("flips tooltip placement from top to bottom when tooltip overflows above viewport", async () => {
+    const tab = createTab({
+      id: "tab-tooltip-top-to-bottom",
+      name: "flip-top.ts",
+      path: "C:\\repo\\flip-top.ts",
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 150,
+    });
+
+    const rectMock = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const className = this.className?.toString() ?? "";
+        if (className.includes("fixed z-[85]")) {
+          return {
+            x: 12,
+            y: 0,
+            width: 160,
+            height: 22,
+            top: 0,
+            right: 172,
+            bottom: 22,
+            left: 12,
+            toJSON: () => ({}),
+          } as DOMRect;
+        }
+
+        return {
+          x: 20,
+          y: 82,
+          width: 120,
+          height: 24,
+          top: 82,
+          right: 140,
+          bottom: 106,
+          left: 20,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+
+    render(<TitleBar />);
+
+    const tabElement = screen.getByText("flip-top.ts").closest("div.group.flex.items-center");
+    expect(tabElement).not.toBeNull();
+    fireEvent.mouseEnter(tabElement as Element);
+
+    const tooltipText = await screen.findByText("C:\\repo\\flip-top.ts");
+    await waitFor(() => {
+      const tooltipElement = tooltipText as HTMLElement;
+      expect(tooltipElement.style.transform).toBe("translateX(-50%)");
+    });
+
+    rectMock.mockRestore();
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: originalInnerHeight,
+    });
+  });
+
   it("closes tab context menu when window loses focus", async () => {
     const tab = createTab({ id: "tab-blur-close-menu", name: "blur.ts", path: "C:\\repo\\blur.ts" });
     useStore.setState({
