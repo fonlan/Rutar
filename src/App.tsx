@@ -143,6 +143,16 @@ function dispatchGesturePreview(sequence: string) {
   );
 }
 
+export const appTestUtils = {
+  detectWindowsPlatform,
+  areStringArraysEqual,
+  normalizeLineEnding,
+  dispatchEditorForceRefresh,
+  dispatchDocumentUpdated,
+  dispatchNavigateToLine,
+  dispatchGesturePreview,
+};
+
 function App() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
