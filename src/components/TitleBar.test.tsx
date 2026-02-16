@@ -118,6 +118,34 @@ describe("TitleBar", () => {
     await screen.findByRole("button", { name: "Disable Always on Top" });
   });
 
+  it("triggers minimize, maximize, and close window controls", async () => {
+    const tab = createTab({ id: "tab-window-controls", name: "window.ts", path: "C:\\repo\\window.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const { container } = render(<TitleBar />);
+
+    const minimizeButton = container.querySelector(".lucide-minus")?.closest("button");
+    const maximizeButton = container.querySelector(".lucide-square")?.closest("button");
+    expect(minimizeButton).not.toBeNull();
+    expect(maximizeButton).not.toBeNull();
+
+    const closeButton = maximizeButton?.nextElementSibling as HTMLButtonElement | null;
+    expect(closeButton).not.toBeNull();
+
+    fireEvent.click(minimizeButton as HTMLButtonElement);
+    fireEvent.click(maximizeButton as HTMLButtonElement);
+    fireEvent.click(closeButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(tauriWindowMocks.appWindow.minimize).toHaveBeenCalledTimes(1);
+      expect(tauriWindowMocks.appWindow.toggleMaximize).toHaveBeenCalledTimes(1);
+      expect(tauriWindowMocks.appWindow.close).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("logs error when toggling always-on-top fails", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const tab = createTab({ id: "tab-top-fail", name: "top.ts", path: "C:\\repo\\top.ts" });
