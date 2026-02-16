@@ -23,6 +23,28 @@ vi.mock('@/components/MarkdownPreviewPanel', () => ({
 
 import { appTestUtils } from './App';
 
+describe('appTestUtils.detectWindowsPlatform', () => {
+  it('returns true for windows user agent', () => {
+    const userAgentSpy = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
+
+    expect(appTestUtils.detectWindowsPlatform()).toBe(true);
+
+    userAgentSpy.mockRestore();
+  });
+
+  it('returns false for non-windows user agent', () => {
+    const userAgentSpy = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)');
+
+    expect(appTestUtils.detectWindowsPlatform()).toBe(false);
+
+    userAgentSpy.mockRestore();
+  });
+});
+
 describe('appTestUtils.areStringArraysEqual', () => {
   it('returns true when arrays are identical by length and order', () => {
     expect(appTestUtils.areStringArraysEqual(['a', 'b'], ['a', 'b'])).toBe(true);
@@ -45,6 +67,26 @@ describe('appTestUtils.normalizeLineEnding', () => {
     const expected = appTestUtils.detectWindowsPlatform() ? 'CRLF' : 'LF';
     expect(appTestUtils.normalizeLineEnding()).toBe(expected);
     expect(appTestUtils.normalizeLineEnding('UNKNOWN' as never)).toBe(expected);
+  });
+
+  it('falls back to CRLF when current platform is windows', () => {
+    const userAgentSpy = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Windows 11');
+
+    expect(appTestUtils.normalizeLineEnding('UNKNOWN' as never)).toBe('CRLF');
+
+    userAgentSpy.mockRestore();
+  });
+
+  it('falls back to LF when current platform is not windows', () => {
+    const userAgentSpy = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Linux x86_64');
+
+    expect(appTestUtils.normalizeLineEnding('UNKNOWN' as never)).toBe('LF');
+
+    userAgentSpy.mockRestore();
   });
 });
 

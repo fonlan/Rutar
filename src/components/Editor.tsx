@@ -911,6 +911,7 @@ export const editorTestUtils = {
   getSelectionOffsetsInElement,
   getSelectionAnchorFocusOffsetsInElement,
   getCodeUnitOffsetFromLineColumn,
+  setCaretToLineColumn,
   codeUnitOffsetToLineColumn,
   arePairHighlightPositionsEqual,
   buildCodeUnitDiff,
@@ -921,6 +922,10 @@ export const editorTestUtils = {
   buildLineStartOffsets,
   getLineBoundsByLineNumber,
   getOffsetForColumnInLine,
+  setCaretToCodeUnitOffset,
+  setSelectionToCodeUnitOffsets,
+  dispatchEditorInputEvent,
+  normalizeInputLayerDom,
   isPointerOnScrollbar,
   dispatchDocumentUpdated,
 };

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { editorTestUtils } from './Editor';
 
 const EMPTY_LINE_PLACEHOLDER = '\u200B';
@@ -239,6 +239,91 @@ describe('editorTestUtils offset and coordinate helpers', () => {
     expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(div as never)).toBeNull();
     expect(editorTestUtils.getCaretLineInElement(div as never)).toBeNull();
 
+    div.remove();
+  });
+
+  it('sets caret and selection by code-unit offsets for textarea', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'ab\ncd';
+
+    editorTestUtils.setCaretToCodeUnitOffset(textarea, 99);
+    expect(textarea.selectionStart).toBe(5);
+    expect(textarea.selectionEnd).toBe(5);
+
+    editorTestUtils.setSelectionToCodeUnitOffsets(textarea, 4, 1);
+    expect(textarea.selectionStart).toBe(1);
+    expect(textarea.selectionEnd).toBe(4);
+
+    editorTestUtils.setCaretToLineColumn(textarea, 2, 2);
+    expect(textarea.selectionStart).toBe(4);
+    expect(textarea.selectionEnd).toBe(4);
+  });
+
+  it('sets caret and selection by code-unit offsets for div text nodes', () => {
+    const div = document.createElement('div');
+    div.textContent = 'abcd';
+    document.body.appendChild(div);
+    const selection = window.getSelection();
+    if (!selection) {
+      throw new Error('Selection API unavailable in test environment');
+    }
+
+    editorTestUtils.setCaretToCodeUnitOffset(div as never, 2);
+    expect(selection.anchorOffset).toBe(2);
+    expect(selection.focusOffset).toBe(2);
+
+    editorTestUtils.setSelectionToCodeUnitOffsets(div as never, 3, 1);
+    expect(editorTestUtils.getSelectionOffsetsInElement(div as never)).toEqual({
+      start: 1,
+      end: 3,
+      isCollapsed: false,
+    });
+
+    editorTestUtils.setCaretToLineColumn(div as never, 1, 3);
+    expect(selection.anchorOffset).toBe(2);
+
+    selection.removeAllRanges();
+    div.remove();
+  });
+
+  it('dispatches editor input event and normalizes contenteditable DOM structure', () => {
+    const div = document.createElement('div');
+    const left = document.createElement('span');
+    left.textContent = 'ab';
+    const right = document.createElement('span');
+    right.textContent = 'cd';
+    div.append(left, right);
+    document.body.appendChild(div);
+
+    const textStart = left.firstChild as Text;
+    const textEnd = right.firstChild as Text;
+    const selection = window.getSelection();
+    if (!selection) {
+      throw new Error('Selection API unavailable in test environment');
+    }
+
+    const range = document.createRange();
+    range.setStart(textStart, 1);
+    range.setEnd(textEnd, 1);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const onInput = vi.fn();
+    div.addEventListener('input', onInput);
+    editorTestUtils.dispatchEditorInputEvent(div as never);
+    expect(onInput).toHaveBeenCalledTimes(1);
+
+    editorTestUtils.normalizeInputLayerDom(div as never);
+    expect(div.childNodes.length).toBe(1);
+    expect(div.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    expect(div.textContent).toBe('abcd');
+    expect(editorTestUtils.getSelectionOffsetsInElement(div as never)).toEqual({
+      start: 1,
+      end: 3,
+      isCollapsed: false,
+    });
+
+    selection.removeAllRanges();
     div.remove();
   });
 });

@@ -19,6 +19,7 @@ describe("dayjs-mermaid-shim", () => {
 
     expect(base.add(2, "day").format("YYYY-MM-DD")).toBe("2026-02-17");
     expect(base.subtract(1, "month").format("YYYY-MM-DD")).toBe("2026-01-15");
+    expect(base.add(1, "year").format("YYYY-MM-DD")).toBe("2027-02-15");
     expect(base.startOf("day").format("HH:mm:ss")).toBe("00:00:00");
     expect(base.endOf("second").format("ss.SSS")).toBe("20.999");
   });
@@ -81,6 +82,8 @@ describe("dayjs-mermaid-shim", () => {
     expect(base.endOf("hour").valueOf() - base.startOf("hour").valueOf()).toBe(oneHour - 1);
     expect(base.endOf("day").valueOf() - base.startOf("day").valueOf()).toBe(oneDay - 1);
     expect(base.endOf("week").valueOf() - base.startOf("week").valueOf()).toBe(oneWeek - 1);
+    expect(base.endOf("month").format("DD HH:mm:ss.SSS")).toBe("31 23:59:59.999");
+    expect(base.endOf("year").format("MM-DD HH:mm:ss.SSS")).toBe("12-31 23:59:59.999");
     expect(base.endOf("unknown" as never).valueOf()).toBe(base.valueOf());
   });
 
