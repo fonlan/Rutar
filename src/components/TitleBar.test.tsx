@@ -113,6 +113,26 @@ describe("TitleBar", () => {
     await screen.findByRole("button", { name: "Disable Always on Top" });
   });
 
+  it("logs error when toggling always-on-top fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tab = createTab({ id: "tab-top-fail", name: "top.ts", path: "C:\\repo\\top.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    tauriWindowMocks.appWindow.setAlwaysOnTop.mockRejectedValueOnce(new Error("always-top-failed"));
+
+    render(<TitleBar />);
+
+    const toggleButton = await screen.findByRole("button", { name: "Enable Always on Top" });
+    fireEvent.click(toggleButton);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to toggle always on top:", expect.any(Error));
+    });
+    errorSpy.mockRestore();
+  });
+
   it("copies file name from tab context menu", async () => {
     const tab = createTab({ id: "tab-copy", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
     useStore.setState({
@@ -197,6 +217,35 @@ describe("TitleBar", () => {
         path: "C:\\repo\\src\\main.rs",
       });
     });
+  });
+
+  it("logs error when opening containing folder fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tab = createTab({ id: "tab-open-dir-fail", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "open_in_file_manager") {
+        throw new Error("open-folder-failed");
+      }
+      return undefined;
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 175,
+      clientY: 125,
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Containing Folder" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to open file directory:", expect.any(Error));
+    });
+    errorSpy.mockRestore();
   });
 
   it("closes tab context menu on Escape", async () => {
@@ -464,6 +513,42 @@ describe("TitleBar", () => {
     });
   });
 
+  it("logs error when creating fallback tab after close-all fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tabA = createTab({ id: "tab-close-all-fail-a", name: "a.ts", path: "C:\\repo\\a.ts" });
+    const tabB = createTab({ id: "tab-close-all-fail-b", name: "b.ts", path: "C:\\repo\\b.ts" });
+    useStore.setState({
+      tabs: [tabA, tabB],
+      activeTabId: tabA.id,
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "close_files") {
+        return undefined;
+      }
+      if (command === "new_file") {
+        throw new Error("new-file-failed");
+      }
+      return undefined;
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("a.ts"), {
+      clientX: 172,
+      clientY: 112,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close All Tabs" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to create tab after closing all tabs:",
+        expect.any(Error)
+      );
+    });
+    expect(useStore.getState().tabs).toHaveLength(0);
+    errorSpy.mockRestore();
+  });
+
   it("closes other tabs from tab context menu", async () => {
     const sourceTab = createTab({ id: "tab-source", name: "source.ts", path: "C:\\repo\\source.ts" });
     const targetTab = createTab({ id: "tab-target", name: "target.ts", path: "C:\\repo\\target.ts" });
@@ -487,5 +572,41 @@ describe("TitleBar", () => {
       expect(tabs[0].id).toBe("tab-target");
       expect(activeTabId).toBe("tab-target");
     });
+  });
+
+  it("logs error when backend close_files fails while closing other tabs", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sourceTab = createTab({ id: "tab-source-fail-close", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-target-fail-close", name: "target.ts", path: "C:\\repo\\target.ts" });
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab],
+      activeTabId: sourceTab.id,
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "close_files") {
+        throw new Error("close-files-failed");
+      }
+      return undefined;
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 166,
+      clientY: 106,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Close Other Tabs" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to close tabs:", expect.any(Error));
+    });
+    await waitFor(() => {
+      const { tabs, activeTabId } = useStore.getState();
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("tab-target-fail-close");
+      expect(activeTabId).toBe("tab-target-fail-close");
+    });
+    errorSpy.mockRestore();
   });
 });
