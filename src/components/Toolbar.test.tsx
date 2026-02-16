@@ -8,6 +8,7 @@ import { openFilePath } from "@/lib/openFile";
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from "@/lib/recentPaths";
 import { detectOutlineType, loadOutline } from "@/lib/outline";
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
+import { saveTab } from "@/lib/tabClose";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -58,6 +59,7 @@ const detectOutlineTypeMock = vi.mocked(detectOutlineType);
 const loadOutlineMock = vi.mocked(loadOutline);
 const detectStructuredFormatSyntaxKeyMock = vi.mocked(detectStructuredFormatSyntaxKey);
 const isStructuredFormatSupportedMock = vi.mocked(isStructuredFormatSupported);
+const saveTabMock = vi.mocked(saveTab);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -383,6 +385,66 @@ describe("Toolbar", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("redo", { id: "tab-toolbar" });
+    });
+  });
+
+  it("triggers save on Ctrl+S", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-save", name: "save.ts", path: "C:\\repo\\save.ts" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(saveTabMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "tab-save" }),
+        expect.any(Function)
+      );
+    });
+  });
+
+  it("triggers save all on Ctrl+Shift+S", async () => {
+    useStore.getState().addTab(createTab({
+      id: "tab-save-all",
+      name: "save-all.ts",
+      path: "C:\\repo\\save-all.ts",
+      isDirty: true,
+    }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      if (command === "save_files") {
+        return [{ id: "tab-save-all", success: true }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-save-all" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_files", { ids: ["tab-save-all"] });
     });
   });
 
