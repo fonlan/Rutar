@@ -1159,6 +1159,55 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("disables copy action when result list is empty", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 0,
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const copyButton = await screen.findByTitle("Copy results as plain text");
+    expect(copyButton).toBeDisabled();
+  });
+
   it("applies result filter when Enter is pressed in result-filter input", async () => {
     invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
       const args = payload as Record<string, unknown> | undefined;
