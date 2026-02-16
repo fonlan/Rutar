@@ -399,6 +399,89 @@ describe('Editor component', () => {
     });
   });
 
+  it('handles navigate-to-outline event and moves caret to line start', async () => {
+    const tab = createTab({ id: 'tab-navigate-outline-event', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-outline', {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 4,
+            length: 2,
+            lineText: 'beta',
+            source: 'outline',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(2);
+      expect(cursor?.column).toBe(1);
+      expect(textarea.selectionStart).toBe(6);
+      expect(textarea.selectionEnd).toBe(6);
+    });
+  });
+
+  it('keeps search highlight until search-close is sent for active tab', async () => {
+    const tab = createTab({ id: 'tab-search-close-event', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 1,
+            length: 2,
+            lineText: 'beta',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark[class*="bg-yellow"]').length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:search-close', {
+          detail: {
+            tabId: 'another-tab',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark[class*="bg-yellow"]').length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:search-close', {
+          detail: {
+            tabId: tab.id,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark[class*="bg-yellow"]').length).toBe(0);
+    });
+  });
+
   it('handles force-refresh event with preserveCaret and updates line count', async () => {
     const tab = createTab({ id: 'tab-force-refresh', lineCount: 6 });
     useStore.getState().addTab(tab);
@@ -425,6 +508,71 @@ describe('Editor component', () => {
       expect(currentTab?.lineCount).toBe(9);
       expect(textarea.selectionStart).toBe(2);
       expect(textarea.selectionEnd).toBe(2);
+    });
+  });
+
+  it('ignores force-refresh event when tab id does not match', async () => {
+    const tab = createTab({ id: 'tab-force-refresh-ignore', lineCount: 6 });
+    useStore.getState().addTab(tab);
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const initialGetVisibleLinesCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+    ).length;
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: 'other-tab',
+            lineCount: 15,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
+      const getVisibleLinesCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+      ).length;
+      expect(currentTab?.lineCount).toBe(6);
+      expect(getVisibleLinesCalls).toBe(initialGetVisibleLinesCalls);
+    });
+  });
+
+  it('handles force-refresh event without preserveCaret and updates line count', async () => {
+    const tab = createTab({ id: 'tab-force-refresh-no-preserve', lineCount: 6 });
+    useStore.getState().addTab(tab);
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(2, 2);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            lineCount: 10,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
+      const getVisibleLinesCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+      ).length;
+      expect(currentTab?.lineCount).toBe(10);
+      expect(getVisibleLinesCalls).toBeGreaterThanOrEqual(2);
     });
   });
 
