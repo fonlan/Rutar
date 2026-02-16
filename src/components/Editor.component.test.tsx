@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
@@ -65,6 +65,34 @@ async function waitForEditorText(
   await waitFor(() => {
     expect(textarea.value).toBe(expectedText);
   });
+}
+
+function createClipboardLikeEvent(
+  type: 'copy' | 'cut' | 'paste',
+  options?: {
+    getDataText?: string;
+    setData?: ReturnType<typeof vi.fn>;
+    getData?: ReturnType<typeof vi.fn>;
+  }
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+    clipboardData?: {
+      setData: (mime: string, text: string) => void;
+      getData: (mime: string) => string;
+    };
+  };
+
+  const setData = options?.setData ?? vi.fn();
+  const getData = options?.getData ?? vi.fn(() => options?.getDataText ?? '');
+  Object.defineProperty(event, 'clipboardData', {
+    configurable: true,
+    value: {
+      setData,
+      getData,
+    },
+  });
+
+  return { event, setData, getData };
 }
 
 async function clickLineNumber(
@@ -341,6 +369,63 @@ describe('Editor component', () => {
     fireEvent.mouseEnter(convertLabel.closest('div') as Element);
 
     expect(screen.getByRole('button', { name: 'Base64 Encode' })).toBeInTheDocument();
+  });
+
+  it('handles navigate-to-line event and updates cursor position', async () => {
+    const tab = createTab({ id: 'tab-navigate-event', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 3,
+            length: 2,
+            lineText: 'beta',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(2);
+      expect(cursor?.column).toBe(3);
+      expect(textarea.scrollTop).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('handles force-refresh event with preserveCaret and updates line count', async () => {
+    const tab = createTab({ id: 'tab-force-refresh', lineCount: 6 });
+    useStore.getState().addTab(tab);
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(2, 2);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            lineCount: 9,
+            preserveCaret: true,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
+      expect(currentTab?.lineCount).toBe(9);
+      expect(textarea.selectionStart).toBe(2);
+      expect(textarea.selectionEnd).toBe(2);
+    });
   });
 
   it('runs sort action from context submenu and triggers cleanup command', async () => {
@@ -893,6 +978,20 @@ describe('Editor component', () => {
     expect(textarea.value).toBe('alpha\n');
   });
 
+  it('handles native copy event for line-number multi-selection', async () => {
+    const tab = createTab({ id: 'tab-native-copy-line-selection' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await clickLineNumber(container, 2, { ctrlKey: true });
+    const { event, setData } = createClipboardLikeEvent('copy');
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith('text/plain', 'beta\n');
+  });
+
   it('copies selected line-number range with Ctrl+C without editing document', async () => {
     const tab = createTab({ id: 'tab-line-selection-copy' });
     const { container } = render(<Editor tab={tab} />);
@@ -984,6 +1083,31 @@ describe('Editor component', () => {
     } finally {
       restoreProperty(navigator, 'clipboard', originalClipboard);
     }
+  });
+
+  it('handles native cut event for line-number multi-selection and edits content', async () => {
+    const tab = createTab({ id: 'tab-native-cut-line-selection' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await clickLineNumber(container, 1, { ctrlKey: true });
+    const { event, setData } = createClipboardLikeEvent('cut');
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith('text/plain', 'alpha\n');
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: 'beta\n',
+        })
+      );
+      expect(textarea.value).toBe('beta\n');
+    });
   });
 
   it('copies selected text from context menu', async () => {
