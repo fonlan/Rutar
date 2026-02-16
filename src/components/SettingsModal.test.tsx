@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { SettingsModal } from "./SettingsModal";
@@ -15,6 +15,14 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 const invokeMock = vi.mocked(invoke);
 const openUrlMock = vi.mocked(openUrl);
+const originalUserAgent = window.navigator.userAgent;
+
+function setUserAgent(value: string) {
+  Object.defineProperty(window.navigator, "userAgent", {
+    configurable: true,
+    value,
+  });
+}
 
 describe("SettingsModal", () => {
   let initialState: ReturnType<typeof useStore.getState>;
@@ -39,6 +47,10 @@ describe("SettingsModal", () => {
         writeText: clipboardWriteTextMock,
       },
     });
+  });
+
+  afterEach(() => {
+    setUserAgent(originalUserAgent);
   });
 
   it("renders null when modal is closed", async () => {
@@ -86,6 +98,71 @@ describe("SettingsModal", () => {
     await waitFor(() => {
       expect(useStore.getState().settings.wordWrap).toBe(true);
     });
+  });
+
+  it("registers and unregisters Windows context menu from general tab", async () => {
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({ windowsContextMenuEnabled: false });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+
+    const toggleButton = await screen.findByRole("button", { name: "Windows 11 Context Menu" });
+    fireEvent.click(toggleButton);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("register_windows_context_menu", {
+        language: "en-US",
+      });
+      expect(useStore.getState().settings.windowsContextMenuEnabled).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Windows 11 Context Menu" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("unregister_windows_context_menu");
+      expect(useStore.getState().settings.windowsContextMenuEnabled).toBe(false);
+    });
+  });
+
+  it("logs error when Windows context menu registration fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    useStore.getState().toggleSettings(true);
+    useStore.getState().updateSettings({ windowsContextMenuEnabled: false });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_system_fonts") {
+        return ["Consolas", "Cascadia Code"];
+      }
+      if (command === "register_windows_context_menu") {
+        throw new Error("register-failed");
+      }
+      if (command === "get_default_windows_file_association_extensions") {
+        return [".txt", ".md"];
+      }
+      return undefined;
+    });
+
+    render(<SettingsModal />);
+    fireEvent.click(await screen.findByRole("button", { name: "Windows 11 Context Menu" }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to update Windows context menu:",
+        expect.any(Error)
+      );
+      expect(useStore.getState().settings.windowsContextMenuEnabled).toBe(false);
+    });
+    errorSpy.mockRestore();
   });
 
   it("adds a new mouse gesture with normalized pattern", async () => {
