@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { TitleBar } from "./TitleBar";
@@ -48,6 +48,11 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     isDirty: false,
     ...partial,
   };
+}
+
+function getReactOnClick(button: HTMLButtonElement): (() => void) | undefined {
+  const propsKey = Object.keys(button as object).find((key) => key.startsWith("__reactProps$"));
+  return propsKey ? (button as any)[propsKey]?.onClick : undefined;
 }
 
 describe("TitleBar", () => {
@@ -454,6 +459,60 @@ describe("TitleBar", () => {
 
     expect(await screen.findByRole("button", { name: "Copy Directory" })).toBeDisabled();
     expect(await screen.findByRole("button", { name: "Copy Path" })).toBeDisabled();
+  });
+
+  it("returns early for copy-path action when context-menu tab path is empty", async () => {
+    const tab = createTab({ id: "tab-empty-copy-path", name: "untitled", path: "" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("untitled"), {
+      clientX: 141,
+      clientY: 91,
+    });
+
+    const copyPathButton = await screen.findByRole("button", { name: "Copy Path" });
+    expect(copyPathButton).toBeDisabled();
+    const onClick = getReactOnClick(copyPathButton as HTMLButtonElement);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(clipboardWriteTextMock).not.toHaveBeenCalled();
+  });
+
+  it("returns early for open-containing-folder action when context-menu tab path is empty", async () => {
+    const tab = createTab({ id: "tab-empty-open-folder", name: "untitled", path: "" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("untitled"), {
+      clientX: 142,
+      clientY: 92,
+    });
+
+    const openFolderButton = await screen.findByRole("button", { name: "Open Containing Folder" });
+    expect(openFolderButton).toBeDisabled();
+    const onClick = getReactOnClick(openFolderButton as HTMLButtonElement);
+    expect(onClick).toBeTypeOf("function");
+
+    await act(async () => {
+      onClick?.();
+    });
+
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "open_in_file_manager")
+    ).toBe(false);
   });
 
   it("creates a new empty tab after closing all tabs from context menu", async () => {
