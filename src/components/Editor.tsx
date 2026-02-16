@@ -894,6 +894,30 @@ function dispatchDocumentUpdated(tabId: string) {
   );
 }
 
+export const editorTestUtils = {
+  isToggleLineCommentShortcut,
+  isVerticalSelectionShortcut,
+  normalizeEditorText,
+  normalizeLineText,
+  normalizeEditableLineText,
+  normalizeSegmentText,
+  toInputLayerText,
+  mapLogicalOffsetToInputLayerOffset,
+  getCodeUnitOffsetFromLineColumn,
+  codeUnitOffsetToLineColumn,
+  arePairHighlightPositionsEqual,
+  buildCodeUnitDiff,
+  codeUnitOffsetToUnicodeScalarIndex,
+  alignToDevicePixel,
+  alignScrollOffset,
+  normalizeRectangularSelection,
+  buildLineStartOffsets,
+  getLineBoundsByLineNumber,
+  getOffsetForColumnInLine,
+  isPointerOnScrollbar,
+  dispatchDocumentUpdated,
+};
+
 export function Editor({
   tab,
   diffHighlightLines = [],
