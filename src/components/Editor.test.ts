@@ -435,6 +435,84 @@ describe('editorTestUtils offset and coordinate helpers', () => {
     div.remove();
   });
 
+  it('syncs textarea content normalization when setting caret by line/column', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'ab\r\ncd';
+
+    editorTestUtils.setCaretToLineColumn(textarea, 2, 1);
+    expect(textarea.value).toBe('ab\ncd');
+    expect(textarea.selectionStart).toBe(3);
+    expect(textarea.selectionEnd).toBe(3);
+  });
+
+  it('writes input-layer placeholder for trailing newline in contenteditable caret placement', () => {
+    const div = document.createElement('div');
+    div.textContent = 'ab\n';
+    document.body.appendChild(div);
+
+    editorTestUtils.setCaretToLineColumn(div as never, 2, 1);
+    expect(div.textContent).toBe(`ab\n${EMPTY_LINE_PLACEHOLDER}`);
+
+    window.getSelection()?.removeAllRanges();
+    div.remove();
+  });
+
+  it('returns null anchor/focus offsets when selection anchor or focus node is missing', () => {
+    const div = document.createElement('div');
+    div.textContent = 'ab';
+    const originalGetSelection = Object.getOwnPropertyDescriptor(window, 'getSelection');
+    const fakeSelection = {
+      rangeCount: 1,
+      anchorNode: null,
+      focusNode: null,
+    } as unknown as Selection;
+
+    try {
+      Object.defineProperty(window, 'getSelection', {
+        configurable: true,
+        value: vi.fn(() => fakeSelection),
+      });
+      expect(editorTestUtils.getSelectionAnchorFocusOffsetsInElement(div as never)).toBeNull();
+    } finally {
+      restoreProperty(window, 'getSelection', originalGetSelection);
+    }
+  });
+
+  it('normalizes non-text-node content when setting selection offsets', () => {
+    const div = document.createElement('div');
+    const span = document.createElement('span');
+    span.textContent = 'abcd';
+    div.appendChild(span);
+    document.body.appendChild(div);
+
+    editorTestUtils.setSelectionToCodeUnitOffsets(div as never, 1, 3);
+    expect(div.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    expect(editorTestUtils.getSelectionOffsetsInElement(div as never)).toEqual({
+      start: 1,
+      end: 3,
+      isCollapsed: false,
+    });
+
+    window.getSelection()?.removeAllRanges();
+    div.remove();
+  });
+
+  it('returns early when setting div selection offsets without Selection API', () => {
+    const div = document.createElement('div');
+    div.textContent = 'abcd';
+    const originalGetSelection = Object.getOwnPropertyDescriptor(window, 'getSelection');
+
+    try {
+      Object.defineProperty(window, 'getSelection', {
+        configurable: true,
+        value: vi.fn(() => null),
+      });
+      expect(() => editorTestUtils.setSelectionToCodeUnitOffsets(div as never, 1, 3)).not.toThrow();
+    } finally {
+      restoreProperty(window, 'getSelection', originalGetSelection);
+    }
+  });
+
   it('dispatches editor input event and normalizes contenteditable DOM structure', () => {
     const div = document.createElement('div');
     const left = document.createElement('span');
