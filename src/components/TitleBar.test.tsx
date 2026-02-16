@@ -166,6 +166,39 @@ describe("TitleBar", () => {
     errorSpy.mockRestore();
   });
 
+  it("closes tab from inline close button and keeps active tab unchanged on close-button pointer events", async () => {
+    const leftTab = createTab({ id: "tab-left-close-btn", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-right-close-btn", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: rightTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const leftTabElement = screen.getByText("left.ts").closest("div.group.flex.items-center");
+    expect(leftTabElement).not.toBeNull();
+    const closeButton = leftTabElement?.querySelector("button") as HTMLButtonElement | null;
+    expect(closeButton).not.toBeNull();
+
+    fireEvent.pointerDown(closeButton as HTMLButtonElement);
+    fireEvent.mouseDown(closeButton as HTMLButtonElement);
+    fireEvent.doubleClick(closeButton as HTMLButtonElement);
+    expect(useStore.getState().activeTabId).toBe("tab-right-close-btn");
+
+    fireEvent.click(closeButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_files", {
+        ids: ["tab-left-close-btn"],
+      });
+      const { tabs, activeTabId } = useStore.getState();
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("tab-right-close-btn");
+      expect(activeTabId).toBe("tab-right-close-btn");
+    });
+  });
+
   it("copies file name from tab context menu", async () => {
     const tab = createTab({ id: "tab-copy", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
     useStore.setState({
@@ -748,5 +781,69 @@ describe("TitleBar", () => {
       expect(activeTabId).toBe("tab-target-fail-close");
     });
     errorSpy.mockRestore();
+  });
+
+  it("handles pending file-open tabs lifecycle and blocks pending-tab interactions", async () => {
+    const existingTab = createTab({
+      id: "tab-existing",
+      name: "existing.ts",
+      path: "C:\\repo\\existing.ts",
+    });
+    useStore.setState({
+      tabs: [existingTab],
+      activeTabId: existingTab.id,
+    });
+
+    render(<TitleBar />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:file-open-loading", {
+          detail: {
+            tabId: "pending:alpha",
+            path: "C:\\repo\\pending.ts",
+            status: "start",
+          },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("rutar:file-open-loading", {
+          detail: {
+            tabId: "pending:alpha",
+            path: "C:\\repo\\pending.ts",
+            status: "start",
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("pending.ts")).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByText("pending.ts"));
+    expect(useStore.getState().activeTabId).toBe("tab-existing");
+
+    fireEvent.contextMenu(screen.getByText("pending.ts"), {
+      clientX: 188,
+      clientY: 122,
+    });
+    expect(screen.queryByRole("button", { name: "Copy File Name" })).toBeNull();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:file-open-loading", {
+          detail: {
+            tabId: "pending:alpha",
+            path: "C:\\repo\\pending.ts",
+            status: "end",
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("pending.ts")).toBeNull();
+    });
   });
 });
