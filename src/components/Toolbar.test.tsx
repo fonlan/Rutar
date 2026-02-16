@@ -1078,6 +1078,53 @@ describe("Toolbar", () => {
     });
   });
 
+  it("resets edit history state when refresh command fails after force-refresh event", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-history-failure" }));
+    let historyCallCount = 0;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        historyCallCount += 1;
+        if (historyCallCount === 1) {
+          return {
+            canUndo: true,
+            canRedo: true,
+            isDirty: true,
+          };
+        }
+        throw new Error("history-refresh-failed");
+      }
+      return undefined;
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-history-failure" });
+    });
+
+    const undoButton = screen
+      .getByTitle((title) => title.includes("Undo (Ctrl+Z)"))
+      .querySelector("button") as HTMLButtonElement;
+    await waitFor(() => {
+      expect(undoButton).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("rutar:force-refresh", { detail: { tabId: "tab-history-failure" } }));
+    });
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to get edit history state:",
+        expect.objectContaining({ message: "history-refresh-failed" })
+      );
+    });
+    await waitFor(() => {
+      expect(undoButton).toBeDisabled();
+    });
+    warnSpy.mockRestore();
+  });
+
   it("closes active tab on Ctrl+W", async () => {
     useStore.getState().addTab(createTab({ id: "tab-a", name: "a.ts", path: "C:\\repo\\a.ts" }));
     useStore.getState().addTab(createTab({ id: "tab-b", name: "b.ts", path: "C:\\repo\\b.ts" }));
@@ -1404,6 +1451,40 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(messageMock).toHaveBeenCalledWith(
         expect.stringContaining("format-non-error-failed"),
+        expect.objectContaining({ title: "Settings", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows format failure warning when backend throws Error", async () => {
+    useStore.getState().addTab(createTab({ name: "data.json", path: "C:\\repo\\data.json" }));
+    isStructuredFormatSupportedMock.mockReturnValue(true);
+    detectStructuredFormatSyntaxKeyMock.mockReturnValue("json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "format_document") {
+        throw new Error("format-error-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const beautifyWrapper = screen.getByTitle("Beautify (Ctrl+Alt+F)");
+    fireEvent.click(beautifyWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("format-error-failed"),
         expect.objectContaining({ title: "Settings", kind: "warning" })
       );
     });
@@ -2641,6 +2722,38 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(messageMock).toHaveBeenCalledWith(
         "Word count failed: wc-failed",
+        expect.objectContaining({ title: "Word Count", kind: "warning" })
+      );
+    });
+  });
+
+  it("shows word count failure warning when backend throws non-error value", async () => {
+    useStore.getState().addTab(createTab());
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "get_word_count_info") {
+        throw "wc-non-error-failed";
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const wordCountWrapper = screen.getByTitle("Word Count");
+    fireEvent.click(wordCountWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        expect.stringContaining("wc-non-error-failed"),
         expect.objectContaining({ title: "Word Count", kind: "warning" })
       );
     });
