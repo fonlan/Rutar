@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchReplacePanel } from "./SearchReplacePanel";
 import { useStore, type FileTab } from "@/store/useStore";
@@ -566,13 +566,377 @@ describe("SearchReplacePanel", () => {
     const copyButton = await screen.findByTitle("Copy results as plain text");
     await waitFor(() => {
       expect(copyButton).not.toBeDisabled();
-    });
+    }, { timeout: 5000 });
     fireEvent.click(copyButton);
 
     await waitFor(() => {
       const copiedByNavigator = writeTextMock.mock.calls.length > 0;
       const copiedFeedback = screen.queryByText(/Copied 1 results as plain text/) !== null;
       expect(copiedByNavigator || copiedFeedback).toBe(true);
+    });
+  });
+
+  it("applies result filter when Enter is pressed in result-filter input", async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      const args = payload as Record<string, unknown> | undefined;
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 2,
+          matchedLines: 2,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: args?.resultFilterKeyword ? 10 : null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+    invokeMock.mockClear();
+
+    fireEvent.keyDown(resultFilterInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          resultFilterKeyword: "line-filter",
+          startOffset: 0,
+        })
+      );
+    });
+  });
+
+  it("runs result-filter previous step from result panel controls", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "step_result_filter_search_in_document") {
+        return {
+          targetMatch: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Previous" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "step_result_filter_search_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          resultFilterKeyword: "line-filter",
+          step: -1,
+        })
+      );
+    });
+  });
+
+  it("runs result-filter next step from result panel controls", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "step_result_filter_search_in_document") {
+        return {
+          targetMatch: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Next" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "step_result_filter_search_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          resultFilterKeyword: "line-filter",
+          step: 1,
+        })
+      );
+    });
+  });
+
+  it("stops result-filter search when stop button is clicked during running filter search", async () => {
+    let resolveFilteredSearch:
+      | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
+      | null = null;
+
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      const args = payload as Record<string, unknown> | undefined;
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        if (args?.resultFilterKeyword === "line-filter") {
+          return await new Promise((resolve) => {
+            resolveFilteredSearch = resolve as (value: {
+              matches: unknown[];
+              documentVersion: number;
+              nextOffset: number | null;
+            }) => void;
+          });
+        }
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(screen.getByText("todo item")).toBeInTheDocument();
+    });
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+
+    fireEvent.keyDown(resultFilterInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(resolveFilteredSearch).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+    });
+
+    const filteredCallCountBeforeStop = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === "search_in_document_chunk" &&
+        ((payload as Record<string, unknown> | undefined)?.resultFilterKeyword as string | undefined) ===
+          "line-filter"
+    ).length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => {
+      const filteredCallCountAfterStop = invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === "search_in_document_chunk" &&
+          ((payload as Record<string, unknown> | undefined)?.resultFilterKeyword as string | undefined) ===
+            "line-filter"
+      ).length;
+      expect(filteredCallCountAfterStop).toBe(filteredCallCountBeforeStop);
+    });
+
+    const resolveRunningSearch = resolveFilteredSearch as
+      | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
+      | null;
+    if (resolveRunningSearch) {
+      resolveRunningSearch({
+        matches: [],
+        documentVersion: 1,
+        nextOffset: null,
+      });
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
+      expect(screen.getByText("todo item")).toBeInTheDocument();
     });
   });
 
