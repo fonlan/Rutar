@@ -2537,6 +2537,93 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("updates filter-rule style and mode controls before running filter query", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Rule" }));
+    fireEvent.click(screen.getAllByTitle("Delete")[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Regex" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wildcard" }));
+
+    const noBgCheckbox = screen.getByLabelText("No Bg");
+    fireEvent.click(noBgCheckbox);
+    fireEvent.click(noBgCheckbox);
+
+    const colorInputs = document.querySelectorAll<HTMLInputElement>('input[type="color"]');
+    fireEvent.change(colorInputs[0], { target: { value: "#abcdef" } });
+    fireEvent.change(colorInputs[1], { target: { value: "#123456" } });
+
+    fireEvent.click(screen.getByLabelText("Bold"));
+    fireEvent.click(screen.getByLabelText("Italic"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Match only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Whole line" }));
+
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          rules: [
+            expect.objectContaining({
+              keyword: "todo",
+              matchMode: "wildcard",
+              backgroundColor: "#abcdef",
+              textColor: "#123456",
+              bold: true,
+              italic: true,
+              applyTo: "line",
+            }),
+          ],
+          startLine: 0,
+        })
+      );
+    });
+  });
+
   it("re-runs filter query from results panel refresh action", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
