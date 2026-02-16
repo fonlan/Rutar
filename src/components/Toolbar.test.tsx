@@ -460,6 +460,103 @@ describe("Toolbar", () => {
     });
   });
 
+  it("dispatches diff redo history action on Ctrl+Y when diff tab is active", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
+    useStore.getState().addTab({
+      id: "tab-diff-redo",
+      name: "a.ts ↔ b.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      isDirty: false,
+      tabType: "diff",
+      diffPayload: {
+        sourceTabId: "tab-source",
+        targetTabId: "tab-target",
+        sourceName: "a.ts",
+        targetName: "b.ts",
+        sourcePath: "C:\\repo\\a.ts",
+        targetPath: "C:\\repo\\b.ts",
+        alignedSourceLines: [""],
+        alignedTargetLines: [""],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
+    });
+    const historyEvents: Array<{ diffTabId: string; panel: "source" | "target"; action: "undo" | "redo" }> = [];
+    const listener = (event: Event) => {
+      historyEvents.push(
+        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; action: "undo" | "redo" }>).detail
+      );
+    };
+    window.addEventListener("rutar:diff-history-action", listener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "y",
+      code: "KeyY",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(historyEvents[0]).toEqual({
+        diffTabId: "tab-diff-redo",
+        panel: "source",
+        action: "redo",
+      });
+    });
+    window.removeEventListener("rutar:diff-history-action", listener as EventListener);
+  });
+
+  it("logs warning when redo command throws", async () => {
+    useStore.getState().addTab(createTab());
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "redo") {
+        throw new Error("redo-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "y",
+      code: "KeyY",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ message: "redo-failed" }));
+    });
+    warnSpy.mockRestore();
+  });
+
   it("triggers save on Ctrl+S", async () => {
     useStore.getState().addTab(createTab({ id: "tab-save", name: "save.ts", path: "C:\\repo\\save.ts" }));
     render(<Toolbar />);
@@ -906,6 +1003,33 @@ describe("Toolbar", () => {
       expect(pasteEvents[0]).toEqual({ tabId: "tab-toolbar", text: "" });
     });
     window.removeEventListener("rutar:paste-text", listener as EventListener);
+  });
+
+  it("focuses editor element before paste action when editor is not active", async () => {
+    useStore.getState().addTab(createTab());
+    const editor = document.createElement("textarea");
+    editor.className = "editor-input-layer";
+    document.body.appendChild(editor);
+    const anotherInput = document.createElement("input");
+    document.body.appendChild(anotherInput);
+    anotherInput.focus();
+    const focusSpy = vi.spyOn(editor, "focus");
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(focusSpy).toHaveBeenCalled();
+    });
+
+    focusSpy.mockRestore();
+    editor.remove();
+    anotherInput.remove();
   });
 
   it("falls back to execCommand paste when clipboard read fails for active tab", async () => {
