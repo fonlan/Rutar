@@ -224,6 +224,111 @@ describe("TitleBar", () => {
     });
   });
 
+  it("shows compare action disabled when no compare source is selected", async () => {
+    const tab = createTab({ id: "tab-no-source", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 160,
+      clientY: 110,
+    });
+
+    const compareButton = await screen.findByRole("button", { name: "Compare with selected source" });
+    expect(compareButton).toBeDisabled();
+  });
+
+  it("sets and clears compare source from tab context menu", async () => {
+    const tab = createTab({ id: "tab-compare-source", name: "source.ts", path: "C:\\repo\\source.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 150,
+      clientY: 100,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Set as compare source" }));
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 152,
+      clientY: 102,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Clear compare source" }));
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 154,
+      clientY: 104,
+    });
+    await screen.findByRole("button", { name: "Set as compare source" });
+  });
+
+  it("creates diff tab from compare context menu action", async () => {
+    const sourceTab = createTab({ id: "tab-source-compare", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-target-compare", name: "target.ts", path: "C:\\repo\\target.ts" });
+    useStore.setState({
+      tabs: [sourceTab, targetTab],
+      activeTabId: sourceTab.id,
+    });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "compare_documents_by_line") {
+        return {
+          alignedSourceLines: ["const a = 1;"],
+          alignedTargetLines: ["const b = 2;"],
+          alignedSourcePresent: [true],
+          alignedTargetPresent: [true],
+          diffLineNumbers: [1],
+          sourceDiffLineNumbers: [1],
+          targetDiffLineNumbers: [1],
+          sourceLineCount: 1,
+          targetLineCount: 1,
+          alignedLineCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 180,
+      clientY: 120,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Set as compare source" }));
+
+    fireEvent.contextMenu(screen.getByText("target.ts"), {
+      clientX: 182,
+      clientY: 122,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: 'Compare with "source.ts"' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("compare_documents_by_line", {
+        sourceId: "tab-source-compare",
+        targetId: "tab-target-compare",
+      });
+    });
+    await waitFor(() => {
+      expect(
+        useStore
+          .getState()
+          .tabs.some(
+            (tab) =>
+              tab.tabType === "diff" &&
+              tab.diffPayload?.sourceTabId === "tab-source-compare" &&
+              tab.diffPayload?.targetTabId === "tab-target-compare"
+          )
+      ).toBe(true);
+    });
+  });
+
   it("closes other tabs from tab context menu", async () => {
     const sourceTab = createTab({ id: "tab-source", name: "source.ts", path: "C:\\repo\\source.ts" });
     const targetTab = createTab({ id: "tab-target", name: "target.ts", path: "C:\\repo\\target.ts" });
