@@ -538,6 +538,103 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows search pending-total status and selects a search result item", async () => {
+    let resolveSearchCount!: (value: { totalMatches: number; matchedLines: number; documentVersion: number }) => void;
+    let hasSearchCountResolver = false;
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return await new Promise<{ totalMatches: number; matchedLines: number; documentVersion: number }>((resolve) => {
+          resolveSearchCount = resolve;
+          hasSearchCountResolver = true;
+        });
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 3,
+              column: 2,
+              lineText: "  todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const navigateEvents: Array<{ line: number }> = [];
+    const listener = (event: Event) => {
+      navigateEvents.push((event as CustomEvent<{ line: number }>).detail);
+    };
+    window.addEventListener("rutar:navigate-to-line", listener as EventListener);
+
+    const input = await screen.findByPlaceholderText("Find text");
+    fireEvent.change(input, { target: { value: "todo" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          startOffset: 0,
+        })
+      );
+    });
+
+    const openResultsButton = screen.queryByTitle("Expand results");
+    if (openResultsButton) {
+      fireEvent.click(openResultsButton);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Line 3, Col 2")).toBeInTheDocument();
+    });
+    expect(screen.getByText((text) => text.includes("Current 1/?"))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Line 3, Col 2"));
+    await waitFor(() => {
+      expect(navigateEvents.length).toBeGreaterThan(0);
+    });
+
+    expect(hasSearchCountResolver).toBe(true);
+    await act(async () => {
+      resolveSearchCount({
+        totalMatches: 1,
+        matchedLines: 1,
+        documentVersion: 1,
+      });
+    });
+
+    window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
   it("minimizes and reopens search results panel", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -2234,6 +2331,92 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(screen.getByText(/Add rules and run filter to list matching lines here/)).toBeInTheDocument();
     });
+  });
+
+  it("shows filter pending-total status while filter count is loading", async () => {
+    let resolveFilterCount!: (value: { matchedLines: number; documentVersion: number }) => void;
+    let hasFilterCountResolver = false;
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return await new Promise<{ matchedLines: number; documentVersion: number }>((resolve) => {
+          resolveFilterCount = resolve;
+          hasFilterCountResolver = true;
+        });
+      }
+      if (command === "filter_in_document_chunk") {
+        return {
+          matches: [
+            {
+              line: 2,
+              column: 1,
+              length: 4,
+              lineText: "todo",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    const navigateEvents: Array<{ line: number }> = [];
+    const listener = (event: Event) => {
+      navigateEvents.push((event as CustomEvent<{ line: number }>).detail);
+    };
+    window.addEventListener("rutar:navigate-to-line", listener as EventListener);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Line 2, Col 1")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Line 2, Col 1"));
+    await waitFor(() => {
+      expect(navigateEvents.length).toBeGreaterThan(0);
+    });
+    expect(hasFilterCountResolver).toBe(true);
+    await act(async () => {
+      resolveFilterCount({
+        matchedLines: 1,
+        documentVersion: 1,
+      });
+    });
+    window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
   it("shows no-filter-match hint when filter backend returns zero matches", async () => {
