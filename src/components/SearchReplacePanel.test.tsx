@@ -112,6 +112,156 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("saves filter rule group with normalized payload", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: " todo " },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Rule group name"), {
+      target: { value: "  Team Rules  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Group" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_filter_rule_groups_config", {
+        groups: [
+          {
+            name: "Team Rules",
+            rules: [
+              {
+                keyword: "todo",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  it("loads selected filter rule group into current rules", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "group-a",
+            rules: [
+              {
+                keyword: "alpha",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "group-a" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "group-a" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Group" }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Filter keyword")).toHaveValue("alpha");
+    });
+  });
+
+  it("deletes selected filter rule group and persists empty list", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "group-b",
+            rules: [
+              {
+                keyword: "beta",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "group-b" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "group-b" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete Group" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_filter_rule_groups_config", {
+        groups: [],
+      });
+    });
+  });
+
   it("dispatches search-close when panel is closed", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
