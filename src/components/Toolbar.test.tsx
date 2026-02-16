@@ -289,6 +289,70 @@ describe("Toolbar", () => {
     });
   });
 
+  it("creates new file on Ctrl+N", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-current" }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "new_file") {
+        return createTab({
+          id: "tab-new-shortcut",
+          name: "untitled",
+          path: "",
+          isDirty: true,
+        });
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-current" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "n",
+      code: "KeyN",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("new_file", expect.any(Object));
+    });
+    await waitFor(() => {
+      expect(useStore.getState().tabs.some((tab) => tab.id === "tab-new-shortcut")).toBe(true);
+    });
+  });
+
+  it("opens file dialog on Ctrl+O and opens selected file", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\from-shortcut.ts");
+    useStore.getState().addTab(createTab({ id: "tab-open-shortcut" }));
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-open-shortcut" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "o",
+      code: "KeyO",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalledWith(
+        expect.objectContaining({ multiple: false, directory: false })
+      );
+    });
+    await waitFor(() => {
+      expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\from-shortcut.ts");
+    });
+  });
+
   it("triggers undo on Ctrl+Z", async () => {
     useStore.getState().addTab(createTab({ lineCount: 20 }));
     invokeMock.mockImplementation(async (command: string) => {
