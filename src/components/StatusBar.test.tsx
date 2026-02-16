@@ -104,4 +104,70 @@ describe("StatusBar", () => {
     });
     window.removeEventListener("rutar:force-refresh", refreshListener as EventListener);
   });
+
+  it("changes line ending and encoding then dispatches document-updated", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const tab = createTab({ id: "tab-format", path: "C:\\repo\\format.ts" });
+    useStore.getState().addTab(tab);
+
+    const updatedEvents: Array<{ tabId: string }> = [];
+    const updatedListener = (event: Event) => {
+      updatedEvents.push((event as CustomEvent).detail as { tabId: string });
+    };
+    window.addEventListener("rutar:document-updated", updatedListener as EventListener);
+
+    const { container } = render(<StatusBar />);
+    const selects = container.querySelectorAll("select");
+    expect(selects.length).toBe(3);
+
+    fireEvent.change(selects[0], { target: { value: "CRLF" } });
+    fireEvent.change(selects[1], { target: { value: "GBK" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("set_line_ending", {
+        id: "tab-format",
+        newLineEnding: "CRLF",
+      });
+      expect(invokeMock).toHaveBeenCalledWith("convert_encoding", {
+        id: "tab-format",
+        newEncoding: "GBK",
+      });
+    });
+
+    await waitFor(() => {
+      const currentTab = useStore.getState().tabs.find((item) => item.id === "tab-format");
+      expect(currentTab?.lineEnding).toBe("CRLF");
+      expect(currentTab?.encoding).toBe("GBK");
+      expect(currentTab?.isDirty).toBe(true);
+    });
+
+    expect(updatedEvents).toEqual([{ tabId: "tab-format" }, { tabId: "tab-format" }]);
+    window.removeEventListener("rutar:document-updated", updatedListener as EventListener);
+  });
+
+  it("logs errors when line ending or syntax update fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tab = createTab({ id: "tab-status-fail", path: "C:\\repo\\status-fail.ts" });
+    useStore.getState().addTab(tab);
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "set_line_ending" || command === "set_document_syntax") {
+        throw new Error(`${command}-failed`);
+      }
+      return undefined;
+    });
+
+    const { container } = render(<StatusBar />);
+    const selects = container.querySelectorAll("select");
+    expect(selects.length).toBe(3);
+
+    fireEvent.change(selects[0], { target: { value: "CRLF" } });
+    fireEvent.change(selects[2], { target: { value: "markdown" } });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledTimes(2);
+    });
+
+    errorSpy.mockRestore();
+  });
 });
