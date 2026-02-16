@@ -241,6 +241,30 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:search-open", listener as EventListener);
   });
 
+  it("dispatches search-open find and replace events from toolbar buttons", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    };
+    window.addEventListener("rutar:search-open", listener as EventListener);
+
+    const findWrapper = screen.getByTitle((title) => title.includes("Find"));
+    fireEvent.click(findWrapper.querySelector("button") as HTMLButtonElement);
+    const replaceWrapper = screen.getByTitle((title) => title.includes("Replace"));
+    fireEvent.click(replaceWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(events).toEqual([{ mode: "find" }, { mode: "replace" }]);
+    });
+    window.removeEventListener("rutar:search-open", listener as EventListener);
+  });
+
   it("toggles line numbers on Alt+L", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({ showLineNumbers: false });
