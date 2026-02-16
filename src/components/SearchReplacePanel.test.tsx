@@ -1000,6 +1000,86 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows copy failure message when clipboard write throws", async () => {
+    const writeTextMock = vi.fn(async () => {
+      throw new Error("clipboard-failed");
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const copyButton = await screen.findByTitle("Copy results as plain text");
+    await waitFor(() => {
+      expect(copyButton).not.toBeDisabled();
+    });
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByText((text) => text.includes("Failed to copy results"))).toBeInTheDocument();
+    });
+  });
+
   it("applies result filter when Enter is pressed in result-filter input", async () => {
     invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
       const args = payload as Record<string, unknown> | undefined;
