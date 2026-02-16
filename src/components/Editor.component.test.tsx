@@ -217,6 +217,156 @@ describe('Editor component', () => {
     ).toBe(false);
   });
 
+  it('handles non-array plain-line chunk result without crashing', async () => {
+    const tab = createTab({
+      id: 'tab-large-file-chunk-non-array',
+      lineCount: 5000,
+      largeFileMode: true,
+    });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return 'not-an-array' as unknown as string[];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'get_visible_lines_chunk',
+        expect.objectContaining({ id: tab.id })
+      );
+    });
+  });
+
+  it('logs error when plain-line chunk fetch throws', async () => {
+    const tab = createTab({
+      id: 'tab-large-file-chunk-throw',
+      lineCount: 5000,
+      largeFileMode: true,
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        throw new Error('chunk-fetch-failed');
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      return undefined;
+    });
+
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      const textarea = await waitForEditorTextarea(container);
+      await waitForEditorText(textarea);
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith('Fetch visible lines error:', expect.any(Error));
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('logs error when syntax-token fetch throws', async () => {
+    const tab = createTab({ id: 'tab-token-fetch-throw', lineCount: 12 });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        throw new Error('token-fetch-failed');
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      return undefined;
+    });
+
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      const textarea = await waitForEditorTextarea(container);
+      await waitForEditorText(textarea);
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith('Fetch error:', expect.any(Error));
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('shows disabled copy/cut/delete in context menu when there is no selection', async () => {
     const tab = createTab({ id: 'tab-context-disabled' });
     const { container } = render(<Editor tab={tab} />);
@@ -502,6 +652,41 @@ describe('Editor component', () => {
     }
   });
 
+  it('clears outline flash timer when active tab changes', async () => {
+    const firstTab = createTab({ id: 'tab-outline-switch-a', lineCount: 12 });
+    const secondTab = createTab({ id: 'tab-outline-switch-b', lineCount: 12 });
+    const { rerender } = render(<Editor tab={firstTab} />);
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('rutar:navigate-to-outline', {
+            detail: {
+              tabId: firstTab.id,
+              line: 2,
+              column: 2,
+              length: 1,
+              lineText: 'beta',
+              source: 'outline',
+            },
+          })
+        );
+      });
+
+      rerender(<Editor tab={secondTab} />);
+
+      await waitFor(() => {
+        const cursor = useStore.getState().cursorPositionByTab[secondTab.id];
+        expect(clearTimeoutSpy).toHaveBeenCalled();
+        expect(cursor?.line).toBe(1);
+        expect(cursor?.column).toBe(1);
+      });
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
+  });
+
   it('handles navigate-to-line event in huge-editable mode and updates scroll container', async () => {
     const tab = createTab({ id: 'tab-navigate-huge-mode', lineCount: 22000 });
     const { container } = render(<Editor tab={tab} />);
@@ -540,6 +725,97 @@ describe('Editor component', () => {
       expect(scrollContainer.scrollTop).toBeGreaterThan(0);
       expect(chunkCalls).toBeGreaterThan(initialChunkCalls);
     });
+  });
+
+  it('ignores navigate-to-line event when detail is missing or tab id mismatches', async () => {
+    const tab = createTab({ id: 'tab-navigate-ignore', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('rutar:navigate-to-line'));
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: 'another-tab',
+            line: 5,
+            column: 3,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(1);
+      expect(cursor?.column).toBe(1);
+      expect(container.querySelectorAll('mark[class*=\"bg-yellow\"]').length).toBe(0);
+    });
+  });
+
+  it('handles external paste-text event for active tab', async () => {
+    const tab = createTab({ id: 'tab-external-paste' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:paste-text', {
+          detail: {
+            tabId: tab.id,
+            text: 'ZZ',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('ZZ\nbeta\n');
+    });
+  });
+
+  it('cleans drag cursor styles on unmount after text drag starts', async () => {
+    const tab = createTab({ id: 'tab-text-drag-cleanup' });
+    const { container, unmount } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+    const elementRemoveSpy = vi.spyOn(textarea.style, 'removeProperty');
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 7,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 7,
+        clientX: 40,
+        clientY: 40,
+      });
+
+      await waitFor(() => {
+        expect(document.body.style.cursor).toBe('copy');
+        expect(textarea.style.cursor).toBe('copy');
+      });
+
+      unmount();
+
+      expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+    } finally {
+      bodyRemoveSpy.mockRestore();
+      elementRemoveSpy.mockRestore();
+    }
   });
 
   it('keeps search highlight until search-close is sent for active tab', async () => {
