@@ -9,6 +9,7 @@ import { useStore } from '@/store/useStore';
 
 const BOOKMARK_SIDEBAR_MIN_WIDTH = 160;
 const BOOKMARK_SIDEBAR_MAX_WIDTH = 520;
+const EMPTY_BOOKMARKS: number[] = [];
 
 function normalizeBookmarkLinePreview(value: string) {
   return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, '    ');
@@ -34,7 +35,7 @@ export function BookmarkSidebar() {
   });
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-  const bookmarks = activeTabId ? bookmarksByTab[activeTabId] ?? [] : [];
+  const bookmarks = activeTabId ? bookmarksByTab[activeTabId] ?? EMPTY_BOOKMARKS : EMPTY_BOOKMARKS;
   const hasBookmarks = bookmarks.length > 0;
   const sortedBookmarks = useMemo(
     () => [...bookmarks].sort((left, right) => left - right),
@@ -43,7 +44,9 @@ export function BookmarkSidebar() {
 
   const loadBookmarkLinePreviews = useCallback(async () => {
     if (!activeTabId || sortedBookmarks.length === 0) {
-      setLinePreviewByNumber({});
+      setLinePreviewByNumber((previous) => {
+        return Object.keys(previous).length > 0 ? {} : previous;
+      });
       return;
     }
 
