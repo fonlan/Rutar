@@ -210,6 +210,72 @@ describe("Toolbar", () => {
     });
   });
 
+  it("triggers undo on Ctrl+Z", async () => {
+    useStore.getState().addTab(createTab({ lineCount: 20 }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "undo") {
+        return 19;
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("undo", { id: "tab-toolbar" });
+    });
+  });
+
+  it("triggers redo on Ctrl+Shift+Z", async () => {
+    useStore.getState().addTab(createTab({ lineCount: 20 }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "redo") {
+        return 21;
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("redo", { id: "tab-toolbar" });
+    });
+  });
+
   it("opens recent file from split menu list item", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
@@ -272,6 +338,52 @@ describe("Toolbar", () => {
 
     await waitFor(() => {
       expect(screen.queryByTitle("C:\\repo\\recent-c.ts")).toBeNull();
+    });
+  });
+
+  it("closes recent file split menu when toggled twice", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-c2.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByTitle("C:\\repo\\recent-c2.ts")).toBeInTheDocument();
+    });
+
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.queryByTitle("C:\\repo\\recent-c2.ts")).toBeNull();
+    });
+  });
+
+  it("shows no recent files text and closes file menu on outside pointerdown", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: [],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    await waitFor(() => {
+      expect(screen.getByText("No recent files")).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByText("No recent files")).toBeNull();
     });
   });
 
