@@ -227,6 +227,57 @@ describe("TitleBar", () => {
     expect(useStore.getState().activeTabId).toBe("tab-drag-right");
   });
 
+  it("ignores window pointermove when no tab drag session is active", () => {
+    const leftTab = createTab({ id: "tab-drag-none-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-none-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.pointerMove(window, {
+      pointerId: 500,
+      buttons: 1,
+      clientX: 90,
+      clientY: 20,
+    });
+
+    expect(tauriWindowMocks.appWindow.startDragging).not.toHaveBeenCalled();
+  });
+
+  it("ignores window pointermove when pointer id differs from drag origin", () => {
+    const leftTab = createTab({ id: "tab-drag-mismatch-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-mismatch-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const rightTabElement = screen.getByText("right.ts").closest("div.group.flex.items-center");
+    expect(rightTabElement).not.toBeNull();
+
+    fireEvent.pointerDown(rightTabElement as Element, {
+      isPrimary: true,
+      pointerType: "mouse",
+      button: 0,
+      pointerId: 120,
+      clientX: 40,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 121,
+      buttons: 1,
+      clientX: 70,
+      clientY: 20,
+    });
+
+    expect(tauriWindowMocks.appWindow.startDragging).not.toHaveBeenCalled();
+  });
+
   it("does not start dragging when pointermove reports no primary button", async () => {
     const leftTab = createTab({ id: "tab-drag-nobutton-left", name: "left.ts", path: "C:\\repo\\left.ts" });
     const rightTab = createTab({ id: "tab-drag-nobutton-right", name: "right.ts", path: "C:\\repo\\right.ts" });
