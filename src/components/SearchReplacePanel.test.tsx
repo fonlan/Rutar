@@ -256,6 +256,185 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows no-match feedback and skips replace current command", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 0,
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByTitle("Replace current match"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No matches to replace/)).toBeInTheDocument();
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "replace_current_in_document")
+    ).toBe(false);
+  });
+
+  it("shows no-match feedback and skips replace all command", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 0,
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByTitle("Replace all matches"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No matches to replace/)).toBeInTheDocument();
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "replace_all_in_document")).toBe(
+      false
+    );
+  });
+
+  it("shows replace-all failure message when backend replace command throws", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "replace_all_in_document") {
+        throw new Error("replace-all-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "done" },
+    });
+    fireEvent.click(screen.getByTitle("Replace all matches"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Replace all failed: replace-all-failed/)).toBeInTheDocument();
+    });
+  });
+
   it("opens in filter mode and shows filter action UI", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
