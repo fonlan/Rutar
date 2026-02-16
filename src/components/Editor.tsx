@@ -910,6 +910,8 @@ export const editorTestUtils = {
   getCaretLineInElement,
   getSelectionOffsetsInElement,
   getSelectionAnchorFocusOffsetsInElement,
+  getLogicalOffsetFromDomPoint,
+  getLogicalOffsetFromPoint,
   getCodeUnitOffsetFromLineColumn,
   setCaretToLineColumn,
   codeUnitOffsetToLineColumn,
@@ -926,6 +928,8 @@ export const editorTestUtils = {
   setSelectionToCodeUnitOffsets,
   dispatchEditorInputEvent,
   normalizeInputLayerDom,
+  writePlainTextToClipboard,
+  replaceSelectionWithText,
   isPointerOnScrollbar,
   dispatchDocumentUpdated,
 };
