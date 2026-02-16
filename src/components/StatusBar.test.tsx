@@ -197,4 +197,56 @@ describe("StatusBar", () => {
     expect(currentTab?.encoding).toBe("UTF-8");
     errorSpy.mockRestore();
   });
+  it("maps auto syntax selection to null override", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const tab = createTab({
+      id: "tab-syntax-auto",
+      path: "C:\\repo\\auto.ts",
+      syntaxOverride: "markdown",
+    });
+    useStore.getState().addTab(tab);
+
+    const { container } = render(<StatusBar />);
+    const selects = container.querySelectorAll("select");
+    expect(selects.length).toBe(3);
+
+    fireEvent.change(selects[2], { target: { value: "auto" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("set_document_syntax", {
+        id: "tab-syntax-auto",
+        syntaxOverride: null,
+      });
+    });
+
+    expect(useStore.getState().tabs.find((item) => item.id === "tab-syntax-auto")?.syntaxOverride).toBeNull();
+  });
+
+  it("shows large-file warning badge when active tab is in large-file mode", () => {
+    const tab = createTab({
+      id: "tab-large-file",
+      path: "C:\\repo\\large.log",
+      largeFileMode: true,
+    });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    expect(screen.getByText("Highlight Off (Large File)")).toBeInTheDocument();
+  });
+
+  it("ignores gesture preview event without sequence payload", async () => {
+    const tab = createTab({ id: "tab-gesture-empty" });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("rutar:gesture-preview"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Mouse Gestures:/)).toBeNull();
+    });
+  });
 });
