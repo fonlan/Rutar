@@ -140,4 +140,116 @@ describe("BookmarkSidebar", () => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
   });
+  it("falls back to empty line preview when loading previews fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockRejectedValueOnce(new Error("preview-load-failed"));
+    const tab = createTab({ id: "tab-bookmark-fallback" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [4] },
+    });
+
+    render(<BookmarkSidebar />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_bookmark_line_previews", {
+        id: tab.id,
+        lines: [4],
+      });
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to load bookmark line previews:",
+        expect.objectContaining({ message: "preview-load-failed" })
+      );
+    });
+
+    expect(screen.getByText("(empty line)")).toBeInTheDocument();
+    errorSpy.mockRestore();
+  });
+
+  it("ignores document-updated events for non-active tabs", async () => {
+    const tab = createTab({ id: "tab-bookmark-ignore-event" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [5] },
+    });
+
+    render(<BookmarkSidebar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:document-updated", {
+          detail: { tabId: "tab-other" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("dispatches navigate event when clicking a bookmark row", async () => {
+    const tab = createTab({ id: "tab-bookmark-nav" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [7] },
+    });
+
+    const events: Array<{ tabId: string; line: number; source: string }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { tabId: string; line: number; source: string });
+    };
+    window.addEventListener("rutar:navigate-to-line", listener as EventListener);
+
+    render(<BookmarkSidebar />);
+    fireEvent.click(await screen.findByText("Line 7"));
+
+    await waitFor(() => {
+      expect(events.length).toBeGreaterThan(0);
+    });
+
+    expect(events[0]).toEqual(
+      expect.objectContaining({
+        tabId: tab.id,
+        line: 7,
+        source: "bookmark",
+      })
+    );
+
+    window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
+  it("prevents native context menu on bookmark sidebar root", async () => {
+    const tab = createTab({ id: "tab-bookmark-context" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: true,
+      bookmarksByTab: { [tab.id]: [2] },
+    });
+
+    const { container } = render(<BookmarkSidebar />);
+    await screen.findByText("Line 2");
+
+    const root = container.firstElementChild as HTMLElement | null;
+    expect(root).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (root as HTMLElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
