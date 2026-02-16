@@ -166,6 +166,67 @@ describe("TitleBar", () => {
     errorSpy.mockRestore();
   });
 
+  it("closes regular tab on double click when double-click-close is enabled", async () => {
+    const leftTab = createTab({ id: "tab-double-close-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-double-close-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: rightTab.id,
+    });
+    useStore.getState().updateSettings({ doubleClickCloseTab: true });
+
+    render(<TitleBar />);
+
+    fireEvent.doubleClick(screen.getByText("left.ts"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_files", {
+        ids: ["tab-double-close-left"],
+      });
+      expect(useStore.getState().tabs.map((tab) => tab.id)).toEqual(["tab-double-close-right"]);
+      expect(useStore.getState().activeTabId).toBe("tab-double-close-right");
+    });
+  });
+
+  it("suppresses first tab click after drag and allows the next click", async () => {
+    const leftTab = createTab({ id: "tab-drag-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-drag-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: leftTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const rightTabElement = screen.getByText("right.ts").closest("div.group.flex.items-center");
+    expect(rightTabElement).not.toBeNull();
+
+    fireEvent.pointerDown(rightTabElement as Element, {
+      isPrimary: true,
+      pointerType: "mouse",
+      button: 0,
+      pointerId: 99,
+      clientX: 40,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 99,
+      buttons: 1,
+      clientX: 54,
+      clientY: 20,
+    });
+
+    await waitFor(() => {
+      expect(tauriWindowMocks.appWindow.startDragging).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByText("right.ts"));
+    expect(useStore.getState().activeTabId).toBe("tab-drag-left");
+
+    fireEvent.click(screen.getByText("right.ts"));
+    expect(useStore.getState().activeTabId).toBe("tab-drag-right");
+  });
+
   it("closes tab from inline close button and keeps active tab unchanged on close-button pointer events", async () => {
     const leftTab = createTab({ id: "tab-left-close-btn", name: "left.ts", path: "C:\\repo\\left.ts" });
     const rightTab = createTab({ id: "tab-right-close-btn", name: "right.ts", path: "C:\\repo\\right.ts" });
@@ -832,6 +893,37 @@ describe("TitleBar", () => {
     });
   });
 
+  it("closes tab context menu when its referenced tab is removed", async () => {
+    const sourceTab = createTab({ id: "tab-context-missing-source", name: "source.ts", path: "C:\\repo\\source.ts" });
+    const targetTab = createTab({ id: "tab-context-missing-target", name: "target.ts", path: "C:\\repo\\target.ts" });
+    useStore.setState({
+      tabs: [sourceTab, targetTab],
+      activeTabId: sourceTab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("source.ts"), {
+      clientX: 166,
+      clientY: 106,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Close Other Tabs" })).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.setState({
+        tabs: [targetTab],
+        activeTabId: targetTab.id,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close Other Tabs" })).toBeNull();
+    });
+  });
+
   it("logs error when backend close_files fails while closing other tabs", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const sourceTab = createTab({ id: "tab-source-fail-close", name: "source.ts", path: "C:\\repo\\source.ts" });
@@ -906,8 +998,16 @@ describe("TitleBar", () => {
       expect(screen.getAllByText("pending.ts")).toHaveLength(1);
     });
 
+    const pendingTabElement = screen.getByText("pending.ts").closest("div.group.flex.items-center");
+    expect(pendingTabElement).not.toBeNull();
+
+    invokeMock.mockClear();
+    fireEvent.mouseEnter(pendingTabElement as Element);
+    fireEvent.doubleClick(pendingTabElement as Element);
     fireEvent.click(screen.getByText("pending.ts"));
     expect(useStore.getState().activeTabId).toBe("tab-existing");
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("C:\\repo\\pending.ts")).toBeNull();
 
     fireEvent.contextMenu(screen.getByText("pending.ts"), {
       clientX: 188,
