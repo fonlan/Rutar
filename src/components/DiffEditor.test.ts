@@ -339,12 +339,13 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
       snapshots.push(value);
     });
 
-    expect(snapshots.at(-1)).toEqual({ topPercent: 0, heightPercent: 20 });
+    expect(snapshots[snapshots.length - 1]).toEqual({ topPercent: 0, heightPercent: 20 });
 
     scroller.scrollTop = 400;
     scroller.dispatchEvent(new Event('scroll'));
-    expect(snapshots.at(-1)?.topPercent).toBeCloseTo(40, 3);
-    expect(snapshots.at(-1)?.heightPercent).toBe(20);
+    const latestSnapshot = snapshots[snapshots.length - 1];
+    expect(latestSnapshot?.topPercent).toBeCloseTo(40, 3);
+    expect(latestSnapshot?.heightPercent).toBe(20);
 
     const snapshotCountBeforeCleanup = snapshots.length;
     cleanup();
