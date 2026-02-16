@@ -394,6 +394,103 @@ describe("Toolbar", () => {
     });
   });
 
+  it("dispatches diff undo history action on Ctrl+Z when diff tab is active", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
+    useStore.getState().addTab({
+      id: "tab-diff-undo",
+      name: "a.ts ↔ b.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      isDirty: false,
+      tabType: "diff",
+      diffPayload: {
+        sourceTabId: "tab-source",
+        targetTabId: "tab-target",
+        sourceName: "a.ts",
+        targetName: "b.ts",
+        sourcePath: "C:\\repo\\a.ts",
+        targetPath: "C:\\repo\\b.ts",
+        alignedSourceLines: [""],
+        alignedTargetLines: [""],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
+    });
+    const historyEvents: Array<{ diffTabId: string; panel: "source" | "target"; action: "undo" | "redo" }> = [];
+    const listener = (event: Event) => {
+      historyEvents.push(
+        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; action: "undo" | "redo" }>).detail
+      );
+    };
+    window.addEventListener("rutar:diff-history-action", listener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(historyEvents[0]).toEqual({
+        diffTabId: "tab-diff-undo",
+        panel: "source",
+        action: "undo",
+      });
+    });
+    window.removeEventListener("rutar:diff-history-action", listener as EventListener);
+  });
+
+  it("logs warning when undo command throws", async () => {
+    useStore.getState().addTab(createTab());
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "undo") {
+        throw new Error("undo-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ message: "undo-failed" }));
+    });
+    warnSpy.mockRestore();
+  });
+
   it("triggers redo on Ctrl+Shift+Z", async () => {
     useStore.getState().addTab(createTab({ lineCount: 20 }));
     invokeMock.mockImplementation(async (command: string) => {
@@ -684,6 +781,43 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(useStore.getState().tabs.some((tab) => tab.id === "tab-new")).toBe(true);
     });
+  });
+
+  it("logs error when closing active tab fails", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-close-error", name: "bad.ts", path: "C:\\repo\\bad.ts" }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "close_file") {
+        throw new Error("close-failed");
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-close-error" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to close tab:",
+        expect.objectContaining({ message: "close-failed" })
+      );
+    });
+    errorSpy.mockRestore();
   });
 
   it("formats document from beautify and minify toolbar buttons when supported", async () => {
