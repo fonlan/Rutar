@@ -329,6 +329,106 @@ describe("Toolbar", () => {
     });
   });
 
+  it("runs cut and copy through execCommand when editor has selection", async () => {
+    useStore.getState().addTab(createTab());
+
+    const editor = document.createElement("textarea");
+    editor.className = "editor-input-layer";
+    editor.value = "hello";
+    document.body.appendChild(editor);
+    editor.focus();
+    editor.setSelectionRange(0, 2);
+
+    const originalExecCommand = (document as Document & {
+      execCommand?: (command: string) => boolean;
+    }).execCommand;
+    const execCommandMock = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommandMock,
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    document.dispatchEvent(new Event("selectionchange"));
+
+    const cutWrapper = screen.getByTitle("Cut");
+    const copyWrapper = screen.getByTitle("Copy");
+    await waitFor(() => {
+      expect(cutWrapper.querySelector("button")).not.toBeDisabled();
+      expect(copyWrapper.querySelector("button")).not.toBeDisabled();
+    });
+
+    fireEvent.click(cutWrapper.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(copyWrapper.querySelector("button") as HTMLButtonElement);
+
+    expect(execCommandMock).toHaveBeenCalledWith("cut");
+    expect(execCommandMock).toHaveBeenCalledWith("copy");
+
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: originalExecCommand ?? (() => false),
+    });
+    editor.remove();
+  });
+
+  it("dispatches paste-text event from paste button", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const pasteEvents: Array<{ tabId: string; text: string }> = [];
+    const listener = (event: Event) => {
+      pasteEvents.push((event as CustomEvent<{ tabId: string; text: string }>).detail);
+    };
+    window.addEventListener("rutar:paste-text", listener as EventListener);
+
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(pasteEvents[0]).toEqual({ tabId: "tab-toolbar", text: "" });
+    });
+    window.removeEventListener("rutar:paste-text", listener as EventListener);
+  });
+
+  it("toggles bookmark sidebar from toolbar button", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const bookmarkWrapper = screen.getByTitle("Bookmark Sidebar");
+    fireEvent.click(bookmarkWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
+    });
+  });
+
+  it("toggles markdown preview from toolbar for markdown tab", async () => {
+    useStore.getState().addTab(createTab({ name: "README.md", path: "C:\\repo\\README.md" }));
+    useStore.setState({ markdownPreviewOpen: false });
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const previewWrapper = screen.getByTitle("Live Preview");
+    expect(previewWrapper.querySelector("button")).not.toBeDisabled();
+    fireEvent.click(previewWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(useStore.getState().markdownPreviewOpen).toBe(true);
+    });
+  });
+
   it("opens recent file from split menu list item", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
