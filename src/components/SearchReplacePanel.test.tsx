@@ -74,6 +74,34 @@ describe("SearchReplacePanel", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("keeps filter mode usable when initial rule-group loading fails", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        throw new Error("load-config-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("load_filter_rule_groups_config");
+    });
+    expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+  });
+
   it("opens in replace mode via search-open event", async () => {
     useStore.getState().addTab(createTab());
     const { container } = render(<SearchReplacePanel />);
@@ -713,6 +741,48 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows save failure message when persisting filter rule groups fails", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "save_filter_rule_groups_config") {
+        throw new Error("save-group-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save Group" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Rule group name"), {
+      target: { value: "group-save-fail" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Group" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to save rule groups: save-group-failed/)).toBeInTheDocument();
+    });
+  });
+
   it("shows validation error when saving group with empty name", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);
@@ -793,6 +863,29 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(screen.getByText(/Please select a rule group/)).toBeInTheDocument();
     });
+  });
+
+  it("shows validation error when deleting filter group without selection", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Delete Group" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Group" }));
+
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
   });
 
   it("loads selected filter rule group into current rules", async () => {
@@ -899,6 +992,63 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows save failure message when persisting deleted filter groups fails", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "group-fail-delete",
+            rules: [
+              {
+                keyword: "beta",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "save_filter_rule_groups_config") {
+        throw new Error("delete-save-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "group-fail-delete" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "group-fail-delete" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete Group" }));
+
+    await waitFor(() => {
+      expect(invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")).toBe(
+        true
+      );
+    });
+    expect(screen.getByRole("option", { name: "group-fail-delete" })).toBeInTheDocument();
+  });
+
   it("imports filter rule groups from selected json file", async () => {
     openMock.mockResolvedValueOnce("C:\\repo\\filter-groups.json");
     invokeMock.mockImplementation(async (command: string) => {
@@ -973,6 +1123,90 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("shows import failure when imported group list is empty", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\filter-groups-empty.json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "import_filter_rule_groups") {
+        return [];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import Groups" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Groups" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("import_filter_rule_groups", {
+        path: "C:\\repo\\filter-groups-empty.json",
+      });
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
+  });
+
+  it("shows import failure message when backend import command throws", async () => {
+    openMock.mockResolvedValueOnce("C:\\repo\\filter-groups-bad.json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "import_filter_rule_groups") {
+        throw new Error("import-command-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import Groups" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Groups" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("import_filter_rule_groups", {
+        path: "C:\\repo\\filter-groups-bad.json",
+      });
+    });
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "save_filter_rule_groups_config")
+    ).toBe(false);
+  });
+
   it("exports normalized filter rule groups to selected path", async () => {
     saveMock.mockResolvedValueOnce("C:\\repo\\filter-groups-export.json");
     invokeMock.mockImplementation(async (command: string) => {
@@ -1026,6 +1260,128 @@ describe("SearchReplacePanel", () => {
             rules: [
               {
                 keyword: "fixme",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  it("skips export backend command when save dialog is cancelled", async () => {
+    saveMock.mockResolvedValueOnce(null);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "export-cancel-group",
+            rules: [
+              {
+                keyword: "todo",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "export-cancel-group" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Groups" }));
+
+    await waitFor(() => {
+      expect(saveMock).toHaveBeenCalled();
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "export_filter_rule_groups")).toBe(
+      false
+    );
+  });
+
+  it("shows export failure message when backend export command throws", async () => {
+    saveMock.mockResolvedValueOnce("C:\\repo\\filter-groups-export.json");
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [
+          {
+            name: "export-fail-group",
+            rules: [
+              {
+                keyword: "todo",
+                matchMode: "contains",
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+            ],
+          },
+        ];
+      }
+      if (command === "export_filter_rule_groups") {
+        throw new Error("export-command-failed");
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "export-fail-group" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Groups" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("export_filter_rule_groups", {
+        path: "C:\\repo\\filter-groups-export.json",
+        groups: [
+          {
+            name: "export-fail-group",
+            rules: [
+              {
+                keyword: "todo",
                 matchMode: "contains",
                 backgroundColor: "#fff7a8",
                 textColor: "#1f2937",
