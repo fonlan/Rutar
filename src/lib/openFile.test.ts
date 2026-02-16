@@ -236,4 +236,101 @@ describe("openFile", () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("openFilePath emits end event and allows retry after failure", async () => {
+    const storeState = createStoreState();
+    const { module, invokeMock } = await loadOpenFileModule(storeState);
+    const targetPath = "C:\\repo\\retry.ts";
+    const fileInfo = createFileInfo({
+      id: "tab-retry",
+      name: "retry.ts",
+      path: targetPath,
+    });
+
+    const events: Array<{ path: string; tabId: string; status: "start" | "end" }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener("rutar:file-open-loading", listener as EventListener);
+
+    invokeMock
+      .mockRejectedValueOnce(new Error("open failed"))
+      .mockResolvedValueOnce(fileInfo);
+
+    await expect(module.openFilePath(targetPath)).rejects.toThrow("open failed");
+    await module.openFilePath(targetPath);
+
+    window.removeEventListener("rutar:file-open-loading", listener as EventListener);
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(events.map((event) => event.status)).toEqual(["start", "end", "start", "end"]);
+  });
+
+  it("openFilePaths returns early when all paths are already opening", async () => {
+    const storeState = createStoreState();
+    const { module, invokeMock } = await loadOpenFileModule(storeState);
+    const targetPath = "C:\\repo\\inflight.ts";
+    const fileInfo = createFileInfo({
+      id: "tab-inflight",
+      name: "inflight.ts",
+      path: targetPath,
+    });
+
+    let resolveOpen: ((value: FileTab) => void) | undefined;
+    const openPromise = new Promise<FileTab>((resolve) => {
+      resolveOpen = resolve;
+    });
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_file") {
+        return openPromise;
+      }
+      return Promise.resolve([]);
+    });
+
+    const inflightTask = module.openFilePath(targetPath);
+    await module.openFilePaths([targetPath]);
+    resolveOpen?.(fileInfo);
+    await inflightTask;
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("open_file", { path: targetPath });
+  });
+
+  it("openFilePaths logs processing error when applyOpenedFileInfo fails", async () => {
+    const fileInfo = createFileInfo({
+      id: "tab-throw",
+      name: "throw.ts",
+      path: "C:\\repo\\throw.ts",
+    });
+    const storeState = createStoreState({
+      addTab: vi.fn(() => {
+        throw new Error("add-tab-failed");
+      }),
+    });
+    const { module, invokeMock, addRecentFilePathMock } = await loadOpenFileModule(storeState);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "open_files") {
+        return Promise.resolve([
+          {
+            path: fileInfo.path,
+            success: true,
+            fileInfo,
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await module.openFilePaths([fileInfo.path]);
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      `Failed to process opened path: ${fileInfo.path}`,
+      expect.any(Error)
+    );
+    expect(addRecentFilePathMock).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
 });

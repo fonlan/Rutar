@@ -31,6 +31,14 @@ describe("dayjs-mermaid-shim", () => {
     expect(right.diff(left, "day")).toBe(-1);
   });
 
+  it("calculates month/year diff branches", () => {
+    const newer = dayjs(new Date(2027, 1, 1, 0, 0, 0, 0));
+    const older = dayjs(new Date(2026, 1, 1, 0, 0, 0, 0));
+
+    expect(newer.diff(older, "year")).toBe(1);
+    expect(newer.diff(older, "month")).toBe(12);
+  });
+
   it("supports unix/isDayjs/extend and duration", () => {
     const unix = dayjs.unix(10);
     expect(unix.valueOf()).toBe(10_000);
@@ -41,7 +49,25 @@ describe("dayjs-mermaid-shim", () => {
     expect(dayjs.duration({ minute: 1, second: 30 }).asMilliseconds()).toBe(90_000);
   });
 
+  it("handles duration fallback inputs", () => {
+    expect(dayjs.duration().asMilliseconds()).toBe(0);
+    expect(dayjs.duration("bad-input" as unknown as number).asMilliseconds()).toBe(0);
+    expect(dayjs.duration({ unknown: 2, minute: 1 } as unknown as Record<string, number>).asMilliseconds()).toBe(
+      60_000
+    );
+  });
+
   it("returns invalid marker for invalid date formatting", () => {
     expect(dayjs(null).format()).toBe("Invalid Date");
+  });
+
+  it("supports additional startOf/endOf branches", () => {
+    const base = dayjs(new Date(2026, 7, 19, 16, 45, 30, 123));
+    expect(base.startOf("year").format("YYYY-MM-DD HH:mm:ss.SSS")).toBe("2026-01-01 00:00:00.000");
+    expect(base.startOf("month").format("YYYY-MM-DD HH:mm:ss.SSS")).toBe("2026-08-01 00:00:00.000");
+    expect(base.startOf("week").format("HH:mm:ss.SSS")).toBe("00:00:00.000");
+    expect(base.startOf("hour").format("HH:mm:ss.SSS")).toBe("16:00:00.000");
+    expect(base.startOf("minute").format("HH:mm:ss.SSS")).toBe("16:45:00.000");
+    expect(base.endOf("minute").format("ss.SSS")).toBe("59.999");
   });
 });

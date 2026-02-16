@@ -29,13 +29,16 @@ describe("outline", () => {
 
   it("detects outline type from syntax override first", () => {
     expect(detectOutlineType(createTab({ syntaxOverride: "yaml" }))).toBe("yaml");
+    expect(detectOutlineType(createTab({ syntaxOverride: "  RUST  " }))).toBe("rust");
     expect(detectOutlineType(createTab({ syntaxOverride: "markdown" }))).toBe(null);
   });
 
   it("detects outline type from extension", () => {
     expect(detectOutlineType(createTab({ path: "C:\\repo\\main.rs" }))).toBe("rust");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\a.yml" }))).toBe("yaml");
+    expect(detectOutlineType(createTab({ path: "C:\\repo\\a." }))).toBe(null);
     expect(detectOutlineType(createTab({ path: "C:\\repo\\README" }))).toBe(null);
+    expect(detectOutlineType(null)).toBe(null);
   });
 
   it("dispatches navigation events with sanitized coordinates", () => {
