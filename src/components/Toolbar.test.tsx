@@ -489,6 +489,31 @@ describe("Toolbar", () => {
     errorSpy.mockRestore();
   });
 
+  it("prevents default on split-menu primary and toggle mousedown", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    expect(openFileButtons.length).toBeGreaterThanOrEqual(2);
+
+    const primaryMouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    openFileButtons[0].dispatchEvent(primaryMouseDown);
+    expect(primaryMouseDown.defaultPrevented).toBe(true);
+
+    const toggleMouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    openFileButtons[1].dispatchEvent(toggleMouseDown);
+    expect(toggleMouseDown.defaultPrevented).toBe(true);
+  });
+
   it("shows unsupported format warning when Alt+F is triggered on unsupported syntax", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     render(<Toolbar />);
