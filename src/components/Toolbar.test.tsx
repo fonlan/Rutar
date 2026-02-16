@@ -514,6 +514,25 @@ describe("Toolbar", () => {
     expect(toggleMouseDown.defaultPrevented).toBe(true);
   });
 
+  it("prevents default on enabled toolbar button mousedown", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const toggleWrapper = screen.getByTitle("Toggle Word Wrap");
+    const toggleButton = toggleWrapper.querySelector("button");
+    expect(toggleButton).not.toBeNull();
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    (toggleButton as HTMLButtonElement).dispatchEvent(mouseDown);
+    expect(mouseDown.defaultPrevented).toBe(true);
+  });
+
   it("shows unsupported format warning when Alt+F is triggered on unsupported syntax", async () => {
     useStore.getState().addTab(createTab({ name: "main.ts", path: "C:\\repo\\main.ts" }));
     render(<Toolbar />);
