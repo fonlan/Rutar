@@ -217,6 +217,40 @@ describe('Editor component', () => {
     ).toBe(false);
   });
 
+  it('highlights only finite positive diff lines after normalization', async () => {
+    const tab = createTab({
+      id: 'tab-diff-highlight-normalize',
+      lineCount: 12,
+    });
+
+    const { container } = render(<Editor tab={tab} diffHighlightLines={[2.9, -1, Number.NaN, 0, Number.POSITIVE_INFINITY]} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      const lineRows = Array.from(container.querySelectorAll('.editor-line'));
+      expect(lineRows.length).toBeGreaterThanOrEqual(2);
+      expect(lineRows[1]?.className.includes('bg-red-500/10')).toBe(true);
+      expect(lineRows[0]?.className.includes('bg-red-500/10')).toBe(false);
+    });
+  });
+
+  it('renders wrapped line layout when wordWrap is enabled', async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const tab = createTab({
+      id: 'tab-word-wrap-layout',
+      lineCount: 12,
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(container.querySelector('.editor-line .min-w-0.flex-1')).toBeTruthy();
+    });
+  });
+
   it('handles non-array plain-line chunk result without crashing', async () => {
     const tab = createTab({
       id: 'tab-large-file-chunk-non-array',
