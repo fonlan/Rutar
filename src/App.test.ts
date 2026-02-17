@@ -1063,6 +1063,246 @@ describe('App component', () => {
     expect(dispatched).toBe(true);
     expect(contextMenuEvent.defaultPrevented).toBe(false);
   });
+
+  it('ignores pointermove events from non-active pointer id during gesture tracking', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-ignore-nonactive-pointermove' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 150,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 999,
+        pointerType: 'mouse',
+        clientX: 80,
+        clientY: 20,
+      });
+    });
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 20,
+      clientY: 20,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(useStore.getState().sidebarOpen).toBe(false);
+  });
+
+  it('suppresses next context menu for unmatched gesture attempt with movement', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-unmatched-attempt' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 151,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 30,
+        clientY: 30,
+      });
+
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 151,
+        pointerType: 'mouse',
+        clientX: 30,
+        clientY: 70,
+      });
+
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 151,
+        pointerType: 'mouse',
+        clientX: 30,
+        clientY: 70,
+      });
+    });
+
+    const postGestureContextMenu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 30,
+      clientY: 70,
+    });
+    const dispatched = appRoot.dispatchEvent(postGestureContextMenu);
+
+    expect(dispatched).toBe(false);
+    expect(postGestureContextMenu.defaultPrevented).toBe(true);
+    expect(useStore.getState().sidebarOpen).toBe(false);
+  });
+
+  it('clears pending gesture clear timers when a new gesture starts', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-clear-pending-timers' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      clearTimeoutSpy.mockRestore();
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 180,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 24,
+        clientY: 24,
+      });
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 180,
+        pointerType: 'mouse',
+        clientX: 84,
+        clientY: 24,
+      });
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 180,
+        pointerType: 'mouse',
+        clientX: 84,
+        clientY: 24,
+      });
+    });
+
+    const clearCallCountBeforeSecondPointerDown = clearTimeoutSpy.mock.calls.length;
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 181,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 28,
+        clientY: 28,
+      });
+    });
+
+    expect(clearTimeoutSpy.mock.calls.length - clearCallCountBeforeSecondPointerDown).toBeGreaterThanOrEqual(2);
+    clearTimeoutSpy.mockRestore();
+  });
 });
 
 describe('appTestUtils.detectWindowsPlatform', () => {
