@@ -177,7 +177,7 @@ describe('Editor component', () => {
     const tab = createTab();
 
     const { container } = render(<Editor tab={tab} />);
-    const textarea = container.querySelector('textarea.editor-input-layer');
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea.editor-input-layer');
     expect(textarea).toBeTruthy();
 
     await waitFor(() => {
@@ -212,7 +212,12 @@ describe('Editor component', () => {
 
     expect(
       invokeMock.mock.calls.some(
-        ([command, payload]) => command === 'get_syntax_token_lines' && payload?.id === tab.id
+        ([command, payload]) =>
+          command === 'get_syntax_token_lines' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'id' in payload &&
+          (payload as { id?: string }).id === tab.id
       )
     ).toBe(false);
   });
@@ -229,7 +234,7 @@ describe('Editor component', () => {
       resolveFirstChunk = resolve;
     });
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -266,7 +271,7 @@ describe('Editor component', () => {
     });
 
     const { container } = render(<Editor tab={tab} />);
-    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorTextarea(container);
 
     act(() => {
       window.dispatchEvent(
@@ -302,7 +307,7 @@ describe('Editor component', () => {
     });
     const tab = createTab({ id: 'tab-no-current-line-highlight', lineCount: 12 });
     const { container } = render(<Editor tab={tab} />);
-    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorTextarea(container);
 
     await waitFor(() => {
       const highlighted = Array.from(container.querySelectorAll('.editor-line')).some((line) =>
@@ -339,7 +344,7 @@ describe('Editor component', () => {
     });
 
     const { container } = render(<Editor tab={tab} />);
-    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorTextarea(container);
 
     await waitFor(() => {
       expect(container.querySelector('.editor-line .min-w-0.flex-1')).toBeTruthy();
@@ -353,7 +358,7 @@ describe('Editor component', () => {
       largeFileMode: true,
     });
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -404,7 +409,7 @@ describe('Editor component', () => {
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -452,7 +457,7 @@ describe('Editor component', () => {
     const tab = createTab({ id: 'tab-token-fetch-throw', lineCount: 12 });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -499,7 +504,7 @@ describe('Editor component', () => {
   it('ignores non-array syntax-token fetch result without updating token cache', async () => {
     const tab = createTab({ id: 'tab-token-fetch-non-array', lineCount: 12 });
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -547,7 +552,7 @@ describe('Editor component', () => {
   it('handles non-array huge editable chunk result without crashing', async () => {
     const tab = createTab({ id: 'tab-huge-chunk-non-array', lineCount: 22000 });
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -596,7 +601,7 @@ describe('Editor component', () => {
     const tab = createTab({ id: 'tab-huge-chunk-throw', lineCount: 22000 });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -648,7 +653,7 @@ describe('Editor component', () => {
       resolveFirstChunk = resolve;
     });
 
-    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+    invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_visible_lines') {
         return 'alpha\nbeta\n';
       }
@@ -1172,7 +1177,12 @@ describe('Editor component', () => {
     });
     const scrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
     const initialChunkCalls = invokeMock.mock.calls.filter(
-      ([command, payload]) => command === 'get_visible_lines_chunk' && payload?.id === tab.id
+      ([command, payload]) =>
+        command === 'get_visible_lines_chunk' &&
+        typeof payload === 'object' &&
+        payload !== null &&
+        'id' in payload &&
+        (payload as { id?: string }).id === tab.id
     ).length;
 
     act(() => {
@@ -1192,7 +1202,12 @@ describe('Editor component', () => {
     await waitFor(() => {
       const cursor = useStore.getState().cursorPositionByTab[tab.id];
       const chunkCalls = invokeMock.mock.calls.filter(
-        ([command, payload]) => command === 'get_visible_lines_chunk' && payload?.id === tab.id
+        ([command, payload]) =>
+          command === 'get_visible_lines_chunk' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'id' in payload &&
+          (payload as { id?: string }).id === tab.id
       ).length;
       expect(cursor?.line).toBe(200);
       expect(cursor?.column).toBe(2);
@@ -1460,7 +1475,12 @@ describe('Editor component', () => {
     await waitForEditorText(textarea);
 
     const initialGetVisibleLinesCalls = invokeMock.mock.calls.filter(
-      ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+      ([command, payload]) =>
+        command === 'get_visible_lines' &&
+        typeof payload === 'object' &&
+        payload !== null &&
+        'id' in payload &&
+        (payload as { id?: string }).id === tab.id
     ).length;
 
     act(() => {
@@ -1478,7 +1498,12 @@ describe('Editor component', () => {
     await waitFor(() => {
       const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
       const getVisibleLinesCalls = invokeMock.mock.calls.filter(
-        ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+        ([command, payload]) =>
+          command === 'get_visible_lines' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'id' in payload &&
+          (payload as { id?: string }).id === tab.id
       ).length;
       expect(currentTab?.lineCount).toBe(6);
       expect(getVisibleLinesCalls).toBe(initialGetVisibleLinesCalls);
@@ -1510,7 +1535,12 @@ describe('Editor component', () => {
     await waitFor(() => {
       const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
       const getVisibleLinesCalls = invokeMock.mock.calls.filter(
-        ([command, payload]) => command === 'get_visible_lines' && payload?.id === tab.id
+        ([command, payload]) =>
+          command === 'get_visible_lines' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'id' in payload &&
+          (payload as { id?: string }).id === tab.id
       ).length;
       expect(currentTab?.lineCount).toBe(10);
       expect(getVisibleLinesCalls).toBeGreaterThanOrEqual(2);
