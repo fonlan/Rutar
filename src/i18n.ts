@@ -198,11 +198,7 @@ export type I18nKey =
   | 'editor.context.cleanup.removeDuplicateLines'
   | 'editor.context.cleanup.trimLeadingWhitespace'
   | 'editor.context.cleanup.trimTrailingWhitespace'
-  | 'editor.context.cleanup.trimSurroundingWhitespace'
-  | 'editor.largeMode.readOnlyTitle'
-  | 'editor.largeMode.readOnlyDesc'
-  | 'editor.largeMode.keepReadOnly'
-  | 'editor.largeMode.enterEditable';
+  | 'editor.context.cleanup.trimSurroundingWhitespace';
 
 type Messages = Record<I18nKey, string>;
 
@@ -405,10 +401,6 @@ const zhCN: Messages = {
   'editor.context.cleanup.trimLeadingWhitespace': '移除行首空格',
   'editor.context.cleanup.trimTrailingWhitespace': '移除行尾空格',
   'editor.context.cleanup.trimSurroundingWhitespace': '移除行首行尾空格',
-  'editor.largeMode.readOnlyTitle': '大文件模式当前为只读',
-  'editor.largeMode.readOnlyDesc': '检测到你在尝试输入。进入可编辑模式可能导致性能下降。是否继续？',
-  'editor.largeMode.keepReadOnly': '保持只读',
-  'editor.largeMode.enterEditable': '进入编辑模式',
 };
 
 const enUS: Messages = {
@@ -610,10 +602,6 @@ const enUS: Messages = {
   'editor.context.cleanup.trimLeadingWhitespace': 'Trim Leading Whitespace',
   'editor.context.cleanup.trimTrailingWhitespace': 'Trim Trailing Whitespace',
   'editor.context.cleanup.trimSurroundingWhitespace': 'Trim Leading/Trailing Whitespace',
-  'editor.largeMode.readOnlyTitle': 'Large File Mode is currently read-only',
-  'editor.largeMode.readOnlyDesc': 'Input detected. Editable mode may reduce performance. Continue?',
-  'editor.largeMode.keepReadOnly': 'Keep Read-only',
-  'editor.largeMode.enterEditable': 'Enter Editable Mode',
 };
 
 const dictionaries: Record<AppLanguage, Messages> = {

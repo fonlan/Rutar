@@ -147,7 +147,6 @@ const LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD = 20000;
 const LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS = 160;
 const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
 const HUGE_EDITABLE_WINDOW_UNLOCK_MS = 260;
-const LARGE_FILE_EDIT_INTENT_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab']);
 const EMPTY_LINE_PLACEHOLDER = '\u200B';
 const SEARCH_HIGHLIGHT_CLASS = 'rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70';
 const PAIR_HIGHLIGHT_CLASS =
@@ -162,8 +161,6 @@ const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
 const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
-const DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG = false;
-const USE_NATIVE_TEXT_SELECTION_HIGHLIGHT = false;
 const EMPTY_BOOKMARKS: number[] = [];
 
 function isToggleLineCommentShortcut(event: {
@@ -241,33 +238,6 @@ function mapLogicalOffsetToInputLayerOffset(text: string, logicalOffset: number)
   const normalized = (text || '').replaceAll(EMPTY_LINE_PLACEHOLDER, '');
   const safeOffset = Math.max(0, Math.min(Math.floor(logicalOffset), normalized.length));
   return safeOffset;
-}
-
-function isLargeModeEditIntent(event: React.KeyboardEvent<EditorInputElement>) {
-  if (event.isComposing) {
-    return false;
-  }
-
-  const key = event.key;
-  const hasPrimaryModifier = event.ctrlKey || event.metaKey;
-  const hasModifier = hasPrimaryModifier || event.altKey;
-
-  if (!hasModifier && key.length === 1) {
-    return true;
-  }
-
-  if (!hasModifier && LARGE_FILE_EDIT_INTENT_KEYS.has(key)) {
-    return true;
-  }
-
-  if (hasPrimaryModifier && !event.altKey) {
-    const normalized = key.toLowerCase();
-    if (normalized === 'v' || normalized === 'x') {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function isTextareaInputElement(element: EditorInputElement | null): element is HTMLTextAreaElement {
@@ -897,7 +867,6 @@ function dispatchDocumentUpdated(tabId: string) {
 export const editorTestUtils = {
   isToggleLineCommentShortcut,
   isVerticalSelectionShortcut,
-  isLargeModeEditIntent,
   isTextareaInputElement,
   setInputLayerText,
   getEditableText,
@@ -963,7 +932,6 @@ export function Editor({
   const [rectangularSelection, setRectangularSelection] = useState<RectangularSelectionState | null>(null);
   const [lineNumberMultiSelection, setLineNumberMultiSelection] = useState<number[]>([]);
   const [outlineFlashLine, setOutlineFlashLine] = useState<number | null>(null);
-  const [showLargeModeEditPrompt, setShowLargeModeEditPrompt] = useState(false);
   const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
   const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
@@ -996,7 +964,6 @@ export function Editor({
   const syncInFlightRef = useRef(false);
   const initializedRef = useRef(false);
   const suppressExternalReloadRef = useRef(false);
-  const largeModePromptOpenRef = useRef(false);
   const pendingSyncRequestedRef = useRef(false);
   const hugeWindowLockedRef = useRef(false);
   const hugeWindowFollowScrollOnUnlockRef = useRef(false);
@@ -1042,7 +1009,6 @@ export function Editor({
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
   const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
-  const useNativeTextSelectionHighlight = USE_NATIVE_TEXT_SELECTION_HIGHLIGHT;
   const itemSize = lineHeightPx;
   const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
   const contentViewportLeftPx = lineNumberColumnWidthPx;
@@ -1053,7 +1019,6 @@ export function Editor({
   const contentTextRightPadding = `${contentTextPaddingPx + editorScrollbarSafetyPaddingPx}px`;
   const contentBottomSafetyPadding = `${editorScrollbarSafetyPaddingPx}px`;
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
-  const isLargeReadOnlyMode = false;
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isPairHighlightEnabled = !usePlainLineRendering;
@@ -1339,7 +1304,7 @@ export function Editor({
       lineNumberOuter.scrollTop = currentScrollTop;
     }
 
-    if (!isLargeReadOnlyMode && scrollElement && listRef.current) {
+    if (scrollElement && listRef.current) {
       const listEl = listRef.current._outerRef;
       if (listEl) {
         const scrollTop = scrollElement.scrollTop;
@@ -1381,17 +1346,11 @@ export function Editor({
         // Avoid snapping it back based on backdrop width.
       }
     }
-
-    if (isLargeReadOnlyMode && scrollElement) {
-      if (lineNumberOuter && Math.abs(lineNumberOuter.scrollTop - scrollElement.scrollTop) > 0.001) {
-        lineNumberOuter.scrollTop = scrollElement.scrollTop;
-      }
-    }
-  }, [isHugeEditableMode, isLargeReadOnlyMode]);
+  }, [isHugeEditableMode]);
 
   useEffect(() => {
     const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
-    if (!scrollElement || isLargeReadOnlyMode) {
+    if (!scrollElement) {
       return;
     }
 
@@ -1414,13 +1373,9 @@ export function Editor({
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [handleScroll, isHugeEditableMode, isLargeReadOnlyMode]);
+  }, [handleScroll, isHugeEditableMode]);
 
   useEffect(() => {
-    if (isLargeReadOnlyMode) {
-      return;
-    }
-
     let firstRafId = 0;
     let secondRafId = 0;
 
@@ -1440,7 +1395,7 @@ export function Editor({
         window.cancelAnimationFrame(secondRafId);
       }
     };
-  }, [handleScroll, isLargeReadOnlyMode, tab.lineCount]);
+  }, [handleScroll, tab.lineCount]);
 
   useEffect(() => {
     if (!showLineNumbers) {
@@ -1741,13 +1696,11 @@ export function Editor({
       }
       const currentElement = contentRef.current;
       const pointerOnEditorScrollbar =
-        !isLargeReadOnlyMode &&
         currentElement &&
         isTextareaInputElement(currentElement) &&
         isPointerOnScrollbar(currentElement, event.clientX, event.clientY);
 
       if (
-        !isLargeReadOnlyMode &&
         currentElement &&
         isTextareaInputElement(currentElement) &&
         event.button === 2 &&
@@ -1755,9 +1708,7 @@ export function Editor({
       ) {
         textDragMoveStateRef.current = null;
         pointerSelectionActiveRef.current = false;
-        if (!useNativeTextSelectionHighlight) {
-          setPointerSelectionNativeHighlightMode(false);
-        }
+        setPointerSelectionNativeHighlightMode(false);
         verticalSelectionRef.current = null;
         event.preventDefault();
         event.stopPropagation();
@@ -1765,7 +1716,6 @@ export function Editor({
       }
 
       if (
-        !isLargeReadOnlyMode &&
         currentElement &&
         isTextareaInputElement(currentElement) &&
         event.button === 0 &&
@@ -1801,13 +1751,10 @@ export function Editor({
       }
 
       pointerSelectionActiveRef.current = false;
-      if (!useNativeTextSelectionHighlight) {
-        setPointerSelectionNativeHighlightMode(false);
-      }
+      setPointerSelectionNativeHighlightMode(false);
       verticalSelectionRef.current = null;
 
       if (
-        !isLargeReadOnlyMode &&
         event.altKey &&
         event.shiftKey &&
         !event.metaKey &&
@@ -1815,9 +1762,6 @@ export function Editor({
         contentRef.current
       ) {
         event.stopPropagation();
-        if (useNativeTextSelectionHighlight) {
-          setPointerSelectionNativeHighlightMode(false);
-        }
         const isTextarea = isTextareaInputElement(contentRef.current);
         if (!isTextarea) {
           event.preventDefault();
@@ -1883,23 +1827,12 @@ export function Editor({
       rectangularSelectionRef.current = null;
       setRectangularSelection(null);
 
-      if (isLargeReadOnlyMode || !contentRef.current) {
+      if (!contentRef.current) {
         return;
       }
 
       const editorElement = contentRef.current;
       if (!pointerOnEditorScrollbar) {
-        if (
-          DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG &&
-          event.isPrimary &&
-          event.button === 0
-        ) {
-          pointerSelectionActiveRef.current = true;
-          if (!useNativeTextSelectionHighlight) {
-            setPointerSelectionNativeHighlightMode(true);
-            setTextSelectionHighlight((prev) => (prev === null ? prev : null));
-          }
-        }
         return;
       }
 
@@ -1908,7 +1841,7 @@ export function Editor({
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [isLargeReadOnlyMode, resolveDropOffsetFromPointer, setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]
+    [resolveDropOffsetFromPointer, setPointerSelectionNativeHighlightMode]
   );
 
   const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -1927,67 +1860,6 @@ export function Editor({
       contentRef.current.style.webkitUserSelect = 'none';
     }
   }, [isHugeEditableMode]);
-
-  const handleLargeModePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isLargeReadOnlyMode) {
-        return;
-      }
-
-      if (document.activeElement !== event.currentTarget) {
-        event.currentTarget.focus();
-      }
-    },
-    [isLargeReadOnlyMode]
-  );
-
-  const handleReadOnlyListPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isLargeReadOnlyMode) {
-      return;
-    }
-
-    const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
-    if (!listElement) {
-      return;
-    }
-
-    if (!isPointerOnScrollbar(listElement, event.clientX, event.clientY)) {
-      return;
-    }
-
-    isScrollbarDragRef.current = true;
-  }, [isLargeReadOnlyMode]);
-
-  const handleLargeModeEditIntent = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!isLargeReadOnlyMode || !isLargeModeEditIntent(event)) {
-        return;
-      }
-
-      if (largeModePromptOpenRef.current) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      largeModePromptOpenRef.current = true;
-      setShowLargeModeEditPrompt(true);
-    },
-    [isLargeReadOnlyMode]
-  );
-
-  const handleKeepReadOnlyMode = useCallback(() => {
-    largeModePromptOpenRef.current = false;
-    setShowLargeModeEditPrompt(false);
-  }, []);
-
-  const handleEnterEditableMode = useCallback(() => {
-    largeModePromptOpenRef.current = false;
-    setShowLargeModeEditPrompt(false);
-  }, []);
 
   const editableSegmentLines = useMemo(() => {
     if (!isHugeEditableMode) {
@@ -2124,11 +1996,7 @@ export function Editor({
       contentRef.current.style.userSelect = 'text';
       contentRef.current.style.webkitUserSelect = 'text';
     }
-
-    if (isLargeReadOnlyMode) {
-      void syncVisibleTokens(Math.max(1, tab.lineCount));
-    }
-  }, [isLargeReadOnlyMode, syncVisibleTokens, tab.lineCount]);
+  }, []);
 
   const releaseHugeEditableWindowLock = useCallback(() => {
     hugeWindowLockedRef.current = false;
@@ -2347,7 +2215,7 @@ export function Editor({
   const applyLineNumberMultiSelectionEdit = useCallback(
     async (mode: 'cut' | 'delete') => {
       const selectedLines = lineNumberMultiSelection;
-      if (selectedLines.length === 0 || isLargeReadOnlyMode) {
+      if (selectedLines.length === 0) {
         return false;
       }
 
@@ -2486,7 +2354,6 @@ export function Editor({
     },
     [
       clearLineNumberMultiSelection,
-      isLargeReadOnlyMode,
       lineNumberMultiSelection,
       mapAbsoluteLineToSourceLine,
       setCursorPosition,
@@ -2768,12 +2635,8 @@ export function Editor({
       return scrollContainerRef.current;
     }
 
-    if (!isLargeReadOnlyMode) {
-      return contentRef.current;
-    }
-
-    return (listRef.current?._outerRef as HTMLDivElement | null) ?? null;
-  }, [isHugeEditableMode, isLargeReadOnlyMode]);
+    return contentRef.current;
+  }, [isHugeEditableMode]);
 
   const beginRectangularSelectionAtPoint = useCallback((clientX: number, clientY: number) => {
     const element = contentRef.current;
@@ -3007,39 +2870,9 @@ export function Editor({
   }, []);
 
   const finalizePointerSelectionInteraction = useCallback(() => {
-    if (!DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG) {
-      pointerSelectionActiveRef.current = false;
-      if (!useNativeTextSelectionHighlight) {
-        setPointerSelectionNativeHighlightMode(false);
-      }
-      return;
-    }
-
-    const wasPointerSelectionActive = pointerSelectionActiveRef.current;
     pointerSelectionActiveRef.current = false;
-
-    if (!wasPointerSelectionActive) {
-      if (!useNativeTextSelectionHighlight) {
-        setPointerSelectionNativeHighlightMode(false);
-      }
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      handleScroll();
-      syncSelectionState();
-      if (!useNativeTextSelectionHighlight) {
-        syncTextSelectionHighlight();
-        setPointerSelectionNativeHighlightMode(false);
-      }
-    });
-  }, [
-    handleScroll,
-    setPointerSelectionNativeHighlightMode,
-    syncSelectionState,
-    syncTextSelectionHighlight,
-    useNativeTextSelectionHighlight,
-  ]);
+    setPointerSelectionNativeHighlightMode(false);
+  }, [setPointerSelectionNativeHighlightMode]);
 
   useEffect(() => {
     if (!normalizedRectangularSelection) {
@@ -3048,18 +2881,6 @@ export function Editor({
 
     setTextSelectionHighlight((prev) => (prev === null ? prev : null));
   }, [normalizedRectangularSelection]);
-
-  useEffect(() => {
-    if (!useNativeTextSelectionHighlight) {
-      return;
-    }
-
-    if (normalizedRectangularSelection) {
-      setPointerSelectionNativeHighlightMode(false);
-    } else {
-      setPointerSelectionNativeHighlightMode(true);
-    }
-  }, [normalizedRectangularSelection, setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]);
 
   const hasSelectionInsideEditor = useCallback(() => {
     if (!contentRef.current) {
@@ -3306,16 +3127,16 @@ export function Editor({
           return !hasSelection;
         case 'cut':
         case 'delete':
-          return isLargeReadOnlyMode || !hasSelection;
+          return !hasSelection;
         case 'paste':
-          return isLargeReadOnlyMode;
+          return false;
         case 'selectAll':
           return false;
         default:
           return false;
       }
     },
-    [editorContextMenu?.hasSelection, isLargeReadOnlyMode]
+    [editorContextMenu?.hasSelection]
   );
 
   const handleEditorContextMenuAction = useCallback(
@@ -3467,7 +3288,7 @@ export function Editor({
         });
 
         const element = contentRef.current;
-        if (element && !isLargeReadOnlyMode) {
+        if (element) {
           const text = normalizeSegmentText(getEditableText(element));
           const starts = buildLineStartOffsets(text);
           const lineInSource = mapAbsoluteLineToSourceLine(safeLine);
@@ -3505,7 +3326,7 @@ export function Editor({
       setCursorPosition(tab.id, safeLine, 1);
 
       const element = contentRef.current;
-      if (!element || isLargeReadOnlyMode) {
+      if (!element) {
         return;
       }
 
@@ -3535,7 +3356,6 @@ export function Editor({
     [
       clearLineNumberMultiSelection,
       clearRectangularSelection,
-      isLargeReadOnlyMode,
       mapAbsoluteLineToSourceLine,
       setCursorPosition,
       syncSelectionAfterInteraction,
@@ -3708,11 +3528,6 @@ export function Editor({
 
   const handleCleanupDocumentFromContext = useCallback(
     async (action: EditorCleanupAction) => {
-      if (isLargeReadOnlyMode) {
-        setEditorContextMenu(null);
-        return;
-      }
-
       setEditorContextMenu(null);
 
       try {
@@ -3739,7 +3554,6 @@ export function Editor({
     },
     [
       flushPendingSync,
-      isLargeReadOnlyMode,
       loadTextFromBackend,
       syncSelectionAfterInteraction,
       syncVisibleTokens,
@@ -3767,7 +3581,7 @@ export function Editor({
       const shouldCopyResult = action === 'copy_base64_encode' || action === 'copy_base64_decode';
       const shouldDecode = action === 'base64_decode' || action === 'copy_base64_decode';
 
-      if ((isLargeReadOnlyMode && !shouldCopyResult) || !editorContextMenu?.hasSelection || !contentRef.current) {
+      if (!editorContextMenu?.hasSelection || !contentRef.current) {
         setEditorContextMenu(null);
         return;
       }
@@ -3821,7 +3635,6 @@ export function Editor({
       editorContextMenu?.hasSelection,
       getRectangularSelectionTextFromBackend,
       getSelectedEditorText,
-      isLargeReadOnlyMode,
       normalizedRectangularSelection,
       replaceRectangularSelection,
       triggerBase64DecodeErrorToast,
@@ -4194,10 +4007,6 @@ export function Editor({
 
   const onItemsRendered = useCallback(
     ({ visibleStartIndex, visibleStopIndex }) => {
-      if (isLargeReadOnlyMode && isScrollbarDragRef.current) {
-        return;
-      }
-
       if (isHugeEditableMode && (pendingSyncRequestedRef.current || syncInFlightRef.current || isComposingRef.current)) {
         return;
       }
@@ -4242,7 +4051,6 @@ export function Editor({
     [
       editableSegment.endLine,
       editableSegment.startLine,
-      isLargeReadOnlyMode,
       isHugeEditableMode,
       isComposingRef,
       largeFetchBuffer,
@@ -4481,9 +4289,7 @@ export function Editor({
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
-      const textSelectionRange = useNativeTextSelectionHighlight
-        ? null
-        : getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
+      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
 
       if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderPlainLine(safeText);
@@ -4521,7 +4327,6 @@ export function Editor({
       getRectangularHighlightRangeForLine,
       getTextSelectionHighlightRangeForLine,
       renderPlainLine,
-      useNativeTextSelectionHighlight,
     ]
   );
 
@@ -4987,9 +4792,7 @@ export function Editor({
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
-      const textSelectionRange = useNativeTextSelectionHighlight
-        ? null
-        : getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
+      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
 
       if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
         return renderTokens(tokensArr);
@@ -5096,32 +4899,10 @@ export function Editor({
       getTextSelectionHighlightRangeForLine,
       getTokenTypeClass,
       renderTokens,
-      useNativeTextSelectionHighlight,
     ]
   );
 
   useEffect(() => {
-    if (isLargeReadOnlyMode) {
-      initializedRef.current = false;
-      suppressExternalReloadRef.current = false;
-      syncInFlightRef.current = false;
-      pendingSyncRequestedRef.current = false;
-      hugeWindowLockedRef.current = false;
-      hugeWindowFollowScrollOnUnlockRef.current = false;
-      if (hugeWindowUnlockTimerRef.current) {
-        clearTimeout(hugeWindowUnlockTimerRef.current);
-        hugeWindowUnlockTimerRef.current = null;
-      }
-      syncedTextRef.current = '';
-      setLineTokens([]);
-      setStartLine(0);
-      editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
-      setEditableSegment({ startLine: 0, endLine: 0, text: '' });
-
-      void syncVisibleTokens(Math.max(1, tab.lineCount));
-      return;
-    }
-
     let cancelled = false;
 
     initializedRef.current = false;
@@ -5164,14 +4945,9 @@ export function Editor({
         hugeWindowUnlockTimerRef.current = null;
       }
     };
-  }, [tab.id, loadTextFromBackend, syncVisibleTokens, isLargeReadOnlyMode]);
+  }, [tab.id, loadTextFromBackend, syncVisibleTokens]);
 
   useEffect(() => {
-    if (isLargeReadOnlyMode) {
-      void syncVisibleTokens(Math.max(1, tab.lineCount));
-      return;
-    }
-
     if (!initializedRef.current) {
       return;
     }
@@ -5191,7 +4967,7 @@ export function Editor({
     };
 
     syncExternalChange();
-  }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens, isLargeReadOnlyMode]);
+  }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens]);
 
   useEffect(() => {
     if (!usePlainLineRendering) {
@@ -5210,11 +4986,7 @@ export function Editor({
       }
     }
 
-    if (!isLargeReadOnlyMode) {
-      largeModePromptOpenRef.current = false;
-      setShowLargeModeEditPrompt(false);
-    }
-  }, [isHugeEditableMode, isLargeReadOnlyMode, tab.id, usePlainLineRendering]);
+  }, [isHugeEditableMode, usePlainLineRendering]);
 
 
   useEffect(() => {
@@ -5246,7 +5018,7 @@ export function Editor({
       const textDragState = textDragMoveStateRef.current;
       if (textDragState && event.pointerId === textDragState.pointerId) {
         const element = contentRef.current;
-        if (element && isTextareaInputElement(element) && !isLargeReadOnlyMode) {
+        if (element && isTextareaInputElement(element)) {
           const deltaX = event.clientX - textDragState.startClientX;
           const deltaY = event.clientY - textDragState.startClientY;
           const distanceSquared = deltaX * deltaX + deltaY * deltaY;
@@ -5352,7 +5124,7 @@ export function Editor({
       const textDragState = textDragMoveStateRef.current;
       if (textDragState) {
         const element = contentRef.current;
-        if (element && isTextareaInputElement(element) && !isLargeReadOnlyMode) {
+        if (element && isTextareaInputElement(element)) {
           applyTextDragMove(element, textDragState);
         }
         textDragMoveStateRef.current = null;
@@ -5403,7 +5175,6 @@ export function Editor({
     applyTextDragMove,
     getRectangularSelectionScrollElement,
     handleScroll,
-    isLargeReadOnlyMode,
     resolveDropOffsetFromPointer,
     updateRectangularSelectionFromPoint,
   ]);
@@ -5427,7 +5198,7 @@ export function Editor({
           event.stopPropagation();
           event.clipboardData?.setData('text/plain', selected);
 
-          if (cut && !isLargeReadOnlyMode) {
+          if (cut) {
             void applyLineNumberMultiSelectionEdit('cut');
           }
         }
@@ -5478,7 +5249,6 @@ export function Editor({
     applyLineNumberMultiSelectionEdit,
     buildLineNumberSelectionRangeText,
     getRectangularSelectionText,
-    isLargeReadOnlyMode,
     lineNumberMultiSelection,
     normalizedRectangularSelection,
     replaceRectangularSelection,
@@ -5497,12 +5267,8 @@ export function Editor({
       if (base64DecodeErrorToastTimerRef.current !== null) {
         window.clearTimeout(base64DecodeErrorToastTimerRef.current);
       }
-
-      if (useNativeTextSelectionHighlight) {
-        setPointerSelectionNativeHighlightMode(false);
-      }
     };
-  }, [setPointerSelectionNativeHighlightMode, useNativeTextSelectionHighlight]);
+  }, []);
 
   useEffect(() => {
     const flushSelectionChange = () => {
@@ -5514,15 +5280,8 @@ export function Editor({
 
       handleScroll();
 
-      if (
-        !DEFER_POINTER_SELECTION_STATE_SYNC_DURING_DRAG ||
-        !pointerSelectionActiveRef.current
-      ) {
-        syncSelectionState();
-        if (!useNativeTextSelectionHighlight) {
-          syncTextSelectionHighlight();
-        }
-      }
+      syncSelectionState();
+      syncTextSelectionHighlight();
     };
 
     const handleSelectionChange = () => {
@@ -5547,7 +5306,6 @@ export function Editor({
     hasSelectionInsideEditor,
     syncSelectionState,
     syncTextSelectionHighlight,
-    useNativeTextSelectionHighlight,
   ]);
 
   useEffect(() => {
@@ -5771,18 +5529,6 @@ export function Editor({
         return;
       }
 
-      if (isLargeReadOnlyMode) {
-        if (listElement) {
-          listElement.scrollTop = targetScrollTop;
-        }
-
-        if (lineNumberElement) {
-          lineNumberElement.scrollTop = targetScrollTop;
-        }
-        void syncVisibleTokens(Math.max(1, tab.lineCount));
-        return;
-      }
-
       if (contentRef.current) {
         contentRef.current.scrollTop = targetScrollTop;
         contentRef.current.focus();
@@ -5835,7 +5581,6 @@ export function Editor({
   }, [
     ensureSearchMatchVisibleHorizontally,
     isHugeEditableMode,
-    isLargeReadOnlyMode,
     itemSize,
     setCursorPosition,
     syncVisibleTokens,
@@ -5892,11 +5637,9 @@ export function Editor({
     <div
       ref={containerRef}
       className={`flex-1 w-full h-full overflow-hidden bg-background relative editor-syntax-${activeSyntaxKey}`}
-      tabIndex={isLargeReadOnlyMode ? 0 : -1}
-      onPointerDown={handleLargeModePointerDown}
-      onKeyDown={handleLargeModeEditIntent}
+      tabIndex={-1}
     >
-      {!isLargeReadOnlyMode && isHugeEditableMode && (
+      {isHugeEditableMode && (
         <div
           ref={scrollContainerRef}
           className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-scroll-stable"
@@ -5956,7 +5699,7 @@ export function Editor({
         </div>
       )}
 
-      {!isLargeReadOnlyMode && !isHugeEditableMode && (
+      {!isHugeEditableMode && (
         <textarea
           ref={contentRef}
           className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-input-layer editor-scroll-stable"
@@ -5993,9 +5736,7 @@ export function Editor({
       {width > 0 && height > 0 && (
         <div
           ref={backdropRef}
-          className={`absolute top-0 bottom-0 right-0 z-10 overflow-hidden ${
-            isLargeReadOnlyMode ? '' : 'pointer-events-none'
-          }`}
+          className="absolute top-0 bottom-0 right-0 z-10 overflow-hidden pointer-events-none"
           style={{
             left: `${contentViewportLeftPx}px`,
             width: `${contentViewportWidth}px`,
@@ -6011,12 +5752,10 @@ export function Editor({
             onItemsRendered={onItemsRendered}
             overscanCount={20}
             style={{
-              overflowX: isLargeReadOnlyMode ? horizontalOverflowMode : 'hidden',
-              overflowY: isLargeReadOnlyMode ? 'auto' : 'hidden',
+              overflowX: 'hidden',
+              overflowY: 'hidden',
               paddingBottom: contentBottomSafetyPadding,
             }}
-            onScroll={isLargeReadOnlyMode ? handleScroll : undefined}
-            onPointerDown={isLargeReadOnlyMode ? handleReadOnlyListPointerDown : undefined}
           >
             {({ index, style }) => {
               const relativeIndex = isHugeEditableMode
@@ -6372,33 +6111,6 @@ export function Editor({
                 disabled={!hasContextBookmark}
               >
                 {removeBookmarkLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLargeModeEditPrompt && isLargeReadOnlyMode && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35">
-          <div className="w-[min(92vw,420px)] rounded-lg border border-border bg-background p-4 shadow-2xl">
-            <p className="text-sm font-medium text-foreground">{tr('editor.largeMode.readOnlyTitle')}</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {tr('editor.largeMode.readOnlyDesc')}
-            </p>
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                onClick={handleKeepReadOnlyMode}
-              >
-                {tr('editor.largeMode.keepReadOnly')}
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
-                onClick={handleEnterEditableMode}
-              >
-                {tr('editor.largeMode.enterEditable')}
               </button>
             </div>
           </div>
