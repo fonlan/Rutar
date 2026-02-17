@@ -1243,6 +1243,34 @@ describe('Editor component', () => {
     });
   });
 
+  it('normalizes invalid navigate-to-line payload values to safe defaults', async () => {
+    const tab = createTab({ id: 'tab-navigate-normalize-invalid', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: Number.NaN,
+            column: -4,
+            length: Number.NaN,
+            lineText: 1234,
+            occludedRightPx: Number.NaN,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(1);
+      expect(cursor?.column).toBe(1);
+    });
+  });
+
   it('handles external paste-text event for active tab', async () => {
     const tab = createTab({ id: 'tab-external-paste' });
     const { container } = render(<Editor tab={tab} />);
@@ -1290,6 +1318,31 @@ describe('Editor component', () => {
 
     await waitFor(() => {
       expect(textarea.value).toBe('alpha\nbeta\n');
+    });
+  });
+
+  it('treats non-string external paste-text as empty text', async () => {
+    const tab = createTab({ id: 'tab-external-paste-non-string' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:paste-text', {
+          detail: {
+            tabId: tab.id,
+            text: 123,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('\nbeta\n');
     });
   });
 
@@ -1438,6 +1491,39 @@ describe('Editor component', () => {
     });
   });
 
+  it('ignores search-close event when detail is missing', async () => {
+    const tab = createTab({ id: 'tab-search-close-no-detail', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 1,
+            length: 2,
+            lineText: 'beta',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark[class*="bg-yellow"]').length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('rutar:search-close'));
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('mark[class*="bg-yellow"]').length).toBeGreaterThan(0);
+    });
+  });
+
   it('handles force-refresh event with preserveCaret and updates line count', async () => {
     const tab = createTab({ id: 'tab-force-refresh', lineCount: 6 });
     useStore.getState().addTab(tab);
@@ -1544,6 +1630,48 @@ describe('Editor component', () => {
       ).length;
       expect(currentTab?.lineCount).toBe(10);
       expect(getVisibleLinesCalls).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('handles force-refresh event without lineCount and keeps current line count', async () => {
+    const tab = createTab({ id: 'tab-force-refresh-without-line-count', lineCount: 6 });
+    useStore.getState().addTab(tab);
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const initialGetVisibleLinesCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === 'get_visible_lines' &&
+        typeof payload === 'object' &&
+        payload !== null &&
+        'id' in payload &&
+        (payload as { id?: string }).id === tab.id
+    ).length;
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const currentTab = useStore.getState().tabs.find((item) => item.id === tab.id);
+      const getVisibleLinesCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === 'get_visible_lines' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'id' in payload &&
+          (payload as { id?: string }).id === tab.id
+      ).length;
+      expect(currentTab?.lineCount).toBe(6);
+      expect(getVisibleLinesCalls).toBeGreaterThan(initialGetVisibleLinesCalls);
     });
   });
 
