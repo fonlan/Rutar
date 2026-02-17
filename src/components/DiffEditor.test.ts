@@ -684,6 +684,46 @@ describe('DiffEditor component', () => {
     }
   });
 
+  it('copies source full path from header context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
+    try {
+      render(React.createElement(DiffEditor, { tab: diffTab }));
+
+      const sourceTitle = await screen.findByText('Source: source.ts');
+      fireEvent.contextMenu(sourceTitle, {
+        clientX: 88,
+        clientY: 70,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy Full Path' }));
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith('C:\\repo\\source.ts');
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
   it('opens containing folder from header context menu', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -898,6 +938,62 @@ describe('DiffEditor component', () => {
         Reflect.deleteProperty(document, 'execCommand');
       }
     }
+  });
+
+  it('handles target textarea change and tab key insertion', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(targetTextarea, { target: { value: 'abc' } });
+    expect(targetTextarea.value).toBe('abc\n');
+
+    targetTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(targetTextarea, { key: 'Tab' });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toContain('\t');
+    });
+  });
+
+  it('writes target selection to clipboard on copy event', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const setDataMock = vi.fn();
+    targetTextarea.setSelectionRange(0, 7);
+    fireEvent.copy(targetTextarea, {
+      clipboardData: {
+        setData: setDataMock,
+      },
+    });
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalledWith('text/plain', 'right-1');
+    });
   });
 
   it('copies selected source line to right panel from context menu', async () => {
