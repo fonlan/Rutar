@@ -2,12 +2,17 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { saveTab } from '@/lib/tabClose';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import { DiffEditor, diffEditorTestUtils } from './DiffEditor';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readText: vi.fn(async () => ''),
 }));
 
 vi.mock('@/lib/tabClose', () => ({
@@ -61,7 +66,7 @@ function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
 function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload } {
   return {
     id: 'diff-tab',
-    name: 'source.ts ↔ target.ts',
+    name: 'source.ts <-> target.ts',
     path: '',
     encoding: 'UTF-8',
     lineEnding: 'LF',
@@ -490,6 +495,7 @@ describe('diffEditorTestUtils.dispatchDocumentUpdated', () => {
 describe('DiffEditor component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
   const originalResizeObserver = globalThis.ResizeObserver;
+  const readClipboardTextMock = vi.mocked(readClipboardText);
 
   beforeAll(() => {
     initialState = useStore.getState();
@@ -503,6 +509,7 @@ describe('DiffEditor component', () => {
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: 14,
     });
+    readClipboardTextMock.mockResolvedValue('');
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'compare_documents_by_line') {
@@ -634,6 +641,254 @@ describe('DiffEditor component', () => {
         expect.objectContaining({ id: sourceTab.id }),
         expect.any(Function)
       );
+    });
+  });
+
+  it('copies source folder path from header context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
+    try {
+      render(React.createElement(DiffEditor, { tab: diffTab }));
+
+      const sourceTitle = await screen.findByText('Source: source.ts');
+      fireEvent.contextMenu(sourceTitle, {
+        clientX: 84,
+        clientY: 66,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy Folder Path' }));
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith('C:\\repo');
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
+  it('opens containing folder from header context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const sourceTitle = await screen.findByText('Source: source.ts');
+    fireEvent.contextMenu(sourceTitle, {
+      clientX: 92,
+      clientY: 72,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Containing Folder' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('open_in_file_manager', {
+        path: 'C:\\repo\\source.ts',
+      });
+    });
+  });
+
+  it('logs error when opening containing folder from header context menu fails', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['left-1', 'left-2'],
+          alignedTargetLines: ['right-1', 'right-2'],
+          alignedSourcePresent: [true, true],
+          alignedTargetPresent: [true, true],
+          diffLineNumbers: [1, 2],
+          sourceDiffLineNumbers: [1, 2],
+          targetDiffLineNumbers: [1, 2],
+          sourceLineCount: 2,
+          targetLineCount: 2,
+          alignedLineCount: 2,
+        };
+      }
+      if (command === 'open_in_file_manager') {
+        throw new Error('open-folder-failed');
+      }
+      if (command === 'edit_text') {
+        return 2;
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    try {
+      render(React.createElement(DiffEditor, { tab: diffTab }));
+
+      const sourceTitle = await screen.findByText('Source: source.ts');
+      fireEvent.contextMenu(sourceTitle, {
+        clientX: 96,
+        clientY: 76,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Open Containing Folder' }));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to open file directory from diff header:',
+          expect.any(Error)
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('executes copy command from panel context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const execCommandMock = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommandMock,
+    });
+
+    try {
+      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const sourceTextarea = await waitFor(() => {
+        const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+        expect(element).toBeTruthy();
+        return element as HTMLTextAreaElement;
+      });
+
+      fireEvent.contextMenu(sourceTextarea, {
+        clientX: 140,
+        clientY: 140,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+
+      await waitFor(() => {
+        expect(execCommandMock).toHaveBeenCalledWith('copy');
+      });
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
+  it('falls back to document paste command when clipboard plugin read fails', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    readClipboardTextMock.mockRejectedValueOnce(new Error('clipboard-failed'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const execCommandMock = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommandMock,
+    });
+
+    try {
+      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const targetTextarea = await waitFor(() => {
+        const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+        expect(element).toBeTruthy();
+        return element as HTMLTextAreaElement;
+      });
+
+      fireEvent.contextMenu(targetTextarea, {
+        clientX: 180,
+        clientY: 148,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Paste' }));
+
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          'Failed to read clipboard text via Tauri clipboard plugin:',
+          expect.any(Error)
+        );
+        expect(execCommandMock).toHaveBeenCalledWith('paste');
+      });
+    } finally {
+      warnSpy.mockRestore();
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
+  it('ignores diff toolbar paste event when diffTabId mismatches', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const beforeValue = targetTextarea.value;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:diff-paste-text', {
+          detail: {
+            diffTabId: 'other-diff-tab',
+            panel: 'target',
+            text: 'T',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe(beforeValue);
     });
   });
 });
