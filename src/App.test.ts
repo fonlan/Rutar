@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
+import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -376,6 +377,96 @@ describe('App component', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it('prevents window close when dirty-tab confirmation is cancelled', async () => {
+    const dirtyTab = createFileTab({ id: 'tab-close-cancel', isDirty: true });
+    useStore.setState({
+      tabs: [dirtyTab],
+      activeTabId: dirtyTab.id,
+    });
+
+    let closeRequestedHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null = null;
+    const onCloseRequestedSpy = vi.fn(async (handler: unknown) => {
+      closeRequestedHandler = handler as (event: { preventDefault: () => void }) => Promise<void>;
+      return () => undefined;
+    });
+
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => vi.fn()),
+      onCloseRequested: onCloseRequestedSpy,
+    } as never);
+    vi.mocked(confirmTabClose).mockResolvedValue('cancel');
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(onCloseRequestedSpy).toHaveBeenCalledTimes(1);
+      expect(closeRequestedHandler).toBeTruthy();
+    });
+
+    const preventDefaultSpy = vi.fn();
+    await act(async () => {
+      await closeRequestedHandler?.({ preventDefault: preventDefaultSpy });
+    });
+
+    expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dirtyTab.id }),
+      'en-US',
+      true
+    );
+    expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(saveTab)).not.toHaveBeenCalled();
+  });
+
+  it('reuses save_all decision for remaining dirty tabs and prevents close when save fails', async () => {
+    const dirtyTabA = createFileTab({ id: 'tab-close-save-all-a', isDirty: true });
+    const dirtyTabB = createFileTab({ id: 'tab-close-save-all-b', isDirty: true });
+    useStore.setState({
+      tabs: [dirtyTabA, dirtyTabB],
+      activeTabId: dirtyTabA.id,
+    });
+
+    let closeRequestedHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null = null;
+    const onCloseRequestedSpy = vi.fn(async (handler: unknown) => {
+      closeRequestedHandler = handler as (event: { preventDefault: () => void }) => Promise<void>;
+      return () => undefined;
+    });
+
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => vi.fn()),
+      onCloseRequested: onCloseRequestedSpy,
+    } as never);
+    vi.mocked(confirmTabClose).mockResolvedValue('save_all');
+    vi.mocked(saveTab).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(onCloseRequestedSpy).toHaveBeenCalledTimes(1);
+      expect(closeRequestedHandler).toBeTruthy();
+    });
+
+    const preventDefaultSpy = vi.fn();
+    await act(async () => {
+      await closeRequestedHandler?.({ preventDefault: preventDefaultSpy });
+    });
+
+    expect(vi.mocked(confirmTabClose)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(saveTab)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(saveTab)).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: dirtyTabA.id }),
+      expect.any(Function)
+    );
+    expect(vi.mocked(saveTab)).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: dirtyTabB.id }),
+      expect.any(Function)
+    );
+    expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
   });
 
   it('skips config update when load_config resolves after unmount', async () => {
