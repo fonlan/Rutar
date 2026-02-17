@@ -996,6 +996,91 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('handles source textarea change and tab key insertion', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: 'xyz' } });
+    expect(sourceTextarea.value).toBe('xyz\n');
+
+    sourceTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(sourceTextarea, { key: 'Tab' });
+
+    await waitFor(() => {
+      expect(sourceTextarea.value).toContain('\t');
+    });
+  });
+
+  it('writes source selection to clipboard on copy event', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const setDataMock = vi.fn();
+    sourceTextarea.setSelectionRange(0, 6);
+    fireEvent.copy(sourceTextarea, {
+      clipboardData: {
+        setData: setDataMock,
+      },
+    });
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalledWith('text/plain', 'left-1');
+    });
+  });
+
+  it('focuses target panel line when target line number is pointer-selected', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const lineNumberCells = await screen.findAllByText('1');
+    fireEvent.pointerDown(lineNumberCells[lineNumberCells.length - 1], {
+      button: 0,
+      pointerId: 1,
+    });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(targetTextarea);
+      expect(targetTextarea.selectionStart).toBe(0);
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(0);
+    });
+  });
+
   it('copies selected source line to right panel from context menu', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
