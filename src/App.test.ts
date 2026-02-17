@@ -149,6 +149,62 @@ function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayl
   };
 }
 
+type InvokeOverride = (payload?: any) => unknown | Promise<unknown>;
+
+function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
+  return async (command: string, payload?: any) => {
+    const override = overrides[command];
+    if (override) {
+      return override(payload);
+    }
+
+    if (command === 'load_config') {
+      return {
+        language: 'en-US',
+        theme: 'light',
+        fontFamily: 'Consolas, \"Courier New\", monospace',
+        fontSize: 14,
+        tabWidth: 4,
+        newFileLineEnding: 'LF',
+        wordWrap: false,
+        doubleClickCloseTab: true,
+        showLineNumbers: true,
+        highlightCurrentLine: true,
+        singleInstanceMode: true,
+        rememberWindowState: true,
+        recentFiles: [],
+        recentFolders: [],
+        windowsFileAssociationExtensions: [],
+        mouseGesturesEnabled: false,
+        mouseGestures: [],
+      };
+    }
+    if (command === 'get_startup_paths') {
+      return [];
+    }
+    if (command === 'show_main_window_when_ready') {
+      return undefined;
+    }
+    if (command === 'has_external_file_change') {
+      return false;
+    }
+    if (command === 'save_config') {
+      return undefined;
+    }
+    if (command === 'read_dir_if_directory') {
+      return null;
+    }
+    if (command === 'new_file') {
+      return createFileTab({ id: 'startup-file-id', name: 'untitled.txt', path: 'untitled.txt' });
+    }
+    if (command === 'close_file') {
+      return undefined;
+    }
+
+    return undefined;
+  };
+}
+
 describe('App component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
 
@@ -165,52 +221,7 @@ describe('App component', () => {
     vi.mocked(ask).mockResolvedValue(false);
     vi.mocked(detectOutlineType).mockReturnValue(null);
     vi.mocked(loadOutline).mockResolvedValue([]);
-
-    vi.mocked(invoke).mockImplementation(async (command: string) => {
-      if (command === 'load_config') {
-        return {
-          language: 'en-US',
-          theme: 'light',
-          fontFamily: 'Consolas, \"Courier New\", monospace',
-          fontSize: 14,
-          tabWidth: 4,
-          newFileLineEnding: 'LF',
-          wordWrap: false,
-          doubleClickCloseTab: true,
-          showLineNumbers: true,
-          highlightCurrentLine: true,
-          singleInstanceMode: true,
-          rememberWindowState: true,
-          recentFiles: [],
-          recentFolders: [],
-          windowsFileAssociationExtensions: [],
-          mouseGesturesEnabled: false,
-          mouseGestures: [],
-        };
-      }
-      if (command === 'get_startup_paths') {
-        return [];
-      }
-      if (command === 'show_main_window_when_ready') {
-        return undefined;
-      }
-      if (command === 'has_external_file_change') {
-        return false;
-      }
-      if (command === 'save_config') {
-        return undefined;
-      }
-      if (command === 'read_dir_if_directory') {
-        return null;
-      }
-      if (command === 'new_file') {
-        return createFileTab({ id: 'startup-file-id', name: 'untitled.txt', path: 'untitled.txt' });
-      }
-      if (command === 'close_file') {
-        return undefined;
-      }
-      return undefined;
-    });
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
   });
 
   it('renders file editor for active file tab', async () => {
@@ -389,6 +400,96 @@ describe('App component', () => {
         'outline-load-failed'
       );
     });
+  });
+
+  it('acknowledges external file change when user declines reload', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-change-ack' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => true,
+        acknowledge_external_file_change: async () => undefined,
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(false);
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(ask)).toHaveBeenCalled();
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('acknowledge_external_file_change', {
+        id: fileTab.id,
+      });
+    });
+  });
+
+  it('reloads file when external change is confirmed and dispatches refresh events', async () => {
+    const fileTab = createFileTab({
+      id: 'tab-external-change-reload',
+      lineCount: 3,
+      isDirty: true,
+    });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => true,
+        reload_file_from_disk: async () =>
+          createFileTab({
+            id: fileTab.id,
+            name: 'reloaded.ts',
+            path: fileTab.path,
+            lineCount: 9,
+            isDirty: false,
+          }),
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(true);
+
+    const forceRefreshEvents: Array<{ tabId: string; lineCount: number; preserveCaret: boolean }> = [];
+    const documentUpdatedEvents: Array<{ tabId: string }> = [];
+    const forceRefreshListener = (event: Event) => {
+      forceRefreshEvents.push(
+        (event as CustomEvent<{ tabId: string; lineCount: number; preserveCaret: boolean }>).detail
+      );
+    };
+    const documentUpdatedListener = (event: Event) => {
+      documentUpdatedEvents.push((event as CustomEvent<{ tabId: string }>).detail);
+    };
+    window.addEventListener('rutar:force-refresh', forceRefreshListener as EventListener);
+    window.addEventListener('rutar:document-updated', documentUpdatedListener as EventListener);
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('reload_file_from_disk', {
+          id: fileTab.id,
+        });
+
+        const currentTab = useStore.getState().tabs.find((tab) => tab.id === fileTab.id);
+        expect(currentTab?.name).toBe('reloaded.ts');
+        expect(currentTab?.lineCount).toBe(9);
+        expect(currentTab?.isDirty).toBe(false);
+      });
+
+      expect(forceRefreshEvents).toContainEqual({
+        tabId: fileTab.id,
+        lineCount: 9,
+        preserveCaret: false,
+      });
+      expect(documentUpdatedEvents).toContainEqual({ tabId: fileTab.id });
+    } finally {
+      window.removeEventListener('rutar:force-refresh', forceRefreshListener as EventListener);
+      window.removeEventListener('rutar:document-updated', documentUpdatedListener as EventListener);
+    }
   });
 });
 
