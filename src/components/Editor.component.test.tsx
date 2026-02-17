@@ -952,6 +952,28 @@ describe('Editor component', () => {
     });
   });
 
+  it('uses preventScroll when first-click focusing from line number gutter', async () => {
+    const tab = createTab({ id: 'tab-line-number-first-click-prevent-scroll', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const focusDescriptor = Object.getOwnPropertyDescriptor(textarea, 'focus');
+    const focusMock = vi.fn();
+    Object.defineProperty(textarea, 'focus', {
+      configurable: true,
+      value: focusMock,
+    });
+    try {
+      await clickLineNumber(container, 1);
+
+      expect(focusMock).toHaveBeenCalled();
+      expect(focusMock).toHaveBeenCalledWith({ preventScroll: true });
+    } finally {
+      restoreProperty(textarea, 'focus', focusDescriptor);
+    }
+  });
+
   it('prevents default and propagation on line-number mouse down', async () => {
     const tab = createTab({ id: 'tab-line-number-mousedown', lineCount: 8 });
     const { container } = render(<Editor tab={tab} />);

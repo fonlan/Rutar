@@ -241,6 +241,18 @@ function mapLogicalOffsetToInputLayerOffset(text: string, logicalOffset: number)
   return safeOffset;
 }
 
+function focusEditorInputWithoutScroll(element: EditorInputElement) {
+  if (document.activeElement === element) {
+    return;
+  }
+
+  try {
+    element.focus({ preventScroll: true });
+  } catch {
+    element.focus();
+  }
+}
+
 function isTextareaInputElement(element: EditorInputElement | null): element is HTMLTextAreaElement {
   return !!element && element.tagName === 'TEXTAREA';
 }
@@ -306,9 +318,7 @@ function setCaretToLineColumn(element: EditorInputElement, line: number, column:
 
     const layerOffset = mapLogicalOffsetToInputLayerOffset(content, targetOffset);
     const safeOffset = Math.min(layerOffset, content.length);
-    if (document.activeElement !== element) {
-      element.focus();
-    }
+    focusEditorInputWithoutScroll(element);
     element.setSelectionRange(safeOffset, safeOffset);
     return;
   }
@@ -560,9 +570,7 @@ function setCaretToCodeUnitOffset(element: EditorInputElement, offset: number) {
   const targetOffset = Math.max(0, Math.floor(offset));
 
   if (isTextareaInputElement(element)) {
-    if (document.activeElement !== element) {
-      element.focus();
-    }
+    focusEditorInputWithoutScroll(element);
 
     const maxOffset = getEditableText(element).length;
     const safeOffset = Math.min(targetOffset, maxOffset);
@@ -570,9 +578,7 @@ function setCaretToCodeUnitOffset(element: EditorInputElement, offset: number) {
     return;
   }
 
-  if (document.activeElement !== element) {
-    element.focus();
-  }
+  focusEditorInputWithoutScroll(element);
 
   let textNode = element.firstChild as Text | null;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
@@ -600,9 +606,7 @@ function setSelectionToCodeUnitOffsets(element: EditorInputElement, startOffset:
   const safeEndOffset = Math.max(0, Math.floor(endOffset));
 
   if (isTextareaInputElement(element)) {
-    if (document.activeElement !== element) {
-      element.focus();
-    }
+    focusEditorInputWithoutScroll(element);
 
     const maxOffset = getEditableText(element).length;
     const normalizedStart = Math.min(safeStartOffset, maxOffset);
@@ -613,9 +617,7 @@ function setSelectionToCodeUnitOffsets(element: EditorInputElement, startOffset:
     return;
   }
 
-  if (document.activeElement !== element) {
-    element.focus();
-  }
+  focusEditorInputWithoutScroll(element);
 
   let textNode = element.firstChild as Text | null;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
