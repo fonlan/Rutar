@@ -2152,6 +2152,188 @@ describe('App component', () => {
     }
   });
 
+  it('loads startup directory path into folder state without opening file', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => ['C:\\repo\\startup-folder'],
+        read_dir_if_directory: async () => [{ name: 'a.ts', path: 'C:\\repo\\startup-folder\\a.ts' }],
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().folderPath).toBe('C:\\repo\\startup-folder');
+      expect(useStore.getState().folderEntries.length).toBe(1);
+    });
+    expect(vi.mocked(openFilePaths)).not.toHaveBeenCalled();
+  });
+
+  it('does not update windows statuses after unmount when async calls resolve late', async () => {
+    const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
+    const contextMenuDeferred = createDeferred<boolean>();
+    const fileAssociationDeferred = createDeferred<{ enabled: boolean; extensions: string[] }>();
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        is_windows_context_menu_registered: async () => contextMenuDeferred.promise,
+        get_windows_file_association_status: async () => fileAssociationDeferred.promise,
+      })
+    );
+
+    try {
+      const view = render(React.createElement(App));
+      let snapshot: {
+        windowsContextMenuEnabled: boolean;
+        windowsFileAssociationEnabled: boolean;
+        windowsFileAssociationExtensions: string[];
+      } | null = null;
+      await waitFor(() => {
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('is_windows_context_menu_registered');
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_windows_file_association_status', {
+          extensions: expect.any(Array),
+        });
+      });
+      snapshot = {
+        windowsContextMenuEnabled: useStore.getState().settings.windowsContextMenuEnabled,
+        windowsFileAssociationEnabled: useStore.getState().settings.windowsFileAssociationEnabled,
+        windowsFileAssociationExtensions: [...useStore.getState().settings.windowsFileAssociationExtensions],
+      };
+
+      view.unmount();
+
+      await act(async () => {
+        contextMenuDeferred.resolve(true);
+        fileAssociationDeferred.resolve({
+          enabled: true,
+          extensions: ['.md'],
+        });
+        await Promise.all([contextMenuDeferred.promise, fileAssociationDeferred.promise]);
+      });
+
+      const settings = useStore.getState().settings;
+      expect(settings.windowsContextMenuEnabled).toBe(snapshot?.windowsContextMenuEnabled);
+      expect(settings.windowsFileAssociationEnabled).toBe(snapshot?.windowsFileAssociationEnabled);
+      expect(settings.windowsFileAssociationExtensions).toEqual(snapshot?.windowsFileAssociationExtensions);
+    } finally {
+      userAgentSpy.mockRestore();
+    }
+  });
+
+  it('loads windows context-menu and file-association statuses', async () => {
+    const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
+    useStore.getState().updateSettings({
+      windowsContextMenuEnabled: false,
+      windowsFileAssociationEnabled: false,
+      windowsFileAssociationExtensions: ['.txt'],
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        is_windows_context_menu_registered: async () => true,
+        get_windows_file_association_status: async () => ({
+          enabled: true,
+          extensions: ['.rs', '.toml'],
+        }),
+      })
+    );
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        const settings = useStore.getState().settings;
+        expect(settings.windowsContextMenuEnabled).toBe(true);
+        expect(settings.windowsFileAssociationEnabled).toBe(true);
+        expect(settings.windowsFileAssociationExtensions).toEqual(['.rs', '.toml']);
+      });
+    } finally {
+      userAgentSpy.mockRestore();
+    }
+  });
+
+  it('logs error when loading windows context-menu status fails', async () => {
+    const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        is_windows_context_menu_registered: async () => {
+          throw new Error('windows-context-status-failed');
+        },
+      })
+    );
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to read Windows context menu status:',
+          expect.objectContaining({ message: 'windows-context-status-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+      userAgentSpy.mockRestore();
+    }
+  });
+
+  it('logs error when loading windows file-association status fails', async () => {
+    const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_windows_file_association_status: async () => {
+          throw new Error('windows-file-association-status-failed');
+        },
+      })
+    );
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to read Windows file association status:',
+          expect.objectContaining({ message: 'windows-file-association-status-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+      userAgentSpy.mockRestore();
+    }
+  });
+
+  it('stops startup path flow after unmount when openIncomingPaths resolves late', async () => {
+    const readDirDeferred = createDeferred<any[] | null>();
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => ['C:\\repo\\startup-late.ts'],
+        read_dir_if_directory: async () => readDirDeferred.promise,
+      })
+    );
+
+    const view = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('read_dir_if_directory', {
+        path: 'C:\\repo\\startup-late.ts',
+      });
+    });
+
+    view.unmount();
+
+    await act(async () => {
+      readDirDeferred.resolve(null);
+      await readDirDeferred.promise;
+    });
+
+    expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\startup-late.ts']);
+  });
+
   it('ignores invalid gesture-start pointerdown events before activation', async () => {
     const fileTab = createFileTab({ id: 'tab-gesture-invalid-pointerdown' });
     useStore.setState({
