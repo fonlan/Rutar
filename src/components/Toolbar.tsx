@@ -1227,25 +1227,31 @@ function ToolbarSplitMenu({
                             {items.map((item) => (
                                 <div
                                     key={item.path}
-                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                                    className="group flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
                                     title={item.path}
-                                >
-                                    <button
-                                        type="button"
-                                        className="flex min-w-0 flex-1 items-start gap-2 text-left"
-                                        onClick={() => {
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => {
+                                        void onItemClick(item.path);
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
                                             void onItemClick(item.path);
-                                        }}
-                                    >
+                                        }
+                                    }}
+                                >
+                                    <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
                                         <span className="max-w-40 truncate text-foreground">{item.name}</span>
                                         <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
-                                    </button>
+                                    </span>
                                     <button
                                         type="button"
                                         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
                                         title={removeItemText}
                                         aria-label={removeItemText}
-                                        onClick={() => {
+                                        onClick={(event) => {
+                                            event.stopPropagation();
                                             onItemRemove(item.path);
                                         }}
                                     >

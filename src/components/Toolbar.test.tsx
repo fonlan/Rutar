@@ -2198,7 +2198,7 @@ describe("Toolbar", () => {
     const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
     fireEvent.click(openFileButtons[1]);
     const recentItemRow = await screen.findByTitle("C:\\repo\\recent-a.ts");
-    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(recentItemRow);
 
     await waitFor(() => {
       expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-a.ts");
@@ -2245,6 +2245,7 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(removeRecentFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-b.ts");
     });
+    expect(openFilePathMock).not.toHaveBeenCalled();
   });
 
   it("closes opened recent file menu on Escape", async () => {
@@ -2381,7 +2382,7 @@ describe("Toolbar", () => {
     const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
     fireEvent.click(openFileButtons[1]);
     const recentItemRow = await screen.findByTitle("C:\\repo\\recent-g.ts");
-    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(recentItemRow);
 
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to open recent file:", expect.any(Error));
@@ -2418,7 +2419,7 @@ describe("Toolbar", () => {
     fireEvent.click(openFolderButtons[1]);
 
     const recentFolderRow = await screen.findByTitle("C:\\repo\\folder-a");
-    fireEvent.click(recentFolderRow.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(recentFolderRow);
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-a" });
@@ -2458,7 +2459,7 @@ describe("Toolbar", () => {
     const openFolderButtons = screen.getAllByTitle("Open Folder");
     fireEvent.click(openFolderButtons[1]);
     const recentItemRow = await screen.findByTitle("C:\\repo\\folder-empty");
-    fireEvent.click(recentItemRow.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(recentItemRow);
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-empty" });
@@ -2584,6 +2585,7 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(removeRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-b");
     });
+    expect(invokeMock).not.toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-b" });
   });
 
   it("clears recent folder entries from split menu", async () => {
@@ -2706,7 +2708,7 @@ describe("Toolbar", () => {
     const openFolderButtons = screen.getAllByTitle("Open Folder");
     fireEvent.click(openFolderButtons[1]);
     const recentFolderRow = await screen.findByTitle("C:\\repo\\folder-f");
-    fireEvent.click(recentFolderRow.querySelector("button") as HTMLButtonElement);
+    fireEvent.click(recentFolderRow);
 
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to open recent folder:", expect.any(Error));
