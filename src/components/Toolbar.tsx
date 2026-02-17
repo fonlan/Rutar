@@ -5,7 +5,17 @@ import {
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type MouseEvent as ReactMouseEvent,
+    type RefObject,
+} from 'react';
 import { openFilePath } from '@/lib/openFile';
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from '@/lib/recentPaths';
 import { useStore, FileTab, isDiffTab, type DiffPanelSide } from '@/store/useStore';
@@ -938,10 +948,16 @@ export function Toolbar() {
         };
     }, [recentMenu]);
 
+    const handleToolbarContextMenuCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+    }, []);
+
     return (
         <div
             className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden z-40"
             data-layout-region="toolbar"
+            onContextMenuCapture={handleToolbarContextMenuCapture}
         >
             {/* File Group */}
             <ToolbarBtn icon={FilePlus} title={tr('toolbar.newFile')} onClick={handleNewFile} />

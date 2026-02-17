@@ -47,6 +47,7 @@ export function StatusBar() {
         <div
             className="h-6 bg-muted/50 border-t flex items-center px-3 text-[10px] text-muted-foreground select-none"
             data-layout-region="statusbar"
+            onContextMenu={(event) => event.preventDefault()}
         >
             {tr('status.ready')}
         </div>
@@ -119,6 +120,7 @@ export function StatusBar() {
         <div
             className="h-6 bg-muted/50 border-t flex items-center justify-between px-3 text-[10px] text-muted-foreground select-none"
             data-layout-region="statusbar"
+            onContextMenu={(event) => event.preventDefault()}
         >
             <div className="flex items-center gap-4">
                 {activeTab.largeFileMode && (

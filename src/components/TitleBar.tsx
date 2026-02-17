@@ -228,6 +228,10 @@ export function TitleBar() {
     const handleMinimize = () => appWindow.minimize();
     const handleMaximize = () => appWindow.toggleMaximize();
     const handleClose = () => appWindow.close();
+    const handleWindowControlContextMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -902,6 +906,7 @@ export function TitleBar() {
                                     type="button"
                                     style={noDragStyle}
                                     draggable={false}
+                                    onContextMenu={handleWindowControlContextMenu}
                                     onPointerDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -1079,6 +1084,7 @@ export function TitleBar() {
                 <button
                     type="button"
                     onClick={() => void handleToggleAlwaysOnTop()}
+                    onContextMenu={handleWindowControlContextMenu}
                     className={cn(
                         'h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors',
                         isAlwaysOnTop && 'bg-accent text-accent-foreground'
@@ -1090,6 +1096,7 @@ export function TitleBar() {
                 <button
                     type="button"
                     onClick={() => toggleSettings(true)}
+                    onContextMenu={handleWindowControlContextMenu}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                     title={tr('titleBar.settings')}
                 >
@@ -1099,6 +1106,7 @@ export function TitleBar() {
                 <button
                     type="button"
                     onClick={handleMinimize}
+                    onContextMenu={handleWindowControlContextMenu}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                 >
                     <Minus className="w-4 h-4" />
@@ -1106,6 +1114,7 @@ export function TitleBar() {
                 <button
                     type="button"
                     onClick={handleMaximize}
+                    onContextMenu={handleWindowControlContextMenu}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
                 >
                     <Square className="w-3.5 h-3.5" />
@@ -1113,6 +1122,7 @@ export function TitleBar() {
                 <button
                     type="button"
                     onClick={handleClose}
+                    onContextMenu={handleWindowControlContextMenu}
                     className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center rounded-md transition-colors"
                 >
                     <X className="w-4 h-4" />

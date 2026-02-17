@@ -41,6 +41,18 @@ describe("StatusBar", () => {
     expect(screen.getByText("Rutar Ready")).toBeInTheDocument();
   });
 
+  it("prevents native context menu in ready state", () => {
+    const { container } = render(<StatusBar />);
+    const statusbarRoot = container.querySelector('[data-layout-region="statusbar"]') as HTMLElement | null;
+    expect(statusbarRoot).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (statusbarRoot as HTMLElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it("shows active tab status and gesture preview", async () => {
     const tab = createTab({ id: "tab-status" });
     useStore.getState().addTab(tab);
@@ -63,6 +75,21 @@ describe("StatusBar", () => {
     await waitFor(() => {
       expect(screen.getByText("Mouse Gestures: RD")).toBeInTheDocument();
     });
+  });
+
+  it("prevents native context menu when active tab exists", () => {
+    const tab = createTab({ id: "tab-status-context-active" });
+    useStore.getState().addTab(tab);
+
+    const { container } = render(<StatusBar />);
+    const statusbarRoot = container.querySelector('[data-layout-region="statusbar"]') as HTMLElement | null;
+    expect(statusbarRoot).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (statusbarRoot as HTMLElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("changes syntax and calls backend command", async () => {

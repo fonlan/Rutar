@@ -131,6 +131,147 @@ describe("SearchReplacePanel", () => {
     expect(replaceModeButton.className).toContain("bg-primary/10");
   });
 
+  it("prevents native context menu on search sidebar root", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-search-context" }));
+    const { container } = render(<SearchReplacePanel />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("load_filter_rule_groups_config");
+    });
+
+    const sidebar = container.querySelector('[data-rutar-search-sidebar="true"]') as HTMLElement | null;
+    expect(sidebar).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    let dispatched = true;
+    act(() => {
+      dispatched = (sidebar as HTMLElement).dispatchEvent(event);
+    });
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("shows text-input context menu with only copy cut paste delete actions", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-search-input-context" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(keywordInput, { target: { value: "hello world" } });
+    keywordInput.setSelectionRange(0, 5);
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 128,
+      clientY: 144,
+    });
+    let dispatched = true;
+    act(() => {
+      dispatched = keywordInput.dispatchEvent(event);
+    });
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+
+    const menu = await screen.findByRole("menu");
+    const menuItems = within(menu).getAllByRole("menuitem");
+
+    expect(menuItems).toHaveLength(4);
+    expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
+      "Copy",
+      "Cut",
+      "Paste",
+      "Delete",
+    ]);
+  });
+
+  it("executes copy cut paste delete actions from text-input context menu", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    const readTextMock = vi.fn(async () => "PASTED");
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+        readText: readTextMock,
+      },
+    });
+
+    useStore.getState().addTab(createTab({ id: "tab-search-input-context-actions" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(keywordInput, { target: { value: "hello world" } });
+
+    const openContextMenu = async () => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 148,
+        clientY: 166,
+      });
+
+      let dispatched = true;
+      act(() => {
+        dispatched = keywordInput.dispatchEvent(event);
+      });
+
+      expect(dispatched).toBe(false);
+      expect(event.defaultPrevented).toBe(true);
+      return await screen.findByRole("menu");
+    };
+
+    keywordInput.setSelectionRange(0, 5);
+    let menu = await openContextMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("hello");
+    });
+    expect(keywordInput.value).toBe("hello world");
+
+    keywordInput.setSelectionRange(6, 11);
+    menu = await openContextMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Cut" }));
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("world");
+      expect(keywordInput.value).toBe("hello ");
+    });
+
+    keywordInput.setSelectionRange(6, 6);
+    menu = await openContextMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Paste" }));
+
+    await waitFor(() => {
+      expect(readTextMock).toHaveBeenCalledTimes(1);
+      expect(keywordInput.value).toBe("hello PASTED");
+    });
+
+    keywordInput.setSelectionRange(0, 5);
+    menu = await openContextMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(keywordInput.value).toBe(" PASTED");
+    });
+  });
+
   it("switches panel mode via find/replace/filter buttons", async () => {
     useStore.getState().addTab(createTab());
     render(<SearchReplacePanel />);

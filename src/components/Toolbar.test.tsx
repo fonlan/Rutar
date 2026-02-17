@@ -145,6 +145,18 @@ describe("Toolbar", () => {
     expect(wordCountWrapper.querySelector("button")).toBeDisabled();
   });
 
+  it("prevents native context menu on toolbar root", () => {
+    const { container } = render(<Toolbar />);
+    const toolbarRoot = container.querySelector('[data-layout-region="toolbar"]') as HTMLElement | null;
+    expect(toolbarRoot).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (toolbarRoot as HTMLElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it("disables live preview for non-markdown tab and auto-closes preview panel", async () => {
     useStore.getState().addTab(createTab({ path: "C:\\repo\\main.ts", name: "main.ts" }));
     useStore.setState({ markdownPreviewOpen: true });
@@ -2205,7 +2217,7 @@ describe("Toolbar", () => {
     });
   });
 
-  it("opens containing folder from recent file item context menu", async () => {
+  it("does not open recent file context menu on right click", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
       recentFiles: ["C:\\repo\\recent-context.ts"],
@@ -2219,81 +2231,13 @@ describe("Toolbar", () => {
     const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
     fireEvent.click(openFileButtons[1]);
     const recentItemRow = await screen.findByTitle("C:\\repo\\recent-context.ts");
-    fireEvent.contextMenu(recentItemRow);
-    const openContainingButton = await screen.findByRole("button", { name: "Open Containing Folder" });
-    fireEvent.pointerDown(openContainingButton);
-    expect(screen.getByRole("button", { name: "Open Containing Folder" })).toBeInTheDocument();
-    fireEvent.click(openContainingButton);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = recentItemRow.dispatchEvent(event);
 
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("open_in_file_manager", {
-        path: "C:\\repo\\recent-context.ts",
-      });
-    });
-  });
-
-  it("closes recent file item context menu on outside pointerdown", async () => {
-    useStore.getState().addTab(createTab());
-    useStore.getState().updateSettings({
-      recentFiles: ["C:\\repo\\recent-context-close.ts"],
-    });
-
-    render(<Toolbar />);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
-    });
-
-    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
-    fireEvent.click(openFileButtons[1]);
-    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-context-close.ts");
-    fireEvent.contextMenu(recentItemRow);
-    expect(await screen.findByRole("button", { name: "Open Containing Folder" })).toBeInTheDocument();
-
-    fireEvent.pointerDown(document.body);
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Open Containing Folder" })).toBeNull();
-    });
-  });
-
-  it("logs error when opening containing folder from recent file item context menu fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    useStore.getState().addTab(createTab());
-    useStore.getState().updateSettings({
-      recentFiles: ["C:\\repo\\recent-context-error.ts"],
-    });
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "get_edit_history_state") {
-        return {
-          canUndo: false,
-          canRedo: false,
-          isDirty: false,
-        };
-      }
-      if (command === "open_in_file_manager") {
-        throw new Error("open-recent-directory-failed");
-      }
-      return undefined;
-    });
-
-    render(<Toolbar />);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
-    });
-
-    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
-    fireEvent.click(openFileButtons[1]);
-    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-context-error.ts");
-    fireEvent.contextMenu(recentItemRow);
-    fireEvent.click(await screen.findByRole("button", { name: "Open Containing Folder" }));
-
-    await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith(
-        "Failed to open recent file directory:",
-        expect.any(Error)
-      );
-    });
-    errorSpy.mockRestore();
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("button", { name: "Open Containing Folder" })).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith("open_in_file_manager", expect.anything());
   });
 
   it("opens file from primary split button using dialog result", async () => {

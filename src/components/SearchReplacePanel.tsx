@@ -30,7 +30,7 @@ import {
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { cn } from '@/lib/utils';
-import { getSearchPanelMessages } from '@/i18n';
+import { getSearchPanelMessages, t } from '@/i18n';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
@@ -219,6 +219,16 @@ interface TabSearchPanelSnapshot {
   filterRulesKey: string;
 }
 
+type SearchSidebarTextInputElement = HTMLInputElement | HTMLTextAreaElement;
+type SearchSidebarInputContextAction = 'copy' | 'cut' | 'paste' | 'delete';
+
+interface SearchSidebarInputContextMenuState {
+  x: number;
+  y: number;
+  hasSelection: boolean;
+  canEdit: boolean;
+}
+
 const SEARCH_CHUNK_SIZE = 300;
 const FILTER_CHUNK_SIZE = 300;
 const RESULT_PANEL_DEFAULT_HEIGHT = 224;
@@ -230,6 +240,15 @@ const SEARCH_SIDEBAR_MAX_WIDTH = 900;
 const SEARCH_SIDEBAR_RIGHT_OFFSET = 12;
 const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
 const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
+const TEXT_INPUT_TYPES = new Set([
+  'text',
+  'search',
+  'url',
+  'tel',
+  'email',
+  'password',
+  'number',
+]);
 
 function getReservedLayoutHeight(selector: string) {
   const elements = document.querySelectorAll<HTMLElement>(selector);
@@ -538,6 +557,60 @@ async function writePlainTextToClipboard(text: string) {
   }
 }
 
+function resolveSearchSidebarTextInputTarget(
+  target: EventTarget | null
+): SearchSidebarTextInputElement | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  const inputElement = target.closest('input, textarea');
+  if (!inputElement) {
+    return null;
+  }
+
+  if (inputElement instanceof HTMLTextAreaElement) {
+    return inputElement;
+  }
+
+  if (!(inputElement instanceof HTMLInputElement)) {
+    return null;
+  }
+
+  const inputType = (inputElement.type || 'text').toLowerCase();
+  return TEXT_INPUT_TYPES.has(inputType) ? inputElement : null;
+}
+
+function getTextInputSelectionRange(input: SearchSidebarTextInputElement) {
+  const start = input.selectionStart ?? 0;
+  const rawEnd = input.selectionEnd ?? start;
+  const end = rawEnd < start ? start : rawEnd;
+  return { start, end };
+}
+
+function hasTextInputSelection(input: SearchSidebarTextInputElement) {
+  const { start, end } = getTextInputSelectionRange(input);
+  return end > start;
+}
+
+function isTextInputEditable(input: SearchSidebarTextInputElement) {
+  return !input.readOnly && !input.disabled;
+}
+
+function dispatchTextInputEvent(input: SearchSidebarTextInputElement) {
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function replaceSelectedInputText(
+  input: SearchSidebarTextInputElement,
+  text: string,
+  selectionMode: SelectionMode
+) {
+  const { start, end } = getTextInputSelectionRange(input);
+  input.setRangeText(text, start, end, selectionMode);
+  dispatchTextInputEvent(input);
+}
+
 export function SearchReplacePanel() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -588,9 +661,13 @@ export function SearchReplacePanel() {
   const [isSearchUiFocused, setIsSearchUiFocused] = useState(false);
   const [isSearchUiPointerActive, setIsSearchUiPointerActive] = useState(false);
   const [isSearchUiPinnedActive, setIsSearchUiPinnedActive] = useState(false);
+  const [inputContextMenu, setInputContextMenu] = useState<SearchSidebarInputContextMenuState | null>(null);
 
   const isReplaceMode = panelMode === 'replace';
   const isFilterMode = panelMode === 'filter';
+  const inputContextCopyLabel = useMemo(() => t(language, 'toolbar.copy'), [language]);
+  const inputContextCutLabel = useMemo(() => t(language, 'toolbar.cut'), [language]);
+  const inputContextPasteLabel = useMemo(() => t(language, 'toolbar.paste'), [language]);
   const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
   const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
   const normalizedFilterRuleGroups = useMemo(
@@ -616,6 +693,8 @@ export function SearchReplacePanel() {
   const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const inputContextMenuTargetRef = useRef<SearchSidebarTextInputElement | null>(null);
+  const inputContextMenuRef = useRef<HTMLDivElement>(null);
   const resultListRef = useRef<HTMLDivElement>(null);
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
@@ -708,6 +787,11 @@ export function SearchReplacePanel() {
   const previousActiveTabIdRef = useRef<string | null>(null);
   const previousIsOpenRef = useRef(false);
   const blurUpdateTimerRef = useRef<number | null>(null);
+
+  const closeInputContextMenu = useCallback(() => {
+    setInputContextMenu(null);
+    inputContextMenuTargetRef.current = null;
+  }, []);
 
   const isTargetInsideSearchSidebar = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Node)) {
@@ -818,6 +902,56 @@ export function SearchReplacePanel() {
       window.removeEventListener('pointerdown', handleGlobalPointerDown, true);
     };
   }, [isTargetInsideSearchSidebar]);
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    closeInputContextMenu();
+  }, [closeInputContextMenu, isOpen]);
+
+  useEffect(() => {
+    if (!inputContextMenu) {
+      return;
+    }
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        closeInputContextMenu();
+        return;
+      }
+
+      if (inputContextMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      closeInputContextMenu();
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeInputContextMenu();
+      }
+    };
+
+    const closeOnWindowBlur = () => {
+      closeInputContextMenu();
+    };
+
+    window.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('blur', closeOnWindowBlur);
+    window.addEventListener('resize', closeOnWindowBlur);
+
+    return () => {
+      window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('blur', closeOnWindowBlur);
+      window.removeEventListener('resize', closeOnWindowBlur);
+    };
+  }, [closeInputContextMenu, inputContextMenu]);
 
   useEffect(() => {
     return () => {
@@ -3490,6 +3624,93 @@ export function SearchReplacePanel() {
     }
   }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
 
+  const handleInputContextMenuAction = useCallback(
+    async (action: SearchSidebarInputContextAction) => {
+      const inputTarget = inputContextMenuTargetRef.current;
+      closeInputContextMenu();
+
+      if (!inputTarget) {
+        return;
+      }
+
+      const { start, end } = getTextInputSelectionRange(inputTarget);
+      const hasSelection = end > start;
+      const selectedText = hasSelection ? inputTarget.value.slice(start, end) : '';
+      const canEdit = isTextInputEditable(inputTarget);
+
+      try {
+        if (action === 'copy') {
+          if (!hasSelection) {
+            return;
+          }
+
+          await writePlainTextToClipboard(selectedText);
+          return;
+        }
+
+        if (action === 'cut') {
+          if (!canEdit || !hasSelection) {
+            return;
+          }
+
+          await writePlainTextToClipboard(selectedText);
+          replaceSelectedInputText(inputTarget, '', 'start');
+          return;
+        }
+
+        if (action === 'paste') {
+          if (!canEdit) {
+            return;
+          }
+
+          let clipboardText = '';
+          if (navigator.clipboard?.readText) {
+            clipboardText = await navigator.clipboard.readText();
+          } else {
+            inputTarget.focus();
+            if (document.execCommand('paste')) {
+              return;
+            }
+          }
+
+          replaceSelectedInputText(inputTarget, clipboardText, 'end');
+          return;
+        }
+
+        if (!canEdit || !hasSelection) {
+          return;
+        }
+
+        replaceSelectedInputText(inputTarget, '', 'start');
+      } catch (error) {
+        console.error('Search sidebar input context action failed:', error);
+      }
+    },
+    [closeInputContextMenu]
+  );
+
+  const handleSearchSidebarContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const textInputTarget = resolveSearchSidebarTextInputTarget(event.target);
+      if (!textInputTarget) {
+        event.preventDefault();
+        closeInputContextMenu();
+        return;
+      }
+
+      event.preventDefault();
+      textInputTarget.focus();
+      inputContextMenuTargetRef.current = textInputTarget;
+      setInputContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        hasSelection: hasTextInputSelection(textInputTarget),
+        canEdit: isTextInputEditable(textInputTarget),
+      });
+    },
+    [closeInputContextMenu]
+  );
+
   if (!activeTab) {
     return null;
   }
@@ -3512,6 +3733,7 @@ export function SearchReplacePanel() {
             ? 'translateX(0)'
             : `translateX(calc(100% + ${SEARCH_SIDEBAR_RIGHT_OFFSET}px))`,
         }}
+        onContextMenu={handleSearchSidebarContextMenu}
       >
         <div
           className={cn(
@@ -4077,6 +4299,56 @@ export function SearchReplacePanel() {
           )}
         />
       </div>
+
+      {inputContextMenu && (
+        <div
+          ref={inputContextMenuRef}
+          role="menu"
+          className="fixed z-[60] min-w-[120px] rounded-md border border-border bg-background p-1 shadow-2xl"
+          style={{
+            left: `${inputContextMenu.x}px`,
+            top: `${inputContextMenu.y}px`,
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void handleInputContextMenuAction('copy')}
+            disabled={!inputContextMenu.hasSelection}
+          >
+            {inputContextCopyLabel}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void handleInputContextMenuAction('cut')}
+            disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
+          >
+            {inputContextCutLabel}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void handleInputContextMenuAction('paste')}
+            disabled={!inputContextMenu.canEdit}
+          >
+            {inputContextPasteLabel}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void handleInputContextMenuAction('delete')}
+            disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
+          >
+            {messages.filterDeleteRule}
+          </button>
+        </div>
+      )}
 
       {resultPanelState !== 'closed' && (
         <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-[35] px-2 pb-2">

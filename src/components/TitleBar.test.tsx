@@ -146,6 +146,60 @@ describe("TitleBar", () => {
     });
   });
 
+  it("prevents native context menu on title-bar control buttons", async () => {
+    const tab = createTab({ id: "tab-window-controls-context", name: "window-context.ts", path: "C:\\repo\\window-context.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const { container } = render(<TitleBar />);
+    const alwaysOnTopButton = await screen.findByRole("button", { name: "Enable Always on Top" });
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    const minimizeButton = container.querySelector(".lucide-minus")?.closest("button");
+    const maximizeButton = container.querySelector(".lucide-square")?.closest("button");
+    const closeButton = maximizeButton?.nextElementSibling as HTMLButtonElement | null;
+
+    expect(minimizeButton).not.toBeNull();
+    expect(maximizeButton).not.toBeNull();
+    expect(closeButton).not.toBeNull();
+
+    const assertContextMenuPrevented = (button: HTMLElement) => {
+      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      const dispatched = button.dispatchEvent(event);
+      expect(dispatched).toBe(false);
+      expect(event.defaultPrevented).toBe(true);
+    };
+
+    assertContextMenuPrevented(alwaysOnTopButton);
+    assertContextMenuPrevented(settingsButton);
+    assertContextMenuPrevented(minimizeButton as HTMLButtonElement);
+    assertContextMenuPrevented(maximizeButton as HTMLButtonElement);
+    assertContextMenuPrevented(closeButton as HTMLButtonElement);
+  });
+
+  it("prevents context menu on tab close button", () => {
+    const tab = createTab({ id: "tab-close-btn-context", name: "close-btn.ts", path: "C:\\repo\\close-btn.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+    const tabRow = screen.getByText("close-btn.ts").closest("div.group.flex.items-center");
+    expect(tabRow).not.toBeNull();
+
+    const closeTabButton = tabRow?.querySelector("button");
+    expect(closeTabButton).not.toBeNull();
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = (closeTabButton as HTMLButtonElement).dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("button", { name: "Copy File Name" })).toBeNull();
+  });
+
   it("logs error when toggling always-on-top fails", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const tab = createTab({ id: "tab-top-fail", name: "top.ts", path: "C:\\repo\\top.ts" });
