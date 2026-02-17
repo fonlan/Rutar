@@ -1158,6 +1158,190 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('clears source matched row when source text updates invalidate search rows', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container, rerender } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+
+    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(0);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(0);
+    });
+
+    const sourceMismatchDiffTab = createDiffTab({
+      id: diffTab.id,
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['alpha', 'beta'],
+        alignedTargetLines: ['right-1', 'right-2'],
+        alignedSourcePresent: [true, true],
+        alignedTargetPresent: [true, true],
+        sourceLineCount: 2,
+        targetLineCount: 2,
+        alignedLineCount: 2,
+        diffLineNumbers: [1, 2],
+        sourceDiffLineNumbers: [1, 2],
+        targetDiffLineNumbers: [1, 2],
+      }),
+    });
+    rerender(React.createElement(DiffEditor, { tab: sourceMismatchDiffTab }));
+    await waitFor(() => {
+      expect(sourceTextarea.value.startsWith('alpha')).toBe(true);
+    });
+
+    rerender(React.createElement(DiffEditor, { tab: diffTab }));
+    await waitFor(() => {
+      expect(sourceTextarea.value.startsWith('left-1')).toBe(true);
+    });
+
+    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(0);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+    });
+  });
+
+  it('clears target matched row when target text updates invalidate search rows', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container, rerender } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
+
+    fireEvent.change(targetSearchInput, { target: { value: 'right' } });
+    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(targetTextarea.selectionStart).toBe(0);
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(0);
+    });
+
+    const targetMismatchDiffTab = createDiffTab({
+      id: diffTab.id,
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['left-1', 'left-2'],
+        alignedTargetLines: ['alpha', 'beta'],
+        alignedSourcePresent: [true, true],
+        alignedTargetPresent: [true, true],
+        sourceLineCount: 2,
+        targetLineCount: 2,
+        alignedLineCount: 2,
+        diffLineNumbers: [1, 2],
+        sourceDiffLineNumbers: [1, 2],
+        targetDiffLineNumbers: [1, 2],
+      }),
+    });
+    rerender(React.createElement(DiffEditor, { tab: targetMismatchDiffTab }));
+    await waitFor(() => {
+      expect(targetTextarea.value.startsWith('alpha')).toBe(true);
+    });
+
+    rerender(React.createElement(DiffEditor, { tab: diffTab }));
+    await waitFor(() => {
+      expect(targetTextarea.value.startsWith('right-1')).toBe(true);
+    });
+
+    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(targetTextarea.selectionStart).toBe(0);
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(targetTextarea.selectionStart);
+    });
+  });
+
+  it('keeps source selection unchanged when enter is pressed with no source search match', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(3, 3);
+      fireEvent.change(sourceSearchInput, { target: { value: 'zzz-not-found' } });
+      fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    });
+
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(3);
+      expect(sourceTextarea.selectionEnd).toBe(3);
+    });
+  });
+
+  it('keeps target selection unchanged when enter is pressed with no target search match', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(4, 4);
+      fireEvent.change(targetSearchInput, { target: { value: 'zzz-not-found' } });
+      fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.selectionStart).toBe(4);
+      expect(targetTextarea.selectionEnd).toBe(4);
+    });
+  });
+
   it('handles source textarea change and tab key insertion', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
