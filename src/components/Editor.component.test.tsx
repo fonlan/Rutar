@@ -496,6 +496,54 @@ describe('Editor component', () => {
     }
   });
 
+  it('ignores non-array syntax-token fetch result without updating token cache', async () => {
+    const tab = createTab({ id: 'tab-token-fetch-non-array', lineCount: 12 });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        return { invalid: true } as unknown as Array<Array<{ text: string; type: string }>>;
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'get_syntax_token_lines',
+        expect.objectContaining({
+          id: tab.id,
+        })
+      );
+    });
+  });
+
   it('handles non-array huge editable chunk result without crashing', async () => {
     const tab = createTab({ id: 'tab-huge-chunk-non-array', lineCount: 22000 });
 
@@ -1205,6 +1253,23 @@ describe('Editor component', () => {
     } finally {
       bodyRemoveSpy.mockRestore();
     }
+  });
+
+  it('keeps editor user-select styles unchanged when pointerup occurs without scrollbar drag', async () => {
+    const tab = createTab({ id: 'tab-scrollbar-guard-pointerup' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.style.userSelect = 'none';
+    textarea.style.webkitUserSelect = 'none';
+
+    act(() => {
+      fireEvent.pointerUp(window);
+    });
+
+    expect(textarea.style.userSelect).toBe('none');
+    expect(textarea.style.webkitUserSelect).toBe('none');
   });
 
   it('keeps search highlight until search-close is sent for active tab', async () => {
@@ -2033,6 +2098,50 @@ describe('Editor component', () => {
         })
       );
       expect(textarea.value).toBe('beta\n');
+    });
+  });
+
+  it('closes context menu on outside pointerdown, Escape, blur and scroll events', async () => {
+    const tab = createTab({ id: 'tab-context-close-external-events' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const openContextMenu = async () => {
+      fireEvent.contextMenu(textarea, { clientX: 320, clientY: 240 });
+      await screen.findByRole('button', { name: 'Copy' });
+    };
+
+    await openContextMenu();
+    act(() => {
+      fireEvent.pointerDown(document.body);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+    });
+
+    await openContextMenu();
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+    });
+
+    await openContextMenu();
+    act(() => {
+      fireEvent.blur(window);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+    });
+
+    await openContextMenu();
+    act(() => {
+      fireEvent.scroll(window);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
     });
   });
 
