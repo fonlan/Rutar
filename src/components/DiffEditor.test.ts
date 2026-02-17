@@ -130,6 +130,28 @@ describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
     expect(result.targetLineCount).toBe(1);
     expect(result.alignedLineCount).toBe(2);
   });
+
+  it('pads target lines when alignedLineCount is larger than payload lengths', () => {
+    const result = diffEditorTestUtils.normalizeLineDiffResult({
+      alignedSourceLines: ['a'],
+      alignedTargetLines: ['b'],
+      alignedSourcePresent: [true],
+      alignedTargetPresent: [true],
+      diffLineNumbers: undefined as unknown as number[],
+      sourceDiffLineNumbers: undefined as unknown as number[],
+      targetDiffLineNumbers: undefined as unknown as number[],
+      sourceLineCount: 1,
+      targetLineCount: 1,
+      alignedLineCount: 3,
+    });
+
+    expect(result.alignedSourceLines).toEqual(['a', '', '']);
+    expect(result.alignedTargetLines).toEqual(['b', '', '']);
+    expect(result.diffLineNumbers).toEqual([]);
+    expect(result.sourceDiffLineNumbers).toEqual([]);
+    expect(result.targetDiffLineNumbers).toEqual([]);
+    expect(result.alignedLineCount).toBe(3);
+  });
 });
 
 describe('diffEditorTestUtils.buildInitialDiff', () => {
@@ -203,6 +225,19 @@ describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
     expect(result.targetLineCount).toBe(2);
     expect(result.alignedLineCount).toBe(2);
   });
+
+  it('includes source-side diff lines when source row is concrete and target row is virtual', () => {
+    const result = diffEditorTestUtils.buildAlignedDiffMetadata(
+      ['source-only'],
+      [''],
+      [true],
+      [false]
+    );
+
+    expect(result.diffLineNumbers).toEqual([1]);
+    expect(result.sourceDiffLineNumbers).toEqual([1]);
+    expect(result.targetDiffLineNumbers).toEqual([]);
+  });
 });
 
 describe('diffEditorTestUtils.findAlignedRowIndexByLineNumber', () => {
@@ -263,6 +298,10 @@ describe('diffEditorTestUtils.getNextMatchedRow', () => {
     expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 5, 'prev')).toBe(2);
     expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 3, 'prev')).toBe(8);
   });
+
+  it('returns null when no matched rows are available', () => {
+    expect(diffEditorTestUtils.getNextMatchedRow([], null, 'next')).toBeNull();
+  });
 });
 
 describe('diffEditorTestUtils.reconcilePresenceAfterTextEdit', () => {
@@ -280,6 +319,7 @@ describe('diffEditorTestUtils trailing-newline and serialization helpers', () =>
   it('infers trailing newline only for multiline with empty last line', () => {
     expect(diffEditorTestUtils.inferTrailingNewlineFromLines(1, [''])).toBe(false);
     expect(diffEditorTestUtils.inferTrailingNewlineFromLines(2, ['hello', ''])).toBe(true);
+    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(2, [])).toBe(false);
   });
 
   it('serializes lines with optional trailing newline', () => {
@@ -312,16 +352,20 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
 
     expect(snapshots).toEqual([{ topPercent: 0, heightPercent: 100 }]);
     expect(typeof cleanup).toBe('function');
+    expect(cleanup()).toBeUndefined();
   });
 
   it('updates viewport on scroll and stops after cleanup', () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     const disconnectMock = vi.fn();
+    let resizeObserverCallback: ResizeObserverCallback | null = null;
 
     class ResizeObserverMock {
       observe = vi.fn();
       disconnect = disconnectMock;
-      constructor(_callback: ResizeObserverCallback) {}
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallback = callback;
+      }
     }
 
     Object.defineProperty(globalThis, 'ResizeObserver', {
@@ -346,6 +390,12 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
     const latestSnapshot = snapshots[snapshots.length - 1];
     expect(latestSnapshot?.topPercent).toBeCloseTo(40, 3);
     expect(latestSnapshot?.heightPercent).toBe(20);
+
+    scroller.scrollTop = 600;
+    resizeObserverCallback?.([] as ResizeObserverEntry[], {} as ResizeObserver);
+    const resizeSnapshot = snapshots[snapshots.length - 1];
+    expect(resizeSnapshot?.topPercent).toBeCloseTo(60, 3);
+    expect(resizeSnapshot?.heightPercent).toBe(20);
 
     const snapshotCountBeforeCleanup = snapshots.length;
     cleanup();
