@@ -217,6 +217,101 @@ describe('Editor component', () => {
     ).toBe(false);
   });
 
+  it('ignores stale plain-line chunk response when a newer request completes first', async () => {
+    const tab = createTab({
+      id: 'tab-large-file-stale-guard',
+      lineCount: 5000,
+      largeFileMode: true,
+    });
+    let chunkCallCount = 0;
+    let resolveFirstChunk: ((value: string[]) => void) | null = null;
+    const firstChunkPromise = new Promise<string[]>((resolve) => {
+      resolveFirstChunk = resolve;
+    });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        chunkCallCount += 1;
+        if (chunkCallCount === 1) {
+          return firstChunkPromise;
+        }
+        return ['new-plain-a', 'new-plain-b'];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 1,
+            length: 1,
+            lineText: 'new-plain-a',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('new-plain-a');
+      expect(chunkCallCount).toBeGreaterThanOrEqual(2);
+    });
+
+    await act(async () => {
+      resolveFirstChunk?.(['old-plain-a', 'old-plain-b']);
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('new-plain-a');
+    expect(container.textContent).not.toContain('old-plain-a');
+  });
+
+  it('does not highlight current line when highlightCurrentLine setting is disabled', async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: false,
+    });
+    const tab = createTab({ id: 'tab-no-current-line-highlight', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      const highlighted = Array.from(container.querySelectorAll('.editor-line')).some((line) =>
+        line.className.includes('bg-accent/45')
+      );
+      expect(highlighted).toBe(false);
+    });
+  });
+
   it('highlights only finite positive diff lines after normalization', async () => {
     const tab = createTab({
       id: 'tab-diff-highlight-normalize',
@@ -244,7 +339,7 @@ describe('Editor component', () => {
     });
 
     const { container } = render(<Editor tab={tab} />);
-    await waitForEditorTextarea(container);
+    const textarea = await waitForEditorTextarea(container);
 
     await waitFor(() => {
       expect(container.querySelector('.editor-line .min-w-0.flex-1')).toBeTruthy();
@@ -495,6 +590,81 @@ describe('Editor component', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it('ignores stale huge editable chunk response when newer request already won', async () => {
+    const tab = createTab({ id: 'tab-huge-chunk-stale-guard', lineCount: 22000 });
+    let chunkCallCount = 0;
+    let resolveFirstChunk: ((value: string[]) => void) | null = null;
+    const firstChunkPromise = new Promise<string[]>((resolve) => {
+      resolveFirstChunk = resolve;
+    });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        chunkCallCount += 1;
+        if (chunkCallCount === 1) {
+          return firstChunkPromise;
+        }
+        return ['new-huge-a', 'new-huge-b'];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 200,
+            column: 1,
+            length: 1,
+            lineText: 'new-huge-a',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toContain('new-huge-a');
+      expect(chunkCallCount).toBeGreaterThanOrEqual(2);
+    });
+
+    await act(async () => {
+      resolveFirstChunk?.(['old-huge-a', 'old-huge-b']);
+      await Promise.resolve();
+    });
+
+    expect(textarea.value).toContain('new-huge-a');
+    expect(textarea.value).not.toContain('old-huge-a');
   });
 
   it('resets huge editable textarea internal scroll offsets after force refresh sync', async () => {
@@ -937,6 +1107,31 @@ describe('Editor component', () => {
     });
   });
 
+  it('ignores external paste-text event when tab id mismatches', async () => {
+    const tab = createTab({ id: 'tab-external-paste-ignore' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:paste-text', {
+          detail: {
+            tabId: 'other-tab',
+            text: 'ZZ',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('alpha\nbeta\n');
+    });
+  });
+
   it('cleans drag cursor styles on unmount after text drag starts', async () => {
     const tab = createTab({ id: 'tab-text-drag-cleanup' });
     const { container, unmount } = render(<Editor tab={tab} />);
@@ -972,6 +1167,43 @@ describe('Editor component', () => {
     } finally {
       bodyRemoveSpy.mockRestore();
       elementRemoveSpy.mockRestore();
+    }
+  });
+
+  it('cleans drag cursor styles when active tab changes', async () => {
+    const firstTab = createTab({ id: 'tab-drag-cleanup-switch-a' });
+    const secondTab = createTab({ id: 'tab-drag-cleanup-switch-b' });
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, textarea.value.length);
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 9,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 9,
+        clientX: 40,
+        clientY: 40,
+      });
+
+      await waitFor(() => {
+        expect(document.body.style.cursor).toBe('copy');
+      });
+
+      rerender(<Editor tab={secondTab} />);
+
+      await waitFor(() => {
+        expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+      });
+    } finally {
+      bodyRemoveSpy.mockRestore();
     }
   });
 
