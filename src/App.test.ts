@@ -1,12 +1,44 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { detectOutlineType, loadOutline } from '@/lib/outline';
+import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async () => vi.fn()),
+}));
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  ask: vi.fn(async () => false),
+}));
 
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(() => ({
-    close: vi.fn(),
+    close: vi.fn(async () => undefined),
     onDragDropEvent: vi.fn(async () => vi.fn()),
     onCloseRequested: vi.fn(async () => vi.fn()),
   })),
+}));
+
+vi.mock('@/lib/openFile', () => ({
+  openFilePaths: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/lib/tabClose', () => ({
+  confirmTabClose: vi.fn(async () => 'discard'),
+  saveTab: vi.fn(async () => true),
+}));
+
+vi.mock('@/lib/outline', () => ({
+  detectOutlineType: vi.fn(),
+  loadOutline: vi.fn(async () => []),
 }));
 
 vi.mock('@/components/TitleBar', () => ({
@@ -17,11 +49,348 @@ vi.mock('@/components/Toolbar', () => ({
   Toolbar: () => React.createElement('div', { 'data-testid': 'mock-toolbar' }),
 }));
 
-vi.mock('@/components/MarkdownPreviewPanel', () => ({
-  MarkdownPreviewPanel: () => React.createElement('div', { 'data-testid': 'mock-preview' }),
+vi.mock('@/components/Editor', () => ({
+  Editor: ({ tab }: { tab: FileTab }) =>
+    React.createElement('div', { 'data-testid': 'mock-editor', 'data-tab-id': tab.id }),
 }));
 
-import { appTestUtils } from './App';
+vi.mock('@/components/DiffEditor', () => ({
+  DiffEditor: ({ tab }: { tab: FileTab }) =>
+    React.createElement('div', { 'data-testid': 'mock-diff-editor', 'data-tab-id': tab.id }),
+}));
+
+vi.mock('@/components/SettingsModal', () => ({
+  SettingsModal: () => React.createElement('div', { 'data-testid': 'mock-settings-modal' }),
+}));
+
+vi.mock('@/components/Sidebar', () => ({
+  Sidebar: () => React.createElement('div', { 'data-testid': 'mock-sidebar' }),
+}));
+
+vi.mock('@/components/BookmarkSidebar', () => ({
+  BookmarkSidebar: () => React.createElement('div', { 'data-testid': 'mock-bookmark-sidebar' }),
+}));
+
+vi.mock('@/components/StatusBar', () => ({
+  StatusBar: () => React.createElement('div', { 'data-testid': 'mock-statusbar' }),
+}));
+
+vi.mock('@/components/SearchReplacePanel', () => ({
+  SearchReplacePanel: () => React.createElement('div', { 'data-testid': 'mock-search-replace-panel' }),
+}));
+
+vi.mock('@/components/TabCloseConfirmModal', () => ({
+  TabCloseConfirmModal: () => React.createElement('div', { 'data-testid': 'mock-tab-close-confirm-modal' }),
+}));
+
+vi.mock('@/components/OutlineSidebar', () => ({
+  OutlineSidebar: ({
+    nodes,
+    activeType,
+    parseError,
+  }: {
+    nodes: Array<{ label: string }>;
+    activeType: string | null;
+    parseError: string | null;
+  }) =>
+    React.createElement('div', {
+      'data-testid': 'mock-outline-sidebar',
+      'data-node-count': String(Array.isArray(nodes) ? nodes.length : 0),
+      'data-first-label': Array.isArray(nodes) && nodes.length > 0 ? nodes[0]?.label ?? '' : '',
+      'data-outline-type': activeType ?? '',
+      'data-outline-error': parseError ?? '',
+    }),
+}));
+
+vi.mock('@/components/MarkdownPreviewPanel', () => ({
+  MarkdownPreviewPanel: ({ open, tab }: { open: boolean; tab: FileTab | null }) =>
+    React.createElement('div', {
+      'data-testid': 'mock-preview',
+      'data-open': String(open === true),
+      'data-tab-id': tab?.id ?? 'none',
+    }),
+}));
+
+import App, { appTestUtils } from './App';
+
+function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
+  return {
+    id: 'tab-file',
+    name: 'main.ts',
+    path: 'C:\\repo\\main.ts',
+    encoding: 'UTF-8',
+    lineEnding: 'LF',
+    lineCount: 5,
+    largeFileMode: false,
+    tabType: 'file',
+    ...overrides,
+  };
+}
+
+function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayload {
+  return {
+    sourceTabId: 'source-tab',
+    targetTabId: 'target-tab',
+    sourceName: 'source.ts',
+    targetName: 'target.ts',
+    sourcePath: 'C:\\repo\\source.ts',
+    targetPath: 'C:\\repo\\target.ts',
+    alignedSourceLines: ['source-line'],
+    alignedTargetLines: ['target-line'],
+    alignedSourcePresent: [true],
+    alignedTargetPresent: [true],
+    diffLineNumbers: [1],
+    sourceDiffLineNumbers: [1],
+    targetDiffLineNumbers: [1],
+    sourceLineCount: 1,
+    targetLineCount: 1,
+    alignedLineCount: 1,
+    ...overrides,
+  };
+}
+
+describe('App component', () => {
+  let initialState: ReturnType<typeof useStore.getState>;
+
+  beforeAll(() => {
+    initialState = useStore.getState();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useStore.setState(initialState, true);
+    document.documentElement.classList.remove('dark');
+
+    vi.mocked(listen).mockImplementation(async () => vi.fn());
+    vi.mocked(ask).mockResolvedValue(false);
+    vi.mocked(detectOutlineType).mockReturnValue(null);
+    vi.mocked(loadOutline).mockResolvedValue([]);
+
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'load_config') {
+        return {
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, \"Courier New\", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: false,
+          mouseGestures: [],
+        };
+      }
+      if (command === 'get_startup_paths') {
+        return [];
+      }
+      if (command === 'show_main_window_when_ready') {
+        return undefined;
+      }
+      if (command === 'has_external_file_change') {
+        return false;
+      }
+      if (command === 'save_config') {
+        return undefined;
+      }
+      if (command === 'read_dir_if_directory') {
+        return null;
+      }
+      if (command === 'new_file') {
+        return createFileTab({ id: 'startup-file-id', name: 'untitled.txt', path: 'untitled.txt' });
+      }
+      if (command === 'close_file') {
+        return undefined;
+      }
+      return undefined;
+    });
+  });
+
+  it('renders file editor for active file tab', async () => {
+    const fileTab = createFileTab({ id: 'tab-file-active' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toHaveAttribute('data-tab-id', fileTab.id);
+    });
+
+    expect(screen.queryByTestId('mock-diff-editor')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', fileTab.id);
+  });
+
+  it('renders fallback editor region when there is no active tab', async () => {
+    useStore.setState({
+      tabs: [],
+      activeTabId: null,
+    });
+
+    const { container } = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-preview')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('mock-editor')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mock-diff-editor')).not.toBeInTheDocument();
+    expect(container.querySelector('div[aria-hidden="true"]')).toBeTruthy();
+    expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', 'none');
+  });
+
+  it('renders diff editor for active diff tab and clears markdown preview file tab', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createFileTab({
+      id: 'diff-tab',
+      name: 'source.ts ↔ target.ts',
+      path: '',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    });
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-diff-editor')).toHaveAttribute('data-tab-id', diffTab.id);
+    });
+
+    expect(screen.queryByTestId('mock-editor')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', 'none');
+  });
+
+  it('auto closes outline when active file does not support outline type', async () => {
+    const fileTab = createFileTab({ id: 'tab-outline-unsupported' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue(null);
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().setOutlineData({
+        outlineType: 'json',
+        nodes: [{ label: 'legacy', nodeType: 'root', line: 1, column: 1, children: [] }],
+      });
+      useStore.getState().toggleOutline(true);
+    });
+
+    await waitFor(() => {
+      const state = useStore.getState();
+      expect(state.outlineOpen).toBe(false);
+      expect(state.outlineType).toBeNull();
+      expect(state.outlineNodes).toEqual([]);
+    });
+  });
+
+  it('loads outline and refreshes it on matching document-updated event', async () => {
+    const fileTab = createFileTab({ id: 'tab-outline-refresh' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue('json');
+    vi.mocked(loadOutline)
+      .mockResolvedValueOnce([{ label: 'root-A', nodeType: 'root', line: 1, column: 1, children: [] }])
+      .mockResolvedValueOnce([{ label: 'root-B', nodeType: 'root', line: 1, column: 1, children: [] }]);
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().toggleOutline(true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(loadOutline)).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('mock-outline-sidebar')).toHaveAttribute('data-outline-type', 'json');
+      expect(screen.getByTestId('mock-outline-sidebar')).toHaveAttribute('data-first-label', 'root-A');
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:document-updated', {
+          detail: { tabId: 'other-tab' },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(loadOutline)).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:document-updated', {
+          detail: { tabId: fileTab.id },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(loadOutline)).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('mock-outline-sidebar')).toHaveAttribute('data-first-label', 'root-B');
+    });
+  });
+
+  it('sets outline error when loading outline fails', async () => {
+    const fileTab = createFileTab({ id: 'tab-outline-error' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue('json');
+    vi.mocked(loadOutline).mockRejectedValueOnce(new Error('outline-load-failed'));
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().toggleOutline(true);
+    });
+
+    await waitFor(() => {
+      const state = useStore.getState();
+      expect(state.outlineType).toBe('json');
+      expect(state.outlineNodes).toEqual([]);
+      expect(state.outlineError).toBe('outline-load-failed');
+      expect(screen.getByTestId('mock-outline-sidebar')).toHaveAttribute(
+        'data-outline-error',
+        'outline-load-failed'
+      );
+    });
+  });
+});
 
 describe('appTestUtils.detectWindowsPlatform', () => {
   it('returns true for windows user agent', () => {
