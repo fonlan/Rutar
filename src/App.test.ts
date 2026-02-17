@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -625,6 +625,309 @@ describe('App component', () => {
       window.removeEventListener('rutar:force-refresh', forceRefreshListener as EventListener);
       window.removeEventListener('rutar:document-updated', documentUpdatedListener as EventListener);
     }
+  });
+
+  it('suppresses context menu while mouse gesture is active and executes matched action', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-active-contextmenu' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    let contextMenuEvent: MouseEvent;
+    let dispatched = true;
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 41,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 41,
+        pointerType: 'mouse',
+        clientX: 64,
+        clientY: 20,
+      });
+
+      contextMenuEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 64,
+        clientY: 20,
+      });
+      dispatched = appRoot.dispatchEvent(contextMenuEvent);
+    });
+
+    expect(dispatched).toBe(false);
+    expect(contextMenuEvent!.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(useStore.getState().sidebarOpen).toBe(true);
+    });
+  });
+
+  it('suppresses next context menu after gesture finalize and clears gesture timers on unmount', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-suppress-next' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    const { container, unmount } = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      clearTimeoutSpy.mockRestore();
+      return;
+    }
+
+    let postGestureContextMenu: MouseEvent;
+    let dispatched = true;
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 42,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 12,
+        clientY: 12,
+      });
+
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 42,
+        pointerType: 'mouse',
+        clientX: 72,
+        clientY: 12,
+      });
+
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 42,
+        pointerType: 'mouse',
+        clientX: 72,
+        clientY: 12,
+      });
+
+      postGestureContextMenu = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 72,
+        clientY: 12,
+      });
+      dispatched = appRoot.dispatchEvent(postGestureContextMenu);
+    });
+
+    expect(dispatched).toBe(false);
+    expect(postGestureContextMenu!.defaultPrevented).toBe(true);
+
+    const clearCallCountBeforeUnmount = clearTimeoutSpy.mock.calls.length;
+    unmount();
+
+    expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(clearCallCountBeforeUnmount);
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('allows context menu when no gesture suppression flag is set', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-contextmenu-allowed' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 30,
+      clientY: 30,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+  });
+
+  it('resets active gesture state on pointercancel and does not execute action', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-pointercancel' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 77,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 14,
+        clientY: 14,
+      });
+
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 77,
+        pointerType: 'mouse',
+        clientX: 60,
+        clientY: 14,
+      });
+
+      fireEvent.pointerCancel(appRoot, {
+        pointerId: 77,
+        pointerType: 'mouse',
+      });
+    });
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 60,
+      clientY: 14,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(useStore.getState().sidebarOpen).toBe(false);
   });
 });
 
