@@ -5,8 +5,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
 
+const { mermaidInitializeMock, mermaidRenderMock } = vi.hoisted(() => ({
+  mermaidInitializeMock: vi.fn(),
+  mermaidRenderMock: vi.fn(),
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
+  default: {
+    initialize: mermaidInitializeMock,
+    render: mermaidRenderMock,
+  },
 }));
 
 const invokeMock = vi.mocked(invoke);
@@ -23,6 +35,11 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     isDirty: false,
     ...partial,
   };
+}
+
+function getReactPointerDown(element: Element): ((event: unknown) => void) | undefined {
+  const propsKey = Object.keys(element as object).find((key) => key.startsWith("__reactProps$"));
+  return propsKey ? (element as any)[propsKey]?.onPointerDown : undefined;
 }
 
 describe("MarkdownPreviewPanel", () => {
@@ -52,6 +69,8 @@ describe("MarkdownPreviewPanel", () => {
     useStore.getState().updateSettings({ language: "en-US" });
     useStore.setState({ markdownPreviewWidthRatio: 0.5 });
     invokeMock.mockResolvedValue("# Hello");
+    mermaidInitializeMock.mockImplementation(() => undefined);
+    mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
   });
 
   it("shows no active document message when tab is missing", () => {
@@ -151,7 +170,10 @@ describe("MarkdownPreviewPanel", () => {
       expect(invokeMock).toHaveBeenCalled();
     });
 
-    const resizeHandle = screen.getByRole("separator", { name: "Resize markdown preview panel" });
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize markdown preview panel",
+      hidden: true,
+    });
     const previewPanel = resizeHandle.closest("[aria-hidden]") as HTMLDivElement;
     const parentElement = previewPanel.parentElement as HTMLDivElement;
     vi.spyOn(parentElement, "getBoundingClientRect").mockReturnValue({
@@ -183,5 +205,123 @@ describe("MarkdownPreviewPanel", () => {
     fireEvent.pointerUp(document, { pointerId: 7 });
     expect(document.body.style.cursor).toBe("");
     expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("ignores resize handle pointerdown when preview panel is closed", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    useStore.setState({ markdownPreviewWidthRatio: 0.5 });
+
+    render(<MarkdownPreviewPanel open={false} tab={markdownTab} />);
+
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize markdown preview panel",
+      hidden: true,
+    });
+    const setPointerCaptureMock = vi.fn();
+    Object.defineProperty(resizeHandle, "setPointerCapture", {
+      configurable: true,
+      value: setPointerCaptureMock,
+    });
+
+    fireEvent.pointerDown(resizeHandle, { pointerId: 9, clientX: 300 });
+
+    expect(useStore.getState().markdownPreviewWidthRatio).toBe(0.5);
+    expect(setPointerCaptureMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores resize pointerdown when preview panel parent element is missing", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    useStore.setState({ markdownPreviewWidthRatio: 0.5 });
+
+    const { unmount } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const resizeHandle = screen.getByRole("separator", { name: "Resize markdown preview panel" });
+    const setPointerCaptureMock = vi.fn();
+    const preventDefaultMock = vi.fn();
+    Object.defineProperty(resizeHandle, "setPointerCapture", {
+      configurable: true,
+      value: setPointerCaptureMock,
+    });
+    const pointerDown = getReactPointerDown(resizeHandle);
+    expect(pointerDown).toBeTypeOf("function");
+
+    unmount();
+    pointerDown?.({
+      preventDefault: preventDefaultMock,
+      currentTarget: resizeHandle,
+      pointerId: 10,
+      clientX: 250,
+    });
+
+    expect(useStore.getState().markdownPreviewWidthRatio).toBe(0.5);
+    expect(preventDefaultMock).not.toHaveBeenCalled();
+    expect(setPointerCaptureMock).not.toHaveBeenCalled();
+  });
+
+  it("skips wheel forwarding when no editor scroller source is available", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
+    const wheelEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 40,
+      deltaX: 20,
+    });
+
+    previewScroller.dispatchEvent(wheelEvent);
+    expect(wheelEvent.defaultPrevented).toBe(false);
+  });
+
+  it("shows mermaid fallback block when mermaid render fails", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    mermaidRenderMock.mockRejectedValueOnce(new Error("render-boom"));
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(mermaidInitializeMock).toHaveBeenCalledTimes(1);
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      const fallback = document.querySelector(".mermaid-render-error");
+      expect(fallback).not.toBeNull();
+      expect(fallback?.textContent).toContain("Mermaid render failed: render-boom");
+      expect(fallback?.textContent).toContain("graph TD;A-->B;");
+    });
+  });
+
+  it("logs error when mermaid initialization throws", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    mermaidInitializeMock.mockImplementationOnce(() => {
+      throw new Error("init-boom");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          "Failed to render mermaid diagrams:",
+          expect.objectContaining({ message: "init-boom" })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

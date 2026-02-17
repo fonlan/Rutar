@@ -32,6 +32,11 @@ function createTab(partial?: Partial<FileTab>): FileTab {
   };
 }
 
+function getReactOnClick(element: Element): (() => void) | undefined {
+  const propsKey = Object.keys(element as object).find((key) => key.startsWith("__reactProps$"));
+  return propsKey ? (element as any)[propsKey]?.onClick : undefined;
+}
+
 describe("SearchReplacePanel", () => {
   let initialState: ReturnType<typeof useStore.getState>;
   const observeMock = vi.fn();
@@ -785,6 +790,96 @@ describe("SearchReplacePanel", () => {
     expect(resultList.style.maxHeight).toBe(heightAfterMouseUp);
   });
 
+  it("ignores stale resize mousemove callback after drag cleanup", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    let staleMouseMoveHandler: ((event: MouseEvent) => void) | null = null;
+    const originalAddEventListener = window.addEventListener.bind(window);
+    const addEventListenerSpy = vi
+      .spyOn(window, "addEventListener")
+      .mockImplementation((type: any, listener: any, options?: any) => {
+        if (type === "mousemove") {
+          staleMouseMoveHandler = listener as (event: MouseEvent) => void;
+        }
+        originalAddEventListener(type, listener, options);
+      });
+
+    try {
+      useStore.getState().addTab(createTab());
+      const { container } = render(<SearchReplacePanel />);
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("rutar:search-open", {
+            detail: { mode: "find" },
+          })
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByPlaceholderText("Find text"), {
+        target: { value: "todo" },
+      });
+      fireEvent.click(screen.getByTitle("Expand results"));
+
+      const resultList = await waitFor(() => {
+        const element = container.querySelector<HTMLDivElement>('div.overflow-auto[style*="max-height"]');
+        expect(element).toBeTruthy();
+        return element as HTMLDivElement;
+      });
+
+      const resizeHandle = screen.getByLabelText("Resize results panel");
+      fireEvent.mouseDown(resizeHandle, { clientY: 400 });
+      fireEvent.mouseUp(window);
+      const heightAfterMouseUp = resultList.style.maxHeight;
+
+      expect(staleMouseMoveHandler).toBeTypeOf("function");
+      act(() => {
+        staleMouseMoveHandler?.(new MouseEvent("mousemove", { clientY: 120 }));
+      });
+
+      expect(resultList.style.maxHeight).toBe(heightAfterMouseUp);
+    } finally {
+      addEventListenerSpy.mockRestore();
+    }
+  });
+
   it("closes minimized search results panel from minimized-strip close button", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -1206,6 +1301,63 @@ describe("SearchReplacePanel", () => {
 
     const copyButton = await screen.findByTitle("Copy results as plain text");
     expect(copyButton).toBeDisabled();
+  });
+
+  it("shows empty-copy feedback when forced copy runs with empty result list", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 0,
+          matchedLines: 0,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    const copyButton = await screen.findByTitle("Copy results as plain text");
+    expect(copyButton).toBeDisabled();
+
+    const onClick = getReactOnClick(copyButton);
+    expect(onClick).toBeTypeOf("function");
+    act(() => {
+      onClick?.();
+    });
+
+    expect(screen.getByText((text) => text.includes("No results to copy"))).toBeInTheDocument();
   });
 
   it("applies result filter when Enter is pressed in result-filter input", async () => {

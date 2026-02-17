@@ -135,4 +135,65 @@ describe("OutlineSidebar", () => {
 
     expect(dispatchNavigateMock).toHaveBeenCalledWith("tab-outline", 8, 2);
   });
+
+  it("closes sidebar and prevents default context menu", () => {
+    const { container } = render(
+      <OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />
+    );
+
+    const root = container.firstElementChild as HTMLDivElement;
+    expect(root).not.toBeNull();
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    root.dispatchEvent(contextMenuEvent);
+    expect(contextMenuEvent.defaultPrevented).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Sidebar" }));
+    expect(useStore.getState().outlineOpen).toBe(false);
+  });
+
+  it("does not navigate when active tab is missing and keeps leaf row visible", () => {
+    useStore.setState({ activeTabId: null });
+
+    render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
+
+    const leafLabel = screen.getByText("Leaf");
+    fireEvent.click(leafLabel);
+    expect(dispatchNavigateMock).not.toHaveBeenCalled();
+
+    const leafRow = leafLabel.closest("div");
+    expect(leafRow).not.toBeNull();
+    const toggleSpan = leafRow?.querySelector("span.w-4.h-4.flex.items-center.justify-center");
+    expect(toggleSpan).not.toBeNull();
+    fireEvent.click(toggleSpan as HTMLSpanElement);
+
+    expect(screen.getByText("Leaf")).toBeInTheDocument();
+    expect(screen.getByText("Child")).toBeInTheDocument();
+  });
+
+  it("shows search empty state when outline filter command fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    invokeMock.mockRejectedValueOnce(new Error("filter-boom"));
+
+    try {
+      render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
+
+      fireEvent.change(screen.getByPlaceholderText("Search outline..."), {
+        target: { value: "leaf" },
+      });
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          "Failed to filter outline nodes:",
+          expect.objectContaining({ message: "filter-boom" })
+        );
+      });
+
+      expect(screen.getByText("No matching items")).toBeInTheDocument();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

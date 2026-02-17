@@ -176,6 +176,88 @@ describe("useResizeObserver", () => {
     rafSpy.mockRestore();
   });
 
+  it("keeps previous size when frame update delta is below threshold", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const observeMock = vi.fn();
+    const disconnectMock = vi.fn();
+    const queuedFrames: FrameRequestCallback[] = [];
+
+    class MockResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe = observeMock;
+      disconnect = disconnectMock;
+    }
+
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        queuedFrames.push(callback);
+        return queuedFrames.length;
+      });
+
+    function TestComponent() {
+      const { ref, width, height } = useResizeObserver<HTMLDivElement>();
+      return (
+        <div>
+          <div ref={ref} data-testid="target" />
+          <span data-testid="size">
+            {width},{height}
+          </span>
+        </div>
+      );
+    }
+
+    const { unmount } = render(<TestComponent />);
+
+    act(() => {
+      resizeCallback?.(
+        [
+          {
+            contentRect: {
+              width: 120,
+              height: 80,
+            },
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver
+      );
+    });
+    expect(screen.getByTestId("size").textContent).toBe("0,0");
+
+    act(() => {
+      queuedFrames.shift()?.(0);
+    });
+    expect(screen.getByTestId("size").textContent).toBe("120,80");
+
+    act(() => {
+      resizeCallback?.(
+        [
+          {
+            contentRect: {
+              width: 120.2,
+              height: 80.3,
+            },
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver
+      );
+    });
+    expect(rafSpy).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      queuedFrames.shift()?.(16);
+    });
+    expect(screen.getByTestId("size").textContent).toBe("120,80");
+
+    unmount();
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+    rafSpy.mockRestore();
+  });
+
   it("ignores empty entries and cancels pending frame on unmount", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     const observeMock = vi.fn();

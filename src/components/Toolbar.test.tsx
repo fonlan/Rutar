@@ -1761,6 +1761,77 @@ describe("Toolbar", () => {
     editor.remove();
   });
 
+  it("enables cut/copy from dom range selection when editor element is not textarea", async () => {
+    useStore.getState().addTab(createTab());
+
+    const editor = document.createElement("div");
+    editor.className = "editor-input-layer";
+    editor.textContent = "fallback selection";
+    document.body.appendChild(editor);
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    try {
+      render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+      });
+
+      document.dispatchEvent(new Event("selectionchange"));
+
+      const cutWrapper = screen.getByTitle((title) => title.includes("Cut"));
+      const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
+      await waitFor(() => {
+        expect(cutWrapper.querySelector("button")).not.toBeDisabled();
+        expect(copyWrapper.querySelector("button")).not.toBeDisabled();
+      });
+    } finally {
+      selection?.removeAllRanges();
+      editor.remove();
+    }
+  });
+
+  it("keeps cut/copy disabled when dom selection in fallback path is collapsed", async () => {
+    useStore.getState().addTab(createTab());
+
+    const editor = document.createElement("div");
+    editor.className = "editor-input-layer";
+    editor.textContent = "collapsed";
+    document.body.appendChild(editor);
+
+    const selection = window.getSelection();
+    const textNode = editor.firstChild;
+    const range = document.createRange();
+    if (textNode) {
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, 0);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+
+    try {
+      render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+      });
+
+      document.dispatchEvent(new Event("selectionchange"));
+
+      const cutWrapper = screen.getByTitle((title) => title.includes("Cut"));
+      const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
+      expect(cutWrapper.getAttribute("title")).toContain("No selected text");
+      expect(cutWrapper.querySelector("button")).toBeDisabled();
+      expect(copyWrapper.querySelector("button")).toBeDisabled();
+    } finally {
+      selection?.removeAllRanges();
+      editor.remove();
+    }
+  });
+
   it("refreshes clipboard selection state through selectionchange raf flush", async () => {
     useStore.getState().addTab(createTab());
     let rafCallback: FrameRequestCallback | null = null;
@@ -1783,6 +1854,45 @@ describe("Toolbar", () => {
       });
     } finally {
       rafSpy.mockRestore();
+    }
+  });
+
+  it("keeps cut/copy disabled after selectionchange when active tab is in large-file mode", async () => {
+    useStore.getState().addTab(createTab({ largeFileMode: true }));
+    const editor = document.createElement("textarea");
+    editor.className = "editor-input-layer";
+    editor.value = "hello";
+    document.body.appendChild(editor);
+    editor.focus();
+    editor.setSelectionRange(0, 5);
+
+    let rafCallback: FrameRequestCallback | null = null;
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      rafCallback = callback;
+      return 11;
+    });
+
+    try {
+      render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+      });
+
+      document.dispatchEvent(new Event("selectionchange"));
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      const cutWrapper = screen.getByTitle((title) => title.includes("Cut"));
+      const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
+      expect(cutWrapper.getAttribute("title")).toContain("No selected text");
+      expect(cutWrapper.querySelector("button")).toBeDisabled();
+      expect(copyWrapper.querySelector("button")).toBeDisabled();
+    } finally {
+      rafSpy.mockRestore();
+      editor.remove();
     }
   });
 

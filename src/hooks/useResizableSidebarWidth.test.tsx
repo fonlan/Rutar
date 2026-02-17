@@ -136,6 +136,59 @@ describe("useResizableSidebarWidth", () => {
     rafSpy.mockRestore();
   });
 
+  it("does not schedule a second animation frame while one is pending", () => {
+    const onWidthChange = vi.fn();
+    let rafCallback: FrameRequestCallback | null = null;
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        rafCallback = callback;
+        return 23;
+      });
+
+    const { result } = renderHook(() =>
+      useResizableSidebarWidth({
+        width: 240,
+        minWidth: 200,
+        maxWidth: 400,
+        onWidthChange,
+      })
+    );
+
+    const container = document.createElement("div");
+    act(() => {
+      result.current.containerRef.current = container;
+    });
+
+    act(() => {
+      result.current.startResize({
+        preventDefault: vi.fn(),
+        clientX: 100,
+      } as unknown as ReactPointerEvent<HTMLDivElement>);
+    });
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 180 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 260 }));
+    });
+
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+    expect(container.style.width).toBe("240px");
+
+    act(() => {
+      rafCallback?.(0);
+    });
+
+    expect(container.style.width).toBe("400px");
+
+    act(() => {
+      window.dispatchEvent(new Event("pointerup"));
+    });
+
+    expect(onWidthChange).toHaveBeenCalledWith(400);
+    rafSpy.mockRestore();
+  });
+
   it("applies clamped width to container when not resizing and width prop updates", () => {
     const onWidthChange = vi.fn();
     const { result, rerender } = renderHook(
