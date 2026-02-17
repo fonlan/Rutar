@@ -973,6 +973,118 @@ describe('App component', () => {
     });
   });
 
+  it('skips duplicate external-change checks while current check is pending', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-listener-pending' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    const hasExternalChangeDeferred = createDeferred<boolean>();
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+      return () => undefined;
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => hasExternalChangeDeferred.promise,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      const checkCount = vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+      expect(checkCount).toBe(1);
+      expect(externalChangedHandler).toBeTruthy();
+    });
+
+    act(() => {
+      externalChangedHandler?.({ payload: { id: fileTab.id } });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const checkCountAfter = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+    expect(checkCountAfter).toBe(1);
+
+    await act(async () => {
+      hasExternalChangeDeferred.resolve(false);
+      await hasExternalChangeDeferred.promise;
+    });
+  });
+
+  it('logs error when checking external file change fails', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-check-failed' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => {
+          throw new Error('external-change-check-failed');
+        },
+      })
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          `Failed to check external file change: ${fileTab.path}`,
+          expect.objectContaining({ message: 'external-change-check-failed' })
+        );
+      });
+      expect(vi.mocked(ask)).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('returns when external-change tab is removed before prompt stage', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-gone-before-prompt' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => {
+          useStore.getState().closeTab(fileTab.id);
+          return true;
+        },
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().tabs.some((tab) => tab.id === fileTab.id)).toBe(false);
+    });
+    expect(vi.mocked(ask)).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'reload_file_from_disk' || command === 'acknowledge_external_file_change')
+        .length
+    ).toBe(0);
+  });
+
   it('logs error when listening external-file-changed event fails', async () => {
     vi.mocked(listen).mockImplementation(async (eventName) => {
       if (eventName === 'rutar://external-file-changed') {
@@ -1107,6 +1219,30 @@ describe('App component', () => {
     }
   });
 
+  it('logs error when revealing main window fails after app shell ready', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        show_main_window_when_ready: async () => {
+          throw new Error('show-main-window-failed');
+        },
+      })
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to reveal main window after app shell ready:',
+          expect.objectContaining({ message: 'show-main-window-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('acknowledges external file change when user declines reload', async () => {
     const fileTab = createFileTab({ id: 'tab-external-change-ack' });
     useStore.setState({
@@ -1130,6 +1266,38 @@ describe('App component', () => {
         id: fileTab.id,
       });
     });
+  });
+
+  it('logs error when acknowledging declined external change fails', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-change-ack-failed' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => true,
+        acknowledge_external_file_change: async () => {
+          throw new Error('acknowledge-external-change-failed');
+        },
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(false);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          `Failed to acknowledge external change: ${fileTab.path}`,
+          expect.objectContaining({ message: 'acknowledge-external-change-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('reloads file when external change is confirmed and dispatches refresh events', async () => {
@@ -1194,6 +1362,41 @@ describe('App component', () => {
     } finally {
       window.removeEventListener('rutar:force-refresh', forceRefreshListener as EventListener);
       window.removeEventListener('rutar:document-updated', documentUpdatedListener as EventListener);
+    }
+  });
+
+  it('logs error when external file reload fails after confirmation', async () => {
+    const fileTab = createFileTab({
+      id: 'tab-external-change-reload-failed',
+      isDirty: true,
+    });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => true,
+        reload_file_from_disk: async () => {
+          throw new Error('reload-external-file-failed');
+        },
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          `Failed to reload changed file: ${fileTab.path}`,
+          expect.objectContaining({ message: 'reload-external-file-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
     }
   });
 
