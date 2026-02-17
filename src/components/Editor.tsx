@@ -1017,6 +1017,7 @@ export function Editor({
   const contentViewportWidth = Math.max(0, width - contentViewportLeftPx);
   const contentTextPaddingPx = 6;
   const editorScrollbarSafetyPaddingPx = 14;
+  const lineNumberBottomSpacerHeightPx = editorScrollbarSafetyPaddingPx;
   const contentTextPadding = `${contentTextPaddingPx}px`;
   const contentTextRightPadding = `${contentTextPaddingPx + editorScrollbarSafetyPaddingPx}px`;
   const contentBottomSafetyPadding = `${editorScrollbarSafetyPaddingPx}px`;
@@ -1157,6 +1158,7 @@ export function Editor({
   const hugeEditableSegmentHeightPx = `${alignScrollOffset(
     Math.max(1, editableSegment.endLine - editableSegment.startLine) * itemSize
   )}px`;
+  const lineNumberVirtualItemCount = tab.lineCount + 1;
 
   const getListItemSize = useCallback(
     (index: number) => {
@@ -1167,6 +1169,17 @@ export function Editor({
       return rowHeightsRef.current.get(index) ?? itemSize;
     },
     [itemSize, wordWrap]
+  );
+
+  const getLineNumberListItemSize = useCallback(
+    (index: number) => {
+      if (index >= tab.lineCount) {
+        return lineNumberBottomSpacerHeightPx;
+      }
+
+      return getListItemSize(index);
+    },
+    [getListItemSize, lineNumberBottomSpacerHeightPx, tab.lineCount]
   );
 
   const measureRenderedLineHeight = useCallback(
@@ -5899,8 +5912,8 @@ export function Editor({
             ref={lineNumberListRef}
             height={height}
             width={lineNumberColumnWidthPx}
-            itemCount={tab.lineCount}
-            itemSize={getListItemSize}
+            itemCount={lineNumberVirtualItemCount}
+            itemSize={getLineNumberListItemSize}
             estimatedItemSize={itemSize}
             overscanCount={20}
             style={{
@@ -5908,51 +5921,64 @@ export function Editor({
               overflowY: 'hidden',
             }}
           >
-            {({ index, style }) => (
-              <div
-                style={{
-                  ...style,
-                  fontFamily: settings.fontFamily,
-                  fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px`,
-                  lineHeight: `${lineHeightPx}px`,
-                }}
-                className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
-                  diffHighlightLineSet.has(index + 1)
-                    ? 'text-red-600 dark:text-red-300 font-semibold'
-                    : bookmarks.includes(index + 1)
-                    ? 'text-amber-500/90 font-semibold'
-                    : lineNumberMultiSelectionSet.has(index + 1)
-                    ? 'text-blue-600 dark:text-blue-300 font-semibold'
-                    : 'text-muted-foreground/45'
-                } pointer-events-auto cursor-pointer select-none`}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
+            {({ index, style }) => {
+              if (index >= tab.lineCount) {
+                return (
+                  <div
+                    data-testid="line-number-bottom-spacer"
+                    aria-hidden
+                    style={style}
+                    className="pointer-events-none select-none"
+                  />
+                );
+              }
 
-                  if (event.detail === 2) {
-                    handleLineNumberDoubleClick(lineNumber);
-                    return;
-                  }
+              return (
+                <div
+                  style={{
+                    ...style,
+                    fontFamily: settings.fontFamily,
+                    fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px`,
+                    lineHeight: `${lineHeightPx}px`,
+                  }}
+                  className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
+                    diffHighlightLineSet.has(index + 1)
+                      ? 'text-red-600 dark:text-red-300 font-semibold'
+                      : bookmarks.includes(index + 1)
+                      ? 'text-amber-500/90 font-semibold'
+                      : lineNumberMultiSelectionSet.has(index + 1)
+                      ? 'text-blue-600 dark:text-blue-300 font-semibold'
+                      : 'text-muted-foreground/45'
+                  } pointer-events-auto cursor-pointer select-none`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
 
-                  handleLineNumberClick(
-                    lineNumber,
-                    event.shiftKey,
-                    event.ctrlKey || event.metaKey
-                  );
-                }}
-                onContextMenu={(event) => {
-                  const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
-                  handleLineNumberContextMenu(event, lineNumber);
-                }}
-              >
-                {index + 1}
-              </div>
-            )}
+                    if (event.detail === 2) {
+                      handleLineNumberDoubleClick(lineNumber);
+                      return;
+                    }
+
+                    handleLineNumberClick(
+                      lineNumber,
+                      event.shiftKey,
+                      event.ctrlKey || event.metaKey
+                    );
+                  }}
+                  onContextMenu={(event) => {
+                    const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
+                    handleLineNumberContextMenu(event, lineNumber);
+                  }}
+                >
+                  {index + 1}
+                </div>
+              );
+            }}
           </List>
         </div>
       )}

@@ -1003,6 +1003,20 @@ describe('Editor component', () => {
     expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
   });
 
+  it('reserves bottom spacer in line-number list for horizontal scrollbar safety area', async () => {
+    const tab = createTab({ id: 'tab-line-number-bottom-spacer', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('div.cursor-pointer.select-none').length).toBe(tab.lineCount);
+    });
+
+    const spacer = await screen.findByTestId('line-number-bottom-spacer');
+    expect(spacer).toBeTruthy();
+    expect(spacer).toHaveStyle({ height: '14px' });
+    expect(spacer).toBeEmptyDOMElement();
+  });
+
   it('runs cleanup action from context submenu and updates dirty line count', async () => {
     const tab = createTab({ id: 'tab-cleanup-action', lineCount: 9 });
     useStore.getState().addTab(tab);
