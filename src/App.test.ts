@@ -242,6 +242,58 @@ describe('App component', () => {
     vi.mocked(invoke).mockImplementation(createInvokeHandler());
   });
 
+  it('closes late startup file when another tab is already present and logs close failure', async () => {
+    const deferred = createDeferred<FileTab>();
+    const existingTab = createFileTab({ id: 'tab-existing-before-startup' });
+    const startupTab = createFileTab({
+      id: 'tab-startup-late-created',
+      name: 'startup-late.txt',
+      path: 'startup-late.txt',
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        new_file: async () => deferred.promise,
+        close_file: async () => {
+          throw new Error('close-startup-file-failed');
+        },
+      })
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('new_file', expect.any(Object));
+      });
+
+      act(() => {
+        useStore.setState({
+          tabs: [existingTab],
+          activeTabId: existingTab.id,
+        });
+      });
+
+      await act(async () => {
+        deferred.resolve(startupTab);
+        await deferred.promise;
+      });
+
+      await waitFor(() => {
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('close_file', {
+          id: startupTab.id,
+        });
+      });
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Failed to create startup file:',
+        expect.objectContaining({ message: 'close-startup-file-failed' })
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('renders file editor for active file tab', async () => {
     const fileTab = createFileTab({ id: 'tab-file-active' });
     useStore.setState({
@@ -937,6 +989,63 @@ describe('App component', () => {
         expect(errorSpy).toHaveBeenCalledWith(
           'Failed to listen external file change event:',
           expect.objectContaining({ message: 'external-file-listener-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('opens incoming paths from single-instance event and ignores empty payload', async () => {
+    let openPathsHandler: ((event: { payload?: unknown }) => Promise<void> | void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://open-paths') {
+        openPathsHandler = callback as (event: { payload?: unknown }) => Promise<void> | void;
+      }
+      return () => undefined;
+    });
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        read_dir_if_directory: async () => null,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(openPathsHandler).toBeTruthy();
+    });
+
+    await act(async () => {
+      await openPathsHandler?.({ payload: [] });
+      await openPathsHandler?.({ payload: 'invalid' });
+    });
+    expect(vi.mocked(openFilePaths)).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await openPathsHandler?.({ payload: ['C:\\repo\\incoming-from-instance.ts'] });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\incoming-from-instance.ts']);
+    });
+  });
+
+  it('logs error when registering single-instance open listener fails', async () => {
+    vi.mocked(listen).mockImplementation(async (eventName) => {
+      if (eventName === 'rutar://open-paths') {
+        throw new Error('single-instance-listener-failed');
+      }
+      return () => undefined;
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to listen single-instance open event:',
+          expect.objectContaining({ message: 'single-instance-listener-failed' })
         );
       });
     } finally {
