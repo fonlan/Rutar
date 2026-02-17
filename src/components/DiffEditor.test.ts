@@ -809,6 +809,48 @@ describe('DiffEditor component', () => {
     }
   });
 
+  it('executes cut command from panel context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const execCommandMock = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommandMock,
+    });
+
+    try {
+      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const sourceTextarea = await waitFor(() => {
+        const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+        expect(element).toBeTruthy();
+        return element as HTMLTextAreaElement;
+      });
+
+      fireEvent.contextMenu(sourceTextarea, {
+        clientX: 146,
+        clientY: 146,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Cut' }));
+
+      await waitFor(() => {
+        expect(execCommandMock).toHaveBeenCalledWith('cut');
+      });
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
   it('falls back to document paste command when clipboard plugin read fails', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -856,6 +898,68 @@ describe('DiffEditor component', () => {
         Reflect.deleteProperty(document, 'execCommand');
       }
     }
+  });
+
+  it('copies selected source line to right panel from context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const targetTextarea = container.querySelector(
+      'textarea[data-diff-panel="target"]'
+    ) as HTMLTextAreaElement;
+
+    sourceTextarea.setSelectionRange(0, 0);
+    fireEvent.contextMenu(sourceTextarea, {
+      clientX: 190,
+      clientY: 156,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy to Right' }));
+
+    await waitFor(() => {
+      expect(targetTextarea.value.startsWith('left-1')).toBe(true);
+    });
+  });
+
+  it('copies selected target line to left panel from context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const targetTextarea = container.querySelector(
+      'textarea[data-diff-panel="target"]'
+    ) as HTMLTextAreaElement;
+
+    targetTextarea.setSelectionRange(0, 0);
+    fireEvent.contextMenu(targetTextarea, {
+      clientX: 196,
+      clientY: 162,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy to Left' }));
+
+    await waitFor(() => {
+      expect(sourceTextarea.value.startsWith('right-1')).toBe(true);
+    });
   });
 
   it('ignores diff toolbar paste event when diffTabId mismatches', async () => {
