@@ -703,6 +703,7 @@ export const diffEditorTestUtils = {
   serializeLines,
   computeTextPatch,
   bindScrollerViewport,
+  dispatchDocumentUpdated,
 };
 
 export function DiffEditor({ tab }: DiffEditorProps) {

@@ -411,3 +411,18 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
     });
   });
 });
+
+describe('diffEditorTestUtils.dispatchDocumentUpdated', () => {
+  it('dispatches document-updated event with tab id payload', () => {
+    let detail: { tabId: string } | null = null;
+    const listener = (event: Event) => {
+      detail = (event as CustomEvent<{ tabId: string }>).detail;
+    };
+
+    window.addEventListener('rutar:document-updated', listener as EventListener);
+    diffEditorTestUtils.dispatchDocumentUpdated('diff-tab-id');
+    window.removeEventListener('rutar:document-updated', listener as EventListener);
+
+    expect(detail).toEqual({ tabId: 'diff-tab-id' });
+  });
+});
