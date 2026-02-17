@@ -1598,6 +1598,52 @@ describe('Editor component', () => {
     }
   });
 
+  it('applies text drag move on pointerup and clears drag cursor styles', async () => {
+    const tab = createTab({ id: 'tab-text-drag-apply-on-pointerup' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, 5);
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+    const elementRemoveSpy = vi.spyOn(textarea.style, 'removeProperty');
+    const originalText = textarea.value;
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 133,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 133,
+        clientX: 40,
+        clientY: 80,
+      });
+
+      await waitFor(() => {
+        expect(document.body.style.cursor).toBe('copy');
+        expect(textarea.style.cursor).toBe('copy');
+      });
+
+      fireEvent.pointerUp(window, {
+        pointerId: 133,
+      });
+
+      await waitFor(() => {
+        expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+        expect(elementRemoveSpy).toHaveBeenCalledWith('cursor');
+        expect(document.body.style.cursor).toBe('');
+      });
+
+      expect(textarea.value).not.toBe(originalText);
+    } finally {
+      bodyRemoveSpy.mockRestore();
+      elementRemoveSpy.mockRestore();
+    }
+  });
+
   it('keeps editor user-select styles unchanged when pointerup occurs without scrollbar drag', async () => {
     const tab = createTab({ id: 'tab-scrollbar-guard-pointerup' });
     const { container } = render(<Editor tab={tab} />);
