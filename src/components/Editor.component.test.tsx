@@ -715,6 +715,104 @@ describe('Editor component', () => {
     expect(textarea.value).not.toContain('old-huge-a');
   });
 
+  it('defers huge visible-token sync while composition lock is active, then resumes after unlock', async () => {
+    const tab = createTab({ id: 'tab-huge-window-lock-sync', lineCount: 22000 });
+    let chunkCallCount = 0;
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        chunkCallCount += 1;
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => `huge-line-${startLine + index + 1}`);
+      }
+      if (command === 'replace_line_range') {
+        return tab.lineCount;
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: tab.lineCount,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(chunkCallCount).toBeGreaterThan(0);
+    });
+
+    fireEvent.compositionStart(textarea);
+
+    const beforeLockedRefresh = chunkCallCount;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            lineCount: tab.lineCount,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(chunkCallCount).toBeGreaterThan(beforeLockedRefresh);
+    });
+
+    expect(chunkCallCount - beforeLockedRefresh).toBe(1);
+
+    fireEvent.compositionEnd(textarea);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    });
+
+    const beforeUnlockedRefresh = chunkCallCount;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            lineCount: tab.lineCount,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(
+      () => {
+        expect(chunkCallCount).toBeGreaterThanOrEqual(beforeUnlockedRefresh + 2);
+      },
+      { timeout: 1500 }
+    );
+  });
+
   it('resets huge editable textarea internal scroll offsets after force refresh sync', async () => {
     const tab = createTab({ id: 'tab-huge-scroll-reset', lineCount: 22000 });
     useStore.getState().addTab(tab);
