@@ -269,6 +269,63 @@ describe('App component', () => {
     expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', 'none');
   });
 
+  it('applies dark theme class when config theme is dark', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'dark',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: false,
+          mouseGestures: [],
+        }),
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+      expect(useStore.getState().settings.theme).toBe('dark');
+    });
+  });
+
+  it('logs error when loading config fails', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => {
+          throw new Error('load-config-failed');
+        },
+      })
+    );
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to load config:',
+          expect.objectContaining({ message: 'load-config-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('renders diff editor for active diff tab and clears markdown preview file tab', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
