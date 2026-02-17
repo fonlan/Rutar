@@ -929,6 +929,140 @@ describe('App component', () => {
     expect(contextMenuEvent.defaultPrevented).toBe(false);
     expect(useStore.getState().sidebarOpen).toBe(false);
   });
+
+  it('does not suppress active context menu when gesture has no movement', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-no-move-contextmenu' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 91,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 25,
+        clientY: 25,
+      });
+    });
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 25,
+      clientY: 25,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(useStore.getState().sidebarOpen).toBe(false);
+  });
+
+  it('ignores pointerup and pointercancel when no active gesture exists', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-ignore-up-cancel' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 501,
+        pointerType: 'mouse',
+        clientX: 40,
+        clientY: 40,
+      });
+      fireEvent.pointerCancel(appRoot, {
+        pointerId: 501,
+        pointerType: 'mouse',
+      });
+    });
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 40,
+      clientY: 40,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+  });
 });
 
 describe('appTestUtils.detectWindowsPlatform', () => {
