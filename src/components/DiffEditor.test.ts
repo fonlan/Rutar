@@ -1110,6 +1110,54 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('navigates source search matches via enter and arrow buttons', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+    const searchContainer = sourceSearchInput.parentElement as HTMLElement | null;
+    const previousButton = searchContainer?.querySelector(
+      'button[aria-label="Previous Match"]'
+    ) as HTMLButtonElement | null;
+    const nextButton = searchContainer?.querySelector(
+      'button[aria-label="Next Match"]'
+    ) as HTMLButtonElement | null;
+    expect(previousButton).toBeTruthy();
+    expect(nextButton).toBeTruthy();
+    if (!previousButton || !nextButton) {
+      return;
+    }
+
+    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+
+    await waitFor(() => {
+      expect(previousButton.disabled).toBe(false);
+      expect(nextButton.disabled).toBe(false);
+    });
+
+    fireEvent.mouseDown(previousButton, { button: 0 });
+    fireEvent.click(previousButton);
+    fireEvent.mouseDown(nextButton, { button: 0 });
+    fireEvent.click(nextButton);
+    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+    });
+  });
+
   it('handles source textarea change and tab key insertion', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -1192,6 +1240,21 @@ describe('DiffEditor component', () => {
       expect(document.activeElement).toBe(targetTextarea);
       expect(targetTextarea.selectionStart).toBe(0);
       expect(targetTextarea.selectionEnd).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders unavailable placeholder when source tab is missing', async () => {
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Source tab closed')).toBeInTheDocument();
     });
   });
 
