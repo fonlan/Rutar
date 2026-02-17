@@ -1303,6 +1303,207 @@ describe('App component', () => {
     expect(clearTimeoutSpy.mock.calls.length - clearCallCountBeforeSecondPointerDown).toBeGreaterThanOrEqual(2);
     clearTimeoutSpy.mockRestore();
   });
+
+  it('draws gesture trail and clears preview after timer callbacks', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-trail-and-preview-clear' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const previewSequences: string[] = [];
+    const previewListener = (event: Event) => {
+      previewSequences.push(((event as CustomEvent<{ sequence: string }>).detail?.sequence ?? '').toString());
+    };
+    window.addEventListener('rutar:gesture-preview', previewListener as EventListener);
+
+    const canvasContext = {
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      clearRect: vi.fn(),
+      setTransform: vi.fn(),
+      lineCap: 'round',
+      lineJoin: 'round',
+      lineWidth: 1,
+      strokeStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(canvasContext);
+
+    let fakeTimersEnabled = false;
+    try {
+      const { container } = render(React.createElement(App));
+      await waitFor(() => {
+        expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+      });
+
+      vi.useFakeTimers();
+      fakeTimersEnabled = true;
+
+      const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+      expect(appRoot).toBeTruthy();
+      if (!appRoot) {
+        return;
+      }
+
+      act(() => {
+        fireEvent.pointerDown(appRoot, {
+          pointerId: 210,
+          button: 2,
+          buttons: 2,
+          pointerType: 'mouse',
+          clientX: 16,
+          clientY: 16,
+        });
+        fireEvent.pointerMove(appRoot, {
+          pointerId: 210,
+          pointerType: 'mouse',
+          clientX: 60,
+          clientY: 16,
+        });
+        fireEvent.pointerMove(appRoot, {
+          pointerId: 210,
+          pointerType: 'mouse',
+          clientX: 60,
+          clientY: 16,
+        });
+        fireEvent.pointerUp(appRoot, {
+          pointerId: 210,
+          pointerType: 'mouse',
+          clientX: 60,
+          clientY: 16,
+        });
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(220);
+      });
+
+      expect(canvasContext.beginPath).toHaveBeenCalled();
+      expect(canvasContext.lineTo).toHaveBeenCalled();
+      expect(canvasContext.clearRect).toHaveBeenCalled();
+      expect(previewSequences.some((value) => value.length > 0)).toBe(true);
+      expect(previewSequences.filter((value) => value === '').length).toBeGreaterThanOrEqual(2);
+    } finally {
+      if (fakeTimersEnabled) {
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
+      }
+      getContextSpy.mockRestore();
+      window.removeEventListener('rutar:gesture-preview', previewListener as EventListener);
+    }
+  });
+
+  it('ignores invalid gesture-start pointerdown events before activation', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-invalid-pointerdown' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 301,
+        button: 2,
+        buttons: 2,
+        pointerType: 'touch',
+        clientX: 20,
+        clientY: 20,
+      });
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 302,
+        button: 0,
+        buttons: 1,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+      fireEvent.pointerDown(document, {
+        pointerId: 303,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+    });
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 20,
+      clientY: 20,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(useStore.getState().sidebarOpen).toBe(false);
+  });
 });
 
 describe('appTestUtils.detectWindowsPlatform', () => {
