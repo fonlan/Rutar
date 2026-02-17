@@ -205,6 +205,16 @@ function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
   };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('App component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
 
@@ -400,6 +410,131 @@ describe('App component', () => {
         'outline-load-failed'
       );
     });
+  });
+
+  it('restores tab panel state when switching active tabs', async () => {
+    const tabA = createFileTab({ id: 'tab-state-A', name: 'a.ts', path: 'C:\\repo\\a.ts' });
+    const tabB = createFileTab({ id: 'tab-state-B', name: 'b.ts', path: 'C:\\repo\\b.ts' });
+    useStore.setState({
+      tabs: [tabA, tabB],
+      activeTabId: tabA.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue('json');
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toHaveAttribute('data-tab-id', tabA.id);
+    });
+
+    act(() => {
+      const state = useStore.getState();
+      state.toggleSidebar(true);
+      state.toggleBookmarkSidebar(true);
+      state.toggleMarkdownPreview(true);
+    });
+
+    act(() => {
+      useStore.getState().setActiveTab(tabB.id);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toHaveAttribute('data-tab-id', tabB.id);
+    });
+
+    act(() => {
+      const state = useStore.getState();
+      state.toggleSidebar(false);
+      state.toggleBookmarkSidebar(false);
+      state.toggleMarkdownPreview(false);
+      state.setActiveTab(tabA.id);
+    });
+
+    await waitFor(() => {
+      const state = useStore.getState();
+      expect(state.activeTabId).toBe(tabA.id);
+      expect(state.sidebarOpen).toBe(true);
+      expect(state.bookmarkSidebarOpen).toBe(true);
+      expect(state.markdownPreviewOpen).toBe(true);
+    });
+  });
+
+  it('ignores late resolved outline result after effect cleanup', async () => {
+    const fileTab = createFileTab({ id: 'tab-outline-cancel-success' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue('json');
+    const deferred = createDeferred<Array<{ label: string; nodeType: string; line: number; column: number; children: [] }>>();
+    vi.mocked(loadOutline).mockReturnValueOnce(deferred.promise);
+
+    const view = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().toggleOutline(true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(loadOutline)).toHaveBeenCalledTimes(1);
+    });
+
+    view.unmount();
+
+    await act(async () => {
+      deferred.resolve([{ label: 'late-success', nodeType: 'root', line: 1, column: 1, children: [] }]);
+      await deferred.promise;
+    });
+
+    const state = useStore.getState();
+    expect(state.outlineNodes).toEqual([]);
+    expect(state.outlineError).toBeNull();
+  });
+
+  it('ignores late rejected outline result after effect cleanup', async () => {
+    const fileTab = createFileTab({ id: 'tab-outline-cancel-error' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(detectOutlineType).mockReturnValue('json');
+    const deferred = createDeferred<Array<{ label: string; nodeType: string; line: number; column: number; children: [] }>>();
+    vi.mocked(loadOutline).mockReturnValueOnce(deferred.promise);
+
+    const view = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toBeInTheDocument();
+    });
+
+    act(() => {
+      useStore.getState().toggleOutline(true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(loadOutline)).toHaveBeenCalledTimes(1);
+    });
+
+    view.unmount();
+
+    await act(async () => {
+      deferred.reject(new Error('late-outline-error'));
+      try {
+        await deferred.promise;
+      } catch {
+        return;
+      }
+    });
+
+    const state = useStore.getState();
+    expect(state.outlineError).toBeNull();
   });
 
   it('acknowledges external file change when user declines reload', async () => {
