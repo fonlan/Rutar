@@ -1,6 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { DiffTabPayload } from '@/store/useStore';
-import { diffEditorTestUtils } from './DiffEditor';
+import React from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import { saveTab } from '@/lib/tabClose';
+import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import { DiffEditor, diffEditorTestUtils } from './DiffEditor';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@/lib/tabClose', () => ({
+  saveTab: vi.fn(async () => true),
+}));
+
+vi.mock('@/hooks/useResizeObserver', () => ({
+  useResizeObserver: () => ({
+    ref: () => undefined,
+    width: 1200,
+    height: 700,
+  }),
+}));
 
 function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayload {
   return {
@@ -22,6 +42,46 @@ function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayl
     alignedLineCount: 1,
     ...overrides,
   };
+}
+
+function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
+  return {
+    id: 'file-tab',
+    name: 'file.ts',
+    path: 'C:\\repo\\file.ts',
+    encoding: 'UTF-8',
+    lineEnding: 'LF',
+    lineCount: 2,
+    largeFileMode: false,
+    tabType: 'file',
+    ...overrides,
+  };
+}
+
+function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload } {
+  return {
+    id: 'diff-tab',
+    name: 'source.ts ↔ target.ts',
+    path: '',
+    encoding: 'UTF-8',
+    lineEnding: 'LF',
+    lineCount: 2,
+    largeFileMode: false,
+    tabType: 'diff',
+    diffPayload: createDiffPayload({
+      alignedSourceLines: ['left-1', 'left-2'],
+      alignedTargetLines: ['right-1', 'right-2'],
+      alignedSourcePresent: [true, true],
+      alignedTargetPresent: [true, true],
+      diffLineNumbers: [1, 2],
+      sourceDiffLineNumbers: [1, 2],
+      targetDiffLineNumbers: [1, 2],
+      sourceLineCount: 2,
+      targetLineCount: 2,
+      alignedLineCount: 2,
+    }),
+    ...overrides,
+  } as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 }
 
 describe('diffEditorTestUtils.getParentDirectoryPath', () => {
@@ -424,5 +484,156 @@ describe('diffEditorTestUtils.dispatchDocumentUpdated', () => {
     window.removeEventListener('rutar:document-updated', listener as EventListener);
 
     expect(detail).toEqual({ tabId: 'diff-tab-id' });
+  });
+});
+
+describe('DiffEditor component', () => {
+  let initialState: ReturnType<typeof useStore.getState>;
+  const originalResizeObserver = globalThis.ResizeObserver;
+
+  beforeAll(() => {
+    initialState = useStore.getState();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useStore.setState(initialState, true);
+    useStore.getState().updateSettings({
+      language: 'en-US',
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: 14,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['left-1', 'left-2'],
+          alignedTargetLines: ['right-1', 'right-2'],
+          alignedSourcePresent: [true, true],
+          alignedTargetPresent: [true, true],
+          diffLineNumbers: [1, 2],
+          sourceDiffLineNumbers: [1, 2],
+          targetDiffLineNumbers: [1, 2],
+          sourceLineCount: 2,
+          targetLineCount: 2,
+          alignedLineCount: 2,
+        };
+      }
+      if (command === 'edit_text') {
+        return 2;
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    if (!globalThis.ResizeObserver) {
+      class ResizeObserverMock {
+        observe = vi.fn();
+        disconnect = vi.fn();
+        constructor(_callback: ResizeObserverCallback) {}
+      }
+
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        value: ResizeObserverMock,
+      });
+    }
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: originalResizeObserver,
+    });
+  });
+
+  it('renders source and target panel textareas from diff payload', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    await waitFor(() => {
+      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
+      expect(container.querySelector('textarea[data-diff-panel="target"]')).toBeTruthy();
+    });
+
+    const sourceTextarea = container.querySelector(
+      'textarea[data-diff-panel="source"]'
+    ) as HTMLTextAreaElement;
+    const targetTextarea = container.querySelector(
+      'textarea[data-diff-panel="target"]'
+    ) as HTMLTextAreaElement;
+
+    expect(sourceTextarea.value).toBe('left-1\nleft-2');
+    expect(targetTextarea.value).toBe('right-1\nright-2');
+  });
+
+  it('copies source file name from header context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
+    try {
+      render(React.createElement(DiffEditor, { tab: diffTab }));
+
+      const sourceTitle = await screen.findByText('Source: source.ts');
+      fireEvent.contextMenu(sourceTitle, {
+        clientX: 80,
+        clientY: 60,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy File Name' }));
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith('source.ts');
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
+  it('saves source panel by clicking source save button', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts', isDirty: true });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save source panel' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(saveTab)).toHaveBeenCalledWith(
+        expect.objectContaining({ id: sourceTab.id }),
+        expect.any(Function)
+      );
+    });
   });
 });
