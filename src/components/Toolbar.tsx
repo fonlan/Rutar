@@ -120,6 +120,12 @@ interface SaveFileBatchResultItem {
     error?: string;
 }
 
+interface SplitMenuItemContextState {
+    path: string;
+    x: number;
+    y: number;
+}
+
 const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canUndo: false,
     canRedo: false,
@@ -191,6 +197,7 @@ export function Toolbar() {
     const clearRecentFilesText = tr('toolbar.recent.clearFiles');
     const clearRecentFoldersText = tr('toolbar.recent.clearFolders');
     const removeRecentItemText = tr('bookmark.remove');
+    const openContainingFolderText = tr('titleBar.openContainingFolder');
     const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
     const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
     const canSaveAnyTab = tabs.some((tab) => !!tab.isDirty);
@@ -505,6 +512,14 @@ export function Toolbar() {
 
     const handleRemoveRecentFolder = useCallback((path: string) => {
         removeRecentFolderPath(path);
+    }, []);
+
+    const handleOpenRecentFileContainingFolder = useCallback(async (path: string) => {
+        try {
+            await invoke('open_in_file_manager', { path });
+        } catch (error) {
+            console.error('Failed to open recent file directory:', error);
+        }
     }, []);
 
     const handleSave = useCallback(async () => {
@@ -944,8 +959,10 @@ export function Toolbar() {
                 emptyText={noRecentFilesText}
                 clearText={clearRecentFilesText}
                 removeItemText={removeRecentItemText}
+                itemContextActionText={openContainingFolderText}
                 items={recentFileItems}
                 onItemClick={handleOpenRecentFile}
+                onItemContextAction={handleOpenRecentFileContainingFolder}
                 onItemRemove={handleRemoveRecentFile}
                 onClear={() => {
                     updateSettings({ recentFiles: [] });
@@ -1121,8 +1138,10 @@ function ToolbarSplitMenu({
     emptyText,
     clearText,
     removeItemText,
+    itemContextActionText,
     items,
     onItemClick,
+    onItemContextAction,
     onItemRemove,
     onClear,
 }: {
@@ -1136,8 +1155,10 @@ function ToolbarSplitMenu({
     emptyText: string;
     clearText: string;
     removeItemText: string;
+    itemContextActionText?: string;
     items: Array<{ path: string; name: string }>;
     onItemClick: (path: string) => void;
+    onItemContextAction?: (path: string) => void;
     onItemRemove: (path: string) => void;
     onClear: () => void;
 }) {
@@ -1148,6 +1169,48 @@ function ToolbarSplitMenu({
         minWidth: 288,
         visibility: 'hidden',
     });
+    const [itemContextMenu, setItemContextMenu] = useState<SplitMenuItemContextState | null>(null);
+    const itemContextMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!menuOpen) {
+            setItemContextMenu(null);
+        }
+    }, [menuOpen]);
+
+    useEffect(() => {
+        if (!itemContextMenu) {
+            return;
+        }
+
+        const closeContextMenu = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (itemContextMenuRef.current && target && itemContextMenuRef.current.contains(target)) {
+                return;
+            }
+
+            setItemContextMenu(null);
+        };
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setItemContextMenu(null);
+            }
+        };
+        const handleWindowBlur = () => {
+            setItemContextMenu(null);
+        };
+
+        window.addEventListener('pointerdown', closeContextMenu);
+        window.addEventListener('keydown', handleEscape);
+        window.addEventListener('blur', handleWindowBlur);
+
+        return () => {
+            window.removeEventListener('pointerdown', closeContextMenu);
+            window.removeEventListener('keydown', handleEscape);
+            window.removeEventListener('blur', handleWindowBlur);
+        };
+    }, [itemContextMenu]);
 
     useLayoutEffect(() => {
         if (!menuOpen) {
@@ -1232,13 +1295,41 @@ function ToolbarSplitMenu({
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => {
+                                        setItemContextMenu(null);
                                         void onItemClick(item.path);
                                     }}
                                     onKeyDown={(event) => {
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
+                                            setItemContextMenu(null);
                                             void onItemClick(item.path);
                                         }
+                                    }}
+                                    onContextMenu={(event) => {
+                                        if (!onItemContextAction || !itemContextActionText) {
+                                            return;
+                                        }
+
+                                        event.preventDefault();
+                                        event.stopPropagation();
+
+                                        const menuWidth = 216;
+                                        const menuHeight = 38;
+                                        const viewportPadding = 8;
+                                        const x = Math.max(
+                                            viewportPadding,
+                                            Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+                                        );
+                                        const y = Math.max(
+                                            viewportPadding,
+                                            Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+                                        );
+
+                                        setItemContextMenu({
+                                            path: item.path,
+                                            x,
+                                            y,
+                                        });
                                     }}
                                 >
                                     <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
@@ -1252,6 +1343,7 @@ function ToolbarSplitMenu({
                                         aria-label={removeItemText}
                                         onClick={(event) => {
                                             event.stopPropagation();
+                                            setItemContextMenu((current) => current?.path === item.path ? null : current);
                                             onItemRemove(item.path);
                                         }}
                                     >
@@ -1269,6 +1361,31 @@ function ToolbarSplitMenu({
                             </button>
                         </>
                     )}
+                </div>
+            )}
+
+            {menuOpen && itemContextMenu && onItemContextAction && itemContextActionText && (
+                <div
+                    ref={itemContextMenuRef}
+                    style={{
+                        position: 'fixed',
+                        left: itemContextMenu.x,
+                        top: itemContextMenu.y,
+                        minWidth: 216,
+                    }}
+                    className="z-[60] rounded-md border border-border bg-popover p-1 shadow-lg"
+                >
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setItemContextMenu(null);
+                            void onItemContextAction(itemContextMenu.path);
+                        }}
+                    >
+                        {itemContextActionText}
+                    </button>
                 </div>
             )}
         </div>
