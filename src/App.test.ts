@@ -2058,6 +2058,100 @@ describe('App component', () => {
     }
   });
 
+  it('returns early for startup-file creation when tabs already exist in fresh module instance', async () => {
+    const existingTab = createFileTab({ id: 'tab-startup-existing' });
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+
+    vi.resetModules();
+    const isolatedModule = await import('./App');
+    const IsolatedApp = isolatedModule.default;
+    const isolatedStoreModule = await import('@/store/useStore');
+    const isolatedUseStore = isolatedStoreModule.useStore;
+
+    isolatedUseStore.setState({
+      tabs: [existingTab],
+      activeTabId: existingTab.id,
+    });
+
+    render(React.createElement(IsolatedApp));
+
+    await waitFor(() => {
+      const newFileCalls = vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'new_file').length;
+      expect(newFileCalls).toBe(0);
+    });
+  });
+
+  it('adds startup file when no tab exists in fresh module instance', async () => {
+    const startupTab = createFileTab({
+      id: 'tab-startup-added',
+      name: 'startup-added.txt',
+      path: 'startup-added.txt',
+    });
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        new_file: async () => startupTab,
+      })
+    );
+
+    vi.resetModules();
+    const isolatedModule = await import('./App');
+    const IsolatedApp = isolatedModule.default;
+    const isolatedStoreModule = await import('@/store/useStore');
+    const isolatedUseStore = isolatedStoreModule.useStore;
+
+    isolatedUseStore.setState({
+      tabs: [],
+      activeTabId: null,
+    });
+
+    render(React.createElement(IsolatedApp));
+
+    await waitFor(() => {
+      expect(isolatedUseStore.getState().tabs.some((tab) => tab.id === startupTab.id)).toBe(true);
+    });
+  });
+
+  it('opens startup paths returned by backend on app boot', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => ['C:\\repo\\boot-open.ts'],
+        read_dir_if_directory: async () => null,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\boot-open.ts']);
+    });
+  });
+
+  it('logs error when loading startup paths fails', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => {
+          throw new Error('startup-paths-load-failed');
+        },
+      })
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to load startup paths:',
+          expect.objectContaining({ message: 'startup-paths-load-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('ignores invalid gesture-start pointerdown events before activation', async () => {
     const fileTab = createFileTab({ id: 'tab-gesture-invalid-pointerdown' });
     useStore.setState({
