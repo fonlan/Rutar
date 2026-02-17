@@ -45,3 +45,4 @@ out/
 *.key
 
 coverage/
+coverage-*-next/
