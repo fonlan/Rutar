@@ -326,6 +326,104 @@ describe('App component', () => {
     }
   });
 
+  it('skips config update when load_config resolves after unmount', async () => {
+    const deferred = createDeferred<{
+      language: string;
+      theme: 'light' | 'dark';
+      fontFamily: string;
+      fontSize: number;
+      tabWidth: number;
+      newFileLineEnding: 'LF' | 'CRLF' | 'CR';
+      wordWrap: boolean;
+      doubleClickCloseTab: boolean;
+      showLineNumbers: boolean;
+      highlightCurrentLine: boolean;
+      singleInstanceMode: boolean;
+      rememberWindowState: boolean;
+      recentFiles: string[];
+      recentFolders: string[];
+      windowsFileAssociationExtensions: string[];
+      mouseGesturesEnabled: boolean;
+      mouseGestures: Array<{ pattern: string; action: string }>;
+    }>();
+    const initialTheme = useStore.getState().settings.theme;
+    const resolvedTheme = initialTheme === 'dark' ? 'light' : 'dark';
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => deferred.promise,
+      })
+    );
+
+    const view = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+    });
+
+    view.unmount();
+
+    await act(async () => {
+      deferred.resolve({
+        language: 'en-US',
+        theme: resolvedTheme,
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: 15,
+        tabWidth: 2,
+        newFileLineEnding: 'LF',
+        wordWrap: true,
+        doubleClickCloseTab: true,
+        showLineNumbers: true,
+        highlightCurrentLine: true,
+        singleInstanceMode: true,
+        rememberWindowState: true,
+        recentFiles: ['C:\\repo\\late-config.ts'],
+        recentFolders: ['C:\\repo'],
+        windowsFileAssociationExtensions: ['.ts'],
+        mouseGesturesEnabled: true,
+        mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+      });
+      await deferred.promise;
+    });
+
+    expect(useStore.getState().settings.theme).toBe(initialTheme);
+  });
+
+  it('logs error when save_config fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        save_config: async () => {
+          throw new Error('save-config-failed');
+        },
+      })
+    );
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+      });
+
+      await act(async () => {
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 260);
+        });
+      });
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to save config:',
+          expect.objectContaining({ message: 'save-config-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('renders diff editor for active diff tab and clears markdown preview file tab', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -682,6 +780,72 @@ describe('App component', () => {
       window.removeEventListener('rutar:force-refresh', forceRefreshListener as EventListener);
       window.removeEventListener('rutar:document-updated', documentUpdatedListener as EventListener);
     }
+  });
+
+  it('keeps context menu default behavior when gesture config has only empty patterns', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-empty-patterns' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({
+        mouseGestures: [{ pattern: '', action: 'toggleSidebar' }],
+      });
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGestures).toEqual([{ pattern: '', action: 'toggleSidebar' }]);
+    });
+
+    expect(document.body.querySelector('canvas')).toBeNull();
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 18,
+      clientY: 18,
+    });
+    const dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+    expect(dispatched).toBe(true);
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
   });
 
   it('suppresses context menu while mouse gesture is active and executes matched action', async () => {
