@@ -3958,6 +3958,25 @@ describe('App component', () => {
 });
 
 describe('appTestUtils.detectWindowsPlatform', () => {
+  it('returns false when navigator is unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+
+    try {
+      expect(appTestUtils.detectWindowsPlatform()).toBe(false);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'navigator', descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, 'navigator');
+      }
+    }
+  });
+
   it('returns true for windows user agent', () => {
     const userAgentSpy = vi
       .spyOn(window.navigator, 'userAgent', 'get')
