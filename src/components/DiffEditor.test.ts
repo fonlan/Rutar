@@ -644,6 +644,32 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('saves target panel by clicking target save button', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({
+      id: 'target-tab',
+      name: 'target.ts',
+      path: 'C:\\repo\\target.ts',
+      isDirty: true,
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save target panel' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(saveTab)).toHaveBeenCalledWith(
+        expect.objectContaining({ id: targetTab.id }),
+        expect.any(Function)
+      );
+    });
+  });
+
   it('copies source folder path from header context menu', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -674,6 +700,46 @@ describe('DiffEditor component', () => {
 
       await waitFor(() => {
         expect(writeTextMock).toHaveBeenCalledWith('C:\\repo');
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
+  it('copies target file name from header context menu', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
+    try {
+      render(React.createElement(DiffEditor, { tab: diffTab }));
+
+      const targetTitle = await screen.findByText('Target: target.ts');
+      fireEvent.contextMenu(targetTitle, {
+        clientX: 88,
+        clientY: 68,
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy File Name' }));
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith('target.ts');
       });
     } finally {
       if (originalClipboard) {
@@ -996,6 +1062,54 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('navigates target search matches via enter and arrow buttons', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
+    const searchContainer = targetSearchInput.parentElement as HTMLElement | null;
+    const previousButton = searchContainer?.querySelector(
+      'button[aria-label="Previous Match"]'
+    ) as HTMLButtonElement | null;
+    const nextButton = searchContainer?.querySelector(
+      'button[aria-label="Next Match"]'
+    ) as HTMLButtonElement | null;
+    expect(previousButton).toBeTruthy();
+    expect(nextButton).toBeTruthy();
+    if (!previousButton || !nextButton) {
+      return;
+    }
+
+    fireEvent.change(targetSearchInput, { target: { value: 'right' } });
+
+    await waitFor(() => {
+      expect(previousButton.disabled).toBe(false);
+      expect(nextButton.disabled).toBe(false);
+    });
+
+    fireEvent.mouseDown(previousButton, { button: 0 });
+    fireEvent.click(previousButton);
+    fireEvent.mouseDown(nextButton, { button: 0 });
+    fireEvent.click(nextButton);
+    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(targetTextarea.selectionStart);
+    });
+  });
+
   it('handles source textarea change and tab key insertion', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -1078,6 +1192,34 @@ describe('DiffEditor component', () => {
       expect(document.activeElement).toBe(targetTextarea);
       expect(targetTextarea.selectionStart).toBe(0);
       expect(targetTextarea.selectionEnd).toBeGreaterThan(0);
+    });
+  });
+
+  it('focuses source panel line when source line number is pointer-selected', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const lineNumberCells = await screen.findAllByText('1');
+    fireEvent.pointerDown(lineNumberCells[0], {
+      button: 0,
+      pointerId: 7,
+    });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(sourceTextarea);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
     });
   });
 
