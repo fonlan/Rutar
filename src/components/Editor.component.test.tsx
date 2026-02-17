@@ -1644,6 +1644,42 @@ describe('Editor component', () => {
     }
   });
 
+  it('keeps text unchanged when text drag drop target stays inside original selection', async () => {
+    const tab = createTab({ id: 'tab-text-drag-drop-inside-selection' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, 5);
+    const originalText = textarea.value;
+
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      pointerId: 134,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 134,
+      clientX: 40,
+      clientY: 10,
+    });
+
+    await waitFor(() => {
+      expect(document.body.style.cursor).toBe('copy');
+    });
+
+    fireEvent.pointerUp(window, {
+      pointerId: 134,
+    });
+
+    await waitFor(() => {
+      expect(document.body.style.cursor).toBe('');
+      expect(textarea.style.cursor).toBe('');
+    });
+    expect(textarea.value).toBe(originalText);
+  });
+
   it('keeps editor user-select styles unchanged when pointerup occurs without scrollbar drag', async () => {
     const tab = createTab({ id: 'tab-scrollbar-guard-pointerup' });
     const { container } = render(<Editor tab={tab} />);
