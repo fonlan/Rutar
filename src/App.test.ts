@@ -1545,6 +1545,290 @@ describe('App component', () => {
     });
   });
 
+  it('supports tab navigation and line-jump mouse gesture actions', async () => {
+    const firstTab = createFileTab({ id: 'tab-gesture-first', name: 'first.ts', lineCount: 6 });
+    const secondTab = createFileTab({ id: 'tab-gesture-second', name: 'second.ts', lineCount: 12 });
+    useStore.setState({
+      tabs: [firstTab, secondTab],
+      activeTabId: secondTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [
+            { pattern: 'L', action: 'previousTab' },
+            { pattern: 'R', action: 'nextTab' },
+            { pattern: 'U', action: 'toTop' },
+            { pattern: 'D', action: 'toBottom' },
+          ],
+        }),
+      })
+    );
+
+    const navigateEvents: Array<{ tabId: string; line: number; column: number }> = [];
+    const navigateListener = (event: Event) => {
+      navigateEvents.push((event as CustomEvent<{ tabId: string; line: number; column: number }>).detail);
+    };
+    window.addEventListener('rutar:navigate-to-line', navigateListener as EventListener);
+
+    try {
+      const { container } = render(React.createElement(App));
+      await waitFor(() => {
+        expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+      });
+
+      const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+      expect(appRoot).toBeTruthy();
+      if (!appRoot) {
+        return;
+      }
+
+      const runGesture = (pointerId: number, startX: number, startY: number, endX: number, endY: number) => {
+        act(() => {
+          fireEvent.pointerDown(appRoot, {
+            pointerId,
+            button: 2,
+            buttons: 2,
+            pointerType: 'mouse',
+            clientX: startX,
+            clientY: startY,
+          });
+          fireEvent.pointerMove(appRoot, {
+            pointerId,
+            pointerType: 'mouse',
+            clientX: endX,
+            clientY: endY,
+          });
+          fireEvent.pointerUp(appRoot, {
+            pointerId,
+            pointerType: 'mouse',
+            clientX: endX,
+            clientY: endY,
+          });
+        });
+      };
+
+      runGesture(501, 80, 40, 20, 40);
+      await waitFor(() => {
+        expect(useStore.getState().activeTabId).toBe(firstTab.id);
+      });
+
+      runGesture(502, 20, 40, 80, 40);
+      await waitFor(() => {
+        expect(useStore.getState().activeTabId).toBe(secondTab.id);
+      });
+
+      runGesture(503, 40, 80, 40, 20);
+      await waitFor(() => {
+        expect(navigateEvents).toContainEqual({ tabId: secondTab.id, line: 1, column: 1 });
+      });
+
+      runGesture(504, 40, 20, 40, 80);
+      await waitFor(() => {
+        expect(navigateEvents).toContainEqual({ tabId: secondTab.id, line: 12, column: 1 });
+      });
+    } finally {
+      window.removeEventListener('rutar:navigate-to-line', navigateListener as EventListener);
+    }
+  });
+
+  it('supports outline/bookmark/wordwrap/settings mouse gesture actions', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-ui-actions' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      outlineOpen: false,
+      bookmarkSidebarOpen: false,
+    });
+    vi.mocked(detectOutlineType).mockReturnValue('typescript');
+    useStore.getState().updateSettings({
+      wordWrap: false,
+      isOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [
+            { pattern: 'R', action: 'toggleOutline' },
+            { pattern: 'L', action: 'toggleBookmarkSidebar' },
+            { pattern: 'U', action: 'toggleWordWrap' },
+            { pattern: 'D', action: 'openSettings' },
+          ],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    const runGesture = (pointerId: number, startX: number, startY: number, endX: number, endY: number) => {
+      act(() => {
+        fireEvent.pointerDown(appRoot, {
+          pointerId,
+          button: 2,
+          buttons: 2,
+          pointerType: 'mouse',
+          clientX: startX,
+          clientY: startY,
+        });
+        fireEvent.pointerMove(appRoot, {
+          pointerId,
+          pointerType: 'mouse',
+          clientX: endX,
+          clientY: endY,
+        });
+        fireEvent.pointerUp(appRoot, {
+          pointerId,
+          pointerType: 'mouse',
+          clientX: endX,
+          clientY: endY,
+        });
+      });
+    };
+
+    runGesture(511, 20, 20, 80, 20);
+    await waitFor(() => {
+      expect(useStore.getState().outlineOpen).toBe(true);
+    });
+
+    runGesture(512, 80, 20, 20, 20);
+    await waitFor(() => {
+      expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
+    });
+
+    runGesture(513, 40, 80, 40, 20);
+    await waitFor(() => {
+      expect(useStore.getState().settings.wordWrap).toBe(true);
+    });
+
+    runGesture(514, 40, 20, 40, 80);
+    await waitFor(() => {
+      expect(useStore.getState().settings.isOpen).toBe(true);
+    });
+  });
+
+  it('supports close-current-tab gesture and creates replacement tab when needed', async () => {
+    const targetTab = createFileTab({ id: 'tab-gesture-close-current' });
+    const replacementTab = createFileTab({
+      id: 'tab-gesture-close-current-replacement',
+      name: 'replacement.txt',
+      path: 'replacement.txt',
+    });
+    useStore.setState({
+      tabs: [targetTab],
+      activeTabId: targetTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'closeCurrentTab' }],
+        }),
+        new_file: async () => replacementTab,
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 521,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 521,
+        pointerType: 'mouse',
+        clientX: 80,
+        clientY: 20,
+      });
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 521,
+        pointerType: 'mouse',
+        clientX: 80,
+        clientY: 20,
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('close_files', { ids: [targetTab.id] });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('new_file', {
+        newFileLineEnding: 'LF',
+      });
+      expect(useStore.getState().tabs.some((tab) => tab.id === replacementTab.id)).toBe(true);
+    });
+  });
+
   it('suppresses next context menu after gesture finalize and clears gesture timers on unmount', async () => {
     const fileTab = createFileTab({ id: 'tab-gesture-suppress-next' });
     useStore.setState({
@@ -2329,6 +2613,58 @@ describe('App component', () => {
     await waitFor(() => {
       expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\boot-open.ts']);
     });
+  });
+
+  it('falls back to file-open and logs error when startup path directory-check fails', async () => {
+    const startupPath = 'C:\\repo\\startup-check-failed.ts';
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => [startupPath],
+        read_dir_if_directory: async () => {
+          throw new Error('startup-dir-check-failed');
+        },
+      })
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          `Failed to check incoming directory path: ${startupPath}`,
+          expect.objectContaining({ message: 'startup-dir-check-failed' })
+        );
+      });
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith([startupPath]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('logs error when opening startup incoming file path fails', async () => {
+    const startupPath = 'C:\\repo\\startup-open-failed.ts';
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        get_startup_paths: async () => [startupPath],
+        read_dir_if_directory: async () => null,
+      })
+    );
+    vi.mocked(openFilePaths).mockRejectedValueOnce(new Error('startup-open-failed'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          `Failed to open incoming path: ${startupPath}`,
+          expect.objectContaining({ message: 'startup-open-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('logs error when loading startup paths fails', async () => {
