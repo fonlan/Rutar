@@ -112,6 +112,26 @@ async function clickLineNumber(
   fireEvent.click(lineElement as Element, options ?? {});
 }
 
+async function openLineNumberContextMenu(
+  container: HTMLElement,
+  lineNumber: number,
+  position?: { clientX?: number; clientY?: number }
+) {
+  await waitFor(() => {
+    expect(container.querySelectorAll('div.cursor-pointer.select-none').length).toBeGreaterThan(0);
+  });
+
+  const lineElement = Array.from(container.querySelectorAll('div.cursor-pointer.select-none')).find(
+    (element) => element.textContent === String(lineNumber)
+  );
+  expect(lineElement).toBeTruthy();
+
+  fireEvent.contextMenu(lineElement as Element, {
+    clientX: position?.clientX ?? 220,
+    clientY: position?.clientY ?? 180,
+  });
+}
+
 describe('Editor component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
 
@@ -918,6 +938,20 @@ describe('Editor component', () => {
     expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
   });
 
+  it('selects the clicked line content on line-number single click', async () => {
+    const tab = createTab({ id: 'tab-line-number-single-click', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await clickLineNumber(container, 2);
+
+    await waitFor(() => {
+      expect(textarea.selectionStart).toBe(6);
+      expect(textarea.selectionEnd).toBe(11);
+    });
+  });
+
   it('prevents default and propagation on line-number mouse down', async () => {
     const tab = createTab({ id: 'tab-line-number-mousedown', lineCount: 8 });
     const { container } = render(<Editor tab={tab} />);
@@ -935,6 +969,38 @@ describe('Editor component', () => {
     lineOne?.dispatchEvent(mouseDownEvent);
 
     expect(mouseDownEvent.defaultPrevented).toBe(true);
+  });
+
+  it('shows line-number context menu with current-line select and bookmark actions', async () => {
+    const tab = createTab({ id: 'tab-line-number-context-menu', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+
+    await openLineNumberContextMenu(container, 1, { clientX: 180, clientY: 220 });
+
+    expect(await screen.findByRole('button', { name: 'Select Current Line' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Current Line to Bookmark' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+  });
+
+  it('executes line-number context menu actions using click and double-click behaviors', async () => {
+    const tab = createTab({ id: 'tab-line-number-context-actions', lineCount: 8 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await openLineNumberContextMenu(container, 2);
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Current Line' }));
+
+    await waitFor(() => {
+      expect(textarea.selectionStart).toBe(6);
+      expect(textarea.selectionEnd).toBe(11);
+    });
+
+    await openLineNumberContextMenu(container, 2);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Current Line to Bookmark' }));
+
+    expect(useStore.getState().bookmarksByTab[tab.id]).toEqual([2]);
+    expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
   });
 
   it('runs cleanup action from context submenu and updates dirty line count', async () => {

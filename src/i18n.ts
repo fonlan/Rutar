@@ -180,6 +180,8 @@ export type I18nKey =
   | 'settings.mouseGestureAction.openSettings'
   | 'editor.context.delete'
   | 'editor.context.selectAll'
+  | 'editor.context.selectCurrentLine'
+  | 'editor.context.addCurrentLineToBookmark'
   | 'editor.context.edit'
   | 'editor.context.sort'
   | 'editor.context.convert'
@@ -382,6 +384,8 @@ const zhCN: Messages = {
   'settings.mouseGestureAction.openSettings': '打开设置',
   'editor.context.delete': '删除',
   'editor.context.selectAll': '全选',
+  'editor.context.selectCurrentLine': '全选当前行',
+  'editor.context.addCurrentLineToBookmark': '添加当前行到书签',
   'editor.context.edit': '编辑',
   'editor.context.sort': '排序',
   'editor.context.convert': '转换',
@@ -583,6 +587,8 @@ const enUS: Messages = {
   'settings.mouseGestureAction.openSettings': 'Open Settings',
   'editor.context.delete': 'Delete',
   'editor.context.selectAll': 'Select All',
+  'editor.context.selectCurrentLine': 'Select Current Line',
+  'editor.context.addCurrentLineToBookmark': 'Add Current Line to Bookmark',
   'editor.context.edit': 'Edit',
   'editor.context.sort': 'Sort',
   'editor.context.convert': 'Convert',
