@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask } from '@tauri-apps/plugin-dialog';
+import { openFilePaths } from '@/lib/openFile';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
@@ -833,6 +834,168 @@ describe('App component', () => {
 
     const state = useStore.getState();
     expect(state.outlineError).toBeNull();
+  });
+
+  it('ignores external-file-changed events when payload id is invalid or not active tab', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-listener-ignore' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+      return () => undefined;
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => false,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(externalChangedHandler).toBeTruthy();
+    });
+
+    const hasExternalCheckCountBefore = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+
+    act(() => {
+      externalChangedHandler?.({ payload: { id: 123 } });
+      externalChangedHandler?.({ payload: { id: 'tab-external-listener-other' } });
+    });
+
+    const hasExternalCheckCountAfter = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+    expect(hasExternalCheckCountAfter).toBe(hasExternalCheckCountBefore);
+  });
+
+  it('checks active tab when external-file-changed event matches active id', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-listener-match' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+      return () => undefined;
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => false,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(externalChangedHandler).toBeTruthy();
+    });
+
+    const hasExternalCheckCountBefore = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+
+    act(() => {
+      externalChangedHandler?.({ payload: { id: fileTab.id } });
+    });
+
+    await waitFor(() => {
+      const hasExternalCheckCountAfter = vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+      expect(hasExternalCheckCountAfter).toBe(hasExternalCheckCountBefore + 1);
+    });
+  });
+
+  it('logs error when listening external-file-changed event fails', async () => {
+    vi.mocked(listen).mockImplementation(async (eventName) => {
+      if (eventName === 'rutar://external-file-changed') {
+        throw new Error('external-file-listener-failed');
+      }
+      return () => undefined;
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to listen external file change event:',
+          expect.objectContaining({ message: 'external-file-listener-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('handles drag-drop listener callback and opens dropped paths only', async () => {
+    let dragDropHandler: ((event: { payload: { type: string; paths: string[] } }) => void) | null = null;
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async (callback: unknown) => {
+        dragDropHandler = callback as (event: { payload: { type: string; paths: string[] } }) => void;
+        return () => undefined;
+      }),
+      onCloseRequested: vi.fn(async () => () => undefined),
+    } as never);
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(dragDropHandler).toBeTruthy();
+    });
+
+    act(() => {
+      dragDropHandler?.({ payload: { type: 'hover', paths: ['C:\\repo\\ignored.ts'] } });
+    });
+    expect(vi.mocked(openFilePaths)).not.toHaveBeenCalled();
+
+    act(() => {
+      dragDropHandler?.({ payload: { type: 'drop', paths: ['C:\\repo\\dropped.ts'] } });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\dropped.ts']);
+    });
+  });
+
+  it('logs error when registering drag-drop listener fails', async () => {
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => {
+        throw new Error('drag-drop-listener-failed');
+      }),
+      onCloseRequested: vi.fn(async () => () => undefined),
+    } as never);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to register drag drop listener:',
+          expect.objectContaining({ message: 'drag-drop-listener-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('acknowledges external file change when user declines reload', async () => {
