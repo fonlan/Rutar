@@ -1346,6 +1346,61 @@ describe('Editor component', () => {
     });
   });
 
+  it('ignores external paste-text event when detail payload is missing', async () => {
+    const tab = createTab({ id: 'tab-external-paste-missing-detail' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('rutar:paste-text'));
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('alpha\nbeta\n');
+    });
+  });
+
+  it('logs warning when external paste handler runs after unmount and editor input is unavailable', async () => {
+    const tab = createTab({ id: 'tab-external-paste-after-unmount' });
+    const originalAddEventListener = window.addEventListener.bind(window);
+    let pasteListener: EventListener | null = null;
+    const addEventListenerSpy = vi
+      .spyOn(window, 'addEventListener')
+      .mockImplementation(((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+        if (type === 'rutar:paste-text') {
+          pasteListener = listener as EventListener;
+        }
+        originalAddEventListener(type, listener, options);
+      }) as typeof window.addEventListener);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const view = render(<Editor tab={tab} />);
+      const textarea = await waitForEditorTextarea(view.container);
+      await waitForEditorText(textarea);
+
+      expect(pasteListener).toBeTruthy();
+      view.unmount();
+
+      act(() => {
+        pasteListener?.(
+          new CustomEvent('rutar:paste-text', {
+            detail: {
+              tabId: tab.id,
+              text: 'ZZ',
+            },
+          })
+        );
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith('Failed to paste text into editor.');
+    } finally {
+      warnSpy.mockRestore();
+      addEventListenerSpy.mockRestore();
+    }
+  });
+
   it('cleans drag cursor styles on unmount after text drag starts', async () => {
     const tab = createTab({ id: 'tab-text-drag-cleanup' });
     const { container, unmount } = render(<Editor tab={tab} />);
