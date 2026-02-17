@@ -1439,6 +1439,54 @@ describe('Editor component', () => {
     }
   });
 
+  it('runs unmount drag-cursor cleanup branch when blur listener is not registered', async () => {
+    const tab = createTab({ id: 'tab-text-drag-unmount-final-cleanup' });
+    const originalAddEventListener = window.addEventListener.bind(window);
+    const addEventListenerSpy = vi
+      .spyOn(window, 'addEventListener')
+      .mockImplementation(((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+        if (type === 'blur') {
+          return;
+        }
+        originalAddEventListener(type, listener, options);
+      }) as typeof window.addEventListener);
+
+    const { container, unmount } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, textarea.value.length);
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+    const elementRemoveSpy = vi.spyOn(textarea.style, 'removeProperty');
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 107,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 107,
+        clientX: 42,
+        clientY: 42,
+      });
+
+      await waitFor(() => {
+        expect(document.body.style.cursor).toBe('copy');
+        expect(textarea.style.cursor).toBe('copy');
+      });
+
+      unmount();
+
+      expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+    } finally {
+      bodyRemoveSpy.mockRestore();
+      elementRemoveSpy.mockRestore();
+      addEventListenerSpy.mockRestore();
+    }
+  });
+
   it('cleans drag cursor styles when active tab changes', async () => {
     const firstTab = createTab({ id: 'tab-drag-cleanup-switch-a' });
     const secondTab = createTab({ id: 'tab-drag-cleanup-switch-b' });
