@@ -1524,6 +1524,80 @@ describe('Editor component', () => {
     }
   });
 
+  it('cleans textarea drag cursor styles on immediate tab switch', async () => {
+    const firstTab = createTab({ id: 'tab-drag-cleanup-switch-immediate-a' });
+    const secondTab = createTab({ id: 'tab-drag-cleanup-switch-immediate-b' });
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, textarea.value.length);
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+    const elementRemoveSpy = vi.spyOn(textarea.style, 'removeProperty');
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 10,
+        clientX: 12,
+        clientY: 12,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 10,
+        clientX: 44,
+        clientY: 44,
+      });
+
+      expect(document.body.style.cursor).toBe('copy');
+      expect(textarea.style.cursor).toBe('copy');
+
+      rerender(<Editor tab={secondTab} />);
+
+      await waitFor(() => {
+        expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+        expect(elementRemoveSpy).toHaveBeenCalledWith('cursor');
+      });
+    } finally {
+      bodyRemoveSpy.mockRestore();
+      elementRemoveSpy.mockRestore();
+    }
+  });
+
+  it('cleans textarea drag cursor styles on immediate unmount', async () => {
+    const tab = createTab({ id: 'tab-text-drag-unmount-immediate-cleanup' });
+    const { container, unmount } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.setSelectionRange(0, textarea.value.length);
+    const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
+    const elementRemoveSpy = vi.spyOn(textarea.style, 'removeProperty');
+
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        pointerId: 110,
+        clientX: 12,
+        clientY: 12,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 110,
+        clientX: 44,
+        clientY: 44,
+      });
+
+      expect(document.body.style.cursor).toBe('copy');
+      expect(textarea.style.cursor).toBe('copy');
+
+      unmount();
+
+      expect(bodyRemoveSpy).toHaveBeenCalledWith('cursor');
+    } finally {
+      bodyRemoveSpy.mockRestore();
+      elementRemoveSpy.mockRestore();
+    }
+  });
+
   it('keeps editor user-select styles unchanged when pointerup occurs without scrollbar drag', async () => {
     const tab = createTab({ id: 'tab-scrollbar-guard-pointerup' });
     const { container } = render(<Editor tab={tab} />);
