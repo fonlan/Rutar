@@ -2485,6 +2485,40 @@ describe('Editor component', () => {
     }
   });
 
+  it('logs warning when context-menu copy clipboard write fails', async () => {
+    const tab = createTab({ id: 'tab-context-copy-warn' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn().mockRejectedValue(new Error('clipboard-write-failed'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      });
+
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      fireEvent.contextMenu(textarea, { clientX: 350, clientY: 260 });
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('alpha');
+      });
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith('Failed to write selection to clipboard.');
+      });
+      expect(textarea.value).toBe('alpha\nbeta\n');
+    } finally {
+      warnSpy.mockRestore();
+      restoreProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
   it('cuts selected text from context menu and syncs edit', async () => {
     const tab = createTab({ id: 'tab-context-cut' });
     const { container } = render(<Editor tab={tab} />);
