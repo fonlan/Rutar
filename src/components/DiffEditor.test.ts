@@ -457,7 +457,12 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
     expect(latestSnapshot?.heightPercent).toBe(20);
 
     scroller.scrollTop = 600;
-    resizeObserverCallback?.([] as ResizeObserverEntry[], {} as ResizeObserver);
+    const invokeResizeObserverCallback = resizeObserverCallback as unknown as
+      | ((entries: ResizeObserverEntry[], observer: ResizeObserver) => void)
+      | null;
+    if (invokeResizeObserverCallback) {
+      invokeResizeObserverCallback([] as ResizeObserverEntry[], {} as ResizeObserver);
+    }
     const resizeSnapshot = snapshots[snapshots.length - 1];
     expect(resizeSnapshot?.topPercent).toBeCloseTo(60, 3);
     expect(resizeSnapshot?.heightPercent).toBe(20);

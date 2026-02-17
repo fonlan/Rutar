@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
@@ -227,7 +228,12 @@ describe('App component', () => {
     useStore.setState(initialState, true);
     document.documentElement.classList.remove('dark');
 
-    vi.mocked(listen).mockImplementation(async () => vi.fn());
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => vi.fn()),
+      onCloseRequested: vi.fn(async () => () => undefined),
+    } as never);
+    vi.mocked(listen).mockImplementation(async () => () => undefined);
     vi.mocked(ask).mockResolvedValue(false);
     vi.mocked(detectOutlineType).mockReturnValue(null);
     vi.mocked(loadOutline).mockResolvedValue([]);
@@ -319,6 +325,52 @@ describe('App component', () => {
         expect(errorSpy).toHaveBeenCalledWith(
           'Failed to load config:',
           expect.objectContaining({ message: 'load-config-failed' })
+        );
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('unsubscribes close guard when registration resolves after cleanup', async () => {
+    const deferred = createDeferred<() => void>();
+    const unlistenSpy = vi.fn();
+
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => vi.fn()),
+      onCloseRequested: vi.fn(async () => deferred.promise),
+    } as never);
+
+    const view = render(React.createElement(App));
+    view.unmount();
+
+    await act(async () => {
+      deferred.resolve(unlistenSpy);
+      await deferred.promise;
+    });
+
+    expect(unlistenSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs error when registering close guard fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(getCurrentWindow).mockReturnValue({
+      close: vi.fn(async () => undefined),
+      onDragDropEvent: vi.fn(async () => vi.fn()),
+      onCloseRequested: vi.fn(async () => {
+        throw new Error('close-guard-register-failed');
+      }),
+    } as never);
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          'Failed to register close guard:',
+          expect.objectContaining({ message: 'close-guard-register-failed' })
         );
       });
     } finally {
