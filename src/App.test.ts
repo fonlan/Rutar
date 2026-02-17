@@ -2145,6 +2145,81 @@ describe('App component', () => {
     }
   });
 
+  it('keeps tab when close-current gesture save flow fails', async () => {
+    const dirtyTab = createFileTab({ id: 'tab-gesture-close-current-save-failed', isDirty: true });
+    useStore.setState({
+      tabs: [dirtyTab],
+      activeTabId: dirtyTab.id,
+    });
+
+    vi.mocked(confirmTabClose).mockResolvedValueOnce('save');
+    vi.mocked(saveTab).mockResolvedValueOnce(false);
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'closeCurrentTab' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.pointerDown(appRoot, {
+        pointerId: 531,
+        button: 2,
+        buttons: 2,
+        pointerType: 'mouse',
+        clientX: 20,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(appRoot, {
+        pointerId: 531,
+        pointerType: 'mouse',
+        clientX: 80,
+        clientY: 20,
+      });
+      fireEvent.pointerUp(appRoot, {
+        pointerId: 531,
+        pointerType: 'mouse',
+        clientX: 80,
+        clientY: 20,
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(dirtyTab, 'en-US', true);
+      expect(vi.mocked(saveTab)).toHaveBeenCalledWith(dirtyTab, expect.any(Function));
+      expect(useStore.getState().tabs.some((tab) => tab.id === dirtyTab.id)).toBe(true);
+    });
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('close_files', expect.anything());
+  });
+
   it('returns early for close-current gesture when active tab id does not resolve to a tab', async () => {
     const onlyTab = createFileTab({ id: 'tab-gesture-close-current-only' });
     useStore.setState({
