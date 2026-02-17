@@ -873,6 +873,59 @@ describe('DiffEditor component', () => {
     }
   });
 
+  it('closes header context menu on escape key', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const sourceTitle = await screen.findByText('Source: source.ts');
+    fireEvent.contextMenu(sourceTitle, {
+      clientX: 96,
+      clientY: 76,
+    });
+    expect(await screen.findByRole('button', { name: 'Copy File Name' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes header context menu on outside pointerdown', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const sourceTitle = await screen.findByText('Source: source.ts');
+    fireEvent.contextMenu(sourceTitle, {
+      clientX: 96,
+      clientY: 76,
+    });
+    expect(await screen.findByRole('button', { name: 'Copy File Name' })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body, {
+      button: 0,
+      pointerId: 77,
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+    });
+  });
+
   it('executes copy command from panel context menu', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -913,6 +966,35 @@ describe('DiffEditor component', () => {
         Reflect.deleteProperty(document, 'execCommand');
       }
     }
+  });
+
+  it('closes panel context menu on window blur', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.contextMenu(sourceTextarea, {
+      clientX: 140,
+      clientY: 140,
+    });
+    expect(await screen.findByRole('button', { name: 'Copy' })).toBeInTheDocument();
+
+    fireEvent.blur(window);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    });
   });
 
   it('executes cut command from panel context menu', async () => {
@@ -1467,6 +1549,200 @@ describe('DiffEditor component', () => {
     await waitFor(() => {
       expect(document.activeElement).toBe(sourceTextarea);
       expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+    });
+  });
+
+  it('ignores source line-number pointer selection for virtual placeholder rows', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: 'missing-target-tab',
+        sourceName: sourceTab.name,
+        targetName: 'target.ts',
+        sourcePath: sourceTab.path,
+        targetPath: 'C:\\repo\\target.ts',
+        alignedSourceLines: ['placeholder-source', 'left-2'],
+        alignedTargetLines: ['right-1', 'right-2'],
+        alignedSourcePresent: [false, true],
+        alignedTargetPresent: [true, true],
+        sourceLineCount: 1,
+        targetLineCount: 2,
+        alignedLineCount: 2,
+        diffLineNumbers: [1, 2],
+        sourceDiffLineNumbers: [1, 2],
+        targetDiffLineNumbers: [1, 2],
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    const virtualLineCell = await screen.findByText('+');
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(2, 2);
+      fireEvent.pointerDown(virtualLineCell, {
+        button: 0,
+        pointerId: 13,
+      });
+    });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(sourceTextarea);
+      expect(sourceTextarea.selectionStart).toBe(2);
+      expect(sourceTextarea.selectionEnd).toBe(2);
+    });
+  });
+
+  it('disables copy-to-right when target panel tab is missing', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: 'missing-target-tab',
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.contextMenu(sourceTextarea, {
+      clientX: 186,
+      clientY: 154,
+    });
+
+    const copyToRightButton = await screen.findByRole('button', { name: 'Copy to Right' });
+    expect(copyToRightButton).toBeDisabled();
+  });
+
+  it('disables copy-to-right when source textarea becomes unavailable after menu opens', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.contextMenu(sourceTextarea, {
+      clientX: 188,
+      clientY: 156,
+    });
+    const copyToRightButton = await screen.findByRole('button', { name: 'Copy to Right' });
+    expect(copyToRightButton).not.toBeDisabled();
+
+    act(() => {
+      useStore.setState({
+        tabs: [targetTab, diffTab],
+        activeTabId: diffTab.id,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Copy to Right' })).toBeDisabled();
+    });
+  });
+
+  it('skips out-of-range diff line numbers when building row diff-kind map', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: 'missing-target-tab',
+        sourceName: sourceTab.name,
+        targetName: 'target.ts',
+        sourcePath: sourceTab.path,
+        targetPath: 'C:\\repo\\target.ts',
+        alignedSourceLines: ['left-1'],
+        alignedTargetLines: ['right-1'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+        diffLineNumbers: [1, 999],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    await waitFor(() => {
+      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
+      expect(screen.getByText('Target tab closed')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const diffBackgrounds = container.querySelectorAll('div[class*="bg-amber-500/10"]');
+      expect(diffBackgrounds.length).toBe(1);
+    });
+  });
+
+  it('skips null diff kinds even when diff line numbers include the row', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: 'missing-target-tab',
+        sourceName: sourceTab.name,
+        targetName: 'target.ts',
+        sourcePath: sourceTab.path,
+        targetPath: 'C:\\repo\\target.ts',
+        alignedSourceLines: ['same-line'],
+        alignedTargetLines: ['same-line'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    await waitFor(() => {
+      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
+      expect(screen.getByText('Target tab closed')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('div[class*="bg-amber-500/10"]').length).toBe(0);
+      expect(container.querySelectorAll('div[class*="bg-red-500/10"]').length).toBe(0);
+      expect(container.querySelectorAll('div[class*="bg-emerald-500/10"]').length).toBe(0);
     });
   });
 
