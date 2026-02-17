@@ -437,7 +437,7 @@ describe('editorTestUtils offset and coordinate helpers', () => {
 
   it('syncs textarea content normalization when setting caret by line/column', () => {
     const textarea = document.createElement('textarea');
-    textarea.value = 'ab\r\ncd';
+    textarea.value = `ab${EMPTY_LINE_PLACEHOLDER}\ncd`;
 
     editorTestUtils.setCaretToLineColumn(textarea, 2, 1);
     expect(textarea.value).toBe('ab\ncd');
@@ -455,6 +455,22 @@ describe('editorTestUtils offset and coordinate helpers', () => {
 
     window.getSelection()?.removeAllRanges();
     div.remove();
+  });
+
+  it('returns early in setCaretToLineColumn when Selection API is unavailable', () => {
+    const div = document.createElement('div');
+    div.textContent = 'ab\ncd';
+    const originalGetSelection = Object.getOwnPropertyDescriptor(window, 'getSelection');
+
+    try {
+      Object.defineProperty(window, 'getSelection', {
+        configurable: true,
+        value: vi.fn(() => null),
+      });
+      expect(() => editorTestUtils.setCaretToLineColumn(div as never, 2, 2)).not.toThrow();
+    } finally {
+      restoreProperty(window, 'getSelection', originalGetSelection);
+    }
   });
 
   it('returns null anchor/focus offsets when selection anchor or focus node is missing', () => {
@@ -842,6 +858,20 @@ describe('editorTestUtils geometry and scroll helpers', () => {
       configurable: true,
       value: originalDpr,
     });
+  });
+
+  it('falls back to integer rounding when global window is unavailable', () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+
+    try {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: undefined,
+      });
+      expect(editorTestUtils.alignToDevicePixel(1.26)).toBe(1);
+    } finally {
+      restoreProperty(globalThis, 'window', originalWindowDescriptor);
+    }
   });
 
   it('detects scrollbar hit on vertical and horizontal rails', () => {

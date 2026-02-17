@@ -367,6 +367,130 @@ describe('Editor component', () => {
     }
   });
 
+  it('handles non-array huge editable chunk result without crashing', async () => {
+    const tab = createTab({ id: 'tab-huge-chunk-non-array', lineCount: 22000 });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return 'not-an-array' as unknown as string[];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'get_visible_lines_chunk',
+        expect.objectContaining({
+          id: tab.id,
+        })
+      );
+    });
+  });
+
+  it('logs error when huge editable chunk fetch throws', async () => {
+    const tab = createTab({ id: 'tab-huge-chunk-throw', lineCount: 22000 });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        throw new Error('huge-chunk-fetch-failed');
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitForEditorTextarea(container);
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith('Fetch editable segment error:', expect.any(Error));
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('resets huge editable textarea internal scroll offsets after force refresh sync', async () => {
+    const tab = createTab({ id: 'tab-huge-scroll-reset', lineCount: 22000 });
+    useStore.getState().addTab(tab);
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'alpha\nbeta');
+
+    textarea.scrollTop = 24;
+    textarea.scrollLeft = 18;
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            lineCount: tab.lineCount,
+            preserveCaret: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.scrollTop).toBe(0);
+      expect(textarea.scrollLeft).toBe(0);
+    });
+  });
+
   it('shows disabled copy/cut/delete in context menu when there is no selection', async () => {
     const tab = createTab({ id: 'tab-context-disabled' });
     const { container } = render(<Editor tab={tab} />);
@@ -785,7 +909,6 @@ describe('Editor component', () => {
     const textarea = await waitForEditorTextarea(container);
     await waitForEditorText(textarea);
 
-    textarea.focus();
     textarea.setSelectionRange(0, textarea.value.length);
 
     const bodyRemoveSpy = vi.spyOn(document.body.style, 'removeProperty');
