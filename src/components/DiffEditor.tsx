@@ -47,6 +47,10 @@ interface ApplyAlignedDiffEditResult {
 interface PairOffsetsResultPayload {
   leftOffset: number;
   rightOffset: number;
+  leftLine?: number;
+  leftColumn?: number;
+  rightLine?: number;
+  rightColumn?: number;
 }
 
 interface ViewportMetrics {
@@ -1801,13 +1805,33 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       const sortedOffsets = matched.leftOffset <= matched.rightOffset
         ? [matched.leftOffset, matched.rightOffset]
         : [matched.rightOffset, matched.leftOffset];
-      const nextHighlights = sortedOffsets.map((offset) => {
-        const position = codeUnitOffsetToLineColumn(text, offset);
-        return {
-          line: Math.max(1, position.line),
-          column: position.column + 1,
-        };
-      });
+      const hasBackendPositions =
+        Number.isFinite(matched.leftLine)
+        && Number.isFinite(matched.leftColumn)
+        && Number.isFinite(matched.rightLine)
+        && Number.isFinite(matched.rightColumn);
+      const nextHighlights = hasBackendPositions
+        ? [
+          {
+            offset: matched.leftOffset,
+            line: Math.max(1, Math.floor(matched.leftLine as number)),
+            column: Math.max(1, Math.floor(matched.leftColumn as number)),
+          },
+          {
+            offset: matched.rightOffset,
+            line: Math.max(1, Math.floor(matched.rightLine as number)),
+            column: Math.max(1, Math.floor(matched.rightColumn as number)),
+          },
+        ]
+          .sort((left, right) => left.offset - right.offset)
+          .map((item) => ({ line: item.line, column: item.column }))
+        : sortedOffsets.map((offset) => {
+          const position = codeUnitOffsetToLineColumn(text, offset);
+          return {
+            line: Math.max(1, position.line),
+            column: position.column + 1,
+          };
+        });
       setPairHighlightsForSide(side, nextHighlights);
     },
     [setPairHighlightsForSide]

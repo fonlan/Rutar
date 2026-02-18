@@ -167,6 +167,10 @@ mod tests {
             (Some(left), Some(right)) => {
                 assert_eq!(left.left_offset, right.left_offset);
                 assert_eq!(left.right_offset, right.right_offset);
+                assert_eq!(left.left_line, right.left_line);
+                assert_eq!(left.left_column, right.left_column);
+                assert_eq!(left.right_line, right.right_line);
+                assert_eq!(left.right_column, right.right_column);
             }
             (None, None) => {}
             _ => panic!("wrapper and impl returned different option shapes"),
@@ -179,16 +183,24 @@ mod tests {
 
         let selected_by_command = get_rectangular_selection_text(text.clone(), 0, 2, 1, 3)
             .expect("wrapper get selection should succeed");
-        let selected_by_impl = editing::get_rectangular_selection_text_impl(text.clone(), 0, 2, 1, 3)
-            .expect("impl get selection should succeed");
+        let selected_by_impl =
+            editing::get_rectangular_selection_text_impl(text.clone(), 0, 2, 1, 3)
+                .expect("impl get selection should succeed");
         assert_eq!(selected_by_command, selected_by_impl);
 
         let replaced_by_command =
             replace_rectangular_selection_text(text.clone(), 0, 1, 1, 3, "Z".to_string(), false)
                 .expect("wrapper replace should succeed");
-        let replaced_by_impl =
-            editing::replace_rectangular_selection_text_impl(text, 0, 1, 1, 3, "Z".to_string(), false)
-                .expect("impl replace should succeed");
+        let replaced_by_impl = editing::replace_rectangular_selection_text_impl(
+            text,
+            0,
+            1,
+            1,
+            3,
+            "Z".to_string(),
+            false,
+        )
+        .expect("impl replace should succeed");
         assert_eq!(replaced_by_command.next_text, replaced_by_impl.next_text);
         assert_eq!(
             replaced_by_command.caret_offset,

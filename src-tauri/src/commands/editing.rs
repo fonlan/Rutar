@@ -169,6 +169,10 @@ pub(super) fn edit_text_impl(
 pub struct PairOffsetsResultPayload {
     pub left_offset: usize,
     pub right_offset: usize,
+    pub left_line: usize,
+    pub left_column: usize,
+    pub right_line: usize,
+    pub right_column: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -352,6 +356,21 @@ fn find_matching_pair_near_offset_utf16(units: &[u16], offset: usize) -> Option<
     None
 }
 
+fn utf16_offset_to_line_column(starts: &[usize], offset: usize) -> (usize, usize) {
+    if starts.is_empty() {
+        return (1, 1);
+    }
+
+    let line_index = starts
+        .partition_point(|start| *start <= offset)
+        .saturating_sub(1);
+    let line_start = starts[line_index];
+    (
+        line_index.saturating_add(1),
+        offset.saturating_sub(line_start).saturating_add(1),
+    )
+}
+
 pub(super) fn find_matching_pair_offsets_impl(
     text: String,
     offset: usize,
@@ -362,12 +381,19 @@ pub(super) fn find_matching_pair_offsets_impl(
     }
 
     let matched = find_matching_pair_near_offset_utf16(&units, offset);
-    Ok(
-        matched.map(|(left_offset, right_offset)| PairOffsetsResultPayload {
+    let line_starts = build_line_start_offsets_utf16(&units);
+    Ok(matched.map(|(left_offset, right_offset)| {
+        let (left_line, left_column) = utf16_offset_to_line_column(&line_starts, left_offset);
+        let (right_line, right_column) = utf16_offset_to_line_column(&line_starts, right_offset);
+        PairOffsetsResultPayload {
             left_offset,
             right_offset,
-        }),
-    )
+            left_line,
+            left_column,
+            right_line,
+            right_column,
+        }
+    }))
 }
 
 fn normalize_line_text_for_rectangular_edit(value: &str) -> String {
@@ -1120,7 +1146,7 @@ pub(super) fn format_document_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_document_lines, DocumentCleanupAction};
+    use super::{cleanup_document_lines, find_matching_pair_offsets_impl, DocumentCleanupAction};
 
     #[test]
     fn remove_empty_lines_should_drop_blank_lines_and_keep_terminal_newline() {
@@ -1213,5 +1239,31 @@ mod tests {
             cleanup_document_lines(source, DocumentCleanupAction::SortLinesByPinyinDescending);
 
         assert_eq!(result, "赵\n张\n王\n李\n");
+    }
+
+    #[test]
+    fn find_matching_pair_offsets_should_include_line_and_column_positions() {
+        let payload = find_matching_pair_offsets_impl("a(\nxx)".to_string(), 2)
+            .expect("pair lookup should succeed")
+            .expect("pair should exist");
+        assert_eq!(payload.left_offset, 1);
+        assert_eq!(payload.right_offset, 5);
+        assert_eq!(payload.left_line, 1);
+        assert_eq!(payload.left_column, 2);
+        assert_eq!(payload.right_line, 2);
+        assert_eq!(payload.right_column, 3);
+    }
+
+    #[test]
+    fn find_matching_pair_offsets_should_use_utf16_columns_for_surrogate_pairs() {
+        let payload = find_matching_pair_offsets_impl("😀(x)".to_string(), 3)
+            .expect("pair lookup should succeed")
+            .expect("pair should exist");
+        assert_eq!(payload.left_offset, 2);
+        assert_eq!(payload.right_offset, 4);
+        assert_eq!(payload.left_line, 1);
+        assert_eq!(payload.left_column, 3);
+        assert_eq!(payload.right_line, 1);
+        assert_eq!(payload.right_column, 5);
     }
 }

@@ -2550,4 +2550,92 @@ describe('DiffEditor component', () => {
       expect(marks).toEqual(['(', ')']);
     });
   });
+
+  it('uses backend pair line/column positions when provided', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['a()'],
+        alignedTargetLines: ['target'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        if (String(params.text ?? '') === 'a()') {
+          return {
+            leftOffset: 0,
+            rightOffset: 0,
+            leftLine: 1,
+            leftColumn: 2,
+            rightLine: 1,
+            rightColumn: 3,
+          };
+        }
+        return null;
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: buildLineDiffResponse(['a()'], ['target'], [true], [true]),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(1, 1);
+    });
+    fireEvent.select(sourceTextarea);
+
+    await waitFor(() => {
+      const marks = Array.from(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
+      ).map((element) => element.textContent ?? '');
+      expect(marks).toEqual(['(', ')']);
+    });
+  });
 });
