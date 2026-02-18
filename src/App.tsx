@@ -8,7 +8,12 @@ import { Toolbar } from '@/components/Toolbar';
 import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
 import { type MouseGestureAction, type MouseGestureBinding, sanitizeMouseGestures } from '@/lib/mouseGestures';
-import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
+import {
+  confirmTabClose,
+  saveTab,
+  shouldEnableBulkTabCloseActions,
+  type TabCloseDecision,
+} from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, isDiffTab } from '@/store/useStore';
 import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
@@ -215,12 +220,13 @@ function App() {
 
     const state = useStore.getState();
     const closableTabs: FileTab[] = [];
+    const allowBulkActions = shouldEnableBulkTabCloseActions(tabsToClose, true);
     let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
 
     for (const tab of tabsToClose) {
       let decision: TabCloseDecision | null = bulkDecision;
       if (!decision) {
-        decision = await confirmTabClose(tab, state.settings.language, true);
+        decision = await confirmTabClose(tab, state.settings.language, allowBulkActions);
       }
 
       if (decision === 'cancel') {
@@ -785,12 +791,13 @@ function App() {
         const unsubscribe = await getCurrentWindow().onCloseRequested(async (event) => {
           const state = useStore.getState();
           const dirtyTabs = state.tabs.filter((tab) => tab.isDirty);
+          const allowBulkActions = shouldEnableBulkTabCloseActions(dirtyTabs, true);
           let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
 
           for (const tab of dirtyTabs) {
             let decision: TabCloseDecision | null = bulkDecision;
             if (!decision) {
-              decision = await confirmTabClose(tab, state.settings.language, true);
+              decision = await confirmTabClose(tab, state.settings.language, allowBulkActions);
             }
 
             if (decision === 'cancel') {

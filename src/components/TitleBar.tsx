@@ -31,7 +31,12 @@ import {
 import { FileTab, type SyntaxKey, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
-import { confirmTabClose, saveTab, type TabCloseDecision } from '@/lib/tabClose';
+import {
+    confirmTabClose,
+    saveTab,
+    shouldEnableBulkTabCloseActions,
+    type TabCloseDecision,
+} from '@/lib/tabClose';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 
 const appWindow = getCurrentWindow();
@@ -309,12 +314,13 @@ export function TitleBar() {
             }
 
             const closableTabs: FileTab[] = [];
+            const allowBulkActions = shouldEnableBulkTabCloseActions(tabsToClose, allowAllActions);
             let bulkDecision: Extract<TabCloseDecision, 'save_all' | 'discard_all'> | null = null;
             for (const tab of tabsToClose) {
                 let decision: TabCloseDecision | null = bulkDecision;
 
                 if (!decision) {
-                    decision = await confirmTabClose(tab, settings.language, allowAllActions);
+                    decision = await confirmTabClose(tab, settings.language, allowBulkActions);
                 }
 
                 if (decision === 'cancel') {

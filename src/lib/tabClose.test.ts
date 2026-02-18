@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { confirmTabClose, ensureTabCanClose, saveTab } from "./tabClose";
+import {
+  confirmTabClose,
+  ensureTabCanClose,
+  saveTab,
+  shouldEnableBulkTabCloseActions,
+} from "./tabClose";
 import type { FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -160,5 +165,28 @@ describe("tabClose", () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("shouldEnableBulkTabCloseActions only enables bulk buttons for multiple dirty tabs", () => {
+    expect(
+      shouldEnableBulkTabCloseActions(
+        [createTab({ isDirty: true }), createTab({ id: "tab-2", isDirty: false })],
+        true
+      )
+    ).toBe(false);
+
+    expect(
+      shouldEnableBulkTabCloseActions(
+        [createTab({ isDirty: true }), createTab({ id: "tab-2", isDirty: true })],
+        true
+      )
+    ).toBe(true);
+
+    expect(
+      shouldEnableBulkTabCloseActions(
+        [createTab({ isDirty: true }), createTab({ id: "tab-2", isDirty: true })],
+        false
+      )
+    ).toBe(false);
   });
 });

@@ -11,6 +11,29 @@ function getTabDisplayName(tab: FileTab) {
   return tab.name || tab.path || 'Untitled';
 }
 
+export function shouldEnableBulkTabCloseActions(
+  tabs: ReadonlyArray<Pick<FileTab, 'isDirty'>>,
+  allowAllActions: boolean
+): boolean {
+  if (!allowAllActions) {
+    return false;
+  }
+
+  let dirtyCount = 0;
+  for (const tab of tabs) {
+    if (!tab.isDirty) {
+      continue;
+    }
+
+    dirtyCount += 1;
+    if (dirtyCount > 1) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function saveTab(tab: FileTab, updateTab: UpdateTab): Promise<boolean> {
   if (tab.path) {
     await invoke('save_file', { id: tab.id });
@@ -70,4 +93,3 @@ export async function ensureTabCanClose(
     return false;
   }
 }
-
