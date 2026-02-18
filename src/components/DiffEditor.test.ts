@@ -606,6 +606,9 @@ describe('DiffEditor component', () => {
         }
         return matchedLineNumbers;
       }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
       if (command === 'apply_aligned_diff_edit') {
         const alignedSourceLines = Array.isArray(params.alignedSourceLines)
           ? params.alignedSourceLines.map((item) => String(item ?? ''))
@@ -2151,6 +2154,270 @@ describe('DiffEditor component', () => {
 
     await waitFor(() => {
       expect(targetTextarea.value).toBe(beforeValue);
+    });
+  });
+
+  it('highlights source panel matching pair from backend offsets', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['("x")'],
+        alignedTargetLines: ['target'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(['("x")'], ['target'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        if (String(params.text ?? '') === '("x")') {
+          return {
+            leftOffset: 0,
+            rightOffset: 4,
+          };
+        }
+        return null;
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: buildLineDiffResponse(['("x")'], ['target'], [true], [true]),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(0, 0);
+    });
+    fireEvent.select(sourceTextarea);
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
+        text: '("x")',
+        offset: 0,
+      });
+      expect(container.querySelectorAll('mark[data-diff-pair-highlight="source"]').length).toBe(2);
+    });
+  });
+
+  it('highlights target panel matching pair from backend offsets', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['source'],
+        alignedTargetLines: ['{"k":1}'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(['source'], ['{"k":1}'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        if (String(params.text ?? '') === '{"k":1}') {
+          return {
+            leftOffset: 0,
+            rightOffset: 6,
+          };
+        }
+        return null;
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: buildLineDiffResponse(['source'], ['{"k":1}'], [true], [true]),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(0, 0);
+    });
+    fireEvent.select(targetTextarea);
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
+        text: '{"k":1}',
+        offset: 0,
+      });
+      expect(container.querySelectorAll('mark[data-diff-pair-highlight="target"]').length).toBe(2);
+    });
+  });
+
+  it('corrects source pair highlight when backend first resolves to previous offset', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['a()'],
+        alignedTargetLines: ['target'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        const text = String(params.text ?? '');
+        const offset = Number(params.offset ?? -1);
+        if (text === 'a()' && offset === 1) {
+          return {
+            leftOffset: 0,
+            rightOffset: 2,
+          };
+        }
+        if (text === 'a()' && offset === 2) {
+          return {
+            leftOffset: 1,
+            rightOffset: 2,
+          };
+        }
+        return null;
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: buildLineDiffResponse(['a()'], ['target'], [true], [true]),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(1, 1);
+    });
+    fireEvent.select(sourceTextarea);
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
+        text: 'a()',
+        offset: 1,
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
+        text: 'a()',
+        offset: 2,
+      });
+    });
+
+    await waitFor(() => {
+      const marks = Array.from(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
+      ).map((element) => element.textContent ?? '');
+      expect(marks).toEqual(['(', ')']);
     });
   });
 });

@@ -40,6 +40,11 @@ interface ApplyAlignedDiffEditResult {
   targetIsDirty: boolean;
 }
 
+interface PairOffsetsResultPayload {
+  leftOffset: number;
+  rightOffset: number;
+}
+
 interface ViewportMetrics {
   topPercent: number;
   heightPercent: number;
@@ -76,6 +81,11 @@ interface DiffHeaderContextMenuState {
   side: ActivePanel;
 }
 
+interface PairHighlightPosition {
+  line: number;
+  column: number;
+}
+
 type ActivePanel = 'source' | 'target';
 type DiffLineKind = 'insert' | 'delete' | 'modify';
 
@@ -88,6 +98,12 @@ const REFRESH_DEBOUNCE_MS = 120;
 const EDIT_DEBOUNCE_MS = 90;
 const INPUT_ACTIVE_HOLD_MS = 450;
 const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
+const PAIR_HIGHLIGHT_CLASS =
+  'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
+
+function isPairCandidateCharacter(char: string) {
+  return char === '(' || char === ')' || char === '[' || char === ']' || char === '{' || char === '}' || char === '"' || char === "'";
+}
 
 function getParentDirectoryPath(filePath: string): string | null {
   const normalizedPath = filePath.trim();
@@ -416,6 +432,96 @@ function getLineIndexFromTextOffset(text: string, offset: number) {
   return lineIndex;
 }
 
+function codeUnitOffsetToLineColumn(text: string, offset: number) {
+  const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
+  const prefix = text.slice(0, safeOffset);
+  const line = prefix.split('\n').length;
+  const lastNewline = prefix.lastIndexOf('\n');
+  const column = safeOffset - (lastNewline + 1);
+
+  return {
+    line,
+    column,
+  };
+}
+
+function arePairHighlightPositionsEqual(
+  left: PairHighlightPosition[],
+  right: PairHighlightPosition[]
+) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index].line !== right[index].line || left[index].column !== right[index].column) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildPairHighlightRows(pairHighlights: PairHighlightPosition[], lines: string[]) {
+  const rows = new Map<number, number[]>();
+
+  for (const position of pairHighlights) {
+    const rowIndex = position.line - 1;
+    if (rowIndex < 0 || rowIndex >= lines.length) {
+      continue;
+    }
+
+    const lineText = lines[rowIndex] ?? '';
+    const columnIndex = position.column - 1;
+    if (columnIndex < 0 || columnIndex >= lineText.length) {
+      continue;
+    }
+
+    const existing = rows.get(rowIndex);
+    if (existing) {
+      if (!existing.includes(columnIndex)) {
+        existing.push(columnIndex);
+      }
+      continue;
+    }
+
+    rows.set(rowIndex, [columnIndex]);
+  }
+
+  for (const columns of rows.values()) {
+    columns.sort((left, right) => left - right);
+  }
+
+  return rows;
+}
+
+function buildPairHighlightSegments(lineTextLength: number, pairColumns: number[]) {
+  const boundaries = new Set<number>([0, lineTextLength]);
+  pairColumns.forEach((column) => {
+    boundaries.add(column);
+    boundaries.add(Math.min(lineTextLength, column + 1));
+  });
+
+  const sorted = Array.from(boundaries).sort((left, right) => left - right);
+  const segments: Array<{ start: number; end: number; isPair: boolean }> = [];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const start = sorted[index];
+    const end = sorted[index + 1];
+    if (end <= start) {
+      continue;
+    }
+
+    const isPair = pairColumns.some((column) => start >= column && end <= column + 1);
+    segments.push({
+      start,
+      end,
+      isPair,
+    });
+  }
+
+  return segments;
+}
+
 function getSelectedLineRangeByOffset(text: string, selectionStart: number, selectionEnd: number) {
   const safeStart = Math.max(0, Math.min(selectionStart, text.length));
   const safeEnd = Math.max(0, Math.min(selectionEnd, text.length));
@@ -741,6 +847,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [targetSearchMatchedRows, setTargetSearchMatchedRows] = useState<number[]>([]);
   const [sourceSearchMatchedRow, setSourceSearchMatchedRow] = useState<number | null>(null);
   const [targetSearchMatchedRow, setTargetSearchMatchedRow] = useState<number | null>(null);
+  const [sourcePairHighlights, setSourcePairHighlights] = useState<PairHighlightPosition[]>([]);
+  const [targetPairHighlights, setTargetPairHighlights] = useState<PairHighlightPosition[]>([]);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -770,6 +878,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
   const sourceSearchRequestSequenceRef = useRef(0);
   const targetSearchRequestSequenceRef = useRef(0);
+  const pairHighlightRequestIdRef = useRef<{ source: number; target: number }>({
+    source: 0,
+    target: 0,
+  });
   const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const diffContextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1415,6 +1527,108 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       applyBackendDiffResult(pendingResult);
     });
   }, [applyBackendDiffResult, isInputEditingActive]);
+
+  const setPairHighlightsForSide = useCallback(
+    (side: ActivePanel, nextHighlights: PairHighlightPosition[]) => {
+      if (side === 'source') {
+        setSourcePairHighlights((previous) =>
+          arePairHighlightPositionsEqual(previous, nextHighlights) ? previous : nextHighlights
+        );
+        return;
+      }
+
+      setTargetPairHighlights((previous) =>
+        arePairHighlightPositionsEqual(previous, nextHighlights) ? previous : nextHighlights
+      );
+    },
+    []
+  );
+
+  const clearPairHighlightsForSide = useCallback(
+    (side: ActivePanel) => {
+      pairHighlightRequestIdRef.current[side] = pairHighlightRequestIdRef.current[side] + 1;
+      setPairHighlightsForSide(side, []);
+    },
+    [setPairHighlightsForSide]
+  );
+
+  const updatePairHighlightsForSide = useCallback(
+    async (side: ActivePanel, text: string, selectionStart: number, selectionEnd: number) => {
+      const requestId = pairHighlightRequestIdRef.current[side] + 1;
+      pairHighlightRequestIdRef.current[side] = requestId;
+
+      if (selectionStart !== selectionEnd) {
+        setPairHighlightsForSide(side, []);
+        return;
+      }
+
+      let matched: PairOffsetsResultPayload | null = null;
+      try {
+        matched = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
+          text,
+          offset: selectionEnd,
+        });
+      } catch (error) {
+        if (pairHighlightRequestIdRef.current[side] === requestId) {
+          setPairHighlightsForSide(side, []);
+        }
+        console.error('Failed to find matching pair offsets in diff panel:', error);
+        return;
+      }
+
+      if (pairHighlightRequestIdRef.current[side] !== requestId) {
+        return;
+      }
+
+      if (!matched) {
+        setPairHighlightsForSide(side, []);
+        return;
+      }
+
+      // Prefer matching the character currently at caret position when backend resolution
+      // lands on previous offset but caret itself is on a pair candidate.
+      if (selectionStart === selectionEnd && selectionEnd >= 0 && selectionEnd < text.length) {
+        const currentChar = text.charAt(selectionEnd);
+        if (isPairCandidateCharacter(currentChar)) {
+          const includesCurrent =
+            matched.leftOffset === selectionEnd || matched.rightOffset === selectionEnd;
+          const includesPrevious =
+            selectionEnd > 0
+              && (matched.leftOffset === selectionEnd - 1 || matched.rightOffset === selectionEnd - 1);
+
+          if (!includesCurrent && includesPrevious) {
+            try {
+              const corrected = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
+                text,
+                offset: selectionEnd + 1,
+              });
+              if (pairHighlightRequestIdRef.current[side] !== requestId) {
+                return;
+              }
+              if (corrected) {
+                matched = corrected;
+              }
+            } catch (error) {
+              console.error('Failed to correct matching pair offset in diff panel:', error);
+            }
+          }
+        }
+      }
+
+      const sortedOffsets = matched.leftOffset <= matched.rightOffset
+        ? [matched.leftOffset, matched.rightOffset]
+        : [matched.rightOffset, matched.leftOffset];
+      const nextHighlights = sortedOffsets.map((offset) => {
+        const position = codeUnitOffsetToLineColumn(text, offset);
+        return {
+          line: Math.max(1, position.line),
+          column: position.column + 1,
+        };
+      });
+      setPairHighlightsForSide(side, nextHighlights);
+    },
+    [setPairHighlightsForSide]
+  );
 
   const handlePanelTextareaChange = useCallback(
     (
@@ -2165,6 +2379,68 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     }
   }, [targetSearchMatchedRow, targetSearchMatchedRows]);
 
+  useEffect(() => {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    const panel = activeElement.dataset.diffPanel;
+    if (panel !== 'source' && panel !== 'target') {
+      return;
+    }
+
+    const value = activeElement.value ?? '';
+    const selectionStart = activeElement.selectionStart ?? value.length;
+    const selectionEnd = activeElement.selectionEnd ?? value.length;
+    void updatePairHighlightsForSide(panel, value, selectionStart, selectionEnd);
+  }, [lineDiff, updatePairHighlightsForSide]);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const activeElement = document.activeElement;
+      if (!(activeElement instanceof HTMLTextAreaElement)) {
+        return;
+      }
+
+      const panel = activeElement.dataset.diffPanel;
+      if (panel !== 'source' && panel !== 'target') {
+        return;
+      }
+
+      const value = activeElement.value ?? '';
+      const selectionStart = activeElement.selectionStart ?? value.length;
+      const selectionEnd = activeElement.selectionEnd ?? value.length;
+      void updatePairHighlightsForSide(panel, value, selectionStart, selectionEnd);
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, [updatePairHighlightsForSide]);
+
+  const schedulePairHighlightSyncForSide = useCallback(
+    (side: ActivePanel, textarea: HTMLTextAreaElement) => {
+      window.requestAnimationFrame(() => {
+        if (!textarea.isConnected) {
+          return;
+        }
+
+        const panel = textarea.dataset.diffPanel;
+        if (panel !== side) {
+          return;
+        }
+
+        const value = textarea.value ?? '';
+        const selectionStart = textarea.selectionStart ?? value.length;
+        const selectionEnd = textarea.selectionEnd ?? value.length;
+        void updatePairHighlightsForSide(side, value, selectionStart, selectionEnd);
+      });
+    },
+    [updatePairHighlightsForSide]
+  );
+
   const jumpToPanelAlignedRow = useCallback(
     (side: ActivePanel, rowIndex: number) => {
       const snapshot = lineDiffRef.current;
@@ -2338,6 +2614,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
   const sourcePanelHeightPx = Math.max(1, alignedLineCount * rowHeightPx);
   const targetPanelHeightPx = Math.max(1, alignedLineCount * rowHeightPx);
+  const sourcePairHighlightRows = useMemo(
+    () => buildPairHighlightRows(sourcePairHighlights, lineDiff.alignedSourceLines),
+    [lineDiff.alignedSourceLines, sourcePairHighlights]
+  );
+  const targetPairHighlightRows = useMemo(
+    () => buildPairHighlightRows(targetPairHighlights, lineDiff.alignedTargetLines),
+    [lineDiff.alignedTargetLines, targetPairHighlights]
+  );
 
   return (
     <div className="h-full w-full overflow-hidden bg-background">
@@ -2667,15 +2951,22 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       value={sourcePanelText}
                       onChange={(event) => {
                         const target = event.currentTarget;
+                        const selectionStart = target.selectionStart ?? target.value.length;
+                        const selectionEnd = target.selectionEnd ?? target.value.length;
                         handlePanelTextareaChange(
                           'source',
                           target.value,
-                          target.selectionStart ?? target.value.length,
-                          target.selectionEnd ?? target.value.length
+                          selectionStart,
+                          selectionEnd
                         );
+                        void updatePairHighlightsForSide('source', target.value, selectionStart, selectionEnd);
                       }}
                       onKeyDown={(event) => {
                         handlePanelTextareaKeyDown('source', event);
+                      }}
+                      onSelect={(event) => {
+                        const target = event.currentTarget;
+                        schedulePairHighlightSyncForSide('source', target);
                       }}
                       onCopy={(event) => {
                         handlePanelTextareaCopy('source', event);
@@ -2683,10 +2974,15 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       onContextMenu={(event) => {
                         handlePanelContextMenu('source', event);
                       }}
-                      onFocus={() => {
+                      onFocus={(event) => {
                         setActivePanel('source');
+                        const target = event.currentTarget;
+                        schedulePairHighlightSyncForSide('source', target);
                       }}
-                      onBlur={handlePanelInputBlur}
+                      onBlur={() => {
+                        handlePanelInputBlur();
+                        clearPairHighlightsForSide('source');
+                      }}
                       data-diff-panel="source"
                       className="relative z-10 block w-full resize-none border-0 bg-transparent px-2 outline-none"
                       style={{
@@ -2704,6 +3000,54 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       autoCorrect="off"
                       autoCapitalize="off"
                     />
+
+                    {sourcePairHighlightRows.size > 0 && (
+                      <div className="pointer-events-none absolute inset-0 z-[5]">
+                        {Array.from(sourcePairHighlightRows.entries()).map(([rowIndex, pairColumns]) => {
+                          const lineText = lineDiff.alignedSourceLines[rowIndex] ?? '';
+                          const segments = buildPairHighlightSegments(lineText.length, pairColumns);
+                          if (segments.length === 0) {
+                            return null;
+                          }
+
+                          return (
+                            <div
+                              key={`source-pair-highlight-row-${rowIndex}`}
+                              className="absolute left-0 right-0 whitespace-pre px-2"
+                              style={{
+                                top: `${rowIndex * rowHeightPx}px`,
+                                height: `${rowHeightPx}px`,
+                                lineHeight: `${rowHeightPx}px`,
+                                fontFamily: settings.fontFamily,
+                                fontSize: `${settings.fontSize}px`,
+                                color: 'transparent',
+                              }}
+                            >
+                              {segments.map((segment, segmentIndex) => {
+                                const part = lineText.slice(segment.start, segment.end);
+                                if (!segment.isPair) {
+                                  return (
+                                    <span key={`source-pair-highlight-segment-${rowIndex}-${segmentIndex}`}>
+                                      {part}
+                                    </span>
+                                  );
+                                }
+
+                                return (
+                                  <mark
+                                    key={`source-pair-highlight-segment-${rowIndex}-${segmentIndex}`}
+                                    data-diff-pair-highlight="source"
+                                    className={`${PAIR_HIGHLIGHT_CLASS} text-transparent`}
+                                  >
+                                    {part}
+                                  </mark>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2804,15 +3148,22 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       value={targetPanelText}
                       onChange={(event) => {
                         const target = event.currentTarget;
+                        const selectionStart = target.selectionStart ?? target.value.length;
+                        const selectionEnd = target.selectionEnd ?? target.value.length;
                         handlePanelTextareaChange(
                           'target',
                           target.value,
-                          target.selectionStart ?? target.value.length,
-                          target.selectionEnd ?? target.value.length
+                          selectionStart,
+                          selectionEnd
                         );
+                        void updatePairHighlightsForSide('target', target.value, selectionStart, selectionEnd);
                       }}
                       onKeyDown={(event) => {
                         handlePanelTextareaKeyDown('target', event);
+                      }}
+                      onSelect={(event) => {
+                        const target = event.currentTarget;
+                        schedulePairHighlightSyncForSide('target', target);
                       }}
                       onCopy={(event) => {
                         handlePanelTextareaCopy('target', event);
@@ -2820,10 +3171,15 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       onContextMenu={(event) => {
                         handlePanelContextMenu('target', event);
                       }}
-                      onFocus={() => {
+                      onFocus={(event) => {
                         setActivePanel('target');
+                        const target = event.currentTarget;
+                        schedulePairHighlightSyncForSide('target', target);
                       }}
-                      onBlur={handlePanelInputBlur}
+                      onBlur={() => {
+                        handlePanelInputBlur();
+                        clearPairHighlightsForSide('target');
+                      }}
                       data-diff-panel="target"
                       className="relative z-10 block w-full resize-none border-0 bg-transparent px-2 outline-none"
                       style={{
@@ -2841,6 +3197,54 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                       autoCorrect="off"
                       autoCapitalize="off"
                     />
+
+                    {targetPairHighlightRows.size > 0 && (
+                      <div className="pointer-events-none absolute inset-0 z-[5]">
+                        {Array.from(targetPairHighlightRows.entries()).map(([rowIndex, pairColumns]) => {
+                          const lineText = lineDiff.alignedTargetLines[rowIndex] ?? '';
+                          const segments = buildPairHighlightSegments(lineText.length, pairColumns);
+                          if (segments.length === 0) {
+                            return null;
+                          }
+
+                          return (
+                            <div
+                              key={`target-pair-highlight-row-${rowIndex}`}
+                              className="absolute left-0 right-0 whitespace-pre px-2"
+                              style={{
+                                top: `${rowIndex * rowHeightPx}px`,
+                                height: `${rowHeightPx}px`,
+                                lineHeight: `${rowHeightPx}px`,
+                                fontFamily: settings.fontFamily,
+                                fontSize: `${settings.fontSize}px`,
+                                color: 'transparent',
+                              }}
+                            >
+                              {segments.map((segment, segmentIndex) => {
+                                const part = lineText.slice(segment.start, segment.end);
+                                if (!segment.isPair) {
+                                  return (
+                                    <span key={`target-pair-highlight-segment-${rowIndex}-${segmentIndex}`}>
+                                      {part}
+                                    </span>
+                                  );
+                                }
+
+                                return (
+                                  <mark
+                                    key={`target-pair-highlight-segment-${rowIndex}-${segmentIndex}`}
+                                    data-diff-pair-highlight="target"
+                                    className={`${PAIR_HIGHLIGHT_CLASS} text-transparent`}
+                                  >
+                                    {part}
+                                  </mark>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
