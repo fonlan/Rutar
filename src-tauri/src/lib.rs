@@ -218,6 +218,8 @@ pub fn run() {
             commands::search_commands::replace_current_in_document,
             commands::search_commands::replace_current_and_search_chunk_in_document,
             commands::search_commands::filter_in_document_chunk,
+            commands::search_commands::filter_session_start_in_document,
+            commands::search_commands::filter_session_next_in_document,
             commands::search_commands::step_result_filter_search_in_filter_document,
             commands::search_commands::filter_count_in_document,
             commands::search_commands::search_in_document,

@@ -254,6 +254,34 @@ pub fn filter_in_document_chunk(
 }
 
 #[tauri::command]
+pub fn filter_session_start_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<FilterSessionStartResultPayload, String> {
+    search::filter_session_start_in_document_impl(
+        state,
+        id,
+        rules,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        max_results,
+    )
+}
+
+#[tauri::command]
+pub fn filter_session_next_in_document(
+    state: State<'_, AppState>,
+    session_id: String,
+    max_results: usize,
+) -> Result<FilterSessionNextResultPayload, String> {
+    search::filter_session_next_in_document_impl(state, session_id, max_results)
+}
+
+#[tauri::command]
 pub fn step_result_filter_search_in_filter_document(
     state: State<'_, AppState>,
     id: String,
@@ -307,6 +335,8 @@ mod tests {
         let _ = step_result_filter_search_in_document as usize;
         let _ = filter_count_in_document as usize;
         let _ = filter_in_document_chunk as usize;
+        let _ = filter_session_start_in_document as usize;
+        let _ = filter_session_next_in_document as usize;
         let _ = step_result_filter_search_in_filter_document as usize;
         let _ = search_in_document as usize;
     }
