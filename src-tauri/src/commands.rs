@@ -264,6 +264,33 @@ pub async fn compare_documents_by_line(
     diff::compare_documents_by_line_impl(state, source_id, target_id).await
 }
 
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn apply_aligned_diff_edit(
+    state: State<'_, AppState>,
+    source_id: String,
+    target_id: String,
+    edited_side: String,
+    aligned_source_lines: Vec<String>,
+    aligned_target_lines: Vec<String>,
+    aligned_source_present: Vec<bool>,
+    aligned_target_present: Vec<bool>,
+    edited_trailing_newline: bool,
+) -> Result<diff::ApplyAlignedDiffEditResult, String> {
+    diff::apply_aligned_diff_edit_impl(
+        state,
+        source_id,
+        target_id,
+        edited_side,
+        aligned_source_lines,
+        aligned_target_lines,
+        aligned_source_present,
+        aligned_target_present,
+        edited_trailing_newline,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::external_change_notified_ids;

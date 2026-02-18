@@ -89,6 +89,50 @@ function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: '
   } as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 }
 
+function buildLineDiffResponse(
+  alignedSourceLines: string[],
+  alignedTargetLines: string[],
+  alignedSourcePresent: boolean[],
+  alignedTargetPresent: boolean[]
+) {
+  const alignedLineCount = Math.max(
+    1,
+    alignedSourceLines.length,
+    alignedTargetLines.length,
+    alignedSourcePresent.length,
+    alignedTargetPresent.length
+  );
+  const sourceLines = [...alignedSourceLines];
+  const targetLines = [...alignedTargetLines];
+  const sourcePresent = [...alignedSourcePresent];
+  const targetPresent = [...alignedTargetPresent];
+  while (sourceLines.length < alignedLineCount) {
+    sourceLines.push('');
+  }
+  while (targetLines.length < alignedLineCount) {
+    targetLines.push('');
+  }
+  while (sourcePresent.length < alignedLineCount) {
+    sourcePresent.push(false);
+  }
+  while (targetPresent.length < alignedLineCount) {
+    targetPresent.push(false);
+  }
+
+  return {
+    alignedSourceLines: sourceLines,
+    alignedTargetLines: targetLines,
+    alignedSourcePresent: sourcePresent,
+    alignedTargetPresent: targetPresent,
+    ...diffEditorTestUtils.buildAlignedDiffMetadata(
+      sourceLines,
+      targetLines,
+      sourcePresent,
+      targetPresent
+    ),
+  };
+}
+
 describe('diffEditorTestUtils.getParentDirectoryPath', () => {
   it('returns parent directory for normal file paths', () => {
     expect(diffEditorTestUtils.getParentDirectoryPath(' C:\\repo\\src\\main.ts ')).toBe('C:\\repo\\src');
@@ -393,21 +437,6 @@ describe('diffEditorTestUtils trailing-newline and serialization helpers', () =>
   });
 });
 
-describe('diffEditorTestUtils.computeTextPatch', () => {
-  it('returns minimal changed span for replacements and inserts', () => {
-    expect(diffEditorTestUtils.computeTextPatch('abc123xyz', 'abcZZxyz')).toEqual({
-      startChar: 3,
-      endChar: 6,
-      newText: 'ZZ',
-    });
-    expect(diffEditorTestUtils.computeTextPatch('abc', 'abXc')).toEqual({
-      startChar: 2,
-      endChar: 2,
-      newText: 'X',
-    });
-  });
-});
-
 describe('diffEditorTestUtils.bindScrollerViewport', () => {
   it('returns default viewport when scroller is null', () => {
     const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
@@ -516,23 +545,42 @@ describe('DiffEditor component', () => {
     });
     readClipboardTextMock.mockResolvedValue('');
 
-    vi.mocked(invoke).mockImplementation(async (command: string) => {
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
       if (command === 'compare_documents_by_line') {
-        return {
-          alignedSourceLines: ['left-1', 'left-2'],
-          alignedTargetLines: ['right-1', 'right-2'],
-          alignedSourcePresent: [true, true],
-          alignedTargetPresent: [true, true],
-          diffLineNumbers: [1, 2],
-          sourceDiffLineNumbers: [1, 2],
-          targetDiffLineNumbers: [1, 2],
-          sourceLineCount: 2,
-          targetLineCount: 2,
-          alignedLineCount: 2,
-        };
+        return buildLineDiffResponse(
+          ['left-1', 'left-2'],
+          ['right-1', 'right-2'],
+          [true, true],
+          [true, true]
+        );
       }
-      if (command === 'edit_text') {
-        return 2;
+      if (command === 'apply_aligned_diff_edit') {
+        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+          ? params.alignedSourceLines.map((item) => String(item ?? ''))
+          : ['left-1', 'left-2'];
+        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+          ? params.alignedTargetLines.map((item) => String(item ?? ''))
+          : ['right-1', 'right-2'];
+        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
+          ? params.alignedSourcePresent.map((item) => item === true)
+          : [true, true];
+        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
+          ? params.alignedTargetPresent.map((item) => item === true)
+          : [true, true];
+
+        return {
+          lineDiff: buildLineDiffResponse(
+            alignedSourceLines,
+            alignedTargetLines,
+            alignedSourcePresent,
+            alignedTargetPresent
+          ),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
       }
       if (command === 'get_edit_history_state') {
         return { isDirty: true };
@@ -830,26 +878,45 @@ describe('DiffEditor component', () => {
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    vi.mocked(invoke).mockImplementation(async (command: string) => {
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
       if (command === 'compare_documents_by_line') {
-        return {
-          alignedSourceLines: ['left-1', 'left-2'],
-          alignedTargetLines: ['right-1', 'right-2'],
-          alignedSourcePresent: [true, true],
-          alignedTargetPresent: [true, true],
-          diffLineNumbers: [1, 2],
-          sourceDiffLineNumbers: [1, 2],
-          targetDiffLineNumbers: [1, 2],
-          sourceLineCount: 2,
-          targetLineCount: 2,
-          alignedLineCount: 2,
-        };
+        return buildLineDiffResponse(
+          ['left-1', 'left-2'],
+          ['right-1', 'right-2'],
+          [true, true],
+          [true, true]
+        );
       }
       if (command === 'open_in_file_manager') {
         throw new Error('open-folder-failed');
       }
-      if (command === 'edit_text') {
-        return 2;
+      if (command === 'apply_aligned_diff_edit') {
+        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+          ? params.alignedSourceLines.map((item) => String(item ?? ''))
+          : ['left-1', 'left-2'];
+        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+          ? params.alignedTargetLines.map((item) => String(item ?? ''))
+          : ['right-1', 'right-2'];
+        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
+          ? params.alignedSourcePresent.map((item) => item === true)
+          : [true, true];
+        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
+          ? params.alignedTargetPresent.map((item) => item === true)
+          : [true, true];
+
+        return {
+          lineDiff: buildLineDiffResponse(
+            alignedSourceLines,
+            alignedTargetLines,
+            alignedSourcePresent,
+            alignedTargetPresent
+          ),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
       }
       if (command === 'get_edit_history_state') {
         return { isDirty: true };

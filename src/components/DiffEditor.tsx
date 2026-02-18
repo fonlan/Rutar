@@ -34,6 +34,12 @@ interface LineDiffComparisonResult {
   alignedLineCount: number;
 }
 
+interface ApplyAlignedDiffEditResult {
+  lineDiff: LineDiffComparisonResult;
+  sourceIsDirty: boolean;
+  targetIsDirty: boolean;
+}
+
 interface ViewportMetrics {
   topPercent: number;
   heightPercent: number;
@@ -594,38 +600,6 @@ function serializeLines(actualLines: string[], trailingNewline: boolean) {
   return text;
 }
 
-function computeTextPatch(previousText: string, nextText: string) {
-  let start = 0;
-  const previousLength = previousText.length;
-  const nextLength = nextText.length;
-
-  while (
-    start < previousLength
-    && start < nextLength
-    && previousText[start] === nextText[start]
-  ) {
-    start += 1;
-  }
-
-  let previousEnd = previousLength - 1;
-  let nextEnd = nextLength - 1;
-
-  while (
-    previousEnd >= start
-    && nextEnd >= start
-    && previousText[previousEnd] === nextText[nextEnd]
-  ) {
-    previousEnd -= 1;
-    nextEnd -= 1;
-  }
-
-  return {
-    startChar: start,
-    endChar: previousEnd + 1,
-    newText: nextText.slice(start, nextEnd + 1),
-  };
-}
-
 function bindScrollerViewport(
   scroller: HTMLElement | null,
   setViewport: (value: ViewportMetrics) => void
@@ -701,7 +675,6 @@ export const diffEditorTestUtils = {
   reconcilePresenceAfterTextEdit,
   inferTrailingNewlineFromLines,
   serializeLines,
-  computeTextPatch,
   bindScrollerViewport,
   dispatchDocumentUpdated,
 };
@@ -1017,7 +990,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const flushSideCommit = useCallback(
     async (side: ActivePanel) => {
       const panelTab = side === 'source' ? sourceTab : targetTab;
-      if (!panelTab) {
+      if (!panelTab || !sourceTab || !targetTab) {
         return;
       }
 
@@ -1046,34 +1019,50 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         return;
       }
 
-      const patch = computeTextPatch(previousText, nextText);
-      if (patch.startChar === patch.endChar && patch.newText.length === 0) {
-        return;
-      }
-
       sideCommitInFlightRef.current[side] = true;
 
       try {
-        const nextLineCount = await invoke<number>('edit_text', {
-          id: panelTab.id,
-          startChar: patch.startChar,
-          endChar: patch.endChar,
-          newText: patch.newText,
+        const result = await invoke<ApplyAlignedDiffEditResult>('apply_aligned_diff_edit', {
+          sourceId: sourceTab.id,
+          targetId: targetTab.id,
+          editedSide: side,
+          alignedSourceLines: snapshot.alignedSourceLines,
+          alignedTargetLines: snapshot.alignedTargetLines,
+          alignedSourcePresent: snapshot.alignedSourcePresent,
+          alignedTargetPresent: snapshot.alignedTargetPresent,
+          editedTrailingNewline: trailingNewline,
         });
 
         if (side === 'source') {
           sourceCommittedTextRef.current = nextText;
+          sourceTrailingNewlineRef.current = trailingNewline;
         } else {
           targetCommittedTextRef.current = nextText;
+          targetTrailingNewlineRef.current = trailingNewline;
         }
 
-        updateTab(panelTab.id, {
-          lineCount: Math.max(1, nextLineCount),
-          isDirty: true,
-        });
+        if (sourceTab) {
+          updateTab(sourceTab.id, {
+            lineCount: Math.max(1, result.lineDiff.sourceLineCount),
+            isDirty: result.sourceIsDirty,
+          });
+        }
+
+        if (targetTab) {
+          updateTab(targetTab.id, {
+            lineCount: Math.max(1, result.lineDiff.targetLineCount),
+            isDirty: result.targetIsDirty,
+          });
+        }
+
+        if (isInputEditingActive()) {
+          deferredBackendDiffRef.current = result.lineDiff;
+          scheduleDeferredBackendApply();
+        } else {
+          applyBackendDiffResult(result.lineDiff);
+        }
 
         dispatchDocumentUpdated(panelTab.id);
-        scheduleDiffRefresh();
       } catch (error) {
         console.error('Failed to write aligned diff edit:', error);
       } finally {
@@ -1084,7 +1073,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         }
       }
     },
-    [scheduleDiffRefresh, sourceTab, targetTab, updateTab]
+    [applyBackendDiffResult, isInputEditingActive, scheduleDeferredBackendApply, sourceTab, targetTab, updateTab]
   );
 
   const scheduleSideCommit = useCallback(
