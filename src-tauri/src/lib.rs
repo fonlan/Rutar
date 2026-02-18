@@ -212,6 +212,7 @@ pub fn run() {
             commands::search_commands::step_result_filter_search_in_document,
             commands::search_commands::search_count_in_document,
             commands::search_commands::replace_all_in_document,
+            commands::search_commands::replace_all_and_search_chunk_in_document,
             commands::search_commands::replace_current_in_document,
             commands::search_commands::replace_current_and_search_chunk_in_document,
             commands::search_commands::filter_in_document_chunk,

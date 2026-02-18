@@ -163,10 +163,14 @@ interface SearchCountBackendResult {
   documentVersion: number;
 }
 
-interface ReplaceAllBackendResult {
+interface ReplaceAllAndSearchChunkBackendResult {
   replacedCount: number;
   lineCount: number;
   documentVersion: number;
+  matches: SearchMatch[];
+  nextOffset: number | null;
+  totalMatches: number;
+  totalMatchedLines: number;
 }
 
 interface ReplaceCurrentAndSearchChunkBackendResult {
@@ -2189,7 +2193,7 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const result = await invoke<ReplaceAllBackendResult>('replace_all_in_document', {
+      const result = await invoke<ReplaceAllAndSearchChunkBackendResult>('replace_all_and_search_chunk_in_document', {
         id: activeTab.id,
         keyword,
         mode: getSearchModeValue(searchMode),
@@ -2197,6 +2201,7 @@ export function SearchReplacePanel() {
         replaceValue,
         resultFilterKeyword: backendResultFilterKeyword,
         resultFilterCaseSensitive: caseSensitive,
+        maxResults: SEARCH_CHUNK_SIZE,
       });
 
       const replacedCount = result.replacedCount ?? 0;
@@ -2211,8 +2216,56 @@ export function SearchReplacePanel() {
       dispatchEditorForceRefresh(activeTab.id, safeLineCount);
 
       setFeedbackMessage(messages.replacedAll(replacedCount));
-      setCurrentMatchIndex(0);
-      await executeSearch(true);
+      setErrorMessage(null);
+
+      const documentVersion = result.documentVersion ?? 0;
+      const nextMatches = result.matches || [];
+      const nextOffset = result.nextOffset ?? null;
+      const totalMatches = result.totalMatches ?? nextMatches.length;
+      const totalMatchedLines =
+        result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+      const nextIndex = 0;
+
+      startTransition(() => {
+        setMatches(nextMatches);
+        setCurrentMatchIndex(nextIndex);
+        setTotalMatchCount(totalMatches);
+        setTotalMatchedLineCount(totalMatchedLines);
+      });
+      currentMatchIndexRef.current = nextIndex;
+      chunkCursorRef.current = nextOffset;
+      cachedSearchRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+        matches: nextMatches,
+        nextOffset,
+      };
+      searchParamsRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+      };
+      countCacheRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+        totalMatches,
+        matchedLines: totalMatchedLines,
+      };
+
+      if (nextMatches.length > 0) {
+        navigateToMatch(nextMatches[nextIndex]);
+      }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
       setErrorMessage(`${messages.replaceAllFailed}: ${readableError}`);
@@ -2226,6 +2279,7 @@ export function SearchReplacePanel() {
     messages.noReplaceMatches,
     messages.replaceAllFailed,
     messages.replacedAll,
+    navigateToMatch,
     replaceValue,
     searchMode,
     updateTab,

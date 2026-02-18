@@ -2357,11 +2357,15 @@ describe("SearchReplacePanel", () => {
           nextOffset: null,
         };
       }
-      if (command === "replace_all_in_document") {
+      if (command === "replace_all_and_search_chunk_in_document") {
         return {
           replacedCount: 2,
           lineCount: 10,
           documentVersion: 2,
+          matches: [],
+          nextOffset: null,
+          totalMatches: 0,
+          totalMatchedLines: 0,
         };
       }
       if (command === "get_document_version") {
@@ -2395,7 +2399,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "replace_all_in_document",
+        "replace_all_and_search_chunk_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
@@ -2653,7 +2657,7 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(screen.getByText(/No matches to replace/)).toBeInTheDocument();
     });
-    expect(invokeMock.mock.calls.some(([command]) => command === "replace_all_in_document")).toBe(
+    expect(invokeMock.mock.calls.some(([command]) => command === "replace_all_and_search_chunk_in_document")).toBe(
       false
     );
   });
@@ -2688,7 +2692,7 @@ describe("SearchReplacePanel", () => {
           nextOffset: null,
         };
       }
-      if (command === "replace_all_in_document") {
+      if (command === "replace_all_and_search_chunk_in_document") {
         throw new Error("replace-all-failed");
       }
       if (command === "get_document_version") {
@@ -2755,11 +2759,15 @@ describe("SearchReplacePanel", () => {
           nextOffset: null,
         };
       }
-      if (command === "replace_all_in_document") {
+      if (command === "replace_all_and_search_chunk_in_document") {
         return {
           replacedCount: 0,
           lineCount: 10,
           documentVersion: 2,
+          matches: [],
+          nextOffset: null,
+          totalMatches: 0,
+          totalMatchedLines: 0,
         };
       }
       if (command === "get_document_version") {
@@ -2794,7 +2802,7 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(screen.getByText(/No matches to replace/)).toBeInTheDocument();
     });
-    expect(invokeMock.mock.calls.some(([command]) => command === "replace_all_in_document")).toBe(
+    expect(invokeMock.mock.calls.some(([command]) => command === "replace_all_and_search_chunk_in_document")).toBe(
       true
     );
   });

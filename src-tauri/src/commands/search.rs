@@ -74,6 +74,18 @@ pub struct ReplaceAllResultPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReplaceAllAndSearchChunkResultPayload {
+    pub(super) replaced_count: usize,
+    pub(super) line_count: usize,
+    pub(super) document_version: u64,
+    pub(super) matches: Vec<SearchMatchResult>,
+    pub(super) next_offset: Option<usize>,
+    pub(super) total_matches: usize,
+    pub(super) total_matched_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplaceCurrentResultPayload {
     pub(super) replaced: bool,
     pub(super) line_count: usize,
@@ -2502,6 +2514,110 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
             matches,
             next_offset,
             preferred_match,
+            total_matches,
+            total_matched_lines,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+pub(super) fn replace_all_and_search_chunk_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    replace_value: String,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<ReplaceAllAndSearchChunkResultPayload, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        if keyword.is_empty() {
+            return Ok(ReplaceAllAndSearchChunkResultPayload {
+                replaced_count: 0,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                matches: Vec::new(),
+                next_offset: None,
+                total_matches: 0,
+                total_matched_lines: 0,
+            });
+        }
+
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive =
+            result_filter_case_sensitive.unwrap_or(case_sensitive);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
+
+        let matches_before_replace = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+        let replaced_count = matches_before_replace.len();
+
+        if replaced_count == 0 {
+            return Ok(ReplaceAllAndSearchChunkResultPayload {
+                replaced_count: 0,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                matches: Vec::new(),
+                next_offset: None,
+                total_matches: 0,
+                total_matched_lines: 0,
+            });
+        }
+
+        let source_text = doc.rope.to_string();
+        let next_text = replace_matches_by_char_ranges(&source_text, &matches_before_replace, &replace_value);
+        if source_text != next_text {
+            let operation = create_edit_operation(&mut doc, 0, source_text, next_text);
+            apply_operation(&mut doc, &operation)?;
+            doc.undo_stack.push(operation);
+            doc.redo_stack.clear();
+        }
+
+        let refreshed_matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+        let total_matches = refreshed_matches.len();
+        let total_matched_lines = refreshed_matches
+            .iter()
+            .map(|item| item.line)
+            .collect::<BTreeSet<usize>>()
+            .len();
+        let effective_max_results = max_results.max(1);
+        let next_offset = refreshed_matches
+            .get(effective_max_results)
+            .map(|item| item.start);
+        let mut matches = refreshed_matches
+            .into_iter()
+            .take(effective_max_results)
+            .collect::<Vec<SearchMatchResult>>();
+        for item in &mut matches {
+            item.preview_segments = Some(build_search_match_preview_segments(
+                item,
+                result_filter_keyword_ref,
+                effective_result_filter_case_sensitive,
+            ));
+        }
+
+        Ok(ReplaceAllAndSearchChunkResultPayload {
+            replaced_count,
+            line_count: doc.rope.len_lines(),
+            document_version: doc.document_version,
+            matches,
+            next_offset,
             total_matches,
             total_matched_lines,
         })
