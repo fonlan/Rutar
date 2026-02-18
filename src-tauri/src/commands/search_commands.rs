@@ -68,6 +68,31 @@ pub fn search_session_next_in_document(
 }
 
 #[tauri::command]
+pub fn search_session_restore_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    expected_document_version: Option<u64>,
+    next_offset: Option<usize>,
+) -> Result<SearchSessionRestoreResultPayload, String> {
+    search::search_session_restore_in_document_impl(
+        state,
+        id,
+        keyword,
+        mode,
+        case_sensitive,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        expected_document_version,
+        next_offset,
+    )
+}
+
+#[tauri::command]
 pub fn dispose_search_session(session_id: String) -> bool {
     search::dispose_search_session_impl(session_id)
 }
@@ -287,6 +312,27 @@ pub fn filter_session_next_in_document(
 }
 
 #[tauri::command]
+pub fn filter_session_restore_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    expected_document_version: Option<u64>,
+    next_line: Option<usize>,
+) -> Result<FilterSessionRestoreResultPayload, String> {
+    search::filter_session_restore_in_document_impl(
+        state,
+        id,
+        rules,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        expected_document_version,
+        next_line,
+    )
+}
+
+#[tauri::command]
 pub fn dispose_filter_session(session_id: String) -> bool {
     search::dispose_filter_session_impl(session_id)
 }
@@ -337,6 +383,7 @@ mod tests {
         let _ = search_in_document_chunk as usize;
         let _ = search_session_start_in_document as usize;
         let _ = search_session_next_in_document as usize;
+        let _ = search_session_restore_in_document as usize;
         let _ = dispose_search_session as usize;
         let _ = search_count_in_document as usize;
         let _ = replace_all_in_document as usize;
@@ -348,6 +395,7 @@ mod tests {
         let _ = filter_in_document_chunk as usize;
         let _ = filter_session_start_in_document as usize;
         let _ = filter_session_next_in_document as usize;
+        let _ = filter_session_restore_in_document as usize;
         let _ = dispose_filter_session as usize;
         let _ = step_result_filter_search_in_filter_document as usize;
         let _ = search_in_document as usize;

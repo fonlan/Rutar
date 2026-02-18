@@ -156,6 +156,15 @@ interface SearchSessionNextBackendResult {
   nextOffset: number | null;
 }
 
+interface SearchSessionRestoreBackendResult {
+  restored: boolean;
+  sessionId: string | null;
+  documentVersion: number;
+  nextOffset: number | null;
+  totalMatches: number;
+  totalMatchedLines: number;
+}
+
 interface FilterChunkBackendResult {
   matches: FilterMatch[];
   documentVersion: number;
@@ -174,6 +183,14 @@ interface FilterSessionNextBackendResult {
   matches: FilterMatch[];
   documentVersion: number;
   nextLine: number | null;
+}
+
+interface FilterSessionRestoreBackendResult {
+  restored: boolean;
+  sessionId: string | null;
+  documentVersion: number;
+  nextLine: number | null;
+  totalMatchedLines: number;
 }
 
 interface FilterCountBackendResult {
@@ -217,7 +234,9 @@ interface SearchResultFilterStepBackendResult {
   targetMatch: SearchMatch | null;
   documentVersion: number;
   batchStartOffset: number;
-  targetIndexInBatch: number | null;
+  batchMatches?: SearchMatch[];
+  nextOffset?: number | null;
+  targetIndexInBatch?: number | null;
   totalMatches: number;
   totalMatchedLines: number;
 }
@@ -226,7 +245,9 @@ interface FilterResultFilterStepBackendResult {
   targetMatch: FilterMatch | null;
   documentVersion: number;
   batchStartLine: number;
-  targetIndexInBatch: number | null;
+  batchMatches?: FilterMatch[];
+  nextLine?: number | null;
+  targetIndexInBatch?: number | null;
   totalMatchedLines: number;
 }
 
@@ -289,6 +310,23 @@ function isSearchSessionNextBackendResult(value: unknown): value is SearchSessio
   );
 }
 
+function isSearchSessionRestoreBackendResult(value: unknown): value is SearchSessionRestoreBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SearchSessionRestoreBackendResult>;
+  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
+  return (
+    typeof candidate.restored === 'boolean' &&
+    sessionIdValid &&
+    typeof candidate.documentVersion === 'number' &&
+    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null) &&
+    typeof candidate.totalMatches === 'number' &&
+    typeof candidate.totalMatchedLines === 'number'
+  );
+}
+
 function isFilterSessionStartBackendResult(value: unknown): value is FilterSessionStartBackendResult {
   if (!value || typeof value !== 'object') {
     return false;
@@ -315,6 +353,49 @@ function isFilterSessionNextBackendResult(value: unknown): value is FilterSessio
     Array.isArray(candidate.matches) &&
     typeof candidate.documentVersion === 'number' &&
     (typeof candidate.nextLine === 'number' || candidate.nextLine === null)
+  );
+}
+
+function isFilterSessionRestoreBackendResult(value: unknown): value is FilterSessionRestoreBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<FilterSessionRestoreBackendResult>;
+  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
+  return (
+    typeof candidate.restored === 'boolean' &&
+    sessionIdValid &&
+    typeof candidate.documentVersion === 'number' &&
+    (typeof candidate.nextLine === 'number' || candidate.nextLine === null) &&
+    typeof candidate.totalMatchedLines === 'number'
+  );
+}
+
+function isSearchResultFilterStepBackendResult(value: unknown): value is SearchResultFilterStepBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SearchResultFilterStepBackendResult>;
+  return (
+    typeof candidate.documentVersion === 'number' &&
+    typeof candidate.batchStartOffset === 'number' &&
+    typeof candidate.totalMatches === 'number' &&
+    typeof candidate.totalMatchedLines === 'number'
+  );
+}
+
+function isFilterResultFilterStepBackendResult(value: unknown): value is FilterResultFilterStepBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<FilterResultFilterStepBackendResult>;
+  return (
+    typeof candidate.documentVersion === 'number' &&
+    typeof candidate.batchStartLine === 'number' &&
+    typeof candidate.totalMatchedLines === 'number'
   );
 }
 
@@ -820,6 +901,7 @@ export function SearchReplacePanel() {
   const countRunVersionRef = useRef(0);
   const filterRunVersionRef = useRef(0);
   const filterCountRunVersionRef = useRef(0);
+  const sessionRestoreRunVersionRef = useRef(0);
   const currentMatchIndexRef = useRef(0);
   const currentFilterMatchIndexRef = useRef(0);
   const loadMoreLockRef = useRef(false);
@@ -830,6 +912,7 @@ export function SearchReplacePanel() {
   const chunkCursorRef = useRef<number | null>(null);
   const filterLineCursorRef = useRef<number | null>(null);
   const stopResultFilterSearchRef = useRef(false);
+  const resultFilterStepRunVersionRef = useRef(0);
   const pendingNavigateDispatchRafRef = useRef<number | null>(null);
   const cachedSearchRef = useRef<{
     tabId: string;
@@ -871,12 +954,14 @@ export function SearchReplacePanel() {
   }, []);
   const cancelPendingBatchLoad = useCallback(() => {
     loadMoreSessionRef.current += 1;
+    resultFilterStepRunVersionRef.current += 1;
     if (loadMoreDebounceRef.current !== null) {
       window.clearTimeout(loadMoreDebounceRef.current);
       loadMoreDebounceRef.current = null;
     }
     setResultFilterStepLoadingDirection(null);
     if (loadMoreLockRef.current) {
+      loadMoreLockRef.current = false;
       setIsSearching(false);
     }
   }, []);
@@ -892,7 +977,11 @@ export function SearchReplacePanel() {
   const previousIsOpenRef = useRef(false);
   const blurUpdateTimerRef = useRef<number | null>(null);
   const searchSessionCommandUnsupportedRef = useRef(false);
+  const searchSessionRestoreCommandUnsupportedRef = useRef(false);
   const filterSessionCommandUnsupportedRef = useRef(false);
+  const filterSessionRestoreCommandUnsupportedRef = useRef(false);
+  const searchStepCommandUnsupportedRef = useRef(false);
+  const filterStepCommandUnsupportedRef = useRef(false);
 
   const disposeSearchSessionById = useCallback((sessionId: string | null | undefined) => {
     if (!sessionId) {
@@ -2262,6 +2351,94 @@ export function SearchReplacePanel() {
 
   const navigateByStep = useCallback(
     async (step: number) => {
+      const normalizedStep = step < 0 ? -1 : 1;
+
+      if (activeTab && isFilterMode && !filterStepCommandUnsupportedRef.current) {
+        try {
+          const currentFilterMatch =
+            currentFilterMatchIndexRef.current >= 0 &&
+            currentFilterMatchIndexRef.current < filterMatches.length
+              ? filterMatches[currentFilterMatchIndexRef.current]
+              : null;
+          const stepResultValue = await invoke<unknown>('step_result_filter_search_in_filter_document', {
+            id: activeTab.id,
+            rules: filterRulesPayload,
+            resultFilterKeyword: backendResultFilterKeyword,
+            resultFilterCaseSensitive: caseSensitive,
+            currentLine: currentFilterMatch?.line ?? null,
+            currentColumn: currentFilterMatch?.column ?? null,
+            step: normalizedStep,
+            maxResults: FILTER_CHUNK_SIZE,
+          });
+
+          if (isFilterResultFilterStepBackendResult(stepResultValue)) {
+            filterStepCommandUnsupportedRef.current = false;
+
+            const targetMatch = stepResultValue.targetMatch;
+            if (!targetMatch) {
+              return;
+            }
+
+            const stepBatchMatches =
+              Array.isArray(stepResultValue.batchMatches) && stepResultValue.batchMatches.length > 0
+                ? stepResultValue.batchMatches
+                : filterMatches;
+            const targetIndex =
+              stepBatchMatches === filterMatches
+                ? stepBatchMatches.findIndex(
+                    (item) =>
+                      item.line === targetMatch.line &&
+                      item.column === targetMatch.column &&
+                      item.ruleIndex === targetMatch.ruleIndex
+                  )
+                : Math.min(
+                    Math.max(0, stepResultValue.targetIndexInBatch ?? 0),
+                    Math.max(0, stepBatchMatches.length - 1)
+                  );
+
+            if (targetIndex >= 0 && targetIndex < stepBatchMatches.length) {
+              const documentVersion = stepResultValue.documentVersion ?? 0;
+              const totalMatchedLines = stepResultValue.totalMatchedLines ?? 0;
+              filterLineCursorRef.current = stepResultValue.nextLine ?? null;
+              setFilterSessionId(null);
+              cachedFilterRef.current = {
+                tabId: activeTab.id,
+                rulesKey: filterRulesKey,
+                resultFilterKeyword: backendResultFilterKeyword,
+                documentVersion,
+                matches: stepBatchMatches,
+                nextLine: filterLineCursorRef.current,
+                sessionId: null,
+              };
+              filterCountCacheRef.current = {
+                tabId: activeTab.id,
+                rulesKey: filterRulesKey,
+                resultFilterKeyword: backendResultFilterKeyword,
+                documentVersion,
+                matchedLines: totalMatchedLines,
+              };
+              setTotalFilterMatchedLineCount(totalMatchedLines);
+              startTransition(() => {
+                setFilterMatches(stepBatchMatches);
+              });
+              currentFilterMatchIndexRef.current = targetIndex;
+              setCurrentFilterMatchIndex(targetIndex);
+              setFeedbackMessage(null);
+              navigateToFilterMatch(stepBatchMatches[targetIndex]);
+              return;
+            }
+          }
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_filter_document')) {
+            filterStepCommandUnsupportedRef.current = true;
+          } else {
+            const readableError = error instanceof Error ? error.message : String(error);
+            setErrorMessage(`${messages.filterFailed}: ${readableError}`);
+            return;
+          }
+        }
+      }
+
       if (isFilterMode) {
         if (filterMatches.length > 0) {
           const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterMatches.length - 1);
@@ -2311,6 +2488,97 @@ export function SearchReplacePanel() {
         navigateToFilterMatch(filterResult.matches[nextIndex]);
 
         return;
+      }
+
+      if (activeTab && keyword && !searchStepCommandUnsupportedRef.current) {
+        try {
+          const currentSearchMatch =
+            currentMatchIndexRef.current >= 0 && currentMatchIndexRef.current < matches.length
+              ? matches[currentMatchIndexRef.current]
+              : null;
+          const stepResultValue = await invoke<unknown>('step_result_filter_search_in_document', {
+            id: activeTab.id,
+            keyword,
+            mode: getSearchModeValue(searchMode),
+            caseSensitive,
+            resultFilterKeyword: backendResultFilterKeyword,
+            resultFilterCaseSensitive: caseSensitive,
+            currentStart: currentSearchMatch?.start ?? null,
+            currentEnd: currentSearchMatch?.end ?? null,
+            step: normalizedStep,
+            maxResults: SEARCH_CHUNK_SIZE,
+          });
+
+          if (isSearchResultFilterStepBackendResult(stepResultValue)) {
+            searchStepCommandUnsupportedRef.current = false;
+
+            const targetMatch = stepResultValue.targetMatch;
+            if (!targetMatch) {
+              return;
+            }
+
+            const stepBatchMatches =
+              Array.isArray(stepResultValue.batchMatches) && stepResultValue.batchMatches.length > 0
+                ? stepResultValue.batchMatches
+                : matches;
+            const targetIndex =
+              stepBatchMatches === matches
+                ? stepBatchMatches.findIndex(
+                    (item) => item.start === targetMatch.start && item.end === targetMatch.end
+                  )
+                : Math.min(
+                    Math.max(0, stepResultValue.targetIndexInBatch ?? 0),
+                    Math.max(0, stepBatchMatches.length - 1)
+                  );
+
+            if (targetIndex >= 0 && targetIndex < stepBatchMatches.length) {
+              const documentVersion = stepResultValue.documentVersion ?? 0;
+              const totalMatches = stepResultValue.totalMatches ?? 0;
+              const totalMatchedLines = stepResultValue.totalMatchedLines ?? 0;
+              chunkCursorRef.current = stepResultValue.nextOffset ?? null;
+              setSearchSessionId(null);
+              cachedSearchRef.current = {
+                tabId: activeTab.id,
+                keyword,
+                searchMode,
+                caseSensitive,
+                resultFilterKeyword: backendResultFilterKeyword,
+                documentVersion,
+                matches: stepBatchMatches,
+                nextOffset: chunkCursorRef.current,
+                sessionId: null,
+              };
+              countCacheRef.current = {
+                tabId: activeTab.id,
+                keyword,
+                searchMode,
+                caseSensitive,
+                resultFilterKeyword: backendResultFilterKeyword,
+                documentVersion,
+                totalMatches,
+                matchedLines: totalMatchedLines,
+              };
+              setTotalMatchCount(totalMatches);
+              setTotalMatchedLineCount(totalMatchedLines);
+              startTransition(() => {
+                setMatches(stepBatchMatches);
+              });
+              currentMatchIndexRef.current = targetIndex;
+              setCurrentMatchIndex(targetIndex);
+              setFeedbackMessage(null);
+              navigateToMatch(stepBatchMatches[targetIndex]);
+              return;
+            }
+          }
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_document')) {
+            searchStepCommandUnsupportedRef.current = true;
+          } else {
+            const readableError = error instanceof Error ? error.message : String(error);
+            setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+            return;
+          }
+        }
       }
 
       if (keyword && matches.length > 0) {
@@ -2366,17 +2634,27 @@ export function SearchReplacePanel() {
 
     },
     [
+      activeTab,
+      backendResultFilterKeyword,
+      caseSensitive,
       executeFilter,
       executeFirstMatchSearch,
       filterMatches,
+      filterRulesKey,
+      filterRulesPayload,
       isFilterMode,
       isSearching,
       keyword,
       loadMoreFilterMatches,
       loadMoreMatches,
       matches,
+      messages.filterFailed,
+      messages.searchFailed,
       navigateToFilterMatch,
       navigateToMatch,
+      searchMode,
+      setFilterSessionId,
+      setSearchSessionId,
     ]
   );
 
@@ -2966,6 +3244,9 @@ export function SearchReplacePanel() {
   }, [activeTab, focusSearchInput]);
 
   useEffect(() => {
+    const restoreRunVersion = sessionRestoreRunVersionRef.current + 1;
+    sessionRestoreRunVersionRef.current = restoreRunVersion;
+
     if (!activeTab) {
       setIsOpen(false);
       setPanelMode('find');
@@ -3110,6 +3391,139 @@ export function SearchReplacePanel() {
         setFilterSessionId(null);
         cachedFilterRef.current = null;
         filterCountCacheRef.current = null;
+      }
+
+      if (
+        nextSnapshot.searchDocumentVersion !== null &&
+        nextSnapshot.keyword &&
+        !searchSessionRestoreCommandUnsupportedRef.current
+      ) {
+        const snapshotKeyword = nextSnapshot.keyword;
+        const snapshotSearchMode = nextSnapshot.searchMode;
+        const snapshotCaseSensitive = nextSnapshot.caseSensitive;
+        const snapshotDocumentVersion = nextSnapshot.searchDocumentVersion;
+        const snapshotNextOffset = nextSnapshot.searchNextOffset;
+
+        void invoke<unknown>('search_session_restore_in_document', {
+          id: activeTab.id,
+          keyword: snapshotKeyword,
+          mode: getSearchModeValue(snapshotSearchMode),
+          caseSensitive: snapshotCaseSensitive,
+          resultFilterKeyword: restoredResultFilterKeyword,
+          resultFilterCaseSensitive: snapshotCaseSensitive,
+          expectedDocumentVersion: snapshotDocumentVersion,
+          nextOffset: snapshotNextOffset,
+        })
+          .then((restoreResultValue) => {
+            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
+              return;
+            }
+
+            if (!isSearchSessionRestoreBackendResult(restoreResultValue)) {
+              return;
+            }
+
+            searchSessionRestoreCommandUnsupportedRef.current = false;
+            setSearchSessionId(restoreResultValue.sessionId ?? null);
+            chunkCursorRef.current = restoreResultValue.nextOffset ?? null;
+
+            setTotalMatchCount(restoreResultValue.totalMatches ?? 0);
+            setTotalMatchedLineCount(restoreResultValue.totalMatchedLines ?? 0);
+            countCacheRef.current = {
+              tabId: activeTab.id,
+              keyword: snapshotKeyword,
+              searchMode: snapshotSearchMode,
+              caseSensitive: snapshotCaseSensitive,
+              resultFilterKeyword: restoredResultFilterKeyword,
+              documentVersion: restoreResultValue.documentVersion ?? snapshotDocumentVersion,
+              totalMatches: restoreResultValue.totalMatches ?? 0,
+              matchedLines: restoreResultValue.totalMatchedLines ?? 0,
+            };
+
+            if (cachedSearchRef.current?.tabId === activeTab.id) {
+              cachedSearchRef.current = {
+                ...cachedSearchRef.current,
+                sessionId: restoreResultValue.sessionId ?? null,
+                nextOffset: restoreResultValue.nextOffset ?? null,
+                documentVersion: restoreResultValue.documentVersion ?? snapshotDocumentVersion,
+              };
+            }
+          })
+          .catch((error) => {
+            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
+              return;
+            }
+
+            if (isMissingInvokeCommandError(error, 'search_session_restore_in_document')) {
+              searchSessionRestoreCommandUnsupportedRef.current = true;
+              return;
+            }
+
+            console.warn('Failed to restore search session:', error);
+          });
+      }
+
+      if (
+        nextSnapshot.filterDocumentVersion !== null &&
+        nextSnapshot.filterRulesKey === filterRulesKey &&
+        !filterSessionRestoreCommandUnsupportedRef.current
+      ) {
+        const snapshotCaseSensitive = nextSnapshot.caseSensitive;
+        const snapshotFilterDocumentVersion = nextSnapshot.filterDocumentVersion;
+        const snapshotFilterNextLine = nextSnapshot.filterNextLine;
+
+        void invoke<unknown>('filter_session_restore_in_document', {
+          id: activeTab.id,
+          rules: filterRulesPayload,
+          resultFilterKeyword: restoredResultFilterKeyword,
+          resultFilterCaseSensitive: snapshotCaseSensitive,
+          expectedDocumentVersion: snapshotFilterDocumentVersion,
+          nextLine: snapshotFilterNextLine,
+        })
+          .then((restoreResultValue) => {
+            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
+              return;
+            }
+
+            if (!isFilterSessionRestoreBackendResult(restoreResultValue)) {
+              return;
+            }
+
+            filterSessionRestoreCommandUnsupportedRef.current = false;
+            setFilterSessionId(restoreResultValue.sessionId ?? null);
+            filterLineCursorRef.current = restoreResultValue.nextLine ?? null;
+            setTotalFilterMatchedLineCount(restoreResultValue.totalMatchedLines ?? 0);
+
+            filterCountCacheRef.current = {
+              tabId: activeTab.id,
+              rulesKey: filterRulesKey,
+              resultFilterKeyword: restoredResultFilterKeyword,
+              documentVersion: restoreResultValue.documentVersion ?? snapshotFilterDocumentVersion,
+              matchedLines: restoreResultValue.totalMatchedLines ?? 0,
+            };
+
+            if (cachedFilterRef.current?.tabId === activeTab.id) {
+              cachedFilterRef.current = {
+                ...cachedFilterRef.current,
+                rulesKey: filterRulesKey,
+                sessionId: restoreResultValue.sessionId ?? null,
+                nextLine: restoreResultValue.nextLine ?? null,
+                documentVersion: restoreResultValue.documentVersion ?? snapshotFilterDocumentVersion,
+              };
+            }
+          })
+          .catch((error) => {
+            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
+              return;
+            }
+
+            if (isMissingInvokeCommandError(error, 'filter_session_restore_in_document')) {
+              filterSessionRestoreCommandUnsupportedRef.current = true;
+              return;
+            }
+
+            console.warn('Failed to restore filter session:', error);
+          });
       }
     } else {
       setIsOpen(false);
@@ -3580,9 +3994,15 @@ export function SearchReplacePanel() {
       }
 
       const normalizedStep = step < 0 ? -1 : 1;
+      const direction = normalizedStep > 0 ? 'next' : 'prev';
       const effectiveResultFilterKeyword = caseSensitive
         ? keywordForJump
         : keywordForJump.toLowerCase();
+      const runVersion = resultFilterStepRunVersionRef.current + 1;
+      resultFilterStepRunVersionRef.current = runVersion;
+      loadMoreLockRef.current = true;
+      setIsSearching(true);
+      setResultFilterStepLoadingDirection(direction);
 
       try {
         if (isFilterMode) {
@@ -3605,6 +4025,9 @@ export function SearchReplacePanel() {
               maxResults: FILTER_CHUNK_SIZE,
             }
           );
+          if (runVersion !== resultFilterStepRunVersionRef.current) {
+            return;
+          }
 
           const targetMatch = stepResult.targetMatch;
           if (!targetMatch) {
@@ -3612,75 +4035,48 @@ export function SearchReplacePanel() {
           }
           const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
           setTotalFilterMatchedLineCount(totalMatchedLines);
+          const stepBatchMatches =
+            Array.isArray(stepResult.batchMatches) && stepResult.batchMatches.length > 0
+              ? stepResult.batchMatches
+              : null;
 
-          let nextMatches = filterMatches;
-          let targetIndex = nextMatches.findIndex(
-            (item) =>
-              item.line === targetMatch.line &&
-              item.column === targetMatch.column &&
-              item.ruleIndex === targetMatch.ruleIndex
-          );
-
-          if (targetIndex < 0) {
-            const direction = normalizedStep > 0 ? 'next' : 'prev';
-            setResultFilterStepLoadingDirection(direction);
-            const loadSessionId = loadMoreSessionRef.current;
-            loadMoreLockRef.current = true;
-            setIsSearching(true);
-
-            try {
-              const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
-                id: activeTab.id,
-                rules: filterRulesPayload,
-                resultFilterKeyword: effectiveResultFilterKeyword,
-                resultFilterCaseSensitive: caseSensitive,
-                startLine: Math.max(0, stepResult.batchStartLine ?? 0),
-                maxResults: FILTER_CHUNK_SIZE,
-              });
-
-              if (loadSessionId !== loadMoreSessionRef.current) {
-                return;
-              }
-
-              nextMatches = backendResult.matches || [];
-              targetIndex = Math.min(
+          const nextMatches = stepBatchMatches ?? filterMatches;
+          const targetIndex = stepBatchMatches
+            ? Math.min(
                 Math.max(0, stepResult.targetIndexInBatch ?? 0),
                 Math.max(0, nextMatches.length - 1)
+              )
+            : nextMatches.findIndex(
+                (item) =>
+                  item.line === targetMatch.line &&
+                  item.column === targetMatch.column &&
+                  item.ruleIndex === targetMatch.ruleIndex
               );
 
-              const documentVersion = backendResult.documentVersion ?? stepResult.documentVersion ?? 0;
-              filterLineCursorRef.current = backendResult.nextLine ?? null;
-              setFilterSessionId(null);
-              cachedFilterRef.current = {
-                tabId: activeTab.id,
-                rulesKey: filterRulesKey,
-                resultFilterKeyword: effectiveResultFilterKeyword,
-                documentVersion,
-                matches: nextMatches,
-                nextLine: filterLineCursorRef.current,
-                sessionId: null,
-              };
-              filterCountCacheRef.current = {
-                tabId: activeTab.id,
-                rulesKey: filterRulesKey,
-                resultFilterKeyword: effectiveResultFilterKeyword,
-                documentVersion,
-                matchedLines: totalMatchedLines,
-              };
-
-              startTransition(() => {
-                setFilterMatches(nextMatches);
-              });
-            } finally {
-              loadMoreLockRef.current = false;
-              if (loadSessionId === loadMoreSessionRef.current) {
-                setIsSearching(false);
-              }
-              setResultFilterStepLoadingDirection(null);
-            }
-          }
-
           if (targetIndex >= 0 && targetIndex < nextMatches.length) {
+            const documentVersion = stepResult.documentVersion ?? 0;
+            filterLineCursorRef.current = stepResult.nextLine ?? null;
+            setFilterSessionId(null);
+            cachedFilterRef.current = {
+              tabId: activeTab.id,
+              rulesKey: filterRulesKey,
+              resultFilterKeyword: effectiveResultFilterKeyword,
+              documentVersion,
+              matches: nextMatches,
+              nextLine: filterLineCursorRef.current,
+              sessionId: null,
+            };
+            filterCountCacheRef.current = {
+              tabId: activeTab.id,
+              rulesKey: filterRulesKey,
+              resultFilterKeyword: effectiveResultFilterKeyword,
+              documentVersion,
+              matchedLines: totalMatchedLines,
+            };
+
+            startTransition(() => {
+              setFilterMatches(nextMatches);
+            });
             currentFilterMatchIndexRef.current = targetIndex;
             setCurrentFilterMatchIndex(targetIndex);
             setErrorMessage(null);
@@ -3719,6 +4115,9 @@ export function SearchReplacePanel() {
             maxResults: SEARCH_CHUNK_SIZE,
           }
         );
+        if (runVersion !== resultFilterStepRunVersionRef.current) {
+          return;
+        }
 
         const targetMatch = stepResult.targetMatch;
         if (!targetMatch) {
@@ -3728,78 +4127,50 @@ export function SearchReplacePanel() {
         const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
         setTotalMatchCount(totalMatches);
         setTotalMatchedLineCount(totalMatchedLines);
+        const stepBatchMatches =
+          Array.isArray(stepResult.batchMatches) && stepResult.batchMatches.length > 0
+            ? stepResult.batchMatches
+            : null;
 
-        let nextMatches = matches;
-        let targetIndex = nextMatches.findIndex(
-          (item) => item.start === targetMatch.start && item.end === targetMatch.end
-        );
-
-        if (targetIndex < 0) {
-          const direction = normalizedStep > 0 ? 'next' : 'prev';
-          setResultFilterStepLoadingDirection(direction);
-          const loadSessionId = loadMoreSessionRef.current;
-          loadMoreLockRef.current = true;
-          setIsSearching(true);
-
-          try {
-            const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
-              id: activeTab.id,
-              keyword,
-              mode: getSearchModeValue(searchMode),
-              caseSensitive,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              startOffset: Math.max(0, stepResult.batchStartOffset ?? 0),
-              maxResults: SEARCH_CHUNK_SIZE,
-            });
-
-            if (loadSessionId !== loadMoreSessionRef.current) {
-              return;
-            }
-
-            nextMatches = backendResult.matches || [];
-            targetIndex = Math.min(
+        const nextMatches = stepBatchMatches ?? matches;
+        const targetIndex = stepBatchMatches
+          ? Math.min(
               Math.max(0, stepResult.targetIndexInBatch ?? 0),
               Math.max(0, nextMatches.length - 1)
+            )
+          : nextMatches.findIndex(
+              (item) => item.start === targetMatch.start && item.end === targetMatch.end
             );
 
-            const documentVersion = backendResult.documentVersion ?? stepResult.documentVersion ?? 0;
-            chunkCursorRef.current = backendResult.nextOffset ?? null;
-            setSearchSessionId(null);
-            cachedSearchRef.current = {
-              tabId: activeTab.id,
-              keyword,
-              searchMode,
-              caseSensitive,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              documentVersion,
-              matches: nextMatches,
-              nextOffset: chunkCursorRef.current,
-              sessionId: null,
-            };
-            countCacheRef.current = {
-              tabId: activeTab.id,
-              keyword,
-              searchMode,
-              caseSensitive,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              documentVersion,
-              totalMatches,
-              matchedLines: totalMatchedLines,
-            };
-
-            startTransition(() => {
-              setMatches(nextMatches);
-            });
-          } finally {
-            loadMoreLockRef.current = false;
-            if (loadSessionId === loadMoreSessionRef.current) {
-              setIsSearching(false);
-            }
-            setResultFilterStepLoadingDirection(null);
-          }
-        }
-
         if (targetIndex >= 0 && targetIndex < nextMatches.length) {
+          const documentVersion = stepResult.documentVersion ?? 0;
+          chunkCursorRef.current = stepResult.nextOffset ?? null;
+          setSearchSessionId(null);
+          cachedSearchRef.current = {
+            tabId: activeTab.id,
+            keyword,
+            searchMode,
+            caseSensitive,
+            resultFilterKeyword: effectiveResultFilterKeyword,
+            documentVersion,
+            matches: nextMatches,
+            nextOffset: chunkCursorRef.current,
+            sessionId: null,
+          };
+          countCacheRef.current = {
+            tabId: activeTab.id,
+            keyword,
+            searchMode,
+            caseSensitive,
+            resultFilterKeyword: effectiveResultFilterKeyword,
+            documentVersion,
+            totalMatches,
+            matchedLines: totalMatchedLines,
+          };
+
+          startTransition(() => {
+            setMatches(nextMatches);
+          });
           currentMatchIndexRef.current = targetIndex;
           setCurrentMatchIndex(targetIndex);
           setErrorMessage(null);
@@ -3812,9 +4183,17 @@ export function SearchReplacePanel() {
 
         setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
       } catch (error) {
-        setResultFilterStepLoadingDirection(null);
+        if (runVersion !== resultFilterStepRunVersionRef.current) {
+          return;
+        }
         const readableError = error instanceof Error ? error.message : String(error);
         setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+      } finally {
+        if (runVersion === resultFilterStepRunVersionRef.current) {
+          loadMoreLockRef.current = false;
+          setIsSearching(false);
+          setResultFilterStepLoadingDirection(null);
+        }
       }
     },
     [

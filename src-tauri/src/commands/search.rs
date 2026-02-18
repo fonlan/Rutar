@@ -78,6 +78,17 @@ pub struct SearchSessionNextResultPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SearchSessionRestoreResultPayload {
+    pub(super) restored: bool,
+    pub(super) session_id: Option<String>,
+    pub(super) document_version: u64,
+    pub(super) next_offset: Option<usize>,
+    pub(super) total_matches: usize,
+    pub(super) total_matched_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchCountResultPayload {
     pub(super) total_matches: usize,
     pub(super) matched_lines: usize,
@@ -131,6 +142,8 @@ pub struct SearchResultFilterStepPayload {
     pub(super) target_match: Option<SearchMatchResult>,
     pub(super) document_version: u64,
     pub(super) batch_start_offset: usize,
+    pub(super) batch_matches: Vec<SearchMatchResult>,
+    pub(super) next_offset: Option<usize>,
     pub(super) target_index_in_batch: Option<usize>,
     pub(super) total_matches: usize,
     pub(super) total_matched_lines: usize,
@@ -220,6 +233,16 @@ pub struct FilterSessionNextResultPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FilterSessionRestoreResultPayload {
+    pub(super) restored: bool,
+    pub(super) session_id: Option<String>,
+    pub(super) document_version: u64,
+    pub(super) next_line: Option<usize>,
+    pub(super) total_matched_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FilterCountResultPayload {
     pub(super) matched_lines: usize,
     pub(super) document_version: u64,
@@ -231,6 +254,8 @@ pub struct FilterResultFilterStepPayload {
     pub(super) target_match: Option<FilterLineMatchResult>,
     pub(super) document_version: u64,
     pub(super) batch_start_line: usize,
+    pub(super) batch_matches: Vec<FilterLineMatchResult>,
+    pub(super) next_line: Option<usize>,
     pub(super) target_index_in_batch: Option<usize>,
     pub(super) total_matched_lines: usize,
 }
@@ -1456,6 +1481,20 @@ fn build_search_matches_chunk_with_preview(
     (chunk, next_offset, end_index)
 }
 
+fn find_search_session_next_index_by_offset(
+    matches: &[SearchMatchResult],
+    next_offset: Option<usize>,
+) -> usize {
+    let Some(offset) = next_offset else {
+        return matches.len();
+    };
+
+    matches
+        .iter()
+        .position(|item| item.start >= offset)
+        .unwrap_or(matches.len())
+}
+
 fn build_filter_matches_chunk_with_preview(
     matches: &[FilterLineMatchResult],
     start_index: usize,
@@ -1482,6 +1521,20 @@ fn build_filter_matches_chunk_with_preview(
         .get(end_index)
         .map(|item| item.line.saturating_sub(1));
     (chunk, next_line, end_index)
+}
+
+fn find_filter_session_next_index_by_line(
+    matches: &[FilterLineMatchResult],
+    next_line: Option<usize>,
+) -> usize {
+    let Some(start_line) = next_line else {
+        return matches.len();
+    };
+
+    matches
+        .iter()
+        .position(|item| item.line.saturating_sub(1) >= start_line)
+        .unwrap_or(matches.len())
 }
 
 fn replace_matches_by_char_ranges(
@@ -1919,6 +1972,102 @@ pub(super) fn search_session_next_in_document_impl(
     })
 }
 
+pub(super) fn search_session_restore_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    expected_document_version: Option<u64>,
+    next_offset: Option<usize>,
+) -> Result<SearchSessionRestoreResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        remove_search_sessions_by_document(&id);
+
+        if keyword.is_empty() {
+            return Ok(SearchSessionRestoreResultPayload {
+                restored: true,
+                session_id: None,
+                document_version: doc.document_version,
+                next_offset: None,
+                total_matches: 0,
+                total_matched_lines: 0,
+            });
+        }
+
+        if let Some(expected_version) = expected_document_version {
+            if expected_version != doc.document_version {
+                return Ok(SearchSessionRestoreResultPayload {
+                    restored: false,
+                    session_id: None,
+                    document_version: doc.document_version,
+                    next_offset: None,
+                    total_matches: 0,
+                    total_matched_lines: 0,
+                });
+            }
+        }
+
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive =
+            result_filter_case_sensitive.unwrap_or(case_sensitive);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
+        let all_matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+        let total_matches = all_matches.len();
+        let total_matched_lines = all_matches
+            .iter()
+            .map(|item| item.line)
+            .collect::<BTreeSet<usize>>()
+            .len();
+        let next_index = find_search_session_next_index_by_offset(&all_matches, next_offset);
+        let resolved_next_offset = all_matches.get(next_index).map(|item| item.start);
+
+        if total_matches == 0 || next_index >= all_matches.len() {
+            return Ok(SearchSessionRestoreResultPayload {
+                restored: true,
+                session_id: None,
+                document_version: doc.document_version,
+                next_offset: None,
+                total_matches,
+                total_matched_lines,
+            });
+        }
+
+        let session_id = Uuid::new_v4().to_string();
+        search_session_cache().insert(
+            session_id.clone(),
+            SearchSessionEntry {
+                document_id: id,
+                document_version: doc.document_version,
+                result_filter_keyword: normalized_result_filter_keyword,
+                result_filter_case_sensitive: effective_result_filter_case_sensitive,
+                matches: Arc::new(all_matches),
+                next_index,
+            },
+        );
+
+        Ok(SearchSessionRestoreResultPayload {
+            restored: true,
+            session_id: Some(session_id),
+            document_version: doc.document_version,
+            next_offset: resolved_next_offset,
+            total_matches,
+            total_matched_lines,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn search_count_in_document_impl(
     state: State<'_, AppState>,
     id: String,
@@ -2043,6 +2192,8 @@ pub(super) fn step_result_filter_search_in_document_impl(
             target_match: None,
             document_version,
             batch_start_offset: 0,
+            batch_matches: Vec::new(),
+            next_offset: None,
             target_index_in_batch: None,
             total_matches: 0,
             total_matched_lines: 0,
@@ -2145,6 +2296,8 @@ pub(super) fn step_result_filter_search_in_document_impl(
             target_match: None,
             document_version,
             batch_start_offset: 0,
+            batch_matches: Vec::new(),
+            next_offset: None,
             target_index_in_batch: None,
             total_matches: 0,
             total_matched_lines: 0,
@@ -2202,6 +2355,8 @@ pub(super) fn step_result_filter_search_in_document_impl(
             target_match: None,
             document_version,
             batch_start_offset: 0,
+            batch_matches: Vec::new(),
+            next_offset: None,
             target_index_in_batch: None,
             total_matches: 0,
             total_matched_lines: 0,
@@ -2209,12 +2364,31 @@ pub(super) fn step_result_filter_search_in_document_impl(
     };
 
     let target_match = matches.get(target_index).cloned();
+    let (batch_matches, next_offset, _) = build_search_matches_chunk_with_preview(
+        matches,
+        target_index,
+        max_results,
+        normalized_result_filter_keyword.as_deref(),
+        filter_case_sensitive,
+    );
+    let batch_start_offset = batch_matches
+        .first()
+        .map(|item| item.start)
+        .or_else(|| target_match.as_ref().map(|item| item.start))
+        .unwrap_or(0);
+    let target_index_in_batch = if target_match.is_some() {
+        Some(0usize)
+    } else {
+        None
+    };
 
     Ok(SearchResultFilterStepPayload {
-        batch_start_offset: target_match.as_ref().map(|item| item.start).unwrap_or(0),
+        batch_start_offset,
+        batch_matches,
+        next_offset,
         target_match,
         document_version,
-        target_index_in_batch: Some(0),
+        target_index_in_batch,
         total_matches,
         total_matched_lines,
     })
@@ -2447,6 +2621,79 @@ pub(super) fn filter_session_next_in_document_impl(
     })
 }
 
+pub(super) fn filter_session_restore_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    rules: Vec<FilterRuleInput>,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    expected_document_version: Option<u64>,
+    next_line: Option<usize>,
+) -> Result<FilterSessionRestoreResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        remove_filter_sessions_by_document(&id);
+
+        if let Some(expected_version) = expected_document_version {
+            if expected_version != doc.document_version {
+                return Ok(FilterSessionRestoreResultPayload {
+                    restored: false,
+                    session_id: None,
+                    document_version: doc.document_version,
+                    next_line: None,
+                    total_matched_lines: 0,
+                });
+            }
+        }
+
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
+        let all_matches = build_filter_step_filtered_matches(
+            &doc,
+            rules,
+            normalized_result_filter_keyword.as_deref(),
+            effective_result_filter_case_sensitive,
+        )?;
+        let total_matched_lines = all_matches.len();
+        let next_index = find_filter_session_next_index_by_line(&all_matches, next_line);
+        let resolved_next_line = all_matches
+            .get(next_index)
+            .map(|item| item.line.saturating_sub(1));
+
+        if total_matched_lines == 0 || next_index >= all_matches.len() {
+            return Ok(FilterSessionRestoreResultPayload {
+                restored: true,
+                session_id: None,
+                document_version: doc.document_version,
+                next_line: None,
+                total_matched_lines,
+            });
+        }
+
+        let session_id = Uuid::new_v4().to_string();
+        filter_session_cache().insert(
+            session_id.clone(),
+            FilterSessionEntry {
+                document_id: id,
+                document_version: doc.document_version,
+                result_filter_keyword: normalized_result_filter_keyword,
+                result_filter_case_sensitive: effective_result_filter_case_sensitive,
+                matches: Arc::new(all_matches),
+                next_index,
+            },
+        );
+
+        Ok(FilterSessionRestoreResultPayload {
+            restored: true,
+            session_id: Some(session_id),
+            document_version: doc.document_version,
+            next_line: resolved_next_line,
+            total_matched_lines,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn step_result_filter_search_in_filter_document_impl(
     state: State<'_, AppState>,
     id: String,
@@ -2533,6 +2780,8 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
             target_match: None,
             document_version,
             batch_start_line: 0,
+            batch_matches: Vec::new(),
+            next_line: None,
             target_index_in_batch: None,
             total_matched_lines: 0,
         });
@@ -2590,21 +2839,39 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
             target_match: None,
             document_version,
             batch_start_line: 0,
+            batch_matches: Vec::new(),
+            next_line: None,
             target_index_in_batch: None,
             total_matched_lines: 0,
         });
     };
 
     let target_match = matches.get(target_index).cloned();
+    let (batch_matches, next_line, _) = build_filter_matches_chunk_with_preview(
+        matches,
+        target_index,
+        max_results,
+        normalized_result_filter_keyword.as_deref(),
+        filter_case_sensitive,
+    );
+    let batch_start_line = batch_matches
+        .first()
+        .map(|item| item.line.saturating_sub(1))
+        .or_else(|| target_match.as_ref().map(|item| item.line.saturating_sub(1)))
+        .unwrap_or(0);
+    let target_index_in_batch = if target_match.is_some() {
+        Some(0usize)
+    } else {
+        None
+    };
 
     Ok(FilterResultFilterStepPayload {
-        batch_start_line: target_match
-            .as_ref()
-            .map(|item| item.line.saturating_sub(1))
-            .unwrap_or(0),
+        batch_start_line,
+        batch_matches,
+        next_line,
         target_match,
         document_version,
-        target_index_in_batch: Some(0),
+        target_index_in_batch,
         total_matched_lines,
     })
 }
@@ -3312,6 +3579,21 @@ mod tests {
     }
 
     #[test]
+    fn find_search_session_next_index_by_offset_should_return_expected_position() {
+        let matches = vec![
+            make_search_match(0, 4, 1, 1, "todo one"),
+            make_search_match(10, 14, 2, 1, "todo two"),
+            make_search_match(20, 24, 3, 1, "todo three"),
+        ];
+
+        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(0)), 0);
+        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(10)), 1);
+        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(15)), 2);
+        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(30)), 3);
+        assert_eq!(find_search_session_next_index_by_offset(&matches, None), 3);
+    }
+
+    #[test]
     fn build_filter_matches_chunk_with_preview_should_paginate_and_expose_next_line() {
         let matches = vec![
             make_filter_match(1, 1, "todo one"),
@@ -3338,6 +3620,22 @@ mod tests {
         assert!(chunk.is_empty());
         assert_eq!(next_line, None);
         assert_eq!(next_index, 3);
+    }
+
+    #[test]
+    fn find_filter_session_next_index_by_line_should_return_expected_position() {
+        let matches = vec![
+            make_filter_match(2, 1, "todo one"),
+            make_filter_match(6, 1, "todo two"),
+            make_filter_match(10, 1, "todo three"),
+        ];
+
+        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(0)), 0);
+        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(1)), 0);
+        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(5)), 1);
+        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(9)), 2);
+        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(20)), 3);
+        assert_eq!(find_filter_session_next_index_by_line(&matches, None), 3);
     }
 
     #[test]

@@ -16,6 +16,7 @@ Rutar is a high-performance, lightweight code editor built with **Tauri**, **Rea
 - **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
 - **Markdown Syntax in Status Bar**: The status bar syntax selector includes `Markdown`; manual override to Markdown is accepted and can be used to drive preview behavior.
 - **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
+- **Sessionized Search/Filter Navigation**: Search and filter use backend session commands (`start/next/step/restore`) so tab switching can restore incremental navigation state with less frontend state burden.
 - **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
 - **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
 - **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, supports Mermaid code-block diagram rendering, and shares editor vertical/horizontal scrolling behavior.
