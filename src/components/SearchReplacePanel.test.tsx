@@ -1637,12 +1637,69 @@ describe("SearchReplacePanel", () => {
     fireEvent.change(resultFilterInput, {
       target: { value: "line-filter" },
     });
-    expect(screen.getByTitle("Clear result filter")).toBeInTheDocument();
+    const resultFilterClearButton = screen.getByTitle("Clear result filter");
+    expect(resultFilterClearButton).toBeInTheDocument();
+    expect(resultFilterInput.parentElement).toContainElement(resultFilterClearButton);
 
-    fireEvent.click(screen.getByTitle("Clear result filter"));
+    fireEvent.click(resultFilterClearButton);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Search in all results")).toHaveValue("");
+    });
+  });
+
+  it("shows clear buttons inside find/replace/filter text inputs and clears values", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-search-clear-inputs" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    const findInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(findInput, {
+      target: { value: "todo" },
+    });
+    const findClearButton = within(findInput.parentElement as HTMLElement).getByTitle("Clear input");
+    fireEvent.click(findClearButton);
+    await waitFor(() => {
+      expect(findInput).toHaveValue("");
+    });
+
+    const replaceInput = screen.getByPlaceholderText("Replace with") as HTMLInputElement;
+    fireEvent.change(replaceInput, {
+      target: { value: "done" },
+    });
+    const replaceClearButton = within(replaceInput.parentElement as HTMLElement).getByTitle("Clear input");
+    fireEvent.click(replaceClearButton);
+    await waitFor(() => {
+      expect(replaceInput).toHaveValue("");
+    });
+
+    fireEvent.click(screen.getByTitle("Switch to filter mode"));
+
+    const filterGroupNameInput = (await screen.findByPlaceholderText("Rule group name")) as HTMLInputElement;
+    fireEvent.change(filterGroupNameInput, {
+      target: { value: "group-a" },
+    });
+    const filterGroupClearButton = within(filterGroupNameInput.parentElement as HTMLElement).getByTitle("Clear input");
+    fireEvent.click(filterGroupClearButton);
+    await waitFor(() => {
+      expect(filterGroupNameInput).toHaveValue("");
+    });
+
+    const filterRuleInput = screen.getByPlaceholderText("Filter keyword") as HTMLInputElement;
+    fireEvent.change(filterRuleInput, {
+      target: { value: "warn" },
+    });
+    const filterRuleClearButton = within(filterRuleInput.parentElement as HTMLElement).getByTitle("Clear input");
+    fireEvent.click(filterRuleClearButton);
+    await waitFor(() => {
+      expect(filterRuleInput).toHaveValue("");
     });
   });
 

@@ -4658,19 +4658,38 @@ export function SearchReplacePanel() {
           {!isFilterMode ? (
             <div className="mt-3 flex items-center gap-2">
               <Search className="h-4 w-4 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                value={keyword}
-                onChange={(event) => {
-                  setKeyword(event.target.value);
-                  setFeedbackMessage(null);
-                  setErrorMessage(null);
-                  resetSearchState();
-                }}
-                onKeyDown={handleKeywordKeyDown}
-                placeholder={messages.findPlaceholder}
-                className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              <div className="relative min-w-0 flex-1">
+                <input
+                  ref={searchInputRef}
+                  value={keyword}
+                  onChange={(event) => {
+                    setKeyword(event.target.value);
+                    setFeedbackMessage(null);
+                    setErrorMessage(null);
+                    resetSearchState();
+                  }}
+                  onKeyDown={handleKeywordKeyDown}
+                  placeholder={messages.findPlaceholder}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                {keyword && (
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setKeyword('');
+                      setFeedbackMessage(null);
+                      setErrorMessage(null);
+                      resetSearchState();
+                    }}
+                    title={messages.clearInput}
+                    aria-label={messages.clearInput}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="mt-3 space-y-2">
@@ -4695,12 +4714,26 @@ export function SearchReplacePanel() {
 
               <div className="rounded-md border border-border/70 p-2">
                 <div className="mb-2 flex items-center gap-2">
-                  <input
-                    value={filterGroupNameInput}
-                    onChange={(event) => setFilterGroupNameInput(event.target.value)}
-                    placeholder={messages.filterGroupNamePlaceholder}
-                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                  />
+                  <div className="relative min-w-0 flex-1">
+                    <input
+                      value={filterGroupNameInput}
+                      onChange={(event) => setFilterGroupNameInput(event.target.value)}
+                      placeholder={messages.filterGroupNamePlaceholder}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    {filterGroupNameInput && (
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setFilterGroupNameInput('')}
+                        title={messages.clearInput}
+                        aria-label={messages.clearInput}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -4826,18 +4859,37 @@ export function SearchReplacePanel() {
                     </div>
                   </div>
 
-                  <input
-                    value={rule.keyword}
-                    onChange={(event) => {
-                      updateFilterRule(rule.id, (previous) => ({
-                        ...previous,
-                        keyword: event.target.value,
-                      }));
-                    }}
-                    onKeyDown={handleKeywordKeyDown}
-                    placeholder={messages.filterRuleKeywordPlaceholder}
-                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                  />
+                  <div className="relative">
+                    <input
+                      value={rule.keyword}
+                      onChange={(event) => {
+                        updateFilterRule(rule.id, (previous) => ({
+                          ...previous,
+                          keyword: event.target.value,
+                        }));
+                      }}
+                      onKeyDown={handleKeywordKeyDown}
+                      placeholder={messages.filterRuleKeywordPlaceholder}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    {rule.keyword && (
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          updateFilterRule(rule.id, (previous) => ({
+                            ...previous,
+                            keyword: '',
+                          }));
+                        }}
+                        title={messages.clearInput}
+                        aria-label={messages.clearInput}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {FILTER_MATCH_MODES.map((modeOption) => {
@@ -4986,12 +5038,26 @@ export function SearchReplacePanel() {
           {isReplaceMode && (
             <div className="mt-2 flex items-center gap-2">
               <span className="w-4 text-xs text-muted-foreground">→</span>
-              <input
-                value={replaceValue}
-                onChange={(event) => setReplaceValue(event.target.value)}
-                placeholder={messages.replacePlaceholder}
-                className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              <div className="relative min-w-0 flex-1">
+                <input
+                  value={replaceValue}
+                  onChange={(event) => setReplaceValue(event.target.value)}
+                  placeholder={messages.replacePlaceholder}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                {replaceValue && (
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setReplaceValue('')}
+                    title={messages.clearInput}
+                    aria-label={messages.clearInput}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -5234,8 +5300,23 @@ export function SearchReplacePanel() {
                     }
                   }}
                   placeholder={messages.resultFilterPlaceholder}
-                  className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none"
+                  className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none"
                 />
+                {resultFilterKeyword && (
+                  <button
+                    type="button"
+                    className="-ml-5 mr-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setResultFilterKeyword('');
+                      setAppliedResultFilterKeyword('');
+                    }}
+                    title={messages.clearResultFilter}
+                    aria-label={messages.clearResultFilter}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-40"
@@ -5312,19 +5393,6 @@ export function SearchReplacePanel() {
                     {isResultFilterSearching ? messages.resultFilterStop : messages.resultFilterSearch}
                   </span>
                 </button>
-                {resultFilterKeyword && (
-                  <button
-                    type="button"
-                    className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => {
-                      setResultFilterKeyword('');
-                      setAppliedResultFilterKeyword('');
-                    }}
-                    title={messages.clearResultFilter}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
               </div>
             </div>
             <div className="flex items-center gap-1">
