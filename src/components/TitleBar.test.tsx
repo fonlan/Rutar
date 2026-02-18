@@ -55,6 +55,11 @@ function getReactOnClick(button: HTMLButtonElement): (() => void) | undefined {
   return propsKey ? (button as any)[propsKey]?.onClick : undefined;
 }
 
+function getRenderedTabLabels(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("div.group.flex.items-center span.truncate"))
+    .map((element) => (element.textContent ?? "").replace(/\*$/, ""));
+}
+
 describe("TitleBar", () => {
   let initialState: ReturnType<typeof useStore.getState>;
   let clipboardWriteTextMock: ReturnType<typeof vi.fn>;
@@ -97,6 +102,92 @@ describe("TitleBar", () => {
     await waitFor(() => {
       expect(useStore.getState().settings.isOpen).toBe(true);
     });
+  });
+
+  it("places locked tabs first by lock order and shows lock icon", () => {
+    const tabA = createTab({ id: "tab-locked-a", name: "a.ts", path: "C:\\repo\\a.ts" });
+    const tabB = createTab({ id: "tab-locked-b", name: "b.ts", path: "C:\\repo\\b.ts" });
+    const tabC = createTab({ id: "tab-locked-c", name: "c.ts", path: "C:\\repo\\c.ts" });
+
+    useStore.setState({
+      tabs: [tabA, tabB, tabC],
+      activeTabId: tabA.id,
+    });
+    useStore.getState().updateSettings({
+      pinnedTabPaths: [tabB.path, tabA.path],
+    });
+
+    const { container } = render(<TitleBar />);
+    expect(getRenderedTabLabels(container).slice(0, 3)).toEqual(["b.ts", "a.ts", "c.ts"]);
+
+    const tabBElement = screen.getByText("b.ts").closest("div.group.flex.items-center");
+    const tabCElement = screen.getByText("c.ts").closest("div.group.flex.items-center");
+    expect(tabBElement?.querySelector(".lucide-lock")).not.toBeNull();
+    expect(tabCElement?.querySelector(".lucide-lock")).toBeNull();
+  });
+
+  it("toggles tab lock from context menu", async () => {
+    const tab = createTab({ id: "tab-lock-toggle", name: "lock.ts", path: "C:\\repo\\lock.ts" });
+
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    useStore.getState().updateSettings({
+      pinnedTabPaths: [],
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("lock.ts"), {
+      clientX: 146,
+      clientY: 92,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Lock Tab" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.pinnedTabPaths).toEqual(["C:\\repo\\lock.ts"]);
+    });
+
+    fireEvent.contextMenu(screen.getByText("lock.ts"), {
+      clientX: 148,
+      clientY: 94,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock Tab" }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.pinnedTabPaths).toEqual([]);
+    });
+  });
+
+  it("renders lock tab menu item above close other tabs", async () => {
+    const tab = createTab({ id: "tab-lock-order", name: "lock-order.ts", path: "C:\\repo\\lock-order.ts" });
+
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    useStore.getState().updateSettings({
+      pinnedTabPaths: [],
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("lock-order.ts"), {
+      clientX: 150,
+      clientY: 96,
+    });
+
+    const lockButton = await screen.findByRole("button", { name: "Lock Tab" });
+    const closeOtherButton = await screen.findByRole("button", { name: "Close Other Tabs" });
+    const menuRoot = lockButton.parentElement;
+    expect(menuRoot).toBeTruthy();
+
+    const buttonLabels = Array.from(menuRoot?.querySelectorAll("button") ?? []).map(
+      (button) => button.textContent?.trim() ?? ""
+    );
+    expect(buttonLabels.indexOf("Lock Tab")).toBe(buttonLabels.indexOf("Close Other Tabs") - 1);
+    expect(lockButton.nextElementSibling).toBe(closeOtherButton);
   });
 
   it("toggles always-on-top state", async () => {

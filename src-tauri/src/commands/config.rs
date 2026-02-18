@@ -250,6 +250,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         remember_window_state: config.remember_window_state,
         recent_files: normalize_recent_paths(Some(config.recent_files)),
         recent_folders: normalize_recent_paths(Some(config.recent_folders)),
+        pinned_tab_paths: normalize_recent_paths(Some(config.pinned_tab_paths)),
         windows_file_association_extensions: normalize_windows_file_association_extensions(Some(
             config.windows_file_association_extensions,
         )),
@@ -1059,6 +1060,10 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
         config.recent_folders = normalize_recent_paths(Some(recent_folders));
     }
 
+    if let Some(pinned_tab_paths) = partial.pinned_tab_paths {
+        config.pinned_tab_paths = normalize_recent_paths(Some(pinned_tab_paths));
+    }
+
     if let Some(extensions) = partial.windows_file_association_extensions {
         config.windows_file_association_extensions =
             normalize_windows_file_association_extensions(Some(extensions));
@@ -1394,6 +1399,7 @@ mod tests {
             remember_window_state: true,
             recent_files: vec!["  a  ".to_string(), "a".to_string()],
             recent_folders: vec!["  b  ".to_string(), "b".to_string()],
+            pinned_tab_paths: vec!["  c  ".to_string(), "c".to_string()],
             windows_file_association_extensions: vec!["TXT".to_string()],
             mouse_gestures_enabled: true,
             mouse_gestures: vec![settings::MouseGestureConfig {
@@ -1420,6 +1426,7 @@ mod tests {
         assert_eq!(normalized.new_file_line_ending, default_line_ending().label());
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
+        assert_eq!(normalized.pinned_tab_paths, vec!["c".to_string()]);
         assert_eq!(
             normalized.windows_file_association_extensions,
             vec![".txt".to_string()]

@@ -9,6 +9,7 @@ import {
     Pin,
     PinOff,
     LoaderCircle,
+    Lock,
     Settings,
     Square,
     Terminal,
@@ -143,6 +144,27 @@ function pathBaseName(path: string) {
     return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
 }
 
+function normalizeTabPath(path?: string | null): string {
+    return typeof path === 'string' ? path.trim() : '';
+}
+
+function getLockedTabOrder(
+    tab: { path?: string; tabType?: 'file' | 'diff' },
+    pinnedTabPathOrder: Map<string, number>
+): number | null {
+    if (tab.tabType === 'diff') {
+        return null;
+    }
+
+    const normalizedPath = normalizeTabPath(tab.path);
+    if (!normalizedPath) {
+        return null;
+    }
+
+    const order = pinnedTabPathOrder.get(normalizedPath);
+    return typeof order === 'number' ? order : null;
+}
+
 function isRegularFileTab(tab?: FileTab | null): tab is FileTab {
     return !!tab && tab.tabType !== 'diff';
 }
@@ -167,6 +189,20 @@ export function TitleBar() {
     const tabDragStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
     const suppressNextTabClickRef = useRef(false);
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
+    const pinnedTabPathOrder = useMemo(() => {
+        const orderByPath = new Map<string, number>();
+
+        settings.pinnedTabPaths.forEach((path, index) => {
+            const normalizedPath = normalizeTabPath(path);
+            if (!normalizedPath || orderByPath.has(normalizedPath)) {
+                return;
+            }
+
+            orderByPath.set(normalizedPath, index);
+        });
+
+        return orderByPath;
+    }, [settings.pinnedTabPaths]);
     const alwaysOnTopTitle = isAlwaysOnTop
         ? tr('titleBar.disableAlwaysOnTop')
         : tr('titleBar.enableAlwaysOnTop');
@@ -212,6 +248,18 @@ export function TitleBar() {
                 ? '未选择对比源'
                 : 'No compare source selected'
         );
+    const lockTabLabel = settings.language === 'zh-CN'
+        ? '锁定标签页'
+        : 'Lock Tab';
+    const unlockTabLabel = settings.language === 'zh-CN'
+        ? '取消锁定标签页'
+        : 'Unlock Tab';
+    const contextMenuTabLockOrder = contextMenuTab
+        ? getLockedTabOrder(contextMenuTab, pinnedTabPathOrder)
+        : null;
+    const contextMenuTabIsLocked = contextMenuTabLockOrder !== null;
+    const canToggleContextMenuTabLock = isRegularFileTab(contextMenuTab)
+        && normalizeTabPath(contextMenuTab.path).length > 0;
 
     const copyToClipboard = useCallback(async (text: string) => {
         if (!navigator.clipboard?.writeText) {
@@ -468,13 +516,33 @@ export function TitleBar() {
         }
     }, [addTab, compareSourceTab, setActiveTab, settings.language, tabs]);
 
+    const handleToggleTabLock = useCallback((tab: FileTab | null) => {
+        if (!isRegularFileTab(tab)) {
+            return;
+        }
+
+        const normalizedPath = normalizeTabPath(tab.path);
+        if (!normalizedPath) {
+            return;
+        }
+
+        const latestState = useStore.getState();
+        const currentPinnedPaths = latestState.settings.pinnedTabPaths;
+        const alreadyPinned = currentPinnedPaths.includes(normalizedPath);
+        const nextPinnedPaths = alreadyPinned
+            ? currentPinnedPaths.filter((path) => path !== normalizedPath)
+            : [...currentPinnedPaths, normalizedPath];
+
+        latestState.updateSettings({ pinnedTabPaths: nextPinnedPaths });
+    }, []);
+
     const handleTabContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, tab: FileTab) => {
         event.preventDefault();
         event.stopPropagation();
         setTabPathTooltip(null);
 
         const menuWidth = 248;
-        const menuHeight = 332;
+        const menuHeight = 368;
         const viewportPadding = 8;
 
         const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
@@ -812,13 +880,33 @@ export function TitleBar() {
     const displayTabs = useMemo(() => {
         const existingPaths = new Set(
             tabs
-                .map((tab) => tab.path)
-                .filter((path): path is string => !!path)
+                .map((tab) => normalizeTabPath(tab.path))
+                .filter((path) => path.length > 0)
         );
 
-        const visiblePendingTabs = pendingOpenTabs.filter((item) => !existingPaths.has(item.path));
-        return [...tabs, ...visiblePendingTabs];
-    }, [pendingOpenTabs, tabs]);
+        const visiblePendingTabs = pendingOpenTabs.filter(
+            (item) => !existingPaths.has(normalizeTabPath(item.path))
+        );
+        const mergedTabs = [...tabs, ...visiblePendingTabs];
+        const stableOrderById = new Map(mergedTabs.map((tab, index) => [tab.id, index]));
+
+        return [...mergedTabs].sort((left, right) => {
+            const leftLockOrder = getLockedTabOrder(left, pinnedTabPathOrder);
+            const rightLockOrder = getLockedTabOrder(right, pinnedTabPathOrder);
+
+            if (leftLockOrder !== null && rightLockOrder !== null) {
+                if (leftLockOrder !== rightLockOrder) {
+                    return leftLockOrder - rightLockOrder;
+                }
+            } else if (leftLockOrder !== null) {
+                return -1;
+            } else if (rightLockOrder !== null) {
+                return 1;
+            }
+
+            return (stableOrderById.get(left.id) ?? 0) - (stableOrderById.get(right.id) ?? 0);
+        });
+    }, [pendingOpenTabs, pinnedTabPathOrder, tabs]);
 
     return (
         <div
@@ -841,6 +929,7 @@ export function TitleBar() {
                     const tabFileIconConfig = getTabFileIconConfig(tab);
                     const TabFileIcon = tabFileIconConfig.Icon;
                     const isPendingTab = tab.id.startsWith('pending:');
+                    const isLockedTab = getLockedTabOrder(tab, pinnedTabPathOrder) !== null;
 
                     return (
                         <div
@@ -892,6 +981,8 @@ export function TitleBar() {
                             {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
                             {isPendingTab ? (
                                 <LoaderCircle className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                            ) : isLockedTab ? (
+                                <Lock className="mr-1.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
                             ) : (
                                 <TabFileIcon
                                     className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
@@ -1052,6 +1143,17 @@ export function TitleBar() {
                         {tr('titleBar.openContainingFolder')}
                     </button>
                     <div className="my-1 h-px bg-border" />
+                    <button
+                        type="button"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setTabContextMenu(null);
+                            handleToggleTabLock(contextMenuTab);
+                        }}
+                        disabled={!canToggleContextMenuTabLock}
+                    >
+                        {contextMenuTabIsLocked ? unlockTabLabel : lockTabLabel}
+                    </button>
                     <button
                         type="button"
                         className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"

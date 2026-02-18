@@ -125,6 +125,7 @@ interface SettingsState {
   rememberWindowState: boolean;
   recentFiles: string[];
   recentFolders: string[];
+  pinnedTabPaths: string[];
   windowsContextMenuEnabled: boolean;
   windowsFileAssociationEnabled: boolean;
   windowsFileAssociationExtensions: string[];
@@ -208,6 +209,7 @@ export const useStore = create<AppState>((set) => ({
     rememberWindowState: true,
     recentFiles: [],
     recentFolders: [],
+    pinnedTabPaths: [],
     windowsContextMenuEnabled: false,
     windowsFileAssociationEnabled: false,
     windowsFileAssociationExtensions: [],

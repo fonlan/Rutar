@@ -32,6 +32,29 @@ function areStringArraysEqual(left: string[], right: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+function sanitizePinnedTabPathList(paths: unknown): string[] {
+  if (!Array.isArray(paths)) {
+    return [];
+  }
+
+  const uniquePaths: string[] = [];
+
+  for (const item of paths) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+
+    const normalizedPath = item.trim();
+    if (!normalizedPath || uniquePaths.includes(normalizedPath)) {
+      continue;
+    }
+
+    uniquePaths.push(normalizedPath);
+  }
+
+  return uniquePaths;
+}
+
 function normalizeLineEnding(value?: string): LineEnding {
   if (value === 'CRLF' || value === 'LF' || value === 'CR') {
     return value;
@@ -55,6 +78,7 @@ interface AppConfig {
   rememberWindowState: boolean;
   recentFiles?: string[];
   recentFolders?: string[];
+  pinnedTabPaths?: string[];
   windowsFileAssociationExtensions: string[];
   mouseGesturesEnabled?: boolean;
   mouseGestures?: MouseGestureBinding[];
@@ -174,6 +198,7 @@ function App() {
     markdownPreviewOpen: boolean;
   }>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
+  const hasOpenedPinnedTabsRef = useRef(false);
   const externalChangeCheckingTabIdsRef = useRef<Set<string>>(new Set());
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
@@ -834,6 +859,7 @@ function App() {
           rememberWindowState: config.rememberWindowState !== false,
           recentFiles: sanitizeRecentPathList(config.recentFiles),
           recentFolders: sanitizeRecentPathList(config.recentFolders),
+          pinnedTabPaths: sanitizePinnedTabPathList(config.pinnedTabPaths),
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
             : [],
@@ -883,6 +909,7 @@ function App() {
           rememberWindowState: settings.rememberWindowState,
           recentFiles: settings.recentFiles,
           recentFolders: settings.recentFolders,
+          pinnedTabPaths: settings.pinnedTabPaths,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
           mouseGesturesEnabled: settings.mouseGesturesEnabled,
           mouseGestures: settings.mouseGestures,
@@ -911,10 +938,35 @@ function App() {
     settings.rememberWindowState,
     settings.recentFiles,
     settings.recentFolders,
+    settings.pinnedTabPaths,
     settings.windowsFileAssociationExtensions,
     settings.mouseGesturesEnabled,
     settings.mouseGestures,
   ]);
+
+  useEffect(() => {
+    if (!configReady || hasOpenedPinnedTabsRef.current) {
+      return;
+    }
+
+    hasOpenedPinnedTabsRef.current = true;
+    let cancelled = false;
+
+    const openPinnedTabs = async () => {
+      const pinnedPaths = settings.pinnedTabPaths;
+      if (cancelled || pinnedPaths.length === 0) {
+        return;
+      }
+
+      await openIncomingPaths(pinnedPaths);
+    };
+
+    void openPinnedTabs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [configReady, openIncomingPaths, settings.pinnedTabPaths]);
 
   useEffect(() => {
     if (!settings.mouseGesturesEnabled) {

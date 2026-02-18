@@ -177,6 +177,7 @@ function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
         rememberWindowState: true,
         recentFiles: [],
         recentFolders: [],
+        pinnedTabPaths: [],
         windowsFileAssociationExtensions: [],
         mouseGesturesEnabled: false,
         mouseGestures: [],
@@ -618,6 +619,40 @@ describe('App component', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it('persists pinned tab paths into save_config payload', async () => {
+    const pinnedPath = 'C:\\repo\\pinned-save.ts';
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({
+        pinnedTabPaths: [pinnedPath],
+      });
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 260);
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'save_config',
+        expect.objectContaining({
+          config: expect.objectContaining({
+            pinnedTabPaths: [pinnedPath],
+          }),
+        })
+      );
+    });
   });
 
   it('renders diff editor for active diff tab and clears markdown preview file tab', async () => {
@@ -3612,6 +3647,41 @@ describe('App component', () => {
 
     await waitFor(() => {
       expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\boot-open.ts']);
+    });
+  });
+
+  it('opens pinned tab paths from config on app boot', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          pinnedTabPaths: ['C:\\repo\\pinned-a.ts', 'C:\\repo\\pinned-b.ts'],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: false,
+          mouseGestures: [],
+        }),
+        read_dir_if_directory: async () => null,
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\pinned-a.ts']);
+      expect(vi.mocked(openFilePaths)).toHaveBeenCalledWith(['C:\\repo\\pinned-b.ts']);
     });
   });
 
