@@ -36,6 +36,38 @@ pub fn search_in_document_chunk(
 }
 
 #[tauri::command]
+pub fn search_session_start_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<SearchSessionStartResultPayload, String> {
+    search::search_session_start_in_document_impl(
+        state,
+        id,
+        keyword,
+        mode,
+        case_sensitive,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        max_results,
+    )
+}
+
+#[tauri::command]
+pub fn search_session_next_in_document(
+    state: State<'_, AppState>,
+    session_id: String,
+    max_results: usize,
+) -> Result<SearchSessionNextResultPayload, String> {
+    search::search_session_next_in_document_impl(state, session_id, max_results)
+}
+
+#[tauri::command]
 pub fn search_count_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -265,6 +297,8 @@ mod tests {
     fn command_entrypoints_should_be_linkable() {
         let _ = search_first_in_document as usize;
         let _ = search_in_document_chunk as usize;
+        let _ = search_session_start_in_document as usize;
+        let _ = search_session_next_in_document as usize;
         let _ = search_count_in_document as usize;
         let _ = replace_all_in_document as usize;
         let _ = replace_all_and_search_chunk_in_document as usize;

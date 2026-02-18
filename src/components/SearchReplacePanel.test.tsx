@@ -2242,6 +2242,73 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("prefers search-session start command when backend supports it", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_session_start_in_document") {
+        return {
+          sessionId: "session-1",
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+          totalMatches: 1,
+          totalMatchedLines: 1,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(keywordInput, {
+      target: { value: "todo" },
+    });
+    fireEvent.keyDown(keywordInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_session_start_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+        })
+      );
+    });
+  });
+
   it("runs replace current with active search match", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {

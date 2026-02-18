@@ -141,6 +141,21 @@ interface SearchChunkBackendResult {
   nextOffset: number | null;
 }
 
+interface SearchSessionStartBackendResult {
+  sessionId: string | null;
+  matches: SearchMatch[];
+  documentVersion: number;
+  nextOffset: number | null;
+  totalMatches: number;
+  totalMatchedLines: number;
+}
+
+interface SearchSessionNextBackendResult {
+  matches: SearchMatch[];
+  documentVersion: number;
+  nextOffset: number | null;
+}
+
 interface FilterChunkBackendResult {
   matches: FilterMatch[];
   documentVersion: number;
@@ -221,11 +236,42 @@ interface TabSearchPanelSnapshot {
   totalMatchCount: number | null;
   totalMatchedLineCount: number | null;
   totalFilterMatchedLineCount: number | null;
+  searchSessionId: string | null;
   searchNextOffset: number | null;
   filterNextLine: number | null;
   searchDocumentVersion: number | null;
   filterDocumentVersion: number | null;
   filterRulesKey: string;
+}
+
+function isSearchSessionStartBackendResult(value: unknown): value is SearchSessionStartBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SearchSessionStartBackendResult>;
+  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
+  return (
+    sessionIdValid &&
+    Array.isArray(candidate.matches) &&
+    typeof candidate.documentVersion === 'number' &&
+    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null) &&
+    typeof candidate.totalMatches === 'number' &&
+    typeof candidate.totalMatchedLines === 'number'
+  );
+}
+
+function isSearchSessionNextBackendResult(value: unknown): value is SearchSessionNextBackendResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SearchSessionNextBackendResult>;
+  return (
+    Array.isArray(candidate.matches) &&
+    typeof candidate.documentVersion === 'number' &&
+    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null)
+  );
 }
 
 type SearchSidebarTextInputElement = HTMLInputElement | HTMLTextAreaElement;
@@ -720,6 +766,7 @@ export function SearchReplacePanel() {
   const loadMoreLockRef = useRef(false);
   const loadMoreDebounceRef = useRef<number | null>(null);
   const loadMoreSessionRef = useRef(0);
+  const searchSessionIdRef = useRef<string | null>(null);
   const chunkCursorRef = useRef<number | null>(null);
   const filterLineCursorRef = useRef<number | null>(null);
   const stopResultFilterSearchRef = useRef(false);
@@ -747,6 +794,7 @@ export function SearchReplacePanel() {
     documentVersion: number;
     matches: SearchMatch[];
     nextOffset: number | null;
+    sessionId: string | null;
   } | null>(null);
   const cachedFilterRef = useRef<{
     tabId: string;
@@ -982,6 +1030,7 @@ export function SearchReplacePanel() {
   const resetSearchState = useCallback((clearTotals = true) => {
     setMatches([]);
     setCurrentMatchIndex(0);
+    searchSessionIdRef.current = null;
     cachedSearchRef.current = null;
     chunkCursorRef.current = null;
     searchParamsRef.current = null;
@@ -1240,6 +1289,7 @@ export function SearchReplacePanel() {
             });
 
             chunkCursorRef.current = cached.nextOffset;
+            searchSessionIdRef.current = cached.sessionId;
             searchParamsRef.current = {
               tabId: activeTab.id,
               keyword,
@@ -1269,23 +1319,49 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
+      const sessionStartResult = await invoke<unknown>('search_session_start_in_document', {
         id: activeTab.id,
         keyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
         resultFilterKeyword: effectiveResultFilterKeyword,
-        startOffset: 0,
+        resultFilterCaseSensitive: caseSensitive,
         maxResults: SEARCH_CHUNK_SIZE,
       });
+
+      let nextMatches: SearchMatch[] = [];
+      let documentVersion = 0;
+      let nextOffset: number | null = null;
+      let sessionId: string | null = null;
+      let totalMatches: number | null = null;
+      let totalMatchedLines: number | null = null;
+
+      if (isSearchSessionStartBackendResult(sessionStartResult)) {
+        nextMatches = sessionStartResult.matches || [];
+        documentVersion = sessionStartResult.documentVersion ?? 0;
+        nextOffset = sessionStartResult.nextOffset ?? null;
+        sessionId = sessionStartResult.sessionId ?? null;
+        totalMatches = sessionStartResult.totalMatches ?? nextMatches.length;
+        totalMatchedLines = sessionStartResult.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+      } else {
+        const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
+          id: activeTab.id,
+          keyword,
+          mode: getSearchModeValue(searchMode),
+          caseSensitive,
+          resultFilterKeyword: effectiveResultFilterKeyword,
+          startOffset: 0,
+          maxResults: SEARCH_CHUNK_SIZE,
+        });
+
+        nextMatches = backendResult.matches || [];
+        documentVersion = backendResult.documentVersion ?? 0;
+        nextOffset = backendResult.nextOffset ?? null;
+      }
 
       if (runVersionRef.current !== runVersion) {
         return null;
       }
-
-      const nextMatches = backendResult.matches || [];
-      const documentVersion = backendResult.documentVersion ?? 0;
-      const nextOffset = backendResult.nextOffset ?? null;
 
       setErrorMessage(null);
       startTransition(() => {
@@ -1298,6 +1374,12 @@ export function SearchReplacePanel() {
           return Math.min(previousIndex, nextMatches.length - 1);
         });
       });
+      if (totalMatches !== null) {
+        setTotalMatchCount(totalMatches);
+      }
+      if (totalMatchedLines !== null) {
+        setTotalMatchedLineCount(totalMatchedLines);
+      }
 
       cachedSearchRef.current = {
         tabId: activeTab.id,
@@ -1308,9 +1390,11 @@ export function SearchReplacePanel() {
         documentVersion,
         matches: nextMatches,
         nextOffset,
+        sessionId,
       };
 
       chunkCursorRef.current = nextOffset;
+      searchSessionIdRef.current = sessionId;
       searchParamsRef.current = {
         tabId: activeTab.id,
         keyword,
@@ -1531,19 +1615,8 @@ export function SearchReplacePanel() {
       return null;
     }
 
-    const params = searchParamsRef.current;
     const startOffset = chunkCursorRef.current;
-    if (!params || startOffset === null) {
-      return null;
-    }
-
-    if (
-      params.tabId !== activeTab.id ||
-      params.keyword !== keyword ||
-      params.searchMode !== searchMode ||
-      params.caseSensitive !== caseSensitive ||
-      params.resultFilterKeyword !== backendResultFilterKeyword
-    ) {
+    if (startOffset === null) {
       return null;
     }
 
@@ -1551,34 +1624,80 @@ export function SearchReplacePanel() {
     loadMoreLockRef.current = true;
     setIsSearching(true);
     try {
-      const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
-        id: activeTab.id,
-        keyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        resultFilterKeyword: backendResultFilterKeyword,
-        startOffset,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
+      let appendedMatches: SearchMatch[] = [];
+      let nextOffset: number | null = null;
+      let documentVersion = searchParamsRef.current?.documentVersion ?? 0;
+      let usedSessionMode = false;
 
-      if (sessionId !== loadMoreSessionRef.current) {
-        return null;
+      const activeSearchSessionId = searchSessionIdRef.current;
+      if (activeSearchSessionId) {
+        const sessionNextResult = await invoke<unknown>('search_session_next_in_document', {
+          sessionId: activeSearchSessionId,
+          maxResults: SEARCH_CHUNK_SIZE,
+        });
+        if (sessionId !== loadMoreSessionRef.current) {
+          return null;
+        }
+
+        if (isSearchSessionNextBackendResult(sessionNextResult)) {
+          usedSessionMode = true;
+          appendedMatches = sessionNextResult.matches || [];
+          nextOffset = sessionNextResult.nextOffset ?? null;
+          documentVersion = sessionNextResult.documentVersion ?? documentVersion;
+          if (nextOffset === null) {
+            searchSessionIdRef.current = null;
+          }
+        } else {
+          searchSessionIdRef.current = null;
+        }
       }
 
-      if (backendResult.documentVersion !== params.documentVersion) {
-        cachedSearchRef.current = null;
-        chunkCursorRef.current = null;
-        searchParamsRef.current = null;
-        return null;
+      if (!usedSessionMode) {
+        const params = searchParamsRef.current;
+        if (
+          !params ||
+          params.tabId !== activeTab.id ||
+          params.keyword !== keyword ||
+          params.searchMode !== searchMode ||
+          params.caseSensitive !== caseSensitive ||
+          params.resultFilterKeyword !== backendResultFilterKeyword
+        ) {
+          return null;
+        }
+
+        const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
+          id: activeTab.id,
+          keyword,
+          mode: getSearchModeValue(searchMode),
+          caseSensitive,
+          resultFilterKeyword: backendResultFilterKeyword,
+          startOffset,
+          maxResults: SEARCH_CHUNK_SIZE,
+        });
+
+        if (sessionId !== loadMoreSessionRef.current) {
+          return null;
+        }
+
+        if (backendResult.documentVersion !== params.documentVersion) {
+          cachedSearchRef.current = null;
+          chunkCursorRef.current = null;
+          searchParamsRef.current = null;
+          searchSessionIdRef.current = null;
+          return null;
+        }
+
+        appendedMatches = backendResult.matches || [];
+        nextOffset = backendResult.nextOffset ?? null;
+        documentVersion = params.documentVersion;
       }
 
-      const appendedMatches = backendResult.matches || [];
-      const nextOffset = backendResult.nextOffset ?? null;
       chunkCursorRef.current = nextOffset;
 
       if (appendedMatches.length === 0) {
         if (cachedSearchRef.current) {
           cachedSearchRef.current.nextOffset = nextOffset;
+          cachedSearchRef.current.sessionId = searchSessionIdRef.current;
         }
         return [];
       }
@@ -1593,9 +1712,10 @@ export function SearchReplacePanel() {
             searchMode,
             caseSensitive,
             resultFilterKeyword: backendResultFilterKeyword,
-            documentVersion: params.documentVersion,
+            documentVersion,
             matches: mergedMatches,
             nextOffset,
+            sessionId: searchSessionIdRef.current,
           };
 
           return mergedMatches;
@@ -1747,7 +1867,9 @@ export function SearchReplacePanel() {
           documentVersion,
           matches: [],
           nextOffset: null,
+          sessionId: null,
         };
+        searchSessionIdRef.current = null;
         chunkCursorRef.current = null;
         searchParamsRef.current = {
           tabId: activeTab.id,
@@ -1783,7 +1905,9 @@ export function SearchReplacePanel() {
         documentVersion,
         matches: immediateMatches,
         nextOffset: 0,
+        sessionId: null,
       };
+      searchSessionIdRef.current = null;
       chunkCursorRef.current = 0;
       searchParamsRef.current = {
         tabId: activeTab.id,
@@ -2139,7 +2263,9 @@ export function SearchReplacePanel() {
         documentVersion,
         matches: nextMatches,
         nextOffset,
+        sessionId: null,
       };
+      searchSessionIdRef.current = null;
       searchParamsRef.current = {
         tabId: activeTab.id,
         keyword,
@@ -2243,7 +2369,9 @@ export function SearchReplacePanel() {
         documentVersion,
         matches: nextMatches,
         nextOffset,
+        sessionId: null,
       };
+      searchSessionIdRef.current = null;
       searchParamsRef.current = {
         tabId: activeTab.id,
         keyword,
@@ -2737,6 +2865,7 @@ export function SearchReplacePanel() {
       setTotalMatchedLineCount(nextSnapshot.totalMatchedLineCount);
       setTotalFilterMatchedLineCount(nextSnapshot.totalFilterMatchedLineCount);
 
+      searchSessionIdRef.current = nextSnapshot.searchSessionId ?? null;
       chunkCursorRef.current = nextSnapshot.searchNextOffset;
       filterLineCursorRef.current = nextSnapshot.filterNextLine;
 
@@ -2762,6 +2891,7 @@ export function SearchReplacePanel() {
           ...restoredSearchParams,
           matches: restoredMatches,
           nextOffset: nextSnapshot.searchNextOffset,
+          sessionId: nextSnapshot.searchSessionId ?? null,
         };
 
         if (nextSnapshot.totalMatchCount !== null && nextSnapshot.totalMatchedLineCount !== null) {
@@ -2779,6 +2909,7 @@ export function SearchReplacePanel() {
           countCacheRef.current = null;
         }
       } else {
+        searchSessionIdRef.current = null;
         searchParamsRef.current = null;
         cachedSearchRef.current = null;
         countCacheRef.current = null;
@@ -2839,6 +2970,7 @@ export function SearchReplacePanel() {
       filterLineCursorRef.current = null;
       searchParamsRef.current = null;
       filterParamsRef.current = null;
+      searchSessionIdRef.current = null;
       cachedSearchRef.current = null;
       cachedFilterRef.current = null;
       countCacheRef.current = null;
@@ -2877,6 +3009,7 @@ export function SearchReplacePanel() {
       totalMatchCount,
       totalMatchedLineCount,
       totalFilterMatchedLineCount,
+      searchSessionId: searchSessionIdRef.current,
       searchNextOffset: chunkCursorRef.current,
       filterNextLine: filterLineCursorRef.current,
       searchDocumentVersion:

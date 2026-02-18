@@ -3,6 +3,7 @@ use regex::RegexBuilder;
 use ropey::Rope;
 use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
+use uuid::Uuid;
 
 use super::editing::{apply_operation, create_edit_operation};
 use super::FILTER_MAX_RANGES_PER_LINE;
@@ -51,6 +52,25 @@ pub struct SearchFirstResultPayload {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchChunkResultPayload {
+    pub(super) matches: Vec<SearchMatchResult>,
+    pub(super) document_version: u64,
+    pub(super) next_offset: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSessionStartResultPayload {
+    pub(super) session_id: Option<String>,
+    pub(super) matches: Vec<SearchMatchResult>,
+    pub(super) document_version: u64,
+    pub(super) next_offset: Option<usize>,
+    pub(super) total_matches: usize,
+    pub(super) total_matched_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSessionNextResultPayload {
     pub(super) matches: Vec<SearchMatchResult>,
     pub(super) document_version: u64,
     pub(super) next_offset: Option<usize>,
@@ -212,12 +232,23 @@ pub struct FilterResultFilterStepCacheEntry {
     pub(super) total_matched_lines: usize,
 }
 
+#[derive(Clone)]
+pub struct SearchSessionEntry {
+    pub(super) document_id: String,
+    pub(super) document_version: u64,
+    pub(super) result_filter_keyword: Option<String>,
+    pub(super) result_filter_case_sensitive: bool,
+    pub(super) matches: Arc<Vec<SearchMatchResult>>,
+    pub(super) next_index: usize,
+}
+
 pub(super) static SEARCH_RESULT_FILTER_STEP_CACHE: OnceLock<
     DashMap<String, SearchResultFilterStepCacheEntry>,
 > = OnceLock::new();
 pub(super) static FILTER_RESULT_FILTER_STEP_CACHE: OnceLock<
     DashMap<String, FilterResultFilterStepCacheEntry>,
 > = OnceLock::new();
+pub(super) static SEARCH_SESSION_CACHE: OnceLock<DashMap<String, SearchSessionEntry>> = OnceLock::new();
 
 pub(super) fn search_result_filter_step_cache(
 ) -> &'static DashMap<String, SearchResultFilterStepCacheEntry> {
@@ -227,6 +258,10 @@ pub(super) fn search_result_filter_step_cache(
 pub(super) fn filter_result_filter_step_cache(
 ) -> &'static DashMap<String, FilterResultFilterStepCacheEntry> {
     FILTER_RESULT_FILTER_STEP_CACHE.get_or_init(DashMap::new)
+}
+
+pub(super) fn search_session_cache() -> &'static DashMap<String, SearchSessionEntry> {
+    SEARCH_SESSION_CACHE.get_or_init(DashMap::new)
 }
 
 pub(super) fn find_line_index_by_offset(line_starts: &[usize], target_offset: usize) -> usize {
@@ -1330,6 +1365,32 @@ fn build_search_step_filtered_matches(
     Ok(matches)
 }
 
+fn build_search_matches_chunk_with_preview(
+    matches: &[SearchMatchResult],
+    start_index: usize,
+    max_results: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> (Vec<SearchMatchResult>, Option<usize>, usize) {
+    if start_index >= matches.len() {
+        return (Vec::new(), None, start_index);
+    }
+
+    let effective_max_results = max_results.max(1);
+    let end_index = (start_index + effective_max_results).min(matches.len());
+    let mut chunk = matches[start_index..end_index].to_vec();
+    for item in &mut chunk {
+        item.preview_segments = Some(build_search_match_preview_segments(
+            item,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ));
+    }
+
+    let next_offset = matches.get(end_index).map(|item| item.start);
+    (chunk, next_offset, end_index)
+}
+
 fn replace_matches_by_char_ranges(
     source_text: &str,
     matches: &[SearchMatchResult],
@@ -1635,6 +1696,133 @@ pub(super) fn search_in_document_chunk_impl(
     } else {
         Err("Document not found".to_string())
     }
+}
+
+pub(super) fn search_session_start_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<SearchSessionStartResultPayload, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        if keyword.is_empty() {
+            return Ok(SearchSessionStartResultPayload {
+                session_id: None,
+                matches: Vec::new(),
+                document_version: doc.document_version,
+                next_offset: None,
+                total_matches: 0,
+                total_matched_lines: 0,
+            });
+        }
+
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive =
+            result_filter_case_sensitive.unwrap_or(case_sensitive);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
+        let all_matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+        let total_matches = all_matches.len();
+        let total_matched_lines = all_matches
+            .iter()
+            .map(|item| item.line)
+            .collect::<BTreeSet<usize>>()
+            .len();
+        let (matches, next_offset, next_index) = build_search_matches_chunk_with_preview(
+            &all_matches,
+            0,
+            max_results,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        );
+
+        if total_matches == 0 {
+            return Ok(SearchSessionStartResultPayload {
+                session_id: None,
+                matches,
+                document_version: doc.document_version,
+                next_offset,
+                total_matches,
+                total_matched_lines,
+            });
+        }
+
+        let session_id = Uuid::new_v4().to_string();
+        search_session_cache().insert(
+            session_id.clone(),
+            SearchSessionEntry {
+                document_id: id,
+                document_version: doc.document_version,
+                result_filter_keyword: normalized_result_filter_keyword,
+                result_filter_case_sensitive: effective_result_filter_case_sensitive,
+                matches: Arc::new(all_matches),
+                next_index,
+            },
+        );
+
+        Ok(SearchSessionStartResultPayload {
+            session_id: Some(session_id),
+            matches,
+            document_version: doc.document_version,
+            next_offset,
+            total_matches,
+            total_matched_lines,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+pub(super) fn search_session_next_in_document_impl(
+    state: State<'_, AppState>,
+    session_id: String,
+    max_results: usize,
+) -> Result<SearchSessionNextResultPayload, String> {
+    let (matches, next_offset, document_version, should_remove) = {
+        let mut entry = search_session_cache()
+            .get_mut(&session_id)
+            .ok_or_else(|| "Search session not found".to_string())?;
+
+        let Some(doc) = state.documents.get(&entry.document_id) else {
+            return Err("Search session document not found".to_string());
+        };
+
+        if doc.document_version != entry.document_version {
+            return Err("Search session expired due to document changes".to_string());
+        }
+
+        let (matches, next_offset, next_index) = build_search_matches_chunk_with_preview(
+            entry.matches.as_slice(),
+            entry.next_index,
+            max_results,
+            entry.result_filter_keyword.as_deref(),
+            entry.result_filter_case_sensitive,
+        );
+        entry.next_index = next_index;
+        let should_remove = next_index >= entry.matches.len();
+
+        (matches, next_offset, entry.document_version, should_remove)
+    };
+
+    if should_remove {
+        search_session_cache().remove(&session_id);
+    }
+
+    Ok(SearchSessionNextResultPayload {
+        matches,
+        document_version,
+        next_offset,
+    })
 }
 
 pub(super) fn search_count_in_document_impl(
@@ -2706,6 +2894,24 @@ mod tests {
         }
     }
 
+    fn make_search_match(start: usize, end: usize, line: usize, column: usize, line_text: &str) -> SearchMatchResult {
+        SearchMatchResult {
+            start,
+            end,
+            start_char: start,
+            end_char: end,
+            text: line_text
+                .chars()
+                .skip(column.saturating_sub(1))
+                .take(end.saturating_sub(start))
+                .collect::<String>(),
+            line,
+            column,
+            line_text: line_text.to_string(),
+            preview_segments: None,
+        }
+    }
+
     #[test]
     fn find_line_index_by_offset_should_return_last_line_start_not_greater_than_offset() {
         let starts = vec![0usize, 3, 8];
@@ -2846,5 +3052,34 @@ mod tests {
             select_replace_current_preferred_chunk_index(0, 0, 3),
             None
         );
+    }
+
+    #[test]
+    fn build_search_matches_chunk_with_preview_should_paginate_and_expose_next_offset() {
+        let matches = vec![
+            make_search_match(0, 4, 1, 1, "todo one"),
+            make_search_match(10, 14, 2, 1, "todo two"),
+            make_search_match(20, 24, 3, 1, "todo three"),
+        ];
+
+        let (chunk, next_offset, next_index) =
+            build_search_matches_chunk_with_preview(&matches, 0, 2, Some("todo"), true);
+
+        assert_eq!(chunk.len(), 2);
+        assert_eq!(next_offset, Some(20));
+        assert_eq!(next_index, 2);
+        assert!(chunk.iter().all(|item| item.preview_segments.is_some()));
+    }
+
+    #[test]
+    fn build_search_matches_chunk_with_preview_should_return_empty_when_start_exceeds_len() {
+        let matches = vec![make_search_match(0, 4, 1, 1, "todo one")];
+
+        let (chunk, next_offset, next_index) =
+            build_search_matches_chunk_with_preview(&matches, 2, 3, None, false);
+
+        assert!(chunk.is_empty());
+        assert_eq!(next_offset, None);
+        assert_eq!(next_index, 2);
     }
 }
