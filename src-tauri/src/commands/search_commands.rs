@@ -117,6 +117,33 @@ pub fn search_count_in_document(
 }
 
 #[tauri::command]
+pub fn search_step_from_cursor_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    cursor_line: Option<usize>,
+    cursor_column: Option<usize>,
+    step: i32,
+) -> Result<SearchCursorStepResultPayload, String> {
+    search::search_step_from_cursor_in_document_impl(
+        state,
+        id,
+        keyword,
+        mode,
+        case_sensitive,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        cursor_line,
+        cursor_column,
+        step,
+    )
+}
+
+#[tauri::command]
 pub fn replace_all_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -386,6 +413,7 @@ mod tests {
         let _ = search_session_restore_in_document as usize;
         let _ = dispose_search_session as usize;
         let _ = search_count_in_document as usize;
+        let _ = search_step_from_cursor_in_document as usize;
         let _ = replace_all_in_document as usize;
         let _ = replace_all_and_search_chunk_in_document as usize;
         let _ = replace_current_in_document as usize;

@@ -149,6 +149,13 @@ pub struct SearchResultFilterStepPayload {
     pub(super) total_matched_lines: usize,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCursorStepResultPayload {
+    pub(super) target_match: Option<SearchMatchResult>,
+    pub(super) document_version: u64,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterRuleInput {
@@ -295,14 +302,27 @@ pub struct FilterSessionEntry {
     pub(super) next_index: usize,
 }
 
+#[derive(Clone)]
+pub struct SearchCursorContextCacheEntry {
+    pub(super) document_id: String,
+    pub(super) source_text: Arc<String>,
+    pub(super) line_starts: Arc<Vec<usize>>,
+    pub(super) byte_to_char: Arc<Vec<usize>>,
+}
+
 pub(super) static SEARCH_RESULT_FILTER_STEP_CACHE: OnceLock<
     DashMap<String, SearchResultFilterStepCacheEntry>,
 > = OnceLock::new();
 pub(super) static FILTER_RESULT_FILTER_STEP_CACHE: OnceLock<
     DashMap<String, FilterResultFilterStepCacheEntry>,
 > = OnceLock::new();
-pub(super) static SEARCH_SESSION_CACHE: OnceLock<DashMap<String, SearchSessionEntry>> = OnceLock::new();
-pub(super) static FILTER_SESSION_CACHE: OnceLock<DashMap<String, FilterSessionEntry>> = OnceLock::new();
+pub(super) static SEARCH_SESSION_CACHE: OnceLock<DashMap<String, SearchSessionEntry>> =
+    OnceLock::new();
+pub(super) static FILTER_SESSION_CACHE: OnceLock<DashMap<String, FilterSessionEntry>> =
+    OnceLock::new();
+pub(super) static SEARCH_CURSOR_CONTEXT_CACHE: OnceLock<
+    DashMap<String, SearchCursorContextCacheEntry>,
+> = OnceLock::new();
 
 pub(super) fn search_result_filter_step_cache(
 ) -> &'static DashMap<String, SearchResultFilterStepCacheEntry> {
@@ -320,6 +340,11 @@ pub(super) fn search_session_cache() -> &'static DashMap<String, SearchSessionEn
 
 pub(super) fn filter_session_cache() -> &'static DashMap<String, FilterSessionEntry> {
     FILTER_SESSION_CACHE.get_or_init(DashMap::new)
+}
+
+pub(super) fn search_cursor_context_cache() -> &'static DashMap<String, SearchCursorContextCacheEntry>
+{
+    SEARCH_CURSOR_CONTEXT_CACHE.get_or_init(DashMap::new)
 }
 
 fn remove_search_sessions_by_document(document_id: &str) {
@@ -343,6 +368,22 @@ fn remove_filter_sessions_by_document(document_id: &str) {
 
     for session_id in stale_session_ids {
         filter_session_cache().remove(&session_id);
+    }
+}
+
+fn build_search_cursor_context_cache_key(document_id: &str, document_version: u64) -> String {
+    format!("{document_id}\u{1f}{document_version}")
+}
+
+fn remove_search_cursor_context_cache_by_document(document_id: &str) {
+    let stale_cache_keys = search_cursor_context_cache()
+        .iter()
+        .filter(|entry| entry.value().document_id == document_id)
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<String>>();
+
+    for cache_key in stale_cache_keys {
+        search_cursor_context_cache().remove(&cache_key);
     }
 }
 
@@ -1350,6 +1391,370 @@ fn find_match_edge(
     }
 }
 
+fn line_column_to_search_offset(
+    text: &str,
+    line_starts: &[usize],
+    line: usize,
+    column: usize,
+) -> usize {
+    if text.is_empty() || line_starts.is_empty() {
+        return 0;
+    }
+
+    let safe_line_index = line
+        .saturating_sub(1)
+        .min(line_starts.len().saturating_sub(1));
+    let line_start = *line_starts.get(safe_line_index).unwrap_or(&0usize);
+    let line_end = text
+        .get(line_start..)
+        .and_then(|slice| slice.find('\n').map(|relative| line_start + relative))
+        .unwrap_or(text.len());
+
+    let target_char_index = column.max(1).saturating_sub(1);
+    if target_char_index == 0 {
+        return line_start;
+    }
+
+    let Some(line_slice) = text.get(line_start..line_end) else {
+        return line_start.min(text.len());
+    };
+
+    let mut current_char_index = 0usize;
+    for (byte_offset, _) in line_slice.char_indices() {
+        if current_char_index >= target_char_index {
+            return line_start + byte_offset;
+        }
+        current_char_index = current_char_index.saturating_add(1);
+    }
+
+    line_end
+}
+
+fn resolve_search_cursor_offset(
+    text: &str,
+    line_starts: &[usize],
+    cursor_line: Option<usize>,
+    cursor_column: Option<usize>,
+    step: i32,
+) -> usize {
+    if let Some(line) = cursor_line {
+        return line_column_to_search_offset(text, line_starts, line, cursor_column.unwrap_or(1));
+    }
+
+    if step > 0 {
+        0
+    } else {
+        text.len()
+    }
+}
+
+fn find_previous_regex_match_filtered(
+    text: &str,
+    regex: &regex::Regex,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    before_offset: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Option<SearchMatchResult> {
+    let normalized_before = normalize_search_offset(text, before_offset).min(text.len());
+    if normalized_before == 0 {
+        return None;
+    }
+
+    let search_slice = text.get(..normalized_before).unwrap_or_default();
+    let mut candidate = None;
+
+    for capture in regex.find_iter(search_slice) {
+        let absolute_start = capture.start();
+        let absolute_end = capture.end();
+        let Some(match_result) = build_match_result_from_offsets(
+            text,
+            line_starts,
+            byte_to_char,
+            absolute_start,
+            absolute_end,
+        ) else {
+            continue;
+        };
+
+        if matches_result_filter(
+            &match_result.line_text,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ) {
+            candidate = Some(match_result);
+        }
+    }
+
+    candidate
+}
+
+fn find_next_regex_match_filtered(
+    text: &str,
+    regex: &regex::Regex,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start_offset: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Option<SearchMatchResult> {
+    let normalized_start = normalize_search_offset(text, start_offset).min(text.len());
+    let search_slice = text.get(normalized_start..).unwrap_or_default();
+
+    for capture in regex.find_iter(search_slice) {
+        let absolute_start = normalized_start + capture.start();
+        let absolute_end = normalized_start + capture.end();
+        let Some(match_result) = build_match_result_from_offsets(
+            text,
+            line_starts,
+            byte_to_char,
+            absolute_start,
+            absolute_end,
+        ) else {
+            continue;
+        };
+
+        if matches_result_filter(
+            &match_result.line_text,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ) {
+            return Some(match_result);
+        }
+    }
+
+    None
+}
+
+fn find_next_literal_match_filtered(
+    text: &str,
+    keyword: &str,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start_offset: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Option<SearchMatchResult> {
+    if keyword.is_empty() {
+        return None;
+    }
+
+    let normalized_start = normalize_search_offset(text, start_offset).min(text.len());
+    let search_slice = text.get(normalized_start..).unwrap_or_default();
+
+    for (relative_start, _) in search_slice.match_indices(keyword) {
+        let absolute_start = normalized_start + relative_start;
+        let absolute_end = absolute_start + keyword.len();
+        let Some(match_result) = build_match_result_from_offsets(
+            text,
+            line_starts,
+            byte_to_char,
+            absolute_start,
+            absolute_end,
+        ) else {
+            continue;
+        };
+
+        if matches_result_filter(
+            &match_result.line_text,
+            result_filter_keyword,
+            result_filter_case_sensitive,
+        ) {
+            return Some(match_result);
+        }
+    }
+
+    None
+}
+
+fn find_next_filtered_search_match(
+    text: &str,
+    keyword: &str,
+    mode: &str,
+    case_sensitive: bool,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    start_offset: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Result<Option<SearchMatchResult>, String> {
+    if keyword.is_empty() {
+        return Ok(None);
+    }
+
+    let next_match = match mode {
+        "literal" => {
+            if case_sensitive {
+                find_next_literal_match_filtered(
+                    text,
+                    keyword,
+                    line_starts,
+                    byte_to_char,
+                    start_offset,
+                    result_filter_keyword,
+                    result_filter_case_sensitive,
+                )
+            } else {
+                let escaped = escape_regex_literal(keyword);
+                let regex = RegexBuilder::new(&escaped)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+                find_next_regex_match_filtered(
+                    text,
+                    &regex,
+                    line_starts,
+                    byte_to_char,
+                    start_offset,
+                    result_filter_keyword,
+                    result_filter_case_sensitive,
+                )
+            }
+        }
+        "wildcard" => {
+            let regex_source = wildcard_to_regex_source(keyword);
+            let regex = RegexBuilder::new(&regex_source)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+            find_next_regex_match_filtered(
+                text,
+                &regex,
+                line_starts,
+                byte_to_char,
+                start_offset,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            )
+        }
+        "regex" => {
+            let regex = RegexBuilder::new(keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+            find_next_regex_match_filtered(
+                text,
+                &regex,
+                line_starts,
+                byte_to_char,
+                start_offset,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            )
+        }
+        _ => {
+            return Err("Unsupported search mode".to_string());
+        }
+    };
+
+    Ok(next_match)
+}
+
+fn find_previous_filtered_search_match(
+    text: &str,
+    keyword: &str,
+    mode: &str,
+    case_sensitive: bool,
+    line_starts: &[usize],
+    byte_to_char: &[usize],
+    before_offset: usize,
+    result_filter_keyword: Option<&str>,
+    result_filter_case_sensitive: bool,
+) -> Result<Option<SearchMatchResult>, String> {
+    if keyword.is_empty() {
+        return Ok(None);
+    }
+
+    let effective_before = normalize_search_offset(text, before_offset).min(text.len());
+    if effective_before == 0 {
+        return Ok(None);
+    }
+
+    match mode {
+        "literal" => {
+            if case_sensitive {
+                let mut search_end = effective_before;
+                while search_end > 0 {
+                    let Some(search_slice) = text.get(..search_end) else {
+                        break;
+                    };
+                    let Some(start) = search_slice.rfind(keyword) else {
+                        break;
+                    };
+                    let end = start + keyword.len();
+
+                    if let Some(match_result) =
+                        build_match_result_from_offsets(text, line_starts, byte_to_char, start, end)
+                    {
+                        if matches_result_filter(
+                            &match_result.line_text,
+                            result_filter_keyword,
+                            result_filter_case_sensitive,
+                        ) {
+                            return Ok(Some(match_result));
+                        }
+                    }
+
+                    if start == 0 {
+                        break;
+                    }
+                    search_end = start;
+                }
+
+                Ok(None)
+            } else {
+                let escaped = escape_regex_literal(keyword);
+                let regex = RegexBuilder::new(&escaped)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| e.to_string())?;
+                Ok(find_previous_regex_match_filtered(
+                    text,
+                    &regex,
+                    line_starts,
+                    byte_to_char,
+                    effective_before,
+                    result_filter_keyword,
+                    result_filter_case_sensitive,
+                ))
+            }
+        }
+        "wildcard" => {
+            let regex_source = wildcard_to_regex_source(keyword);
+            let regex = RegexBuilder::new(&regex_source)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+            Ok(find_previous_regex_match_filtered(
+                text,
+                &regex,
+                line_starts,
+                byte_to_char,
+                effective_before,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            ))
+        }
+        "regex" => {
+            let regex = RegexBuilder::new(keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+            Ok(find_previous_regex_match_filtered(
+                text,
+                &regex,
+                line_starts,
+                byte_to_char,
+                effective_before,
+                result_filter_keyword,
+                result_filter_case_sensitive,
+            ))
+        }
+        _ => Err("Unsupported search mode".to_string()),
+    }
+}
+
 fn build_search_result_filter_step_cache_key(
     id: &str,
     document_version: u64,
@@ -1867,7 +2272,8 @@ pub(super) fn search_session_start_in_document_impl(
             });
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
             result_filter_case_sensitive.unwrap_or(case_sensitive);
         let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
@@ -2010,7 +2416,8 @@ pub(super) fn search_session_restore_in_document_impl(
             }
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
             result_filter_case_sensitive.unwrap_or(case_sensitive);
         let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
@@ -2158,6 +2565,138 @@ pub(super) fn search_count_in_document_impl(
     } else {
         Err("Document not found".to_string())
     }
+}
+
+pub(super) fn search_step_from_cursor_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    cursor_line: Option<usize>,
+    cursor_column: Option<usize>,
+    step: i32,
+) -> Result<SearchCursorStepResultPayload, String> {
+    if step == 0 {
+        return Err("Step cannot be zero".to_string());
+    }
+
+    let doc = state
+        .documents
+        .get(&id)
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    if keyword.is_empty() {
+        return Ok(SearchCursorStepResultPayload {
+            target_match: None,
+            document_version: doc.document_version,
+        });
+    }
+
+    let cache_key = build_search_cursor_context_cache_key(&id, doc.document_version);
+    let (source_text, line_starts, byte_to_char) =
+        if let Some(entry) = search_cursor_context_cache().get(&cache_key) {
+            (
+                entry.source_text.clone(),
+                entry.line_starts.clone(),
+                entry.byte_to_char.clone(),
+            )
+        } else {
+            let source_text = Arc::new(doc.rope.chunks().collect::<String>());
+            let line_starts = Arc::new(build_line_starts(source_text.as_str()));
+            let byte_to_char = Arc::new(build_byte_to_char_map(source_text.as_str()));
+
+            remove_search_cursor_context_cache_by_document(&id);
+            search_cursor_context_cache().insert(
+                cache_key,
+                SearchCursorContextCacheEntry {
+                    document_id: id.clone(),
+                    source_text: source_text.clone(),
+                    line_starts: line_starts.clone(),
+                    byte_to_char: byte_to_char.clone(),
+                },
+            );
+
+            (source_text, line_starts, byte_to_char)
+        };
+    let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+    let filter_case_sensitive = result_filter_case_sensitive.unwrap_or(case_sensitive);
+    let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
+    let cursor_offset =
+        resolve_search_cursor_offset(source_text.as_str(), &line_starts, cursor_line, cursor_column, step);
+
+    let mut target_match = if step > 0 {
+        let forward_match = find_next_filtered_search_match(
+            source_text.as_str(),
+            &keyword,
+            &mode,
+            case_sensitive,
+            &line_starts,
+            &byte_to_char,
+            cursor_offset.saturating_add(1),
+            result_filter_keyword_ref,
+            filter_case_sensitive,
+        )?;
+
+        if forward_match.is_some() {
+            forward_match
+        } else {
+            find_next_filtered_search_match(
+                source_text.as_str(),
+                &keyword,
+                &mode,
+                case_sensitive,
+                &line_starts,
+                &byte_to_char,
+                0,
+                result_filter_keyword_ref,
+                filter_case_sensitive,
+            )?
+        }
+    } else {
+        let backward_match = find_previous_filtered_search_match(
+            source_text.as_str(),
+            &keyword,
+            &mode,
+            case_sensitive,
+            &line_starts,
+            &byte_to_char,
+            cursor_offset,
+            result_filter_keyword_ref,
+            filter_case_sensitive,
+        )?;
+
+        if backward_match.is_some() {
+            backward_match
+        } else {
+            find_previous_filtered_search_match(
+                source_text.as_str(),
+                &keyword,
+                &mode,
+                case_sensitive,
+                &line_starts,
+                &byte_to_char,
+                source_text.len(),
+                result_filter_keyword_ref,
+                filter_case_sensitive,
+            )?
+        }
+    };
+
+    if let Some(match_result) = target_match.as_mut() {
+        match_result.preview_segments = Some(build_search_match_preview_segments(
+            match_result,
+            result_filter_keyword_ref,
+            filter_case_sensitive,
+        ));
+    }
+
+    Ok(SearchCursorStepResultPayload {
+        target_match,
+        document_version: doc.document_version,
+    })
 }
 
 pub(super) fn step_result_filter_search_in_document_impl(
@@ -2527,7 +3066,8 @@ pub(super) fn filter_session_start_in_document_impl(
 ) -> Result<FilterSessionStartResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
         remove_filter_sessions_by_document(&id);
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let all_matches = build_filter_step_filtered_matches(
             &doc,
@@ -2645,7 +3185,8 @@ pub(super) fn filter_session_restore_in_document_impl(
             }
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let all_matches = build_filter_step_filtered_matches(
             &doc,
@@ -2857,7 +3398,11 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
     let batch_start_line = batch_matches
         .first()
         .map(|item| item.line.saturating_sub(1))
-        .or_else(|| target_match.as_ref().map(|item| item.line.saturating_sub(1)))
+        .or_else(|| {
+            target_match
+                .as_ref()
+                .map(|item| item.line.saturating_sub(1))
+        })
         .unwrap_or(0);
     let target_index_in_batch = if target_match.is_some() {
         Some(0usize)
@@ -3053,7 +3598,8 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
             });
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
             result_filter_case_sensitive.unwrap_or(case_sensitive);
         let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
@@ -3161,10 +3707,12 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
                 effective_result_filter_case_sensitive,
             ));
         }
-        let preferred_chunk_index =
-            select_replace_current_preferred_chunk_index(total_matches, target_index, effective_max_results);
-        let preferred_match = preferred_chunk_index
-            .and_then(|index| matches.get(index).cloned());
+        let preferred_chunk_index = select_replace_current_preferred_chunk_index(
+            total_matches,
+            target_index,
+            effective_max_results,
+        );
+        let preferred_match = preferred_chunk_index.and_then(|index| matches.get(index).cloned());
 
         Ok(ReplaceCurrentAndSearchChunkResultPayload {
             replaced: true,
@@ -3205,7 +3753,8 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
             });
         }
 
-        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let normalized_result_filter_keyword =
+            normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
             result_filter_case_sensitive.unwrap_or(case_sensitive);
         let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
@@ -3233,7 +3782,8 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
         }
 
         let source_text = doc.rope.to_string();
-        let next_text = replace_matches_by_char_ranges(&source_text, &matches_before_replace, &replace_value);
+        let next_text =
+            replace_matches_by_char_ranges(&source_text, &matches_before_replace, &replace_value);
         if source_text != next_text {
             let operation = create_edit_operation(&mut doc, 0, source_text, next_text);
             apply_operation(&mut doc, &operation)?;
@@ -3367,7 +3917,13 @@ mod tests {
         }
     }
 
-    fn make_search_match(start: usize, end: usize, line: usize, column: usize, line_text: &str) -> SearchMatchResult {
+    fn make_search_match(
+        start: usize,
+        end: usize,
+        line: usize,
+        column: usize,
+        line_text: &str,
+    ) -> SearchMatchResult {
         SearchMatchResult {
             start,
             end,
@@ -3425,6 +3981,16 @@ mod tests {
     }
 
     #[test]
+    fn line_column_to_search_offset_should_resolve_requested_line_and_column() {
+        let text = "ab\nc你d\n";
+        let line_starts = build_line_starts(text);
+
+        assert_eq!(line_column_to_search_offset(text, &line_starts, 1, 1), 0);
+        assert_eq!(line_column_to_search_offset(text, &line_starts, 1, 3), 2);
+        assert_eq!(line_column_to_search_offset(text, &line_starts, 2, 2), 4);
+    }
+
+    #[test]
     fn build_byte_to_char_map_should_map_multibyte_utf8_bytes_to_char_indices() {
         let mapping = build_byte_to_char_map("a你b");
         assert_eq!(mapping.len(), "a你b".len() + 1);
@@ -3450,7 +4016,10 @@ mod tests {
             normalize_result_filter_keyword(Some("  abc  ".to_string())),
             Some("abc".to_string())
         );
-        assert_eq!(normalize_result_filter_keyword(Some("   ".to_string())), None);
+        assert_eq!(
+            normalize_result_filter_keyword(Some("   ".to_string())),
+            None
+        );
         assert_eq!(normalize_result_filter_keyword(None), None);
     }
 
@@ -3543,10 +4112,7 @@ mod tests {
 
     #[test]
     fn select_replace_current_preferred_chunk_index_should_return_none_for_empty_matches() {
-        assert_eq!(
-            select_replace_current_preferred_chunk_index(0, 0, 3),
-            None
-        );
+        assert_eq!(select_replace_current_preferred_chunk_index(0, 0, 3), None);
     }
 
     #[test]
@@ -3579,6 +4145,55 @@ mod tests {
     }
 
     #[test]
+    fn find_next_filtered_search_match_should_return_first_match_after_offset() {
+        let text = "todo one\nskip\ntodo two";
+        let line_starts = build_line_starts(text);
+        let byte_to_char = build_byte_to_char_map(text);
+
+        let match_result = find_next_filtered_search_match(
+            text,
+            "todo",
+            "literal",
+            true,
+            &line_starts,
+            &byte_to_char,
+            1,
+            None,
+            true,
+        )
+        .expect("forward search should succeed")
+        .expect("match should exist");
+
+        assert_eq!(match_result.line, 3);
+        assert_eq!(match_result.column, 1);
+    }
+
+    #[test]
+    fn find_previous_filtered_search_match_should_return_last_match_before_offset() {
+        let text = "todo one\nskip\ntodo two";
+        let line_starts = build_line_starts(text);
+        let byte_to_char = build_byte_to_char_map(text);
+        let second_match_start = text.find("todo two").expect("second match should exist");
+
+        let match_result = find_previous_filtered_search_match(
+            text,
+            "todo",
+            "literal",
+            true,
+            &line_starts,
+            &byte_to_char,
+            second_match_start,
+            None,
+            true,
+        )
+        .expect("reverse search should succeed")
+        .expect("match should exist");
+
+        assert_eq!(match_result.line, 1);
+        assert_eq!(match_result.column, 1);
+    }
+
+    #[test]
     fn find_search_session_next_index_by_offset_should_return_expected_position() {
         let matches = vec![
             make_search_match(0, 4, 1, 1, "todo one"),
@@ -3586,10 +4201,22 @@ mod tests {
             make_search_match(20, 24, 3, 1, "todo three"),
         ];
 
-        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(0)), 0);
-        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(10)), 1);
-        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(15)), 2);
-        assert_eq!(find_search_session_next_index_by_offset(&matches, Some(30)), 3);
+        assert_eq!(
+            find_search_session_next_index_by_offset(&matches, Some(0)),
+            0
+        );
+        assert_eq!(
+            find_search_session_next_index_by_offset(&matches, Some(10)),
+            1
+        );
+        assert_eq!(
+            find_search_session_next_index_by_offset(&matches, Some(15)),
+            2
+        );
+        assert_eq!(
+            find_search_session_next_index_by_offset(&matches, Some(30)),
+            3
+        );
         assert_eq!(find_search_session_next_index_by_offset(&matches, None), 3);
     }
 
@@ -3634,7 +4261,10 @@ mod tests {
         assert_eq!(find_filter_session_next_index_by_line(&matches, Some(1)), 0);
         assert_eq!(find_filter_session_next_index_by_line(&matches, Some(5)), 1);
         assert_eq!(find_filter_session_next_index_by_line(&matches, Some(9)), 2);
-        assert_eq!(find_filter_session_next_index_by_line(&matches, Some(20)), 3);
+        assert_eq!(
+            find_filter_session_next_index_by_line(&matches, Some(20)),
+            3
+        );
         assert_eq!(find_filter_session_next_index_by_line(&matches, None), 3);
     }
 

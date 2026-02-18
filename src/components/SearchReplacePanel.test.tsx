@@ -557,40 +557,12 @@ describe("SearchReplacePanel", () => {
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
-  it("prefers backend step command for find-mode next navigation when available", async () => {
+  it("prefers backend cursor-step command for find-mode next navigation when available", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
-      if (command === "search_count_in_document") {
-        return {
-          totalMatches: 2,
-          matchedLines: 2,
-          documentVersion: 1,
-        };
-      }
-      if (command === "search_session_start_in_document") {
-        return {
-          sessionId: "session-step-nav",
-          matches: [
-            {
-              start: 0,
-              end: 4,
-              startChar: 0,
-              endChar: 4,
-              text: "todo",
-              line: 1,
-              column: 1,
-              lineText: "todo item",
-            },
-          ],
-          documentVersion: 1,
-          nextOffset: null,
-          totalMatches: 2,
-          totalMatchedLines: 2,
-        };
-      }
-      if (command === "step_result_filter_search_in_document") {
+      if (command === "search_step_from_cursor_in_document") {
         return {
           targetMatch: {
             start: 100,
@@ -603,27 +575,7 @@ describe("SearchReplacePanel", () => {
             lineText: "todo target",
           },
           documentVersion: 1,
-          batchStartOffset: 100,
-          batchMatches: [
-            {
-              start: 100,
-              end: 104,
-              startChar: 100,
-              endChar: 104,
-              text: "todo",
-              line: 20,
-              column: 1,
-              lineText: "todo target",
-            },
-          ],
-          nextOffset: null,
-          targetIndexInBatch: 0,
-          totalMatches: 2,
-          totalMatchedLines: 2,
         };
-      }
-      if (command === "get_document_version") {
-        return 1;
       }
       return [];
     });
@@ -653,17 +605,248 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "step_result_filter_search_in_document",
+        "search_step_from_cursor_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
+          cursorLine: 1,
+          cursorColumn: 1,
           step: 1,
         })
       );
     });
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Next match\s·\sF3 Next \/ Shift\+F3 Previous/)
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Total matches counting/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Total \d+ matches/i)).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "search_count_in_document",
+      expect.anything()
+    );
   });
 
-  it("falls back to legacy find navigation when search step command is unavailable", async () => {
+  it("updates cursor anchor immediately after backend next navigation result", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_step_from_cursor_in_document") {
+        const payload = args as { cursorLine?: number | null; cursorColumn?: number | null };
+        const cursorLine = payload?.cursorLine ?? null;
+        const targetLine = cursorLine === 20 ? 21 : 20;
+
+        return {
+          targetMatch: {
+            start: targetLine * 10,
+            end: targetLine * 10 + 4,
+            startChar: targetLine * 10,
+            endChar: targetLine * 10 + 4,
+            text: "todo",
+            line: targetLine,
+            column: 1,
+            lineText: `todo ${targetLine}`,
+          },
+          documentVersion: 1,
+        };
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+
+    const nextButton = screen.getByTitle("Next match");
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      expect(useStore.getState().cursorPositionByTab["tab-search"]).toEqual({
+        line: 20,
+        column: 1,
+      });
+    });
+
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      const stepCalls = invokeMock.mock.calls.filter(
+        ([command]) => command === "search_step_from_cursor_in_document"
+      );
+      expect(stepCalls.length).toBeGreaterThanOrEqual(2);
+      expect((stepCalls[1][1] as { cursorLine?: number | null })?.cursorLine).toBe(20);
+      expect((stepCalls[1][1] as { cursorColumn?: number | null })?.cursorColumn).toBe(1);
+    });
+  });
+
+  it("uses live cursor anchor for next navigation even when current match is on another line", async () => {
+    let stepCallCount = 0;
+    invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_step_from_cursor_in_document") {
+        stepCallCount += 1;
+
+        if (stepCallCount === 1) {
+          return {
+            targetMatch: {
+              start: 100,
+              end: 104,
+              startChar: 100,
+              endChar: 104,
+              text: "todo",
+              line: 10,
+              column: 1,
+              lineText: "todo 10",
+            },
+            documentVersion: 1,
+          };
+        }
+
+        const payload = args as { cursorLine?: number | null };
+        const targetLine = payload?.cursorLine === 1 ? 2 : 20;
+        return {
+          targetMatch: {
+            start: targetLine * 10,
+            end: targetLine * 10 + 4,
+            startChar: targetLine * 10,
+            endChar: targetLine * 10 + 4,
+            text: "todo",
+            line: targetLine,
+            column: 1,
+            lineText: `todo ${targetLine}`,
+          },
+          documentVersion: 1,
+        };
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+
+    const nextButton = screen.getByTitle("Next match");
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      expect(useStore.getState().cursorPositionByTab["tab-search"]).toEqual({
+        line: 10,
+        column: 1,
+      });
+    });
+
+    act(() => {
+      useStore.getState().setCursorPosition("tab-search", 1, 1);
+    });
+
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      const stepCalls = invokeMock.mock.calls.filter(
+        ([command]) => command === "search_step_from_cursor_in_document"
+      );
+      expect(stepCalls.length).toBeGreaterThanOrEqual(2);
+      expect((stepCalls[1][1] as { cursorLine?: number | null })?.cursorLine).toBe(1);
+      expect((stepCalls[1][1] as { cursorColumn?: number | null })?.cursorColumn).toBe(1);
+      expect(useStore.getState().cursorPositionByTab["tab-search"]).toEqual({
+        line: 2,
+        column: 1,
+      });
+    });
+  });
+
+  it("dispatches only one navigate event per next click when cursor-step backend is used", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_step_from_cursor_in_document") {
+        return {
+          targetMatch: {
+            start: 10,
+            end: 14,
+            startChar: 10,
+            endChar: 14,
+            text: "todo",
+            line: 2,
+            column: 1,
+            lineText: "todo line",
+          },
+          documentVersion: 1,
+        };
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    const navigateEvents: Array<{ line: number }> = [];
+    const listener = (event: Event) => {
+      navigateEvents.push((event as CustomEvent<{ line: number }>).detail);
+    };
+    window.addEventListener("rutar:navigate-to-line", listener as EventListener);
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Next match"));
+
+    await waitFor(() => {
+      expect(navigateEvents).toHaveLength(1);
+      expect(navigateEvents[0]?.line).toBe(2);
+    });
+
+    window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
+  it("falls back to legacy find navigation when cursor-step command is unavailable", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
@@ -696,8 +879,8 @@ describe("SearchReplacePanel", () => {
           totalMatchedLines: 1,
         };
       }
-      if (command === "step_result_filter_search_in_document") {
-        throw new Error("unknown command step_result_filter_search_in_document");
+      if (command === "search_step_from_cursor_in_document") {
+        throw new Error("unknown command search_step_from_cursor_in_document");
       }
       if (command === "get_document_version") {
         return 1;
@@ -729,7 +912,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "step_result_filter_search_in_document",
+        "search_step_from_cursor_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
@@ -749,14 +932,14 @@ describe("SearchReplacePanel", () => {
     });
 
     const firstStepCallCount = invokeMock.mock.calls.filter(
-      ([command]) => command === "step_result_filter_search_in_document"
+      ([command]) => command === "search_step_from_cursor_in_document"
     ).length;
 
     fireEvent.click(nextButton);
 
     await waitFor(() => {
       const stepCallCount = invokeMock.mock.calls.filter(
-        ([command]) => command === "step_result_filter_search_in_document"
+        ([command]) => command === "search_step_from_cursor_in_document"
       ).length;
       expect(stepCallCount).toBe(firstStepCallCount);
     });

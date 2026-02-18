@@ -5521,6 +5521,14 @@ export function Editor({
         return;
       }
 
+      if (requestTimeout.current) {
+        clearTimeout(requestTimeout.current);
+        requestTimeout.current = null;
+      }
+      // Invalidate stale async segment fetches so old viewport requests cannot re-apply after navigation.
+      currentRequestVersion.current += 1;
+      pendingRestoreScrollTopRef.current = null;
+
       const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
       const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
