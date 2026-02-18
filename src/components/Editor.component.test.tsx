@@ -2948,6 +2948,90 @@ describe('Editor component', () => {
     });
   });
 
+  it('uses backend pair line/column positions when provided', async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'a()\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, () => [
+          {
+            text: 'a()',
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return ['a()'];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        if (String(payload?.text ?? '').startsWith('a()')) {
+          return {
+            leftOffset: 0,
+            rightOffset: 0,
+            leftLine: 1,
+            leftColumn: 2,
+            rightLine: 1,
+            rightColumn: 3,
+          };
+        }
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 1;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 1,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      return undefined;
+    });
+
+    const tab = createTab({ id: 'tab-pair-highlight-backend-positions', lineCount: 1 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'a()\n');
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(1, 1);
+    });
+    fireEvent.select(textarea);
+
+    await waitFor(() => {
+      const hasPairQueryAtCaret = invokeMock.mock.calls.some(
+        ([command, params]) =>
+          command === 'find_matching_pair_offsets'
+          && typeof params === 'object'
+          && params !== null
+          && (params as { offset?: number }).offset === 1
+          && String((params as { text?: string }).text ?? '').startsWith('a()')
+      );
+      expect(hasPairQueryAtCaret).toBe(true);
+    });
+
+    await waitFor(() => {
+      const marks = Array.from(container.querySelectorAll('mark'))
+        .filter((element) => (element.className ?? '').includes('ring-sky-500/45'))
+        .map((element) => element.textContent ?? '');
+      expect(marks).toEqual(['(', ')']);
+    });
+  });
+
   it('renders detected http hyperlinks with underline and blue text style', async () => {
     invokeMock.mockImplementation(async (command: string, payload?: any) => {
       if (command === 'get_visible_lines') {

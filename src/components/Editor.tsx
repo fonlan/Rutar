@@ -104,6 +104,10 @@ interface ToggleLineCommentsBackendResult {
 interface PairOffsetsResultPayload {
   leftOffset: number;
   rightOffset: number;
+  leftLine?: number;
+  leftColumn?: number;
+  rightLine?: number;
+  rightColumn?: number;
 }
 
 interface ReplaceRectangularSelectionResultPayload {
@@ -2291,17 +2295,37 @@ export function Editor({
       matched.leftOffset <= matched.rightOffset
         ? [matched.leftOffset, matched.rightOffset]
         : [matched.rightOffset, matched.leftOffset];
-    const nextHighlights = sortedIndexes.map((offset) => {
-      const local = codeUnitOffsetToLineColumn(text, offset);
-      const absoluteLine = isHugeEditableMode
-        ? editableSegmentRef.current.startLine + local.line
-        : local.line;
-
-      return {
-        line: Math.max(1, absoluteLine),
-        column: local.column + 1,
-      };
-    });
+    const resolveAbsoluteLine = (line: number) => {
+      const safeLine = Math.max(1, Math.floor(line));
+      return isHugeEditableMode ? editableSegmentRef.current.startLine + safeLine : safeLine;
+    };
+    const hasBackendPositions =
+      Number.isFinite(matched.leftLine)
+      && Number.isFinite(matched.leftColumn)
+      && Number.isFinite(matched.rightLine)
+      && Number.isFinite(matched.rightColumn);
+    const nextHighlights = hasBackendPositions
+      ? [
+        {
+          offset: matched.leftOffset,
+          line: resolveAbsoluteLine(matched.leftLine as number),
+          column: Math.max(1, Math.floor(matched.leftColumn as number)),
+        },
+        {
+          offset: matched.rightOffset,
+          line: resolveAbsoluteLine(matched.rightLine as number),
+          column: Math.max(1, Math.floor(matched.rightColumn as number)),
+        },
+      ]
+        .sort((left, right) => left.offset - right.offset)
+        .map((item) => ({ line: item.line, column: item.column }))
+      : sortedIndexes.map((offset) => {
+        const local = codeUnitOffsetToLineColumn(text, offset);
+        return {
+          line: resolveAbsoluteLine(local.line),
+          column: local.column + 1,
+        };
+      });
 
     setPairHighlights((prev) =>
       arePairHighlightPositionsEqual(prev, nextHighlights) ? prev : nextHighlights
