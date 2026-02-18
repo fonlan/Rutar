@@ -331,7 +331,7 @@ describe('Editor component', () => {
 
     await waitFor(() => {
       const highlighted = Array.from(container.querySelectorAll('.editor-line')).some((line) =>
-        line.className.includes('bg-accent/45')
+        line.className.includes('bg-violet-300/35')
       );
       expect(highlighted).toBe(false);
     });

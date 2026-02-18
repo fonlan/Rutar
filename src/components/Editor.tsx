@@ -5888,7 +5888,7 @@ export function Editor({
                       : lineNumberMultiSelectionSet.has(index + 1)
                       ? 'bg-blue-500/25 dark:bg-blue-500/20'
                       : highlightCurrentLine && activeLineNumber === index + 1
-                      ? 'bg-accent/45 dark:bg-accent/25'
+                      ? 'bg-violet-300/35 dark:bg-violet-500/25'
                       : ''
                   }`}
                 >
