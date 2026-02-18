@@ -208,7 +208,7 @@ fn push_aligned_line(
     let source_text = source.unwrap_or_default();
     let target_text = target.unwrap_or_default();
     let line_number = aligned_source_lines.len() + 1;
-    if source_text != target_text {
+    if source_present != target_present || source_text != target_text {
         diff_line_numbers.push(line_number);
     }
 
@@ -500,6 +500,22 @@ mod tests {
 
         assert_eq!(result.aligned_source_lines, vec!["a", "", "c"]);
         assert_eq!(result.aligned_target_lines, vec!["a", "b", "c"]);
+        assert_eq!(result.aligned_source_present, vec![true, false, true]);
+        assert_eq!(result.aligned_target_present, vec![true, true, true]);
+        assert_eq!(result.diff_line_numbers, vec![2]);
+        assert!(result.source_diff_line_numbers.is_empty());
+        assert_eq!(result.target_diff_line_numbers, vec![2]);
+    }
+
+    #[test]
+    fn build_line_diff_result_should_mark_inserted_empty_line_as_diff() {
+        let result = build_line_diff_result(
+            vec!["a".to_string(), "b".to_string()],
+            vec!["a".to_string(), String::new(), "b".to_string()],
+        );
+
+        assert_eq!(result.aligned_source_lines, vec!["a", "", "b"]);
+        assert_eq!(result.aligned_target_lines, vec!["a", "", "b"]);
         assert_eq!(result.aligned_source_present, vec![true, false, true]);
         assert_eq!(result.aligned_target_present, vec![true, true, true]);
         assert_eq!(result.diff_line_numbers, vec![2]);

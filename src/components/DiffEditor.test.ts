@@ -347,6 +347,19 @@ describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
     expect(result.sourceDiffLineNumbers).toEqual([1]);
     expect(result.targetDiffLineNumbers).toEqual([]);
   });
+
+  it('treats empty-line insertion as diff when row presence differs', () => {
+    const result = diffEditorTestUtils.buildAlignedDiffMetadata(
+      ['a', '', 'b'],
+      ['a', '', 'b'],
+      [true, false, true],
+      [true, true, true]
+    );
+
+    expect(result.diffLineNumbers).toEqual([2]);
+    expect(result.sourceDiffLineNumbers).toEqual([]);
+    expect(result.targetDiffLineNumbers).toEqual([2]);
+  });
 });
 
 describe('diffEditorTestUtils.findAlignedRowIndexByLineNumber', () => {

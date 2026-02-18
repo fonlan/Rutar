@@ -347,19 +347,21 @@ function buildAlignedDiffMetadata(
   for (let index = 0; index < alignedLineCount; index += 1) {
     const sourceLine = alignedSourceLines[index] ?? '';
     const targetLine = alignedTargetLines[index] ?? '';
+    const sourcePresent = alignedSourcePresent[index] === true;
+    const targetPresent = alignedTargetPresent[index] === true;
 
-    if (sourceLine === targetLine) {
+    if (sourceLine === targetLine && sourcePresent === targetPresent) {
       continue;
     }
 
     const alignedLine = index + 1;
     diffLineNumbers.push(alignedLine);
 
-    if (alignedSourcePresent[index]) {
+    if (sourcePresent) {
       sourceDiffLineNumbers.push(alignedLine);
     }
 
-    if (alignedTargetPresent[index]) {
+    if (targetPresent) {
       targetDiffLineNumbers.push(alignedLine);
     }
   }
