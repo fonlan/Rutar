@@ -101,6 +101,35 @@ pub fn replace_current_in_document(
 }
 
 #[tauri::command]
+pub fn replace_current_and_search_chunk_in_document(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    replace_value: String,
+    target_start: usize,
+    target_end: usize,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<ReplaceCurrentAndSearchChunkResultPayload, String> {
+    search::replace_current_and_search_chunk_in_document_impl(
+        state,
+        id,
+        keyword,
+        mode,
+        case_sensitive,
+        replace_value,
+        target_start,
+        target_end,
+        result_filter_keyword,
+        result_filter_case_sensitive,
+        max_results,
+    )
+}
+
+#[tauri::command]
 pub fn step_result_filter_search_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -214,6 +243,7 @@ mod tests {
         let _ = search_count_in_document as usize;
         let _ = replace_all_in_document as usize;
         let _ = replace_current_in_document as usize;
+        let _ = replace_current_and_search_chunk_in_document as usize;
         let _ = step_result_filter_search_in_document as usize;
         let _ = filter_count_in_document as usize;
         let _ = filter_in_document_chunk as usize;

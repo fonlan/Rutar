@@ -82,6 +82,19 @@ pub struct ReplaceCurrentResultPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReplaceCurrentAndSearchChunkResultPayload {
+    pub(super) replaced: bool,
+    pub(super) line_count: usize,
+    pub(super) document_version: u64,
+    pub(super) matches: Vec<SearchMatchResult>,
+    pub(super) next_offset: Option<usize>,
+    pub(super) preferred_match: Option<SearchMatchResult>,
+    pub(super) total_matches: usize,
+    pub(super) total_matched_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchResultFilterStepPayload {
     pub(super) target_match: Option<SearchMatchResult>,
     pub(super) document_version: u64,
@@ -1409,6 +1422,24 @@ fn lower_bound_filter_matches(matches: &[FilterLineMatchResult], target_line: us
     left
 }
 
+fn select_replace_current_preferred_chunk_index(
+    matches_len: usize,
+    replaced_match_index: usize,
+    max_results: usize,
+) -> Option<usize> {
+    if matches_len == 0 {
+        return None;
+    }
+
+    let effective_max_results = max_results.max(1);
+    let chunk_len = matches_len.min(effective_max_results);
+    if chunk_len == 0 {
+        return None;
+    }
+
+    Some(replaced_match_index.min(chunk_len - 1))
+}
+
 fn find_exact_search_match_index(
     matches: &[SearchMatchResult],
     start: usize,
@@ -2326,6 +2357,159 @@ pub(super) fn replace_current_in_document_impl(
     }
 }
 
+pub(super) fn replace_current_and_search_chunk_in_document_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    mode: String,
+    case_sensitive: bool,
+    replace_value: String,
+    target_start: usize,
+    target_end: usize,
+    result_filter_keyword: Option<String>,
+    result_filter_case_sensitive: Option<bool>,
+    max_results: usize,
+) -> Result<ReplaceCurrentAndSearchChunkResultPayload, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        if keyword.is_empty() {
+            return Ok(ReplaceCurrentAndSearchChunkResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                matches: Vec::new(),
+                next_offset: None,
+                preferred_match: None,
+                total_matches: 0,
+                total_matched_lines: 0,
+            });
+        }
+
+        let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
+        let effective_result_filter_case_sensitive =
+            result_filter_case_sensitive.unwrap_or(case_sensitive);
+        let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
+
+        let previous_matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+
+        let Some(target_index) =
+            find_exact_search_match_index(&previous_matches, target_start, target_end)
+        else {
+            return Ok(ReplaceCurrentAndSearchChunkResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                matches: Vec::new(),
+                next_offset: None,
+                preferred_match: None,
+                total_matches: previous_matches.len(),
+                total_matched_lines: previous_matches
+                    .iter()
+                    .map(|item| item.line)
+                    .collect::<BTreeSet<usize>>()
+                    .len(),
+            });
+        };
+
+        let target_match = previous_matches[target_index].clone();
+        let replacement_text = if mode == "regex" {
+            let regex = RegexBuilder::new(&keyword)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            regex
+                .replace(&target_match.text, replace_value.as_str())
+                .to_string()
+        } else {
+            replace_value
+        };
+
+        if replacement_text == target_match.text {
+            return Ok(ReplaceCurrentAndSearchChunkResultPayload {
+                replaced: false,
+                line_count: doc.rope.len_lines(),
+                document_version: doc.document_version,
+                matches: Vec::new(),
+                next_offset: None,
+                preferred_match: None,
+                total_matches: previous_matches.len(),
+                total_matched_lines: previous_matches
+                    .iter()
+                    .map(|item| item.line)
+                    .collect::<BTreeSet<usize>>()
+                    .len(),
+            });
+        }
+
+        let operation = create_edit_operation(
+            &mut doc,
+            target_match.start_char,
+            target_match.text,
+            replacement_text,
+        );
+
+        apply_operation(&mut doc, &operation)?;
+        doc.undo_stack.push(operation);
+        doc.redo_stack.clear();
+
+        let refreshed_matches = build_search_step_filtered_matches(
+            &doc,
+            &keyword,
+            &mode,
+            case_sensitive,
+            result_filter_keyword_ref,
+            effective_result_filter_case_sensitive,
+        )?;
+
+        let total_matches = refreshed_matches.len();
+        let total_matched_lines = refreshed_matches
+            .iter()
+            .map(|item| item.line)
+            .collect::<BTreeSet<usize>>()
+            .len();
+        let effective_max_results = max_results.max(1);
+        let next_offset = refreshed_matches
+            .get(effective_max_results)
+            .map(|item| item.start);
+
+        let mut matches = refreshed_matches
+            .into_iter()
+            .take(effective_max_results)
+            .collect::<Vec<SearchMatchResult>>();
+        for item in &mut matches {
+            item.preview_segments = Some(build_search_match_preview_segments(
+                item,
+                result_filter_keyword_ref,
+                effective_result_filter_case_sensitive,
+            ));
+        }
+        let preferred_chunk_index =
+            select_replace_current_preferred_chunk_index(total_matches, target_index, effective_max_results);
+        let preferred_match = preferred_chunk_index
+            .and_then(|index| matches.get(index).cloned());
+
+        Ok(ReplaceCurrentAndSearchChunkResultPayload {
+            replaced: true,
+            line_count: doc.rope.len_lines(),
+            document_version: doc.document_version,
+            matches,
+            next_offset,
+            preferred_match,
+            total_matches,
+            total_matched_lines,
+        })
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn search_in_document_impl(
     state: State<'_, AppState>,
     id: String,
@@ -2526,5 +2710,25 @@ mod tests {
         let ranges = collect_filter_rule_ranges("abxxabyyab", &compiled[0], 2);
 
         assert_eq!(ranges, vec![(0, 2), (4, 6)]);
+    }
+
+    #[test]
+    fn select_replace_current_preferred_chunk_index_should_clamp_to_chunk_tail() {
+        assert_eq!(
+            select_replace_current_preferred_chunk_index(10, 6, 3),
+            Some(2)
+        );
+        assert_eq!(
+            select_replace_current_preferred_chunk_index(2, 1, 3),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn select_replace_current_preferred_chunk_index_should_return_none_for_empty_matches() {
+        assert_eq!(
+            select_replace_current_preferred_chunk_index(0, 0, 3),
+            None
+        );
     }
 }

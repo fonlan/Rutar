@@ -169,10 +169,15 @@ interface ReplaceAllBackendResult {
   documentVersion: number;
 }
 
-interface ReplaceCurrentBackendResult {
+interface ReplaceCurrentAndSearchChunkBackendResult {
   replaced: boolean;
   lineCount: number;
   documentVersion: number;
+  matches: SearchMatch[];
+  nextOffset: number | null;
+  preferredMatch: SearchMatch | null;
+  totalMatches: number;
+  totalMatchedLines: number;
 }
 
 interface SearchResultFilterStepBackendResult {
@@ -2072,7 +2077,7 @@ export function SearchReplacePanel() {
     const targetMatch = searchResult.matches[boundedCurrentIndex];
 
     try {
-      const result = await invoke<ReplaceCurrentBackendResult>('replace_current_in_document', {
+      const result = await invoke<ReplaceCurrentAndSearchChunkBackendResult>('replace_current_and_search_chunk_in_document', {
         id: activeTab.id,
         keyword,
         mode: getSearchModeValue(searchMode),
@@ -2080,6 +2085,9 @@ export function SearchReplacePanel() {
         replaceValue,
         targetStart: targetMatch.start,
         targetEnd: targetMatch.end,
+        resultFilterKeyword: backendResultFilterKeyword,
+        resultFilterCaseSensitive: caseSensitive,
+        maxResults: SEARCH_CHUNK_SIZE,
       });
 
       if (!result.replaced) {
@@ -2091,12 +2099,64 @@ export function SearchReplacePanel() {
       updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
       dispatchEditorForceRefresh(activeTab.id, safeLineCount);
       setFeedbackMessage(messages.replacedCurrent);
+      setErrorMessage(null);
 
-      const nextResult = await executeSearch(true);
-      if (nextResult && nextResult.matches.length > 0) {
-        const nextIndex = Math.min(boundedCurrentIndex, nextResult.matches.length - 1);
+      const documentVersion = result.documentVersion ?? 0;
+      const nextMatches = result.matches || [];
+      const nextOffset = result.nextOffset ?? null;
+      const totalMatches = result.totalMatches ?? nextMatches.length;
+      const totalMatchedLines =
+        result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+      const preferredMatch = result.preferredMatch ?? null;
+      const preferredIndex = preferredMatch
+        ? nextMatches.findIndex((item) => item.start === preferredMatch.start && item.end === preferredMatch.end)
+        : -1;
+      const nextIndex =
+        nextMatches.length === 0
+          ? 0
+          : preferredIndex >= 0
+            ? preferredIndex
+            : Math.min(boundedCurrentIndex, nextMatches.length - 1);
+
+      startTransition(() => {
+        setMatches(nextMatches);
         setCurrentMatchIndex(nextIndex);
-        navigateToMatch(nextResult.matches[nextIndex]);
+        setTotalMatchCount(totalMatches);
+        setTotalMatchedLineCount(totalMatchedLines);
+      });
+      currentMatchIndexRef.current = nextIndex;
+      chunkCursorRef.current = nextOffset;
+      cachedSearchRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+        matches: nextMatches,
+        nextOffset,
+      };
+      searchParamsRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+      };
+      countCacheRef.current = {
+        tabId: activeTab.id,
+        keyword,
+        searchMode,
+        caseSensitive,
+        resultFilterKeyword: backendResultFilterKeyword,
+        documentVersion,
+        totalMatches,
+        matchedLines: totalMatchedLines,
+      };
+
+      if (nextMatches.length > 0) {
+        navigateToMatch(nextMatches[nextIndex]);
       }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
@@ -2104,6 +2164,7 @@ export function SearchReplacePanel() {
     }
   }, [
     activeTab,
+    backendResultFilterKeyword,
     caseSensitive,
     executeSearch,
     keyword,
