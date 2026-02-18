@@ -540,6 +540,41 @@ function getNextMatchedRow(
   return matchedRows[(currentIndex - 1 + matchedRows.length) % matchedRows.length];
 }
 
+function getNextMatchedRowFromAnchor(
+  matchedRows: number[],
+  anchorRow: number | null,
+  direction: 'next' | 'prev'
+) {
+  if (matchedRows.length === 0) {
+    return null;
+  }
+
+  if (anchorRow === null) {
+    return direction === 'next'
+      ? matchedRows[0]
+      : matchedRows[matchedRows.length - 1];
+  }
+
+  if (direction === 'next') {
+    for (let index = 0; index < matchedRows.length; index += 1) {
+      const row = matchedRows[index];
+      if (row > anchorRow) {
+        return row;
+      }
+    }
+    return matchedRows[0];
+  }
+
+  for (let index = matchedRows.length - 1; index >= 0; index -= 1) {
+    const row = matchedRows[index];
+    if (row < anchorRow) {
+      return row;
+    }
+  }
+
+  return matchedRows[matchedRows.length - 1];
+}
+
 function reconcilePresenceAfterTextEdit(
   oldLines: string[],
   oldPresent: boolean[],
@@ -674,6 +709,7 @@ export const diffEditorTestUtils = {
   buildCopyTextWithoutVirtualRows,
   getLineSelectionRange,
   getNextMatchedRow,
+  getNextMatchedRowFromAnchor,
   reconcilePresenceAfterTextEdit,
   inferTrailingNewlineFromLines,
   serializeLines,
@@ -1955,6 +1991,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         .sort((left, right) => left - right),
     [lineDiff.diffLineNumbers]
   );
+  const diffRowIndexes = useMemo(
+    () => diffLineNumbers
+      .map((lineNumber) => lineNumber - 1)
+      .filter((rowIndex) => rowIndex >= 0 && rowIndex < alignedLineCount),
+    [alignedLineCount, diffLineNumbers]
+  );
   const alignedDiffKindByLine = useMemo(() => {
     const result = new Map<number, DiffLineKind>();
 
@@ -2155,6 +2197,42 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [rowHeightPx, sourceScroller, targetScroller]
   );
+  const resolvePanelCurrentRow = useCallback((side: ActivePanel) => {
+    const textarea = side === 'source'
+      ? sourceTextareaRef.current
+      : targetTextareaRef.current;
+    if (!textarea) {
+      return null;
+    }
+
+    const value = textarea.value ?? '';
+    const selectionStart = textarea.selectionStart ?? 0;
+    return getLineIndexFromTextOffset(value, selectionStart);
+  }, []);
+  const jumpPanelDiffRow = useCallback(
+    (side: ActivePanel, direction: 'next' | 'prev') => {
+      const currentRow = resolvePanelCurrentRow(side);
+      const nextRow = getNextMatchedRowFromAnchor(diffRowIndexes, currentRow, direction);
+      if (nextRow === null) {
+        return;
+      }
+
+      jumpToPanelAlignedRow(side, nextRow);
+    },
+    [diffRowIndexes, jumpToPanelAlignedRow, resolvePanelCurrentRow]
+  );
+  const jumpSourceDiffRow = useCallback(
+    (direction: 'next' | 'prev') => {
+      jumpPanelDiffRow('source', direction);
+    },
+    [jumpPanelDiffRow]
+  );
+  const jumpTargetDiffRow = useCallback(
+    (direction: 'next' | 'prev') => {
+      jumpPanelDiffRow('target', direction);
+    },
+    [jumpPanelDiffRow]
+  );
   const jumpSourceSearchMatch = useCallback(
     (direction: 'next' | 'prev') => {
       const nextRow = getNextMatchedRow(sourceSearchMatchedRows, sourceSearchMatchedRow, direction);
@@ -2179,6 +2257,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [jumpToPanelAlignedRow, targetSearchMatchedRow, targetSearchMatchedRows]
   );
+  const sourceDiffJumpDisabled = diffRowIndexes.length === 0 || !sourceTab;
+  const targetDiffJumpDisabled = diffRowIndexes.length === 0 || !targetTab;
   const sourceSearchDisabled = sourceSearchMatchedRows.length === 0;
   const targetSearchDisabled = targetSearchMatchedRows.length === 0;
   const lineNumberColumnWidth = Math.max(
@@ -2226,6 +2306,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const searchPlaceholderLabel = isZhCN ? '搜索关键字' : 'Search keyword';
   const previousMatchLabel = isZhCN ? '上一个匹配' : 'Previous Match';
   const nextMatchLabel = isZhCN ? '下一个匹配' : 'Next Match';
+  const previousDiffLineLabel = isZhCN ? '上一个不同行' : 'Previous Diff Line';
+  const nextDiffLineLabel = isZhCN ? '下一个不同行' : 'Next Diff Line';
+  const noDiffLineLabel = isZhCN ? '未找到不同行' : 'No diff lines';
   const noMatchLabel = isZhCN ? '未找到匹配' : 'No matches';
   const diffHeaderMenuPath = diffHeaderContextMenu
     ? resolvePanelPath(diffHeaderContextMenu.side)
@@ -2321,6 +2404,38 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 </button>
               </div>
             </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  jumpSourceDiffRow('prev');
+                }}
+                disabled={sourceDiffJumpDisabled}
+                title={sourceDiffJumpDisabled ? noDiffLineLabel : previousDiffLineLabel}
+                aria-label={`${sourceTitlePrefix} ${previousDiffLineLabel}`}
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  jumpSourceDiffRow('next');
+                }}
+                disabled={sourceDiffJumpDisabled}
+                title={sourceDiffJumpDisabled ? noDiffLineLabel : nextDiffLineLabel}
+                aria-label={`${sourceTitlePrefix} ${nextDiffLineLabel}`}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <button
               type="button"
               className={cn(
@@ -2408,6 +2523,38 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                   <ChevronDown className="h-3 w-3" />
                 </button>
               </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  jumpTargetDiffRow('prev');
+                }}
+                disabled={targetDiffJumpDisabled}
+                title={targetDiffJumpDisabled ? noDiffLineLabel : previousDiffLineLabel}
+                aria-label={`${targetTitlePrefix} ${previousDiffLineLabel}`}
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  jumpTargetDiffRow('next');
+                }}
+                disabled={targetDiffJumpDisabled}
+                title={targetDiffJumpDisabled ? noDiffLineLabel : nextDiffLineLabel}
+                aria-label={`${targetTitlePrefix} ${nextDiffLineLabel}`}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
             </div>
             <button
               type="button"

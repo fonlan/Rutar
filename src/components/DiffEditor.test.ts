@@ -426,6 +426,22 @@ describe('diffEditorTestUtils.getNextMatchedRow', () => {
   });
 });
 
+describe('diffEditorTestUtils.getNextMatchedRowFromAnchor', () => {
+  it('navigates from arbitrary anchor rows with wrap-around', () => {
+    const matchedRows = [2, 5, 8];
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, null, 'next')).toBe(2);
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, null, 'prev')).toBe(8);
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, 'next')).toBe(5);
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, 'prev')).toBe(2);
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 8, 'next')).toBe(2);
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 2, 'prev')).toBe(8);
+  });
+
+  it('returns null when no matched rows exist', () => {
+    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor([], 3, 'next')).toBeNull();
+  });
+});
+
 describe('diffEditorTestUtils.reconcilePresenceAfterTextEdit', () => {
   it('keeps prefix/suffix presence and marks edited span as concrete', () => {
     const result = diffEditorTestUtils.reconcilePresenceAfterTextEdit(
@@ -1363,6 +1379,143 @@ describe('DiffEditor component', () => {
     await waitFor(() => {
       expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
     });
+  });
+
+  it('jumps source diff lines via header diff navigation buttons', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['same-1', 'left-2', 'left-3'],
+        alignedTargetLines: ['same-1', 'right-2', 'right-3'],
+        alignedSourcePresent: [true, true, true],
+        alignedTargetPresent: [true, true, true],
+        diffLineNumbers: [2, 3],
+        sourceDiffLineNumbers: [2, 3],
+        targetDiffLineNumbers: [2, 3],
+        sourceLineCount: 3,
+        targetLineCount: 3,
+        alignedLineCount: 3,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(
+          ['same-1', 'left-2', 'left-3'],
+          ['same-1', 'right-2', 'right-3'],
+          [true, true, true],
+          [true, true, true]
+        );
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      return 0;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(0, 0);
+    });
+
+    const previousDiffButton = await screen.findByRole('button', { name: 'Source Previous Diff Line' });
+    const nextDiffButton = await screen.findByRole('button', { name: 'Source Next Diff Line' });
+    const sourceLines = sourceTextarea.value.split('\n');
+    const row2Range = diffEditorTestUtils.getLineSelectionRange(sourceLines, 1);
+    const row3Range = diffEditorTestUtils.getLineSelectionRange(sourceLines, 2);
+
+    act(() => {
+      fireEvent.mouseDown(nextDiffButton, { button: 0 });
+      fireEvent.click(nextDiffButton);
+    });
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(row2Range.start);
+      expect(sourceTextarea.selectionEnd).toBe(row2Range.end);
+    });
+
+    act(() => {
+      fireEvent.mouseDown(nextDiffButton, { button: 0 });
+      fireEvent.click(nextDiffButton);
+    });
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(row3Range.start);
+      expect(sourceTextarea.selectionEnd).toBe(row3Range.end);
+    });
+
+    act(() => {
+      fireEvent.mouseDown(previousDiffButton, { button: 0 });
+      fireEvent.click(previousDiffButton);
+    });
+    await waitFor(() => {
+      expect(sourceTextarea.selectionStart).toBe(row2Range.start);
+      expect(sourceTextarea.selectionEnd).toBe(row2Range.end);
+    });
+  });
+
+  it('disables diff navigation buttons when there are no diff rows', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['same-1', 'same-2'],
+        alignedTargetLines: ['same-1', 'same-2'],
+        alignedSourcePresent: [true, true],
+        alignedTargetPresent: [true, true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 2,
+        targetLineCount: 2,
+        alignedLineCount: 2,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(
+          ['same-1', 'same-2'],
+          ['same-1', 'same-2'],
+          [true, true],
+          [true, true]
+        );
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        return [];
+      }
+      return 0;
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    expect(await screen.findByRole('button', { name: 'Source Previous Diff Line' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Source Next Diff Line' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Target Previous Diff Line' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Target Next Diff Line' })).toBeDisabled();
   });
 
   it('requests backend line matches when diff panel search keyword changes', async () => {
