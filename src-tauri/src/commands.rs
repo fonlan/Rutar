@@ -274,6 +274,22 @@ pub async fn search_diff_panel_line_matches(
 }
 
 #[tauri::command]
+pub async fn preview_aligned_diff_state(
+    aligned_source_lines: Vec<String>,
+    aligned_target_lines: Vec<String>,
+    aligned_source_present: Vec<bool>,
+    aligned_target_present: Vec<bool>,
+) -> Result<diff::LineDiffResult, String> {
+    diff::preview_aligned_diff_state_impl(
+        aligned_source_lines,
+        aligned_target_lines,
+        aligned_source_present,
+        aligned_target_present,
+    )
+    .await
+}
+
+#[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn apply_aligned_diff_edit(
     state: State<'_, AppState>,

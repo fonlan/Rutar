@@ -29,6 +29,10 @@ interface LineDiffComparisonResult {
   diffLineNumbers: number[];
   sourceDiffLineNumbers: number[];
   targetDiffLineNumbers: number[];
+  alignedDiffKinds?: Array<DiffLineKind | null>;
+  sourceLineNumbersByAlignedRow?: number[];
+  targetLineNumbersByAlignedRow?: number[];
+  diffRowIndexes?: number[];
   sourceLineCount: number;
   targetLineCount: number;
   alignedLineCount: number;
@@ -96,6 +100,8 @@ const MIN_PANEL_WIDTH_PX = 220;
 const SPLITTER_WIDTH_PX = 16;
 const REFRESH_DEBOUNCE_MS = 120;
 const EDIT_DEBOUNCE_MS = 90;
+const PREVIEW_METADATA_DEBOUNCE_MS = 70;
+const OFFLOAD_METADATA_MIN_LINES = 1200;
 const INPUT_ACTIVE_HOLD_MS = 450;
 const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
 const PAIR_HIGHLIGHT_CLASS =
@@ -194,6 +200,10 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+function shouldOffloadDiffMetadataComputation(alignedLineCount: number) {
+  return alignedLineCount > OFFLOAD_METADATA_MIN_LINES;
+}
+
 function normalizeTextToLines(text: string) {
   const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = normalized.split('\n');
@@ -228,6 +238,45 @@ function ensureBooleanArray(values: unknown, length: number, fallbackValue: bool
   return result;
 }
 
+function ensureLineNumberArray(values: unknown, length: number) {
+  if (!Array.isArray(values)) {
+    return Array.from({ length }, () => 0);
+  }
+
+  const result = Array.from({ length }, (_, index) => {
+    const value = values[index];
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? Math.floor(value)
+      : 0;
+  });
+  if (result.length < length) {
+    for (let index = result.length; index < length; index += 1) {
+      result.push(0);
+    }
+  }
+  return result;
+}
+
+function ensureDiffKindArray(values: unknown, length: number) {
+  if (!Array.isArray(values)) {
+    return Array.from({ length }, () => null as DiffLineKind | null);
+  }
+
+  const result = Array.from({ length }, (_, index) => {
+    const value = values[index];
+    if (value === 'insert' || value === 'delete' || value === 'modify') {
+      return value;
+    }
+    return null;
+  });
+  if (result.length < length) {
+    for (let index = result.length; index < length; index += 1) {
+      result.push(null);
+    }
+  }
+  return result;
+}
+
 function normalizeLineDiffResult(input: LineDiffComparisonResult): LineDiffComparisonResult {
   const alignedSourceLines = Array.isArray(input.alignedSourceLines) && input.alignedSourceLines.length > 0
     ? input.alignedSourceLines
@@ -249,14 +298,46 @@ function normalizeLineDiffResult(input: LineDiffComparisonResult): LineDiffCompa
     ? alignedTargetLines
     : [...alignedTargetLines, ...Array.from({ length: alignedLineCount - alignedTargetLines.length }, () => '')];
 
+  const normalizedDiffLineNumbers = Array.isArray(input.diffLineNumbers)
+    ? input.diffLineNumbers
+    : [];
+  const sourcePresent = ensureBooleanArray(input.alignedSourcePresent, alignedLineCount, true);
+  const targetPresent = ensureBooleanArray(input.alignedTargetPresent, alignedLineCount, true);
+  const sourceLineNumbersByAlignedRow = Array.isArray(input.sourceLineNumbersByAlignedRow)
+    ? ensureLineNumberArray(input.sourceLineNumbersByAlignedRow, alignedLineCount)
+    : buildLineNumberByAlignedRow(sourcePresent);
+  const targetLineNumbersByAlignedRow = Array.isArray(input.targetLineNumbersByAlignedRow)
+    ? ensureLineNumberArray(input.targetLineNumbersByAlignedRow, alignedLineCount)
+    : buildLineNumberByAlignedRow(targetPresent);
+  const alignedDiffKinds = Array.isArray(input.alignedDiffKinds)
+    ? ensureDiffKindArray(input.alignedDiffKinds, alignedLineCount)
+    : Array.from({ length: alignedLineCount }, (_, index) => resolveAlignedDiffKind(
+      index,
+      sourceLines,
+      targetLines,
+      sourcePresent,
+      targetPresent
+    ));
+  const diffRowIndexes = Array.isArray(input.diffRowIndexes)
+    ? input.diffRowIndexes
+      .map((value) => (Number.isFinite(value) ? Math.floor(value) : -1))
+      .filter((value) => value >= 0 && value < alignedLineCount)
+    : normalizedDiffLineNumbers
+      .map((lineNumber) => Math.floor(lineNumber) - 1)
+      .filter((value) => Number.isFinite(value) && value >= 0 && value < alignedLineCount);
+
   return {
     alignedSourceLines: sourceLines,
     alignedTargetLines: targetLines,
-    alignedSourcePresent: ensureBooleanArray(input.alignedSourcePresent, alignedLineCount, true),
-    alignedTargetPresent: ensureBooleanArray(input.alignedTargetPresent, alignedLineCount, true),
-    diffLineNumbers: Array.isArray(input.diffLineNumbers) ? input.diffLineNumbers : [],
+    alignedSourcePresent: sourcePresent,
+    alignedTargetPresent: targetPresent,
+    diffLineNumbers: normalizedDiffLineNumbers,
     sourceDiffLineNumbers: Array.isArray(input.sourceDiffLineNumbers) ? input.sourceDiffLineNumbers : [],
     targetDiffLineNumbers: Array.isArray(input.targetDiffLineNumbers) ? input.targetDiffLineNumbers : [],
+    alignedDiffKinds,
+    sourceLineNumbersByAlignedRow,
+    targetLineNumbersByAlignedRow,
+    diffRowIndexes,
     sourceLineCount: Math.max(1, input.sourceLineCount || 1),
     targetLineCount: Math.max(1, input.targetLineCount || 1),
     alignedLineCount,
@@ -283,6 +364,9 @@ function buildInitialDiff(payload: DiffTabPayload): LineDiffComparisonResult {
       targetDiffLineNumbers: Array.isArray(payload.targetDiffLineNumbers)
         ? payload.targetDiffLineNumbers
         : [],
+      alignedDiffKinds: Array.isArray(payload.alignedDiffKinds)
+        ? payload.alignedDiffKinds
+        : undefined,
       sourceLineCount: Math.max(1, payload.sourceLineCount || payload.alignedSourceLines.length),
       targetLineCount: Math.max(1, payload.targetLineCount || payload.alignedTargetLines.length),
       alignedLineCount: Math.max(
@@ -359,25 +443,29 @@ function buildAlignedDiffMetadata(
   const diffLineNumbers: number[] = [];
   const sourceDiffLineNumbers: number[] = [];
   const targetDiffLineNumbers: number[] = [];
+  const alignedDiffKinds: Array<DiffLineKind | null> = [];
 
   for (let index = 0; index < alignedLineCount; index += 1) {
-    const sourceLine = alignedSourceLines[index] ?? '';
-    const targetLine = alignedTargetLines[index] ?? '';
-    const sourcePresent = alignedSourcePresent[index] === true;
-    const targetPresent = alignedTargetPresent[index] === true;
-
-    if (sourceLine === targetLine && sourcePresent === targetPresent) {
+    const kind = resolveAlignedDiffKind(
+      index,
+      alignedSourceLines,
+      alignedTargetLines,
+      alignedSourcePresent,
+      alignedTargetPresent
+    );
+    alignedDiffKinds.push(kind);
+    if (!kind) {
       continue;
     }
 
     const alignedLine = index + 1;
     diffLineNumbers.push(alignedLine);
 
-    if (sourcePresent) {
+    if (alignedSourcePresent[index] === true) {
       sourceDiffLineNumbers.push(alignedLine);
     }
 
-    if (targetPresent) {
+    if (alignedTargetPresent[index] === true) {
       targetDiffLineNumbers.push(alignedLine);
     }
   }
@@ -390,11 +478,17 @@ function buildAlignedDiffMetadata(
     (count, isPresent) => (isPresent ? count + 1 : count),
     0
   );
+  const sourceLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedSourcePresent);
+  const targetLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedTargetPresent);
 
   return {
     diffLineNumbers,
     sourceDiffLineNumbers,
     targetDiffLineNumbers,
+    alignedDiffKinds,
+    sourceLineNumbersByAlignedRow,
+    targetLineNumbersByAlignedRow,
+    diffRowIndexes: diffLineNumbers.map((lineNumber) => lineNumber - 1),
     sourceLineCount: Math.max(1, sourceLineCount),
     targetLineCount: Math.max(1, targetLineCount),
     alignedLineCount: Math.max(1, alignedLineCount),
@@ -801,9 +895,12 @@ export const diffEditorTestUtils = {
   getDiffKindStyle,
   clampRatio,
   clampPercent,
+  shouldOffloadDiffMetadataComputation,
   normalizeTextToLines,
   buildFallbackDiffLineNumbers,
   ensureBooleanArray,
+  ensureLineNumberArray,
+  ensureDiffKindArray,
   normalizeLineDiffResult,
   buildInitialDiff,
   buildLineNumberByAlignedRow,
@@ -876,6 +973,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const lastEditAtRef = useRef(0);
   const deferredBackendDiffRef = useRef<LineDiffComparisonResult | null>(null);
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
+  const previewMetadataTimerRef = useRef<number | null>(null);
+  const previewMetadataSequenceRef = useRef(0);
   const sourceSearchRequestSequenceRef = useRef(0);
   const targetSearchRequestSequenceRef = useRef(0);
   const pairHighlightRequestIdRef = useRef<{ source: number; target: number }>({
@@ -953,12 +1052,17 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const present = panel === 'source'
       ? snapshotState.alignedSourcePresent
       : snapshotState.alignedTargetPresent;
-    const lineNumbers = buildLineNumberByAlignedRow(present);
+    const lineNumbers = panel === 'source'
+      ? snapshotState.sourceLineNumbersByAlignedRow
+      : snapshotState.targetLineNumbersByAlignedRow;
+    const resolvedLineNumbers = Array.isArray(lineNumbers) && lineNumbers.length === present.length
+      ? lineNumbers
+      : buildLineNumberByAlignedRow(present);
     const elementText = activeElement.value ?? '';
     const selectionStart = activeElement.selectionStart ?? elementText.length;
     const selectionEnd = activeElement.selectionEnd ?? elementText.length;
     const effectiveRowIndex = getLineIndexFromTextOffset(elementText, selectionStart);
-    const lineNumber = lineNumbers[effectiveRowIndex] ?? 0;
+    const lineNumber = resolvedLineNumbers[effectiveRowIndex] ?? 0;
 
     return {
       side: panel,
@@ -983,8 +1087,77 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     return Date.now() - lastEditAtRef.current < INPUT_ACTIVE_HOLD_MS;
   }, []);
 
+  const clearPreviewMetadataTimer = useCallback(() => {
+    if (previewMetadataTimerRef.current !== null) {
+      window.clearTimeout(previewMetadataTimerRef.current);
+      previewMetadataTimerRef.current = null;
+    }
+  }, []);
+
+  const applyPreviewMetadataResult = useCallback((result: LineDiffComparisonResult) => {
+    const normalized = normalizeLineDiffResult(result);
+    setLineDiff((previous) => {
+      const nextState = {
+        ...previous,
+        diffLineNumbers: normalized.diffLineNumbers,
+        sourceDiffLineNumbers: normalized.sourceDiffLineNumbers,
+        targetDiffLineNumbers: normalized.targetDiffLineNumbers,
+        alignedDiffKinds: normalized.alignedDiffKinds,
+        sourceLineNumbersByAlignedRow: normalized.sourceLineNumbersByAlignedRow,
+        targetLineNumbersByAlignedRow: normalized.targetLineNumbersByAlignedRow,
+        diffRowIndexes: normalized.diffRowIndexes,
+        sourceLineCount: normalized.sourceLineCount,
+        targetLineCount: normalized.targetLineCount,
+        alignedLineCount: normalized.alignedLineCount,
+      };
+      lineDiffRef.current = nextState;
+      return nextState;
+    });
+  }, []);
+
+  const schedulePreviewMetadataComputation = useCallback(
+    (
+      alignedSourceLines: string[],
+      alignedTargetLines: string[],
+      alignedSourcePresent: boolean[],
+      alignedTargetPresent: boolean[]
+    ) => {
+      const sequence = previewMetadataSequenceRef.current + 1;
+      previewMetadataSequenceRef.current = sequence;
+      clearPreviewMetadataTimer();
+      previewMetadataTimerRef.current = window.setTimeout(() => {
+        previewMetadataTimerRef.current = null;
+        void invoke<LineDiffComparisonResult>('preview_aligned_diff_state', {
+          alignedSourceLines,
+          alignedTargetLines,
+          alignedSourcePresent,
+          alignedTargetPresent,
+        })
+          .then((result) => {
+            if (previewMetadataSequenceRef.current !== sequence) {
+              return;
+            }
+            applyPreviewMetadataResult(result);
+          })
+          .catch((error) => {
+            if (previewMetadataSequenceRef.current !== sequence) {
+              return;
+            }
+            console.error('Failed to preview aligned diff metadata:', error);
+          });
+      }, PREVIEW_METADATA_DEBOUNCE_MS);
+    },
+    [applyPreviewMetadataResult, clearPreviewMetadataTimer]
+  );
+
+  const invalidatePreviewMetadataComputation = useCallback(() => {
+    previewMetadataSequenceRef.current = previewMetadataSequenceRef.current + 1;
+    clearPreviewMetadataTimer();
+  }, [clearPreviewMetadataTimer]);
+
   const applyBackendDiffResult = useCallback(
     (result: LineDiffComparisonResult) => {
+      invalidatePreviewMetadataComputation();
       capturePanelScrollSnapshot();
       const focusedCaret = captureFocusedCaretSnapshot();
       const normalized = normalizeLineDiffResult(result);
@@ -1025,7 +1198,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         });
       }
     },
-    [captureFocusedCaretSnapshot, capturePanelScrollSnapshot, tab.id, updateTab]
+    [
+      captureFocusedCaretSnapshot,
+      capturePanelScrollSnapshot,
+      invalidatePreviewMetadataComputation,
+      tab.id,
+      updateTab,
+    ]
   );
 
   const scheduleDeferredBackendApply = useCallback(() => {
@@ -1280,6 +1459,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       if (deferredBackendApplyTimerRef.current !== null) {
         window.clearTimeout(deferredBackendApplyTimerRef.current);
+      }
+
+      if (previewMetadataTimerRef.current !== null) {
+        window.clearTimeout(previewMetadataTimerRef.current);
       }
 
       if (sideCommitTimerRef.current.source !== null) {
@@ -1683,6 +1866,35 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         const nextSourcePresent = isSourceSide ? nextActivePresent : nextOppositePresent;
         const nextTargetLines = isSourceSide ? nextOppositeLines : nextActiveLines;
         const nextTargetPresent = isSourceSide ? nextOppositePresent : nextActivePresent;
+        const caretRowIndex = getLineIndexFromTextOffset(nextText, selectionStart);
+        const shouldOffloadMetadata = shouldOffloadDiffMetadataComputation(nextAlignedCount);
+
+        if (shouldOffloadMetadata) {
+          pendingCaretRestoreRef.current = {
+            side,
+            rowIndex: Math.max(0, Math.min(caretRowIndex, nextAlignedCount - 1)),
+            lineNumber: 0,
+            selectionStart,
+            selectionEnd,
+          };
+
+          const nextState = {
+            ...previous,
+            alignedSourceLines: nextSourceLines,
+            alignedTargetLines: nextTargetLines,
+            alignedSourcePresent: nextSourcePresent,
+            alignedTargetPresent: nextTargetPresent,
+            alignedLineCount: nextAlignedCount,
+          };
+          lineDiffRef.current = nextState;
+          schedulePreviewMetadataComputation(
+            nextSourceLines,
+            nextTargetLines,
+            nextSourcePresent,
+            nextTargetPresent
+          );
+          return nextState;
+        }
 
         const metadata = buildAlignedDiffMetadata(
           nextSourceLines,
@@ -1690,11 +1902,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           nextSourcePresent,
           nextTargetPresent
         );
-
-        const lineNumbers = buildLineNumberByAlignedRow(
-          isSourceSide ? nextSourcePresent : nextTargetPresent
-        );
-        const caretRowIndex = getLineIndexFromTextOffset(nextText, selectionStart);
+        const lineNumbers = isSourceSide
+          ? metadata.sourceLineNumbersByAlignedRow
+          : metadata.targetLineNumbersByAlignedRow;
         pendingCaretRestoreRef.current = {
           side,
           rowIndex: Math.max(0, Math.min(caretRowIndex, metadata.alignedLineCount - 1)),
@@ -1717,7 +1927,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       scheduleSideCommit(side);
     },
-    [capturePanelScrollSnapshot, scheduleSideCommit]
+    [capturePanelScrollSnapshot, schedulePreviewMetadataComputation, scheduleSideCommit]
   );
 
   const handlePanelPasteText = useCallback(
@@ -2011,6 +2221,26 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           return previous;
         }
 
+        const nextAlignedCount = Math.max(1, nextSourceLines.length, nextTargetLines.length);
+        if (shouldOffloadDiffMetadataComputation(nextAlignedCount)) {
+          const nextState = {
+            ...previous,
+            alignedSourceLines: nextSourceLines,
+            alignedTargetLines: nextTargetLines,
+            alignedSourcePresent: nextSourcePresent,
+            alignedTargetPresent: nextTargetPresent,
+            alignedLineCount: nextAlignedCount,
+          };
+          lineDiffRef.current = nextState;
+          schedulePreviewMetadataComputation(
+            nextSourceLines,
+            nextTargetLines,
+            nextSourcePresent,
+            nextTargetPresent
+          );
+          return nextState;
+        }
+
         const metadata = buildAlignedDiffMetadata(
           nextSourceLines,
           nextTargetLines,
@@ -2034,7 +2264,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         scheduleSideCommit(targetSide);
       }
     },
-    [capturePanelScrollSnapshot, scheduleSideCommit, sourceTab, targetTab]
+    [capturePanelScrollSnapshot, schedulePreviewMetadataComputation, scheduleSideCommit, sourceTab, targetTab]
   );
 
   const runClipboardExecCommand = useCallback((command: 'copy' | 'cut' | 'paste') => {
@@ -2206,13 +2436,37 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [lineDiff.diffLineNumbers]
   );
   const diffRowIndexes = useMemo(
-    () => diffLineNumbers
-      .map((lineNumber) => lineNumber - 1)
-      .filter((rowIndex) => rowIndex >= 0 && rowIndex < alignedLineCount),
-    [alignedLineCount, diffLineNumbers]
+    () => {
+      const candidate = lineDiff.diffRowIndexes;
+      if (Array.isArray(candidate) && candidate.length > 0) {
+        return candidate
+          .map((rowIndex) => Math.floor(rowIndex))
+          .filter((rowIndex) => Number.isFinite(rowIndex) && rowIndex >= 0 && rowIndex < alignedLineCount);
+      }
+
+      return diffLineNumbers
+        .map((lineNumber) => lineNumber - 1)
+        .filter((rowIndex) => rowIndex >= 0 && rowIndex < alignedLineCount);
+    },
+    [alignedLineCount, diffLineNumbers, lineDiff.diffRowIndexes]
   );
   const alignedDiffKindByLine = useMemo(() => {
     const result = new Map<number, DiffLineKind>();
+    const normalizedKinds = Array.isArray(lineDiff.alignedDiffKinds)
+      ? ensureDiffKindArray(lineDiff.alignedDiffKinds, alignedLineCount)
+      : [];
+
+    if (normalizedKinds.length > 0) {
+      for (let index = 0; index < alignedLineCount; index += 1) {
+        const kind = normalizedKinds[index];
+        if (!kind) {
+          continue;
+        }
+        result.set(index + 1, kind);
+      }
+
+      return result;
+    }
 
     for (const lineNumber of diffLineNumbers) {
       const index = lineNumber - 1;
@@ -2238,18 +2492,37 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   }, [
     alignedLineCount,
     diffLineNumbers,
+    lineDiff.alignedDiffKinds,
     lineDiff.alignedSourceLines,
     lineDiff.alignedSourcePresent,
     lineDiff.alignedTargetLines,
     lineDiff.alignedTargetPresent,
   ]);
   const sourceLineNumbers = useMemo(
-    () => buildLineNumberByAlignedRow(lineDiff.alignedSourcePresent),
-    [lineDiff.alignedSourcePresent]
+    () => {
+      if (
+        Array.isArray(lineDiff.sourceLineNumbersByAlignedRow)
+        && lineDiff.sourceLineNumbersByAlignedRow.length === lineDiff.alignedSourcePresent.length
+      ) {
+        return lineDiff.sourceLineNumbersByAlignedRow;
+      }
+
+      return buildLineNumberByAlignedRow(lineDiff.alignedSourcePresent);
+    },
+    [lineDiff.alignedSourcePresent, lineDiff.sourceLineNumbersByAlignedRow]
   );
   const targetLineNumbers = useMemo(
-    () => buildLineNumberByAlignedRow(lineDiff.alignedTargetPresent),
-    [lineDiff.alignedTargetPresent]
+    () => {
+      if (
+        Array.isArray(lineDiff.targetLineNumbersByAlignedRow)
+        && lineDiff.targetLineNumbersByAlignedRow.length === lineDiff.alignedTargetPresent.length
+      ) {
+        return lineDiff.targetLineNumbersByAlignedRow;
+      }
+
+      return buildLineNumberByAlignedRow(lineDiff.alignedTargetPresent);
+    },
+    [lineDiff.alignedTargetPresent, lineDiff.targetLineNumbersByAlignedRow]
   );
 
   const rowHeightPx = Math.max(22, Math.round(settings.fontSize * 1.6));
@@ -3407,4 +3680,3 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     </div>
   );
 }
-

@@ -192,6 +192,13 @@ describe('diffEditorTestUtils clamp helpers', () => {
   });
 });
 
+describe('diffEditorTestUtils.shouldOffloadDiffMetadataComputation', () => {
+  it('switches to backend offload only when aligned rows exceed threshold', () => {
+    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1200)).toBe(false);
+    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1201)).toBe(true);
+  });
+});
+
 describe('diffEditorTestUtils.normalizeTextToLines', () => {
   it('normalizes CRLF and CR to LF', () => {
     expect(diffEditorTestUtils.normalizeTextToLines('a\r\nb\rc')).toEqual(['a', 'b', 'c']);
@@ -217,6 +224,31 @@ describe('diffEditorTestUtils.ensureBooleanArray', () => {
   });
 });
 
+describe('diffEditorTestUtils.ensureLineNumberArray', () => {
+  it('normalizes non-finite and non-positive values', () => {
+    expect(diffEditorTestUtils.ensureLineNumberArray([1, 2.8, -1, Number.NaN, '3'], 5)).toEqual([
+      1,
+      2,
+      0,
+      0,
+      0,
+    ]);
+    expect(diffEditorTestUtils.ensureLineNumberArray(null, 3)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('diffEditorTestUtils.ensureDiffKindArray', () => {
+  it('normalizes unknown values into nullable diff-kind array', () => {
+    expect(diffEditorTestUtils.ensureDiffKindArray(['insert', 'delete', 'x', null], 4)).toEqual([
+      'insert',
+      'delete',
+      null,
+      null,
+    ]);
+    expect(diffEditorTestUtils.ensureDiffKindArray(undefined, 2)).toEqual([null, null]);
+  });
+});
+
 describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
   it('pads line arrays and keeps metadata in safe defaults', () => {
     const result = diffEditorTestUtils.normalizeLineDiffResult({
@@ -235,6 +267,7 @@ describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
     expect(result.alignedSourceLines).toEqual(['a', '']);
     expect(result.alignedTargetLines).toEqual(['a', 'b']);
     expect(result.alignedSourcePresent).toEqual([true, false]);
+    expect(result.alignedDiffKinds).toEqual([null, 'modify']);
     expect(result.sourceLineCount).toBe(1);
     expect(result.targetLineCount).toBe(1);
     expect(result.alignedLineCount).toBe(2);
@@ -330,6 +363,9 @@ describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
     expect(result.diffLineNumbers).toEqual([1]);
     expect(result.sourceDiffLineNumbers).toEqual([]);
     expect(result.targetDiffLineNumbers).toEqual([1]);
+    expect(result.sourceLineNumbersByAlignedRow).toEqual([0, 1]);
+    expect(result.targetLineNumbersByAlignedRow).toEqual([1, 2]);
+    expect(result.diffRowIndexes).toEqual([0]);
     expect(result.sourceLineCount).toBe(1);
     expect(result.targetLineCount).toBe(2);
     expect(result.alignedLineCount).toBe(2);
@@ -346,6 +382,7 @@ describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
     expect(result.diffLineNumbers).toEqual([1]);
     expect(result.sourceDiffLineNumbers).toEqual([1]);
     expect(result.targetDiffLineNumbers).toEqual([]);
+    expect(result.alignedDiffKinds).toEqual(['delete']);
   });
 
   it('treats empty-line insertion as diff when row presence differs', () => {
@@ -359,6 +396,7 @@ describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
     expect(result.diffLineNumbers).toEqual([2]);
     expect(result.sourceDiffLineNumbers).toEqual([]);
     expect(result.targetDiffLineNumbers).toEqual([2]);
+    expect(result.alignedDiffKinds).toEqual([null, 'insert', null]);
   });
 });
 
@@ -605,6 +643,26 @@ describe('DiffEditor component', () => {
           }
         }
         return matchedLineNumbers;
+      }
+      if (command === 'preview_aligned_diff_state') {
+        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+          ? params.alignedSourceLines.map((item) => String(item ?? ''))
+          : ['left-1', 'left-2'];
+        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+          ? params.alignedTargetLines.map((item) => String(item ?? ''))
+          : ['right-1', 'right-2'];
+        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
+          ? params.alignedSourcePresent.map((item) => item === true)
+          : [true, true];
+        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
+          ? params.alignedTargetPresent.map((item) => item === true)
+          : [true, true];
+        return buildLineDiffResponse(
+          alignedSourceLines,
+          alignedTargetLines,
+          alignedSourcePresent,
+          alignedTargetPresent
+        );
       }
       if (command === 'find_matching_pair_offsets') {
         return null;

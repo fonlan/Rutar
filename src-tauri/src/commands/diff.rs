@@ -11,9 +11,21 @@ pub struct LineDiffResult {
     pub diff_line_numbers: Vec<usize>,
     pub source_diff_line_numbers: Vec<usize>,
     pub target_diff_line_numbers: Vec<usize>,
+    pub aligned_diff_kinds: Vec<Option<AlignedDiffKind>>,
+    pub source_line_numbers_by_aligned_row: Vec<usize>,
+    pub target_line_numbers_by_aligned_row: Vec<usize>,
+    pub diff_row_indexes: Vec<usize>,
     pub source_line_count: usize,
     pub target_line_count: usize,
     pub aligned_line_count: usize,
+}
+
+#[derive(serde::Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AlignedDiffKind {
+    Insert,
+    Delete,
+    Modify,
 }
 
 #[derive(serde::Serialize)]
@@ -123,6 +135,160 @@ fn extract_actual_lines_from_aligned(aligned_lines: &[String], present: &[bool])
     }
 
     actual_lines
+}
+
+fn build_line_numbers_by_aligned_row(present: &[bool]) -> Vec<usize> {
+    let mut line_number = 0usize;
+    let mut result = Vec::with_capacity(present.len());
+
+    for is_present in present {
+        if *is_present {
+            line_number = line_number.saturating_add(1);
+            result.push(line_number);
+        } else {
+            result.push(0);
+        }
+    }
+
+    result
+}
+
+fn build_diff_row_indexes(diff_line_numbers: &[usize]) -> Vec<usize> {
+    diff_line_numbers
+        .iter()
+        .filter_map(|line_number| line_number.checked_sub(1))
+        .collect()
+}
+
+fn resolve_aligned_diff_kind(
+    source_present: bool,
+    target_present: bool,
+    source_line: &str,
+    target_line: &str,
+) -> Option<AlignedDiffKind> {
+    if !source_present && target_present {
+        return Some(AlignedDiffKind::Insert);
+    }
+    if source_present && !target_present {
+        return Some(AlignedDiffKind::Delete);
+    }
+    if source_line != target_line {
+        return Some(AlignedDiffKind::Modify);
+    }
+    None
+}
+
+fn build_aligned_diff_kinds(
+    aligned_source_lines: &[String],
+    aligned_target_lines: &[String],
+    aligned_source_present: &[bool],
+    aligned_target_present: &[bool],
+) -> Vec<Option<AlignedDiffKind>> {
+    let aligned_line_count = aligned_source_lines
+        .len()
+        .max(aligned_target_lines.len())
+        .max(aligned_source_present.len())
+        .max(aligned_target_present.len())
+        .max(1);
+    let mut result = Vec::with_capacity(aligned_line_count);
+
+    for index in 0..aligned_line_count {
+        let source_present = aligned_source_present.get(index).copied().unwrap_or(false);
+        let target_present = aligned_target_present.get(index).copied().unwrap_or(false);
+        let source_line = aligned_source_lines
+            .get(index)
+            .map(String::as_str)
+            .unwrap_or("");
+        let target_line = aligned_target_lines
+            .get(index)
+            .map(String::as_str)
+            .unwrap_or("");
+        result.push(resolve_aligned_diff_kind(
+            source_present,
+            target_present,
+            source_line,
+            target_line,
+        ));
+    }
+
+    result
+}
+
+fn build_line_diff_result_from_aligned(
+    mut aligned_source_lines: Vec<String>,
+    mut aligned_target_lines: Vec<String>,
+    mut aligned_source_present: Vec<bool>,
+    mut aligned_target_present: Vec<bool>,
+) -> LineDiffResult {
+    let aligned_line_count = aligned_source_lines
+        .len()
+        .max(aligned_target_lines.len())
+        .max(aligned_source_present.len())
+        .max(aligned_target_present.len())
+        .max(1);
+
+    aligned_source_lines.resize(aligned_line_count, String::new());
+    aligned_target_lines.resize(aligned_line_count, String::new());
+    aligned_source_present.resize(aligned_line_count, false);
+    aligned_target_present.resize(aligned_line_count, false);
+
+    let mut diff_line_numbers = Vec::new();
+    let mut source_diff_line_numbers = Vec::new();
+    let mut target_diff_line_numbers = Vec::new();
+    let mut source_line_count = 0usize;
+    let mut target_line_count = 0usize;
+    let aligned_diff_kinds = build_aligned_diff_kinds(
+        aligned_source_lines.as_slice(),
+        aligned_target_lines.as_slice(),
+        aligned_source_present.as_slice(),
+        aligned_target_present.as_slice(),
+    );
+
+    for (index, diff_kind) in aligned_diff_kinds.iter().enumerate() {
+        let source_present = aligned_source_present[index];
+        let target_present = aligned_target_present[index];
+
+        if source_present {
+            source_line_count = source_line_count.saturating_add(1);
+        }
+        if target_present {
+            target_line_count = target_line_count.saturating_add(1);
+        }
+
+        if diff_kind.is_none() {
+            continue;
+        }
+
+        let line_number = index.saturating_add(1);
+        diff_line_numbers.push(line_number);
+        if source_present {
+            source_diff_line_numbers.push(line_number);
+        }
+        if target_present {
+            target_diff_line_numbers.push(line_number);
+        }
+    }
+
+    LineDiffResult {
+        source_line_count: source_line_count.max(1),
+        target_line_count: target_line_count.max(1),
+        aligned_line_count,
+        aligned_diff_kinds,
+        source_line_numbers_by_aligned_row: build_line_numbers_by_aligned_row(
+            aligned_source_present.as_slice(),
+        ),
+        target_line_numbers_by_aligned_row: build_line_numbers_by_aligned_row(
+            aligned_target_present.as_slice(),
+        ),
+        diff_row_indexes: build_diff_row_indexes(diff_line_numbers.as_slice()),
+        aligned_source_lines,
+        aligned_target_lines,
+        aligned_source_present,
+        aligned_target_present,
+        diff_line_numbers,
+        source_diff_line_numbers,
+        target_diff_line_numbers,
+    }
 }
 
 fn serialize_actual_lines(actual_lines: &[String], trailing_newline: bool) -> String {
@@ -327,10 +493,29 @@ fn build_line_diff_result(source_lines: Vec<String>, target_lines: Vec<String>) 
     target_diff_line_numbers.sort_unstable();
     target_diff_line_numbers.dedup();
 
+    let source_line_count = source_lines.len();
+    let target_line_count = target_lines.len();
+    let aligned_line_count = aligned_source_lines.len();
+    let aligned_diff_kinds = build_aligned_diff_kinds(
+        aligned_source_lines.as_slice(),
+        aligned_target_lines.as_slice(),
+        aligned_source_present.as_slice(),
+        aligned_target_present.as_slice(),
+    );
+    let source_line_numbers_by_aligned_row =
+        build_line_numbers_by_aligned_row(aligned_source_present.as_slice());
+    let target_line_numbers_by_aligned_row =
+        build_line_numbers_by_aligned_row(aligned_target_present.as_slice());
+    let diff_row_indexes = build_diff_row_indexes(diff_line_numbers.as_slice());
+
     LineDiffResult {
-        source_line_count: source_lines.len(),
-        target_line_count: target_lines.len(),
-        aligned_line_count: aligned_source_lines.len(),
+        source_line_count,
+        target_line_count,
+        aligned_line_count,
+        aligned_diff_kinds,
+        source_line_numbers_by_aligned_row,
+        target_line_numbers_by_aligned_row,
+        diff_row_indexes,
         aligned_source_lines,
         aligned_target_lines,
         aligned_source_present,
@@ -368,6 +553,24 @@ pub(super) async fn search_diff_panel_line_matches_impl(
 
     tauri::async_runtime::spawn_blocking(move || {
         find_line_numbers_by_keyword(lines.as_slice(), normalized_keyword.as_str())
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+pub(super) async fn preview_aligned_diff_state_impl(
+    aligned_source_lines: Vec<String>,
+    aligned_target_lines: Vec<String>,
+    aligned_source_present: Vec<bool>,
+    aligned_target_present: Vec<bool>,
+) -> Result<LineDiffResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        build_line_diff_result_from_aligned(
+            aligned_source_lines,
+            aligned_target_lines,
+            aligned_source_present,
+            aligned_target_present,
+        )
     })
     .await
     .map_err(|error| error.to_string())
@@ -431,9 +634,10 @@ pub(super) async fn apply_aligned_diff_edit_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_serialized_text_to_document, build_line_diff_result, compute_text_patch,
-        extract_actual_lines_from_aligned, find_line_numbers_by_keyword, normalize_rope_line_text,
-        serialize_actual_lines,
+        apply_serialized_text_to_document, build_line_diff_result,
+        build_line_diff_result_from_aligned, compute_text_patch, extract_actual_lines_from_aligned,
+        find_line_numbers_by_keyword, normalize_rope_line_text, serialize_actual_lines,
+        AlignedDiffKind,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -489,6 +693,10 @@ mod tests {
         assert!(result.diff_line_numbers.is_empty());
         assert!(result.source_diff_line_numbers.is_empty());
         assert!(result.target_diff_line_numbers.is_empty());
+        assert_eq!(result.aligned_diff_kinds, vec![None, None]);
+        assert_eq!(result.source_line_numbers_by_aligned_row, vec![1, 2]);
+        assert_eq!(result.target_line_numbers_by_aligned_row, vec![1, 2]);
+        assert!(result.diff_row_indexes.is_empty());
     }
 
     #[test]
@@ -505,6 +713,13 @@ mod tests {
         assert_eq!(result.diff_line_numbers, vec![2]);
         assert!(result.source_diff_line_numbers.is_empty());
         assert_eq!(result.target_diff_line_numbers, vec![2]);
+        assert_eq!(
+            result.aligned_diff_kinds,
+            vec![None, Some(AlignedDiffKind::Insert), None]
+        );
+        assert_eq!(result.source_line_numbers_by_aligned_row, vec![1, 0, 2]);
+        assert_eq!(result.target_line_numbers_by_aligned_row, vec![1, 2, 3]);
+        assert_eq!(result.diff_row_indexes, vec![1]);
     }
 
     #[test]
@@ -521,6 +736,11 @@ mod tests {
         assert_eq!(result.diff_line_numbers, vec![2]);
         assert!(result.source_diff_line_numbers.is_empty());
         assert_eq!(result.target_diff_line_numbers, vec![2]);
+        assert_eq!(
+            result.aligned_diff_kinds,
+            vec![None, Some(AlignedDiffKind::Insert), None]
+        );
+        assert_eq!(result.diff_row_indexes, vec![1]);
     }
 
     #[test]
@@ -537,6 +757,13 @@ mod tests {
         assert_eq!(result.diff_line_numbers, vec![2]);
         assert_eq!(result.source_diff_line_numbers, vec![2]);
         assert!(result.target_diff_line_numbers.is_empty());
+        assert_eq!(
+            result.aligned_diff_kinds,
+            vec![None, Some(AlignedDiffKind::Delete), None]
+        );
+        assert_eq!(result.source_line_numbers_by_aligned_row, vec![1, 2, 3]);
+        assert_eq!(result.target_line_numbers_by_aligned_row, vec![1, 0, 2]);
+        assert_eq!(result.diff_row_indexes, vec![1]);
     }
 
     #[test]
@@ -551,6 +778,33 @@ mod tests {
         assert_eq!(result.aligned_source_present, vec![true]);
         assert_eq!(result.aligned_target_present, vec![true]);
         assert!(result.diff_line_numbers.is_empty());
+        assert_eq!(result.aligned_diff_kinds, vec![None]);
+        assert_eq!(result.source_line_numbers_by_aligned_row, vec![1]);
+        assert_eq!(result.target_line_numbers_by_aligned_row, vec![1]);
+        assert!(result.diff_row_indexes.is_empty());
+    }
+
+    #[test]
+    fn build_line_diff_result_from_aligned_should_rebuild_metadata_and_row_maps() {
+        let result = build_line_diff_result_from_aligned(
+            vec!["same".to_string(), "".to_string(), "tail".to_string()],
+            vec!["same".to_string(), "insert".to_string(), "tail".to_string()],
+            vec![true, false, true],
+            vec![true, true, true],
+        );
+
+        assert_eq!(result.diff_line_numbers, vec![2]);
+        assert!(result.source_diff_line_numbers.is_empty());
+        assert_eq!(result.target_diff_line_numbers, vec![2]);
+        assert_eq!(
+            result.aligned_diff_kinds,
+            vec![None, Some(AlignedDiffKind::Insert), None]
+        );
+        assert_eq!(result.source_line_count, 2);
+        assert_eq!(result.target_line_count, 3);
+        assert_eq!(result.source_line_numbers_by_aligned_row, vec![1, 0, 2]);
+        assert_eq!(result.target_line_numbers_by_aligned_row, vec![1, 2, 3]);
+        assert_eq!(result.diff_row_indexes, vec![1]);
     }
 
     #[test]

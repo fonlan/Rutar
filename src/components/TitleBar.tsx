@@ -81,6 +81,10 @@ interface LineDiffComparisonResult {
     diffLineNumbers: number[];
     sourceDiffLineNumbers: number[];
     targetDiffLineNumbers: number[];
+    alignedDiffKinds?: Array<'insert' | 'delete' | 'modify' | null>;
+    sourceLineNumbersByAlignedRow?: number[];
+    targetLineNumbersByAlignedRow?: number[];
+    diffRowIndexes?: number[];
     sourceLineCount: number;
     targetLineCount: number;
     alignedLineCount: number;
@@ -512,6 +516,7 @@ export function TitleBar() {
                     diffLineNumbers: lineDiff.diffLineNumbers,
                     sourceDiffLineNumbers: lineDiff.sourceDiffLineNumbers,
                     targetDiffLineNumbers: lineDiff.targetDiffLineNumbers,
+                    alignedDiffKinds: lineDiff.alignedDiffKinds,
                     sourceLineCount: Math.max(1, lineDiff.sourceLineCount),
                     targetLineCount: Math.max(1, lineDiff.targetLineCount),
                     alignedLineCount: Math.max(1, lineDiff.alignedLineCount),
