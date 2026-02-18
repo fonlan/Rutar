@@ -1743,6 +1743,143 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("jumps to filter-step batch start line when target is outside loaded filter results", async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      const args = payload as Record<string, unknown> | undefined;
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "filter_count_in_document") {
+        return {
+          matchedLines: 2,
+          documentVersion: 1,
+        };
+      }
+      if (command === "filter_in_document_chunk") {
+        if (
+          args?.resultFilterKeyword === "line-filter" &&
+          (args?.startLine as number | undefined) === 19
+        ) {
+          return {
+            matches: [
+              {
+                line: 20,
+                column: 1,
+                length: 4,
+                lineText: "todo target",
+                ruleIndex: 0,
+                style: {
+                  backgroundColor: "#fff7a8",
+                  textColor: "#1f2937",
+                  bold: false,
+                  italic: false,
+                  applyTo: "line",
+                },
+                ranges: [{ startChar: 0, endChar: 4 }],
+              },
+            ],
+            documentVersion: 1,
+            nextLine: null,
+          };
+        }
+
+        return {
+          matches: [
+            {
+              line: 2,
+              column: 1,
+              length: 4,
+              lineText: "todo item",
+              ruleIndex: 0,
+              style: {
+                backgroundColor: "#fff7a8",
+                textColor: "#1f2937",
+                bold: false,
+                italic: false,
+                applyTo: "line",
+              },
+              ranges: [{ startChar: 0, endChar: 4 }],
+            },
+          ],
+          documentVersion: 1,
+          nextLine: null,
+        };
+      }
+      if (command === "step_result_filter_search_in_filter_document") {
+        return {
+          targetMatch: {
+            line: 20,
+            column: 1,
+            length: 4,
+            lineText: "todo target",
+            ruleIndex: 0,
+            style: {
+              backgroundColor: "#fff7a8",
+              textColor: "#1f2937",
+              bold: false,
+              italic: false,
+              applyTo: "line",
+            },
+            ranges: [{ startChar: 0, endChar: 4 }],
+          },
+          documentVersion: 1,
+          batchStartLine: 19,
+          targetIndexInBatch: 0,
+          totalMatchedLines: 2,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
+
+    const resultFilterInput = await screen.findByPlaceholderText("Search in all results");
+    fireEvent.change(resultFilterInput, {
+      target: { value: "line-filter" },
+    });
+
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Filter" }));
+
+    await waitFor(() => {
+      expect(within(controlContainer).getByRole("button", { name: "Next" })).not.toBeDisabled();
+    });
+
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Next" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "filter_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          resultFilterKeyword: "line-filter",
+          startLine: 19,
+        })
+      );
+    });
+  });
+
   it("cancels pending next-step loading when next is clicked again during next-step run", async () => {
     let resolveLoadMore:
       | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
@@ -1763,7 +1900,7 @@ describe("SearchReplacePanel", () => {
       if (command === "search_in_document_chunk") {
         if (
           args?.resultFilterKeyword === "line-filter" &&
-          (args?.startOffset as number | undefined) === 10
+          (args?.startOffset as number | undefined) === 100
         ) {
           return await new Promise((resolve) => {
             resolveLoadMore = resolve as (value: {
@@ -1788,7 +1925,7 @@ describe("SearchReplacePanel", () => {
             },
           ],
           documentVersion: 1,
-          nextOffset: 10,
+          nextOffset: null,
         };
       }
       if (command === "step_result_filter_search_in_document") {
@@ -1840,7 +1977,8 @@ describe("SearchReplacePanel", () => {
     fireEvent.change(resultFilterInput, {
       target: { value: "line-filter" },
     });
-    fireEvent.keyDown(resultFilterInput, { key: "Enter" });
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Filter" }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
@@ -1854,7 +1992,6 @@ describe("SearchReplacePanel", () => {
       );
     });
 
-    const controlContainer = resultFilterInput.parentElement as HTMLElement;
     const nextButton = within(controlContainer).getByRole("button", { name: "Next" });
     fireEvent.click(nextButton);
 
@@ -1912,7 +2049,7 @@ describe("SearchReplacePanel", () => {
       if (command === "search_in_document_chunk") {
         if (
           args?.resultFilterKeyword === "line-filter" &&
-          (args?.startOffset as number | undefined) === 10
+          (args?.startOffset as number | undefined) === 100
         ) {
           return await new Promise((resolve) => {
             resolveLoadMore = resolve as (value: {
@@ -1937,7 +2074,7 @@ describe("SearchReplacePanel", () => {
             },
           ],
           documentVersion: 1,
-          nextOffset: 10,
+          nextOffset: null,
         };
       }
       if (command === "step_result_filter_search_in_document") {
@@ -1989,7 +2126,8 @@ describe("SearchReplacePanel", () => {
     fireEvent.change(resultFilterInput, {
       target: { value: "line-filter" },
     });
-    fireEvent.keyDown(resultFilterInput, { key: "Enter" });
+    const controlContainer = resultFilterInput.parentElement as HTMLElement;
+    fireEvent.click(within(controlContainer).getByRole("button", { name: "Filter" }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
@@ -2003,7 +2141,6 @@ describe("SearchReplacePanel", () => {
       );
     });
 
-    const controlContainer = resultFilterInput.parentElement as HTMLElement;
     const previousButton = within(controlContainer).getByRole("button", { name: "Previous" });
     fireEvent.click(previousButton);
 
