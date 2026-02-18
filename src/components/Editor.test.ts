@@ -149,6 +149,45 @@ describe('editorTestUtils text normalization helpers', () => {
   });
 });
 
+describe('editorTestUtils hyperlink helpers', () => {
+  it('extracts hyperlink ranges in single line text', () => {
+    const text = 'see https://example.com/docs), and https://rutar.dev/path';
+    expect(editorTestUtils.getHttpUrlRangesInLine(text)).toEqual([
+      { start: 4, end: 28 },
+      { start: 35, end: 57 },
+    ]);
+  });
+
+  it('extracts http/https url by text offset', () => {
+    const text = 'see https://example.com/docs?a=1 and https://rutar.dev';
+    expect(editorTestUtils.getHttpUrlAtTextOffset(text, text.indexOf('example'))).toBe(
+      'https://example.com/docs?a=1'
+    );
+    expect(editorTestUtils.getHttpUrlAtTextOffset(text, text.indexOf('rutar'))).toBe(
+      'https://rutar.dev'
+    );
+  });
+
+  it('trims trailing punctuation and rejects non-http schemes', () => {
+    const text = 'read https://example.com/path), or ftp://server.local';
+    expect(editorTestUtils.getHttpUrlAtTextOffset(text, text.indexOf('example'))).toBe(
+      'https://example.com/path'
+    );
+    expect(editorTestUtils.getHttpUrlAtTextOffset(text, text.indexOf('ftp'))).toBeNull();
+    expect(editorTestUtils.trimHttpUrlCandidate('https://example.com/test...')).toBe(
+      'https://example.com/test'
+    );
+  });
+
+  it('combines class names safely', () => {
+    expect(editorTestUtils.appendClassName('', 'underline')).toBe('underline');
+    expect(editorTestUtils.appendClassName('token-string', '')).toBe('token-string');
+    expect(editorTestUtils.appendClassName('token-string', 'underline')).toBe(
+      'token-string underline'
+    );
+  });
+});
+
 describe('editorTestUtils offset and coordinate helpers', () => {
   it('maps logical offset into safe input-layer offset', () => {
     expect(editorTestUtils.mapLogicalOffsetToInputLayerOffset('abc', -1)).toBe(0);

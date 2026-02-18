@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Editor } from './Editor';
 import { type FileTab, useStore } from '@/store/useStore';
 
@@ -11,6 +12,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
   readText: vi.fn(async () => ''),
+}));
+
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: vi.fn(async () => undefined),
 }));
 
 vi.mock('@/hooks/useResizeObserver', () => ({
@@ -23,6 +28,7 @@ vi.mock('@/hooks/useResizeObserver', () => ({
 
 const invokeMock = vi.mocked(invoke);
 const readClipboardTextMock = vi.mocked(readClipboardText);
+const openUrlMock = vi.mocked(openUrl);
 
 function restoreProperty(
   target: object,
@@ -2921,6 +2927,136 @@ describe('Editor component', () => {
 
     expect(textarea.selectionStart).toBe(0);
     expect(textarea.selectionEnd).toBe(textarea.value.length);
+  });
+
+  it('opens http hyperlink on ctrl+left click', async () => {
+    const tab = createTab({ id: 'tab-link-open-ctrl-click' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      ctrlKey: true,
+      clientX: 0,
+      clientY: 0,
+    });
+
+    await waitFor(() => {
+      expect(openUrlMock).toHaveBeenCalledWith('https://example.com/docs');
+    });
+  });
+
+  it('renders detected http hyperlinks with underline and blue text style', async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'visit https://example.com/docs\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, () => [
+          {
+            text: 'visit https://example.com/docs',
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return ['visit https://example.com/docs'];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 1;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 1,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const tab = createTab({ id: 'tab-link-underline', lineCount: 1 });
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      const underlinedLink = Array.from(container.querySelectorAll('span')).find(
+        (element) =>
+          element.textContent === 'https://example.com/docs' &&
+          element.className.includes('underline') &&
+          element.className.includes('text-sky-600')
+      );
+      expect(underlinedLink).toBeTruthy();
+    });
+  });
+
+  it('shows hand cursor and hover hint when hovering detected hyperlink, then resets on leave', async () => {
+    const tab = createTab({ id: 'tab-link-hover-cursor' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+    fireEvent.pointerMove(textarea, {
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('pointer');
+    expect(textarea.title).toBe('Ctrl+左键打开');
+
+    textarea.value = 'plain text\nbeta\n';
+    fireEvent.pointerMove(textarea, {
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('');
+    expect(textarea.title).toBe('');
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+    fireEvent.pointerMove(textarea, {
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('pointer');
+    expect(textarea.title).toBe('Ctrl+左键打开');
+    fireEvent.pointerLeave(textarea);
+    expect(textarea.style.cursor).toBe('');
+    expect(textarea.title).toBe('');
+  });
+
+  it('does not open hyperlink on regular left click', async () => {
+    const tab = createTab({ id: 'tab-link-open-regular-click' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      clientX: 0,
+      clientY: 0,
+    });
+
+    await waitFor(() => {
+      expect(openUrlMock).not.toHaveBeenCalled();
+    });
   });
 
   it('pastes text from clipboard plugin without falling back to execCommand', async () => {

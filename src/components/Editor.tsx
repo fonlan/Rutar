@@ -2,6 +2,7 @@
 import { VariableSizeList as List } from 'react-window';
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
@@ -163,6 +164,11 @@ const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
 const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
 const EMPTY_BOOKMARKS: number[] = [];
+const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
+const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
+const HYPERLINK_UNDERLINE_CLASS =
+  'underline decoration-sky-500/80 underline-offset-2 text-sky-600 dark:text-sky-300';
+const HYPERLINK_HOVER_HINT = 'Ctrl+左键打开';
 
 function isToggleLineCommentShortcut(event: {
   key: string;
@@ -859,6 +865,76 @@ function isPointerOnScrollbar(element: HTMLElement, clientX: number, clientY: nu
   return onVerticalScrollbar || onHorizontalScrollbar;
 }
 
+function trimHttpUrlCandidate(rawUrl: string) {
+  if (!rawUrl) {
+    return '';
+  }
+
+  return rawUrl.replace(HTTP_URL_TRAILING_PUNCTUATION_PATTERN, '');
+}
+
+function getHttpUrlRangesInLine(lineText: string) {
+  if (!lineText) {
+    return [];
+  }
+
+  const regex = new RegExp(HTTP_URL_PATTERN.source, 'gi');
+  const ranges: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(lineText)) !== null) {
+    const rawUrl = match[0] ?? '';
+    const trimmedUrl = trimHttpUrlCandidate(rawUrl);
+    if (!trimmedUrl) {
+      continue;
+    }
+
+    const start = match.index;
+    const end = start + trimmedUrl.length;
+    if (end <= start) {
+      continue;
+    }
+
+    ranges.push({ start, end });
+  }
+
+  return ranges;
+}
+
+function getHttpUrlAtTextOffset(text: string, offset: number) {
+  const normalizedText = normalizeLineText(text || '');
+  if (!normalizedText) {
+    return null;
+  }
+
+  const safeOffset = Math.max(0, Math.min(Math.floor(offset), normalizedText.length));
+  const lineStart = normalizedText.lastIndexOf('\n', Math.max(0, safeOffset - 1)) + 1;
+  const lineEndIndex = normalizedText.indexOf('\n', safeOffset);
+  const lineEnd = lineEndIndex === -1 ? normalizedText.length : lineEndIndex;
+  const lineText = normalizedText.slice(lineStart, lineEnd);
+  if (!lineText) {
+    return null;
+  }
+
+  const ranges = getHttpUrlRangesInLine(lineText);
+  for (const range of ranges) {
+    const matchStart = lineStart + range.start;
+    const matchEnd = lineStart + range.end;
+    if (safeOffset >= matchStart && safeOffset <= matchEnd) {
+      return lineText.slice(range.start, range.end);
+    }
+  }
+
+  return null;
+}
+
+function appendClassName(baseClassName: string, extraClassName: string) {
+  if (!extraClassName) {
+    return baseClassName;
+  }
+
+  return baseClassName ? `${baseClassName} ${extraClassName}` : extraClassName;
+}
+
 function dispatchDocumentUpdated(tabId: string) {
   window.dispatchEvent(
     new CustomEvent('rutar:document-updated', {
@@ -903,6 +979,10 @@ export const editorTestUtils = {
   writePlainTextToClipboard,
   replaceSelectionWithText,
   isPointerOnScrollbar,
+  trimHttpUrlCandidate,
+  getHttpUrlRangesInLine,
+  getHttpUrlAtTextOffset,
+  appendClassName,
   dispatchDocumentUpdated,
 };
 
@@ -1708,6 +1788,50 @@ export function Editor({
     [estimateDropOffsetForTextareaPoint]
   );
 
+  const handleEditorPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const currentElement = contentRef.current;
+      if (!currentElement || !isTextareaInputElement(currentElement)) {
+        return;
+      }
+
+      if (isPointerOnScrollbar(currentElement, event.clientX, event.clientY)) {
+        if (currentElement.style.cursor) {
+          currentElement.style.cursor = '';
+        }
+        if (currentElement.title) {
+          currentElement.title = '';
+        }
+        return;
+      }
+
+      const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
+      const targetUrl = getHttpUrlAtTextOffset(currentElement.value, pointerLogicalOffset);
+      const nextCursor = targetUrl ? 'pointer' : '';
+      const nextTitle = targetUrl ? HYPERLINK_HOVER_HINT : '';
+      if (currentElement.style.cursor !== nextCursor) {
+        currentElement.style.cursor = nextCursor;
+      }
+      if (currentElement.title !== nextTitle) {
+        currentElement.title = nextTitle;
+      }
+    },
+    [getHttpUrlAtTextOffset, resolveDropOffsetFromPointer]
+  );
+
+  const handleEditorPointerLeave = useCallback(() => {
+    if (!contentRef.current) {
+      return;
+    }
+
+    if (contentRef.current.style.cursor) {
+      contentRef.current.style.cursor = '';
+    }
+    if (contentRef.current.title) {
+      contentRef.current.title = '';
+    }
+  }, []);
+
   const handleEditorPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
@@ -1718,6 +1842,27 @@ export function Editor({
         currentElement &&
         isTextareaInputElement(currentElement) &&
         isPointerOnScrollbar(currentElement, event.clientX, event.clientY);
+
+      if (
+        currentElement &&
+        isTextareaInputElement(currentElement) &&
+        event.button === 0 &&
+        !pointerOnEditorScrollbar &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.ctrlKey || event.metaKey)
+      ) {
+        const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
+        const targetUrl = getHttpUrlAtTextOffset(getEditableText(currentElement), pointerLogicalOffset);
+        if (targetUrl) {
+          event.preventDefault();
+          event.stopPropagation();
+          void openUrl(targetUrl).catch((error) => {
+            console.error('Failed to open hyperlink from editor:', error);
+          });
+          return;
+        }
+      }
 
       if (
         currentElement &&
@@ -1860,7 +2005,11 @@ export function Editor({
       editorElement.style.userSelect = 'none';
       editorElement.style.webkitUserSelect = 'none';
     },
-    [resolveDropOffsetFromPointer, setPointerSelectionNativeHighlightMode]
+    [
+      getHttpUrlAtTextOffset,
+      resolveDropOffsetFromPointer,
+      setPointerSelectionNativeHighlightMode,
+    ]
   );
 
   const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -4274,7 +4423,8 @@ export function Editor({
       searchRange: { start: number; end: number } | null,
       pairColumns: number[],
       rectangularRange: { start: number; end: number } | null,
-      textSelectionRange: { start: number; end: number } | null
+      textSelectionRange: { start: number; end: number } | null,
+      hyperlinkRanges: Array<{ start: number; end: number }>
     ) => {
       const boundaries = new Set<number>([0, lineTextLength]);
 
@@ -4298,8 +4448,13 @@ export function Editor({
         boundaries.add(textSelectionRange.end);
       }
 
+      hyperlinkRanges.forEach((range) => {
+        boundaries.add(range.start);
+        boundaries.add(range.end);
+      });
+
       const sorted = Array.from(boundaries).sort((left, right) => left - right);
-      const segments: Array<{ start: number; end: number; className: string }> = [];
+      const segments: Array<{ start: number; end: number; className: string; isHyperlink: boolean }> = [];
 
       for (let i = 0; i < sorted.length - 1; i += 1) {
         const start = sorted[i];
@@ -4315,6 +4470,7 @@ export function Editor({
           !!rectangularRange && start >= rectangularRange.start && end <= rectangularRange.end;
         const isTextSelectionMatch =
           !!textSelectionRange && start >= textSelectionRange.start && end <= textSelectionRange.end;
+        const isHyperlink = hyperlinkRanges.some((range) => start >= range.start && end <= range.end);
 
         let className = getInlineHighlightClass(isSearchMatch, isPairMatch);
         if (isRectangularMatch) {
@@ -4333,6 +4489,7 @@ export function Editor({
           start,
           end,
           className,
+          isHyperlink,
         });
       }
 
@@ -4348,8 +4505,9 @@ export function Editor({
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
       const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
+      const hyperlinkRanges = getHttpUrlRangesInLine(safeText);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
+      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange && hyperlinkRanges.length === 0) {
         return renderPlainLine(safeText);
       }
 
@@ -4358,20 +4516,29 @@ export function Editor({
         range,
         pairColumns,
         rectangularRange,
-        textSelectionRange
+        textSelectionRange,
+        hyperlinkRanges
       );
 
       return (
         <span>
           {segments.map((segment, segmentIndex) => {
             const part = safeText.slice(segment.start, segment.end);
+            const partClassName = segment.isHyperlink ? HYPERLINK_UNDERLINE_CLASS : '';
             if (!segment.className) {
-              return <span key={`plain-segment-${lineNumber}-${segmentIndex}`}>{part}</span>;
+              return (
+                <span
+                  key={`plain-segment-${lineNumber}-${segmentIndex}`}
+                  className={partClassName || undefined}
+                >
+                  {part}
+                </span>
+              );
             }
 
             return (
               <mark key={`plain-segment-${lineNumber}-${segmentIndex}`} className={segment.className}>
-                {part}
+                <span className={partClassName || undefined}>{part}</span>
               </mark>
             );
           })}
@@ -4871,8 +5038,9 @@ export function Editor({
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
       const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
+      const hyperlinkRanges = getHttpUrlRangesInLine(lineText);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange) {
+      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange && hyperlinkRanges.length === 0) {
         return renderTokens(tokensArr);
       }
 
@@ -4881,7 +5049,8 @@ export function Editor({
         range,
         pairColumns,
         rectangularRange,
-        textSelectionRange
+        textSelectionRange,
+        hyperlinkRanges
       );
 
       let cursor = 0;
@@ -4933,17 +5102,21 @@ export function Editor({
           const tokenSliceStart = partStart - tokenStart;
           const tokenSliceEnd = partEnd - tokenStart;
           const partText = tokenText.slice(tokenSliceStart, tokenSliceEnd);
+          const partTypeClass = appendClassName(
+            typeClass,
+            segment.isHyperlink ? HYPERLINK_UNDERLINE_CLASS : ''
+          );
 
           if (!segment.className) {
             rendered.push(
-              <span key={`t-part-${tokenIndex}-${localPartIndex}`} className={typeClass}>
+              <span key={`t-part-${tokenIndex}-${localPartIndex}`} className={partTypeClass}>
                 {partText}
               </span>
             );
           } else {
             rendered.push(
               <mark key={`t-part-${tokenIndex}-${localPartIndex}`} className={segment.className}>
-                <span className={typeClass}>{partText}</span>
+                <span className={partTypeClass}>{partText}</span>
               </mark>
             );
           }
@@ -5774,6 +5947,8 @@ export function Editor({
               onInput={handleInput}
               onKeyDown={handleEditableKeyDown}
               onPointerDown={handleEditorPointerDown}
+              onPointerMove={handleEditorPointerMove}
+              onPointerLeave={handleEditorPointerLeave}
               onKeyUp={syncSelectionAfterInteraction}
               onPointerUp={syncSelectionAfterInteraction}
               onFocus={syncSelectionAfterInteraction}
@@ -5810,6 +5985,8 @@ export function Editor({
           onKeyDown={handleEditableKeyDown}
           onScroll={handleScroll}
           onPointerDown={handleEditorPointerDown}
+          onPointerMove={handleEditorPointerMove}
+          onPointerLeave={handleEditorPointerLeave}
           onKeyUp={syncSelectionAfterInteraction}
           onPointerUp={syncSelectionAfterInteraction}
           onFocus={syncSelectionAfterInteraction}
