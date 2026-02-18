@@ -231,6 +231,7 @@ pub fn run() {
             commands::get_document_version,
             commands::compare_documents_by_line,
             commands::search_diff_panel_line_matches,
+            commands::search_diff_panel_aligned_row_matches,
             commands::preview_aligned_diff_state,
             commands::apply_aligned_diff_edit,
             commands::get_outline,

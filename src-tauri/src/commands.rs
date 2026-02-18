@@ -274,6 +274,16 @@ pub async fn search_diff_panel_line_matches(
 }
 
 #[tauri::command]
+pub async fn search_diff_panel_aligned_row_matches(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    aligned_present: Vec<bool>,
+) -> Result<Vec<usize>, String> {
+    diff::search_diff_panel_aligned_row_matches_impl(state, id, keyword, aligned_present).await
+}
+
+#[tauri::command]
 pub async fn preview_aligned_diff_state(
     aligned_source_lines: Vec<String>,
     aligned_target_lines: Vec<String>,

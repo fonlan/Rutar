@@ -2529,6 +2529,58 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const trimmedSourceSearchQuery = sourceSearchQuery.trim();
   const trimmedTargetSearchQuery = targetSearchQuery.trim();
 
+  const normalizeMatchedRows = useCallback((matchedRows: unknown, alignedLineCountValue: number) => {
+    if (!Array.isArray(matchedRows)) {
+      return [];
+    }
+
+    return matchedRows
+      .map((value) => (Number.isFinite(value) ? Math.floor(value) : -1))
+      .filter((value) => value >= 0 && value < alignedLineCountValue);
+  }, []);
+
+  const mapMatchedLineNumbersToRows = useCallback((matchedLineNumbers: unknown, lineNumbers: number[]) => {
+    const matchedLineNumberSet = new Set<number>(
+      Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
+    );
+    const matchedRows: number[] = [];
+    for (let rowIndex = 0; rowIndex < lineNumbers.length; rowIndex += 1) {
+      const lineNumber = lineNumbers[rowIndex] ?? 0;
+      if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
+        matchedRows.push(rowIndex);
+      }
+    }
+    return matchedRows;
+  }, []);
+
+  const queryPanelSearchMatchedRows = useCallback(
+    async (
+      id: string,
+      keyword: string,
+      alignedPresent: boolean[],
+      lineNumbers: number[],
+      alignedLineCountValue: number
+    ) => {
+      try {
+        const matchedRows = await invoke<number[]>('search_diff_panel_aligned_row_matches', {
+          id,
+          keyword,
+          alignedPresent,
+        });
+        return normalizeMatchedRows(matchedRows, alignedLineCountValue);
+      } catch {
+        // keep fallback path for older backend runtime
+      }
+
+      const matchedLineNumbers = await invoke<number[]>('search_diff_panel_line_matches', {
+        id,
+        keyword,
+      });
+      return mapMatchedLineNumbersToRows(matchedLineNumbers, lineNumbers);
+    },
+    [mapMatchedLineNumbersToRows, normalizeMatchedRows]
+  );
+
   useEffect(() => {
     if (!sourceTabId || !trimmedSourceSearchQuery) {
       sourceSearchRequestSequenceRef.current = sourceSearchRequestSequenceRef.current + 1;
@@ -2539,24 +2591,16 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const currentSequence = sourceSearchRequestSequenceRef.current + 1;
     sourceSearchRequestSequenceRef.current = currentSequence;
 
-    void invoke<number[]>('search_diff_panel_line_matches', {
-      id: sourceTabId,
-      keyword: trimmedSourceSearchQuery,
-    })
-      .then((matchedLineNumbers) => {
+    void queryPanelSearchMatchedRows(
+      sourceTabId,
+      trimmedSourceSearchQuery,
+      lineDiff.alignedSourcePresent,
+      sourceLineNumbers,
+      alignedLineCount
+    )
+      .then((matchedRows) => {
         if (sourceSearchRequestSequenceRef.current !== currentSequence) {
           return;
-        }
-
-        const matchedLineNumberSet = new Set<number>(
-          Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
-        );
-        const matchedRows: number[] = [];
-        for (let rowIndex = 0; rowIndex < sourceLineNumbers.length; rowIndex += 1) {
-          const lineNumber = sourceLineNumbers[rowIndex] ?? 0;
-          if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
-            matchedRows.push(rowIndex);
-          }
         }
 
         setSourceSearchMatchedRows(matchedRows);
@@ -2569,7 +2613,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         console.error('Failed to search source diff panel matches:', error);
         setSourceSearchMatchedRows([]);
       });
-  }, [sourceLineNumbers, sourceTabId, trimmedSourceSearchQuery]);
+  }, [
+    alignedLineCount,
+    lineDiff.alignedSourcePresent,
+    queryPanelSearchMatchedRows,
+    sourceLineNumbers,
+    sourceTabId,
+    trimmedSourceSearchQuery,
+  ]);
 
   useEffect(() => {
     if (!targetTabId || !trimmedTargetSearchQuery) {
@@ -2581,24 +2632,16 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const currentSequence = targetSearchRequestSequenceRef.current + 1;
     targetSearchRequestSequenceRef.current = currentSequence;
 
-    void invoke<number[]>('search_diff_panel_line_matches', {
-      id: targetTabId,
-      keyword: trimmedTargetSearchQuery,
-    })
-      .then((matchedLineNumbers) => {
+    void queryPanelSearchMatchedRows(
+      targetTabId,
+      trimmedTargetSearchQuery,
+      lineDiff.alignedTargetPresent,
+      targetLineNumbers,
+      alignedLineCount
+    )
+      .then((matchedRows) => {
         if (targetSearchRequestSequenceRef.current !== currentSequence) {
           return;
-        }
-
-        const matchedLineNumberSet = new Set<number>(
-          Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
-        );
-        const matchedRows: number[] = [];
-        for (let rowIndex = 0; rowIndex < targetLineNumbers.length; rowIndex += 1) {
-          const lineNumber = targetLineNumbers[rowIndex] ?? 0;
-          if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
-            matchedRows.push(rowIndex);
-          }
         }
 
         setTargetSearchMatchedRows(matchedRows);
@@ -2611,7 +2654,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         console.error('Failed to search target diff panel matches:', error);
         setTargetSearchMatchedRows([]);
       });
-  }, [targetLineNumbers, targetTabId, trimmedTargetSearchQuery]);
+  }, [
+    alignedLineCount,
+    lineDiff.alignedTargetPresent,
+    queryPanelSearchMatchedRows,
+    targetLineNumbers,
+    targetTabId,
+    trimmedTargetSearchQuery,
+  ]);
 
   const sourceSearchCurrentRow = useMemo(() => {
     if (sourceSearchMatchedRow === null) {

@@ -1,5 +1,6 @@
 use super::*;
 use similar::{Algorithm, ChangeTag, TextDiff};
+use std::collections::HashSet;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +115,32 @@ fn find_line_numbers_by_keyword(lines: &[String], normalized_keyword: &str) -> V
     }
 
     matches
+}
+
+fn map_matched_line_numbers_to_aligned_rows(
+    matched_line_numbers: &[usize],
+    aligned_present: &[bool],
+) -> Vec<usize> {
+    if matched_line_numbers.is_empty() || aligned_present.is_empty() {
+        return Vec::new();
+    }
+
+    let matched_line_number_set: HashSet<usize> = matched_line_numbers.iter().copied().collect();
+    let mut result = Vec::new();
+    let mut line_number = 0usize;
+
+    for (row_index, is_present) in aligned_present.iter().enumerate() {
+        if !*is_present {
+            continue;
+        }
+
+        line_number = line_number.saturating_add(1);
+        if matched_line_number_set.contains(&line_number) {
+            result.push(row_index);
+        }
+    }
+
+    result
 }
 
 fn extract_actual_lines_from_aligned(aligned_lines: &[String], present: &[bool]) -> Vec<String> {
@@ -558,6 +585,31 @@ pub(super) async fn search_diff_panel_line_matches_impl(
     .map_err(|error| error.to_string())
 }
 
+pub(super) async fn search_diff_panel_aligned_row_matches_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+    aligned_present: Vec<bool>,
+) -> Result<Vec<usize>, String> {
+    let normalized_keyword = keyword.trim().to_lowercase();
+    if normalized_keyword.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let lines = load_document_lines(&state, &id)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let matched_line_numbers =
+            find_line_numbers_by_keyword(lines.as_slice(), normalized_keyword.as_str());
+        map_matched_line_numbers_to_aligned_rows(
+            matched_line_numbers.as_slice(),
+            aligned_present.as_slice(),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
 pub(super) async fn preview_aligned_diff_state_impl(
     aligned_source_lines: Vec<String>,
     aligned_target_lines: Vec<String>,
@@ -636,8 +688,8 @@ mod tests {
     use super::{
         apply_serialized_text_to_document, build_line_diff_result,
         build_line_diff_result_from_aligned, compute_text_patch, extract_actual_lines_from_aligned,
-        find_line_numbers_by_keyword, normalize_rope_line_text, serialize_actual_lines,
-        AlignedDiffKind,
+        find_line_numbers_by_keyword, map_matched_line_numbers_to_aligned_rows,
+        normalize_rope_line_text, serialize_actual_lines, AlignedDiffKind,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -863,5 +915,17 @@ mod tests {
         let lines = vec!["alpha".to_string(), "beta".to_string()];
         let matched = find_line_numbers_by_keyword(lines.as_slice(), "");
         assert!(matched.is_empty());
+    }
+
+    #[test]
+    fn map_matched_line_numbers_to_aligned_rows_should_skip_virtual_rows() {
+        let rows = map_matched_line_numbers_to_aligned_rows(&[1, 3], &[true, false, true, true]);
+        assert_eq!(rows, vec![0, 3]);
+    }
+
+    #[test]
+    fn map_matched_line_numbers_to_aligned_rows_should_return_empty_when_no_matches() {
+        let rows = map_matched_line_numbers_to_aligned_rows(&[], &[true, true, false]);
+        assert!(rows.is_empty());
     }
 }

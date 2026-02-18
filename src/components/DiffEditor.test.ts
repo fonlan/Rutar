@@ -133,6 +133,36 @@ function buildLineDiffResponse(
   };
 }
 
+function buildMatchedRowsByKeyword(lines: string[], keyword: string, alignedPresent: boolean[]) {
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  if (!normalizedKeyword) {
+    return [];
+  }
+
+  const matchedLineNumbers: number[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if ((lines[index] ?? '').toLowerCase().includes(normalizedKeyword)) {
+      matchedLineNumbers.push(index + 1);
+    }
+  }
+
+  const matchedSet = new Set(matchedLineNumbers);
+  const matchedRows: number[] = [];
+  let concreteLineNumber = 0;
+  for (let rowIndex = 0; rowIndex < alignedPresent.length; rowIndex += 1) {
+    if (!alignedPresent[rowIndex]) {
+      continue;
+    }
+
+    concreteLineNumber += 1;
+    if (matchedSet.has(concreteLineNumber)) {
+      matchedRows.push(rowIndex);
+    }
+  }
+
+  return matchedRows;
+}
+
 describe('diffEditorTestUtils.getParentDirectoryPath', () => {
   it('returns parent directory for normal file paths', () => {
     expect(diffEditorTestUtils.getParentDirectoryPath(' C:\\repo\\src\\main.ts ')).toBe('C:\\repo\\src');
@@ -624,6 +654,19 @@ describe('DiffEditor component', () => {
           [true, true]
         );
       }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        const keyword = String(params.keyword ?? '');
+        const id = String(params.id ?? '');
+        const alignedPresent = Array.isArray(params.alignedPresent)
+          ? params.alignedPresent.map((item) => item === true)
+          : [];
+        const lines = id === 'source-tab'
+          ? ['left-1', 'left-2']
+          : id === 'target-tab'
+            ? ['right-1', 'right-2']
+            : [];
+        return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
+      }
       if (command === 'search_diff_panel_line_matches') {
         const keyword = String(params.keyword ?? '').trim().toLowerCase();
         const id = String(params.id ?? '');
@@ -999,6 +1042,19 @@ describe('DiffEditor component', () => {
           [true, true],
           [true, true]
         );
+      }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        const keyword = String(params.keyword ?? '');
+        const id = String(params.id ?? '');
+        const alignedPresent = Array.isArray(params.alignedPresent)
+          ? params.alignedPresent.map((item) => item === true)
+          : [];
+        const lines = id === 'source-tab'
+          ? ['left-1', 'left-2']
+          : id === 'target-tab'
+            ? ['right-1', 'right-2']
+            : [];
+        return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
       }
       if (command === 'search_diff_panel_line_matches') {
         const keyword = String(params.keyword ?? '').trim().toLowerCase();
@@ -1478,6 +1534,9 @@ describe('DiffEditor component', () => {
           [true, true, true]
         );
       }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
       if (command === 'search_diff_panel_line_matches') {
         return [];
       }
@@ -1565,6 +1624,9 @@ describe('DiffEditor component', () => {
           [true, true]
         );
       }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
       if (command === 'search_diff_panel_line_matches') {
         return [];
       }
@@ -1594,9 +1656,10 @@ describe('DiffEditor component', () => {
     fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_diff_panel_line_matches', {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_diff_panel_aligned_row_matches', {
         id: sourceTab.id,
         keyword: 'left',
+        alignedPresent: [true, true],
       });
     });
   });
@@ -2250,6 +2313,9 @@ describe('DiffEditor component', () => {
       if (command === 'compare_documents_by_line') {
         return buildLineDiffResponse(['("x")'], ['target'], [true], [true]);
       }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
       if (command === 'search_diff_panel_line_matches') {
         return [];
       }
@@ -2332,6 +2398,9 @@ describe('DiffEditor component', () => {
       if (command === 'compare_documents_by_line') {
         return buildLineDiffResponse(['source'], ['{"k":1}'], [true], [true]);
       }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
       if (command === 'search_diff_panel_line_matches') {
         return [];
       }
@@ -2413,6 +2482,9 @@ describe('DiffEditor component', () => {
         : {};
       if (command === 'compare_documents_by_line') {
         return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
       }
       if (command === 'search_diff_panel_line_matches') {
         return [];
