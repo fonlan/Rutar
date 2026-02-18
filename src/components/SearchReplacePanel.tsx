@@ -318,6 +318,21 @@ function isFilterSessionNextBackendResult(value: unknown): value is FilterSessio
   );
 }
 
+function isMissingInvokeCommandError(error: unknown, commandName: string): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const normalizedCommandName = commandName.toLowerCase();
+  if (!message.includes(normalizedCommandName)) {
+    return false;
+  }
+
+  return (
+    message.includes('unknown') ||
+    message.includes('not found') ||
+    message.includes('cannot find') ||
+    message.includes('unrecognized')
+  );
+}
+
 type SearchSidebarTextInputElement = HTMLInputElement | HTMLTextAreaElement;
 type SearchSidebarInputContextAction = 'copy' | 'cut' | 'paste' | 'delete';
 
@@ -816,20 +831,6 @@ export function SearchReplacePanel() {
   const filterLineCursorRef = useRef<number | null>(null);
   const stopResultFilterSearchRef = useRef(false);
   const pendingNavigateDispatchRafRef = useRef<number | null>(null);
-  const searchParamsRef = useRef<{
-    tabId: string;
-    keyword: string;
-    searchMode: SearchMode;
-    caseSensitive: boolean;
-    resultFilterKeyword: string;
-    documentVersion: number;
-  } | null>(null);
-  const filterParamsRef = useRef<{
-    tabId: string;
-    rulesKey: string;
-    resultFilterKeyword: string;
-    documentVersion: number;
-  } | null>(null);
   const cachedSearchRef = useRef<{
     tabId: string;
     keyword: string;
@@ -890,6 +891,44 @@ export function SearchReplacePanel() {
   const previousActiveTabIdRef = useRef<string | null>(null);
   const previousIsOpenRef = useRef(false);
   const blurUpdateTimerRef = useRef<number | null>(null);
+  const searchSessionCommandUnsupportedRef = useRef(false);
+  const filterSessionCommandUnsupportedRef = useRef(false);
+
+  const disposeSearchSessionById = useCallback((sessionId: string | null | undefined) => {
+    if (!sessionId) {
+      return;
+    }
+
+    void invoke<boolean>('dispose_search_session', { sessionId }).catch((error) => {
+      console.warn('Failed to dispose search session:', error);
+    });
+  }, []);
+
+  const disposeFilterSessionById = useCallback((sessionId: string | null | undefined) => {
+    if (!sessionId) {
+      return;
+    }
+
+    void invoke<boolean>('dispose_filter_session', { sessionId }).catch((error) => {
+      console.warn('Failed to dispose filter session:', error);
+    });
+  }, []);
+
+  const setSearchSessionId = useCallback((nextSessionId: string | null) => {
+    const previousSessionId = searchSessionIdRef.current;
+    if (previousSessionId && previousSessionId !== nextSessionId) {
+      disposeSearchSessionById(previousSessionId);
+    }
+    searchSessionIdRef.current = nextSessionId;
+  }, [disposeSearchSessionById]);
+
+  const setFilterSessionId = useCallback((nextSessionId: string | null) => {
+    const previousSessionId = filterSessionIdRef.current;
+    if (previousSessionId && previousSessionId !== nextSessionId) {
+      disposeFilterSessionById(previousSessionId);
+    }
+    filterSessionIdRef.current = nextSessionId;
+  }, [disposeFilterSessionById]);
 
   const closeInputContextMenu = useCallback(() => {
     setInputContextMenu(null);
@@ -1062,8 +1101,10 @@ export function SearchReplacePanel() {
         window.clearTimeout(blurUpdateTimerRef.current);
         blurUpdateTimerRef.current = null;
       }
+      disposeSearchSessionById(searchSessionIdRef.current);
+      disposeFilterSessionById(filterSessionIdRef.current);
     };
-  }, []);
+  }, [disposeFilterSessionById, disposeSearchSessionById]);
 
   useEffect(() => {
     currentMatchIndexRef.current = currentMatchIndex;
@@ -1076,31 +1117,29 @@ export function SearchReplacePanel() {
   const resetSearchState = useCallback((clearTotals = true) => {
     setMatches([]);
     setCurrentMatchIndex(0);
-    searchSessionIdRef.current = null;
+    setSearchSessionId(null);
     cachedSearchRef.current = null;
     chunkCursorRef.current = null;
-    searchParamsRef.current = null;
     countCacheRef.current = null;
 
     if (clearTotals) {
       setTotalMatchCount(null);
       setTotalMatchedLineCount(null);
     }
-  }, []);
+  }, [setSearchSessionId]);
 
   const resetFilterState = useCallback((clearTotals = true) => {
     setFilterMatches([]);
     setCurrentFilterMatchIndex(0);
-    filterSessionIdRef.current = null;
+    setFilterSessionId(null);
     cachedFilterRef.current = null;
     filterLineCursorRef.current = null;
-    filterParamsRef.current = null;
     filterCountCacheRef.current = null;
 
     if (clearTotals) {
       setTotalFilterMatchedLineCount(null);
     }
-  }, []);
+  }, [setFilterSessionId]);
 
   const normalizedResultFilterKeyword = appliedResultFilterKeyword.trim().toLowerCase();
   const isResultFilterActive = normalizedResultFilterKeyword.length > 0;
@@ -1305,8 +1344,6 @@ export function SearchReplacePanel() {
       };
     }
 
-    void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
-
     if (!forceRefresh) {
       const cached = cachedSearchRef.current;
       if (
@@ -1336,15 +1373,7 @@ export function SearchReplacePanel() {
             });
 
             chunkCursorRef.current = cached.nextOffset;
-            searchSessionIdRef.current = cached.sessionId;
-            searchParamsRef.current = {
-              tabId: activeTab.id,
-              keyword,
-              searchMode,
-              caseSensitive,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              documentVersion: cached.documentVersion,
-            };
+            setSearchSessionId(cached.sessionId);
 
             return {
               matches: cached.matches,
@@ -1366,30 +1395,44 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const sessionStartResult = await invoke<unknown>('search_session_start_in_document', {
-        id: activeTab.id,
-        keyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        resultFilterCaseSensitive: caseSensitive,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
-
       let nextMatches: SearchMatch[] = [];
       let documentVersion = 0;
       let nextOffset: number | null = null;
       let sessionId: string | null = null;
       let totalMatches: number | null = null;
       let totalMatchedLines: number | null = null;
+      let shouldRunCountFallback = true;
 
-      if (isSearchSessionStartBackendResult(sessionStartResult)) {
+      let sessionStartResult: unknown = null;
+      let usedSessionStart = false;
+      if (!searchSessionCommandUnsupportedRef.current) {
+        try {
+          sessionStartResult = await invoke<unknown>('search_session_start_in_document', {
+            id: activeTab.id,
+            keyword,
+            mode: getSearchModeValue(searchMode),
+            caseSensitive,
+            resultFilterKeyword: effectiveResultFilterKeyword,
+            resultFilterCaseSensitive: caseSensitive,
+            maxResults: SEARCH_CHUNK_SIZE,
+          });
+          usedSessionStart = isSearchSessionStartBackendResult(sessionStartResult);
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'search_session_start_in_document')) {
+            searchSessionCommandUnsupportedRef.current = true;
+          }
+        }
+      }
+
+      if (usedSessionStart && isSearchSessionStartBackendResult(sessionStartResult)) {
         nextMatches = sessionStartResult.matches || [];
         documentVersion = sessionStartResult.documentVersion ?? 0;
         nextOffset = sessionStartResult.nextOffset ?? null;
         sessionId = sessionStartResult.sessionId ?? null;
         totalMatches = sessionStartResult.totalMatches ?? nextMatches.length;
         totalMatchedLines = sessionStartResult.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+        shouldRunCountFallback = false;
+        searchSessionCommandUnsupportedRef.current = false;
       } else {
         const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
           id: activeTab.id,
@@ -1441,15 +1484,21 @@ export function SearchReplacePanel() {
       };
 
       chunkCursorRef.current = nextOffset;
-      searchSessionIdRef.current = sessionId;
-      searchParamsRef.current = {
-        tabId: activeTab.id,
-        keyword,
-        searchMode,
-        caseSensitive,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        documentVersion,
-      };
+      setSearchSessionId(sessionId);
+      if (shouldRunCountFallback) {
+        void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
+      } else if (totalMatches !== null && totalMatchedLines !== null) {
+        countCacheRef.current = {
+          tabId: activeTab.id,
+          keyword,
+          searchMode,
+          caseSensitive,
+          resultFilterKeyword: effectiveResultFilterKeyword,
+          documentVersion,
+          totalMatches,
+          matchedLines: totalMatchedLines,
+        };
+      }
 
       return {
         matches: nextMatches,
@@ -1487,6 +1536,7 @@ export function SearchReplacePanel() {
     keyword,
     messages.searchFailed,
     resetSearchState,
+    setSearchSessionId,
     searchMode,
   ]);
 
@@ -1511,8 +1561,6 @@ export function SearchReplacePanel() {
         nextLine: null,
       };
     }
-
-    void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
 
     if (!forceRefresh) {
       const cached = cachedFilterRef.current;
@@ -1541,13 +1589,7 @@ export function SearchReplacePanel() {
             });
 
             filterLineCursorRef.current = cached.nextLine;
-            filterSessionIdRef.current = cached.sessionId;
-            filterParamsRef.current = {
-              tabId: activeTab.id,
-              rulesKey: filterRulesKey,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              documentVersion: cached.documentVersion,
-            };
+            setFilterSessionId(cached.sessionId);
 
             return {
               matches: cached.matches,
@@ -1569,26 +1611,40 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const sessionStartResult = await invoke<unknown>('filter_session_start_in_document', {
-        id: activeTab.id,
-        rules: filterRulesPayload,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        resultFilterCaseSensitive: caseSensitive,
-        maxResults: FILTER_CHUNK_SIZE,
-      });
-
       let nextMatches: FilterMatch[] = [];
       let documentVersion = 0;
       let nextLine: number | null = null;
       let sessionId: string | null = null;
       let totalMatchedLines: number | null = null;
+      let shouldRunCountFallback = true;
 
-      if (isFilterSessionStartBackendResult(sessionStartResult)) {
+      let sessionStartResult: unknown = null;
+      let usedSessionStart = false;
+      if (!filterSessionCommandUnsupportedRef.current) {
+        try {
+          sessionStartResult = await invoke<unknown>('filter_session_start_in_document', {
+            id: activeTab.id,
+            rules: filterRulesPayload,
+            resultFilterKeyword: effectiveResultFilterKeyword,
+            resultFilterCaseSensitive: caseSensitive,
+            maxResults: FILTER_CHUNK_SIZE,
+          });
+          usedSessionStart = isFilterSessionStartBackendResult(sessionStartResult);
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'filter_session_start_in_document')) {
+            filterSessionCommandUnsupportedRef.current = true;
+          }
+        }
+      }
+
+      if (usedSessionStart && isFilterSessionStartBackendResult(sessionStartResult)) {
         nextMatches = sessionStartResult.matches || [];
         documentVersion = sessionStartResult.documentVersion ?? 0;
         nextLine = sessionStartResult.nextLine ?? null;
         sessionId = sessionStartResult.sessionId ?? null;
         totalMatchedLines = sessionStartResult.totalMatchedLines ?? nextMatches.length;
+        shouldRunCountFallback = false;
+        filterSessionCommandUnsupportedRef.current = false;
       } else {
         const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
           id: activeTab.id,
@@ -1634,13 +1690,18 @@ export function SearchReplacePanel() {
       };
 
       filterLineCursorRef.current = nextLine;
-      filterSessionIdRef.current = sessionId;
-      filterParamsRef.current = {
-        tabId: activeTab.id,
-        rulesKey: filterRulesKey,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        documentVersion,
-      };
+      setFilterSessionId(sessionId);
+      if (shouldRunCountFallback) {
+        void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
+      } else if (totalMatchedLines !== null) {
+        filterCountCacheRef.current = {
+          tabId: activeTab.id,
+          rulesKey: filterRulesKey,
+          resultFilterKeyword: effectiveResultFilterKeyword,
+          documentVersion,
+          matchedLines: totalMatchedLines,
+        };
+      }
 
       return {
         matches: nextMatches,
@@ -1679,6 +1740,7 @@ export function SearchReplacePanel() {
     isFilterMode,
     messages.filterFailed,
     resetFilterState,
+    setFilterSessionId,
   ]);
 
   const loadMoreMatches = useCallback(async (): Promise<SearchMatch[] | null> => {
@@ -1701,34 +1763,42 @@ export function SearchReplacePanel() {
     try {
       let appendedMatches: SearchMatch[] = [];
       let nextOffset: number | null = null;
-      let documentVersion = searchParamsRef.current?.documentVersion ?? 0;
+      let documentVersion = cachedSearchRef.current?.documentVersion ?? 0;
       let usedSessionMode = false;
 
       const activeSearchSessionId = searchSessionIdRef.current;
-      if (activeSearchSessionId) {
-        const sessionNextResult = await invoke<unknown>('search_session_next_in_document', {
-          sessionId: activeSearchSessionId,
-          maxResults: SEARCH_CHUNK_SIZE,
-        });
-        if (sessionId !== loadMoreSessionRef.current) {
-          return null;
-        }
-
-        if (isSearchSessionNextBackendResult(sessionNextResult)) {
-          usedSessionMode = true;
-          appendedMatches = sessionNextResult.matches || [];
-          nextOffset = sessionNextResult.nextOffset ?? null;
-          documentVersion = sessionNextResult.documentVersion ?? documentVersion;
-          if (nextOffset === null) {
-            searchSessionIdRef.current = null;
+      if (activeSearchSessionId && !searchSessionCommandUnsupportedRef.current) {
+        try {
+          const sessionNextResult = await invoke<unknown>('search_session_next_in_document', {
+            sessionId: activeSearchSessionId,
+            maxResults: SEARCH_CHUNK_SIZE,
+          });
+          if (sessionId !== loadMoreSessionRef.current) {
+            return null;
           }
-        } else {
-          searchSessionIdRef.current = null;
+
+          if (isSearchSessionNextBackendResult(sessionNextResult)) {
+            usedSessionMode = true;
+            appendedMatches = sessionNextResult.matches || [];
+            nextOffset = sessionNextResult.nextOffset ?? null;
+            documentVersion = sessionNextResult.documentVersion ?? documentVersion;
+            if (nextOffset === null) {
+              setSearchSessionId(null);
+            }
+            searchSessionCommandUnsupportedRef.current = false;
+          } else {
+            setSearchSessionId(null);
+          }
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'search_session_next_in_document')) {
+            searchSessionCommandUnsupportedRef.current = true;
+          }
+          setSearchSessionId(null);
         }
       }
 
       if (!usedSessionMode) {
-        const params = searchParamsRef.current;
+        const params = cachedSearchRef.current;
         if (
           !params ||
           params.tabId !== activeTab.id ||
@@ -1757,8 +1827,7 @@ export function SearchReplacePanel() {
         if (backendResult.documentVersion !== params.documentVersion) {
           cachedSearchRef.current = null;
           chunkCursorRef.current = null;
-          searchParamsRef.current = null;
-          searchSessionIdRef.current = null;
+          setSearchSessionId(null);
           return null;
         }
 
@@ -1811,16 +1880,25 @@ export function SearchReplacePanel() {
         setIsSearching(false);
       }
     }
-  }, [activeTab, backendResultFilterKeyword, caseSensitive, isFilterMode, keyword, messages.searchFailed, searchMode]);
+  }, [
+    activeTab,
+    backendResultFilterKeyword,
+    caseSensitive,
+    isFilterMode,
+    keyword,
+    messages.searchFailed,
+    searchMode,
+    setSearchSessionId,
+  ]);
 
   const loadMoreFilterMatches = useCallback(async (): Promise<FilterMatch[] | null> => {
     if (loadMoreLockRef.current) {
       return null;
     }
 
-  if (!activeTab) {
-    return null;
-  }
+    if (!activeTab) {
+      return null;
+    }
 
     const startLine = filterLineCursorRef.current;
     if (startLine === null) {
@@ -1833,34 +1911,42 @@ export function SearchReplacePanel() {
     try {
       let appendedMatches: FilterMatch[] = [];
       let nextLine: number | null = null;
-      let documentVersion = filterParamsRef.current?.documentVersion ?? 0;
+      let documentVersion = cachedFilterRef.current?.documentVersion ?? 0;
       let usedSessionMode = false;
 
       const activeFilterSessionId = filterSessionIdRef.current;
-      if (activeFilterSessionId) {
-        const sessionNextResult = await invoke<unknown>('filter_session_next_in_document', {
-          sessionId: activeFilterSessionId,
-          maxResults: FILTER_CHUNK_SIZE,
-        });
-        if (sessionId !== loadMoreSessionRef.current) {
-          return null;
-        }
-
-        if (isFilterSessionNextBackendResult(sessionNextResult)) {
-          usedSessionMode = true;
-          appendedMatches = sessionNextResult.matches || [];
-          nextLine = sessionNextResult.nextLine ?? null;
-          documentVersion = sessionNextResult.documentVersion ?? documentVersion;
-          if (nextLine === null) {
-            filterSessionIdRef.current = null;
+      if (activeFilterSessionId && !filterSessionCommandUnsupportedRef.current) {
+        try {
+          const sessionNextResult = await invoke<unknown>('filter_session_next_in_document', {
+            sessionId: activeFilterSessionId,
+            maxResults: FILTER_CHUNK_SIZE,
+          });
+          if (sessionId !== loadMoreSessionRef.current) {
+            return null;
           }
-        } else {
-          filterSessionIdRef.current = null;
+
+          if (isFilterSessionNextBackendResult(sessionNextResult)) {
+            usedSessionMode = true;
+            appendedMatches = sessionNextResult.matches || [];
+            nextLine = sessionNextResult.nextLine ?? null;
+            documentVersion = sessionNextResult.documentVersion ?? documentVersion;
+            if (nextLine === null) {
+              setFilterSessionId(null);
+            }
+            filterSessionCommandUnsupportedRef.current = false;
+          } else {
+            setFilterSessionId(null);
+          }
+        } catch (error) {
+          if (isMissingInvokeCommandError(error, 'filter_session_next_in_document')) {
+            filterSessionCommandUnsupportedRef.current = true;
+          }
+          setFilterSessionId(null);
         }
       }
 
       if (!usedSessionMode) {
-        const params = filterParamsRef.current;
+        const params = cachedFilterRef.current;
         if (
           !params ||
           params.tabId !== activeTab.id ||
@@ -1886,8 +1972,7 @@ export function SearchReplacePanel() {
         if (backendResult.documentVersion !== params.documentVersion) {
           cachedFilterRef.current = null;
           filterLineCursorRef.current = null;
-          filterParamsRef.current = null;
-          filterSessionIdRef.current = null;
+          setFilterSessionId(null);
           return null;
         }
 
@@ -1938,7 +2023,16 @@ export function SearchReplacePanel() {
         setIsSearching(false);
       }
     }
-  }, [activeTab, backendResultFilterKeyword, caseSensitive, filterRulesKey, filterRulesPayload, isFilterMode, messages.filterFailed]);
+  }, [
+    activeTab,
+    backendResultFilterKeyword,
+    caseSensitive,
+    filterRulesKey,
+    filterRulesPayload,
+    isFilterMode,
+    messages.filterFailed,
+    setFilterSessionId,
+  ]);
 
   const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
     cancelPendingBatchLoad();
@@ -1981,16 +2075,8 @@ export function SearchReplacePanel() {
           nextOffset: null,
           sessionId: null,
         };
-        searchSessionIdRef.current = null;
+        setSearchSessionId(null);
         chunkCursorRef.current = null;
-        searchParamsRef.current = {
-          tabId: activeTab.id,
-          keyword,
-          searchMode,
-          caseSensitive,
-          resultFilterKeyword: backendResultFilterKeyword,
-          documentVersion,
-        };
         setIsSearching(false);
 
         return {
@@ -2019,16 +2105,8 @@ export function SearchReplacePanel() {
         nextOffset: 0,
         sessionId: null,
       };
-      searchSessionIdRef.current = null;
+      setSearchSessionId(null);
       chunkCursorRef.current = 0;
-      searchParamsRef.current = {
-        tabId: activeTab.id,
-        keyword,
-        searchMode,
-        caseSensitive,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-      };
 
       void (async () => {
         const chunkResult = await executeSearch(true, false);
@@ -2377,15 +2455,7 @@ export function SearchReplacePanel() {
         nextOffset,
         sessionId: null,
       };
-      searchSessionIdRef.current = null;
-      searchParamsRef.current = {
-        tabId: activeTab.id,
-        keyword,
-        searchMode,
-        caseSensitive,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-      };
+      setSearchSessionId(null);
       countCacheRef.current = {
         tabId: activeTab.id,
         keyword,
@@ -2483,15 +2553,7 @@ export function SearchReplacePanel() {
         nextOffset,
         sessionId: null,
       };
-      searchSessionIdRef.current = null;
-      searchParamsRef.current = {
-        tabId: activeTab.id,
-        keyword,
-        searchMode,
-        caseSensitive,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-      };
+      setSearchSessionId(null);
       countCacheRef.current = {
         tabId: activeTab.id,
         keyword,
@@ -2977,8 +3039,8 @@ export function SearchReplacePanel() {
       setTotalMatchedLineCount(nextSnapshot.totalMatchedLineCount);
       setTotalFilterMatchedLineCount(nextSnapshot.totalFilterMatchedLineCount);
 
-      searchSessionIdRef.current = nextSnapshot.searchSessionId ?? null;
-      filterSessionIdRef.current = nextSnapshot.filterSessionId ?? null;
+      setSearchSessionId(nextSnapshot.searchSessionId ?? null);
+      setFilterSessionId(nextSnapshot.filterSessionId ?? null);
       chunkCursorRef.current = nextSnapshot.searchNextOffset;
       filterLineCursorRef.current = nextSnapshot.filterNextLine;
 
@@ -2990,18 +3052,13 @@ export function SearchReplacePanel() {
         : '';
 
       if (nextSnapshot.searchDocumentVersion !== null && nextSnapshot.keyword) {
-        const restoredSearchParams = {
+        cachedSearchRef.current = {
           tabId: activeTab.id,
           keyword: nextSnapshot.keyword,
           searchMode: nextSnapshot.searchMode,
           caseSensitive: nextSnapshot.caseSensitive,
           resultFilterKeyword: restoredResultFilterKeyword,
           documentVersion: nextSnapshot.searchDocumentVersion,
-        };
-
-        searchParamsRef.current = restoredSearchParams;
-        cachedSearchRef.current = {
-          ...restoredSearchParams,
           matches: restoredMatches,
           nextOffset: nextSnapshot.searchNextOffset,
           sessionId: nextSnapshot.searchSessionId ?? null,
@@ -3022,23 +3079,17 @@ export function SearchReplacePanel() {
           countCacheRef.current = null;
         }
       } else {
-        searchSessionIdRef.current = null;
-        searchParamsRef.current = null;
+        setSearchSessionId(null);
         cachedSearchRef.current = null;
         countCacheRef.current = null;
       }
 
       if (nextSnapshot.filterDocumentVersion !== null && nextSnapshot.filterRulesKey) {
-        const restoredFilterParams = {
+        cachedFilterRef.current = {
           tabId: activeTab.id,
           rulesKey: nextSnapshot.filterRulesKey,
           resultFilterKeyword: restoredResultFilterKeyword,
           documentVersion: nextSnapshot.filterDocumentVersion,
-        };
-
-        filterParamsRef.current = restoredFilterParams;
-        cachedFilterRef.current = {
-          ...restoredFilterParams,
           matches: restoredFilterMatches,
           nextLine: nextSnapshot.filterNextLine,
           sessionId: nextSnapshot.filterSessionId ?? null,
@@ -3056,8 +3107,7 @@ export function SearchReplacePanel() {
           filterCountCacheRef.current = null;
         }
       } else {
-        filterSessionIdRef.current = null;
-        filterParamsRef.current = null;
+        setFilterSessionId(null);
         cachedFilterRef.current = null;
         filterCountCacheRef.current = null;
       }
@@ -3083,10 +3133,8 @@ export function SearchReplacePanel() {
       setTotalFilterMatchedLineCount(null);
       chunkCursorRef.current = null;
       filterLineCursorRef.current = null;
-      searchParamsRef.current = null;
-      filterParamsRef.current = null;
-      searchSessionIdRef.current = null;
-      filterSessionIdRef.current = null;
+      setSearchSessionId(null);
+      setFilterSessionId(null);
       cachedSearchRef.current = null;
       cachedFilterRef.current = null;
       countCacheRef.current = null;
@@ -3098,7 +3146,7 @@ export function SearchReplacePanel() {
     setErrorMessage(null);
     setFeedbackMessage(null);
     previousActiveTabIdRef.current = activeTab.id;
-  }, [activeTab?.id, resetFilterState, resetSearchState]);
+  }, [activeTab?.id, resetFilterState, resetSearchState, setFilterSessionId, setSearchSessionId]);
 
   useEffect(() => {
     if (!activeTabId) {
@@ -3129,11 +3177,9 @@ export function SearchReplacePanel() {
       filterSessionId: filterSessionIdRef.current,
       searchNextOffset: chunkCursorRef.current,
       filterNextLine: filterLineCursorRef.current,
-      searchDocumentVersion:
-        searchParamsRef.current?.documentVersion ?? cachedSearchRef.current?.documentVersion ?? null,
-      filterDocumentVersion:
-        filterParamsRef.current?.documentVersion ?? cachedFilterRef.current?.documentVersion ?? null,
-      filterRulesKey: filterParamsRef.current?.rulesKey ?? filterRulesKey,
+      searchDocumentVersion: cachedSearchRef.current?.documentVersion ?? null,
+      filterDocumentVersion: cachedFilterRef.current?.documentVersion ?? null,
+      filterRulesKey: cachedFilterRef.current?.rulesKey ?? filterRulesKey,
     };
   }, [
     activeTabId,

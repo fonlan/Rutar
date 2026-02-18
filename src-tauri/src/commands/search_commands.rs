@@ -68,6 +68,11 @@ pub fn search_session_next_in_document(
 }
 
 #[tauri::command]
+pub fn dispose_search_session(session_id: String) -> bool {
+    search::dispose_search_session_impl(session_id)
+}
+
+#[tauri::command]
 pub fn search_count_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -282,6 +287,11 @@ pub fn filter_session_next_in_document(
 }
 
 #[tauri::command]
+pub fn dispose_filter_session(session_id: String) -> bool {
+    search::dispose_filter_session_impl(session_id)
+}
+
+#[tauri::command]
 pub fn step_result_filter_search_in_filter_document(
     state: State<'_, AppState>,
     id: String,
@@ -327,6 +337,7 @@ mod tests {
         let _ = search_in_document_chunk as usize;
         let _ = search_session_start_in_document as usize;
         let _ = search_session_next_in_document as usize;
+        let _ = dispose_search_session as usize;
         let _ = search_count_in_document as usize;
         let _ = replace_all_in_document as usize;
         let _ = replace_all_and_search_chunk_in_document as usize;
@@ -337,6 +348,7 @@ mod tests {
         let _ = filter_in_document_chunk as usize;
         let _ = filter_session_start_in_document as usize;
         let _ = filter_session_next_in_document as usize;
+        let _ = dispose_filter_session as usize;
         let _ = step_result_filter_search_in_filter_document as usize;
         let _ = search_in_document as usize;
     }

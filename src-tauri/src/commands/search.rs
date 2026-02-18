@@ -297,6 +297,38 @@ pub(super) fn filter_session_cache() -> &'static DashMap<String, FilterSessionEn
     FILTER_SESSION_CACHE.get_or_init(DashMap::new)
 }
 
+fn remove_search_sessions_by_document(document_id: &str) {
+    let stale_session_ids = search_session_cache()
+        .iter()
+        .filter(|entry| entry.value().document_id == document_id)
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<String>>();
+
+    for session_id in stale_session_ids {
+        search_session_cache().remove(&session_id);
+    }
+}
+
+fn remove_filter_sessions_by_document(document_id: &str) {
+    let stale_session_ids = filter_session_cache()
+        .iter()
+        .filter(|entry| entry.value().document_id == document_id)
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<String>>();
+
+    for session_id in stale_session_ids {
+        filter_session_cache().remove(&session_id);
+    }
+}
+
+pub(super) fn dispose_search_session_impl(session_id: String) -> bool {
+    search_session_cache().remove(&session_id).is_some()
+}
+
+pub(super) fn dispose_filter_session_impl(session_id: String) -> bool {
+    filter_session_cache().remove(&session_id).is_some()
+}
+
 pub(super) fn find_line_index_by_offset(line_starts: &[usize], target_offset: usize) -> usize {
     if line_starts.is_empty() {
         return 0;
@@ -1770,6 +1802,7 @@ pub(super) fn search_session_start_in_document_impl(
     max_results: usize,
 ) -> Result<SearchSessionStartResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
+        remove_search_sessions_by_document(&id);
         if keyword.is_empty() {
             return Ok(SearchSessionStartResultPayload {
                 session_id: None,
@@ -2319,6 +2352,7 @@ pub(super) fn filter_session_start_in_document_impl(
     max_results: usize,
 ) -> Result<FilterSessionStartResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
+        remove_filter_sessions_by_document(&id);
         let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive = result_filter_case_sensitive.unwrap_or(true);
         let all_matches = build_filter_step_filtered_matches(
@@ -2626,6 +2660,8 @@ pub(super) fn replace_all_in_document_impl(
             apply_operation(&mut doc, &operation)?;
             doc.undo_stack.push(operation);
             doc.redo_stack.clear();
+            remove_search_sessions_by_document(&id);
+            remove_filter_sessions_by_document(&id);
         }
 
         Ok(ReplaceAllResultPayload {
@@ -2710,6 +2746,8 @@ pub(super) fn replace_current_in_document_impl(
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
         doc.redo_stack.clear();
+        remove_search_sessions_by_document(&id);
+        remove_filter_sessions_by_document(&id);
 
         Ok(ReplaceCurrentResultPayload {
             replaced: true,
@@ -2822,6 +2860,8 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
         doc.redo_stack.clear();
+        remove_search_sessions_by_document(&id);
+        remove_filter_sessions_by_document(&id);
 
         let refreshed_matches = build_search_step_filtered_matches(
             &doc,
@@ -2932,6 +2972,8 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
             apply_operation(&mut doc, &operation)?;
             doc.undo_stack.push(operation);
             doc.redo_stack.clear();
+            remove_search_sessions_by_document(&id);
+            remove_filter_sessions_by_document(&id);
         }
 
         let refreshed_matches = build_search_step_filtered_matches(
@@ -3296,5 +3338,43 @@ mod tests {
         assert!(chunk.is_empty());
         assert_eq!(next_line, None);
         assert_eq!(next_index, 3);
+    }
+
+    #[test]
+    fn dispose_search_session_impl_should_remove_existing_session() {
+        search_session_cache().clear();
+        search_session_cache().insert(
+            "search-session-1".to_string(),
+            SearchSessionEntry {
+                document_id: "doc-1".to_string(),
+                document_version: 1,
+                result_filter_keyword: None,
+                result_filter_case_sensitive: true,
+                matches: Arc::new(Vec::new()),
+                next_index: 0,
+            },
+        );
+
+        assert!(dispose_search_session_impl("search-session-1".to_string()));
+        assert!(!dispose_search_session_impl("search-session-1".to_string()));
+    }
+
+    #[test]
+    fn dispose_filter_session_impl_should_remove_existing_session() {
+        filter_session_cache().clear();
+        filter_session_cache().insert(
+            "filter-session-1".to_string(),
+            FilterSessionEntry {
+                document_id: "doc-1".to_string(),
+                document_version: 1,
+                result_filter_keyword: None,
+                result_filter_case_sensitive: true,
+                matches: Arc::new(Vec::new()),
+                next_index: 0,
+            },
+        );
+
+        assert!(dispose_filter_session_impl("filter-session-1".to_string()));
+        assert!(!dispose_filter_session_impl("filter-session-1".to_string()));
     }
 }
