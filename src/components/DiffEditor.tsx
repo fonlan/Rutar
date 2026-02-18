@@ -699,6 +699,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [diffHeaderContextMenu, setDiffHeaderContextMenu] = useState<DiffHeaderContextMenuState | null>(null);
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [targetSearchQuery, setTargetSearchQuery] = useState('');
+  const [sourceSearchMatchedRows, setSourceSearchMatchedRows] = useState<number[]>([]);
+  const [targetSearchMatchedRows, setTargetSearchMatchedRows] = useState<number[]>([]);
   const [sourceSearchMatchedRow, setSourceSearchMatchedRow] = useState<number | null>(null);
   const [targetSearchMatchedRow, setTargetSearchMatchedRow] = useState<number | null>(null);
 
@@ -728,6 +730,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const lastEditAtRef = useRef(0);
   const deferredBackendDiffRef = useRef<LineDiffComparisonResult | null>(null);
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
+  const sourceSearchRequestSequenceRef = useRef(0);
+  const targetSearchRequestSequenceRef = useRef(0);
   const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const diffContextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -741,6 +745,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     () => tabs.find((item) => item.id === tab.diffPayload.targetTabId && item.tabType !== 'diff') ?? null,
     [tab.diffPayload.targetTabId, tabs]
   );
+  const sourceTabId = sourceTab?.id ?? null;
+  const targetTabId = targetTab?.id ?? null;
   const sourcePath = sourceTab?.path || tab.diffPayload.sourcePath || '';
   const targetPath = targetTab?.path || tab.diffPayload.targetPath || '';
   const sourceDisplayName = sourceTab?.name || tab.diffPayload.sourceName;
@@ -1989,36 +1995,93 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const rowHeightPx = Math.max(22, Math.round(settings.fontSize * 1.6));
-  const normalizedSourceSearchQuery = sourceSearchQuery.trim().toLocaleLowerCase();
-  const normalizedTargetSearchQuery = targetSearchQuery.trim().toLocaleLowerCase();
-  const sourceSearchMatchedRows = useMemo(() => {
-    if (!normalizedSourceSearchQuery) {
-      return [];
+  const trimmedSourceSearchQuery = sourceSearchQuery.trim();
+  const trimmedTargetSearchQuery = targetSearchQuery.trim();
+
+  useEffect(() => {
+    if (!sourceTabId || !trimmedSourceSearchQuery) {
+      sourceSearchRequestSequenceRef.current = sourceSearchRequestSequenceRef.current + 1;
+      setSourceSearchMatchedRows([]);
+      return;
     }
 
-    const rows: number[] = [];
-    for (let index = 0; index < lineDiff.alignedSourceLines.length; index += 1) {
-      const lineText = (lineDiff.alignedSourceLines[index] ?? '').toLocaleLowerCase();
-      if (lineText.includes(normalizedSourceSearchQuery)) {
-        rows.push(index);
-      }
-    }
-    return rows;
-  }, [lineDiff.alignedSourceLines, normalizedSourceSearchQuery]);
-  const targetSearchMatchedRows = useMemo(() => {
-    if (!normalizedTargetSearchQuery) {
-      return [];
+    const currentSequence = sourceSearchRequestSequenceRef.current + 1;
+    sourceSearchRequestSequenceRef.current = currentSequence;
+
+    void invoke<number[]>('search_diff_panel_line_matches', {
+      id: sourceTabId,
+      keyword: trimmedSourceSearchQuery,
+    })
+      .then((matchedLineNumbers) => {
+        if (sourceSearchRequestSequenceRef.current !== currentSequence) {
+          return;
+        }
+
+        const matchedLineNumberSet = new Set<number>(
+          Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
+        );
+        const matchedRows: number[] = [];
+        for (let rowIndex = 0; rowIndex < sourceLineNumbers.length; rowIndex += 1) {
+          const lineNumber = sourceLineNumbers[rowIndex] ?? 0;
+          if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
+            matchedRows.push(rowIndex);
+          }
+        }
+
+        setSourceSearchMatchedRows(matchedRows);
+      })
+      .catch((error) => {
+        if (sourceSearchRequestSequenceRef.current !== currentSequence) {
+          return;
+        }
+
+        console.error('Failed to search source diff panel matches:', error);
+        setSourceSearchMatchedRows([]);
+      });
+  }, [sourceLineNumbers, sourceTabId, trimmedSourceSearchQuery]);
+
+  useEffect(() => {
+    if (!targetTabId || !trimmedTargetSearchQuery) {
+      targetSearchRequestSequenceRef.current = targetSearchRequestSequenceRef.current + 1;
+      setTargetSearchMatchedRows([]);
+      return;
     }
 
-    const rows: number[] = [];
-    for (let index = 0; index < lineDiff.alignedTargetLines.length; index += 1) {
-      const lineText = (lineDiff.alignedTargetLines[index] ?? '').toLocaleLowerCase();
-      if (lineText.includes(normalizedTargetSearchQuery)) {
-        rows.push(index);
-      }
-    }
-    return rows;
-  }, [lineDiff.alignedTargetLines, normalizedTargetSearchQuery]);
+    const currentSequence = targetSearchRequestSequenceRef.current + 1;
+    targetSearchRequestSequenceRef.current = currentSequence;
+
+    void invoke<number[]>('search_diff_panel_line_matches', {
+      id: targetTabId,
+      keyword: trimmedTargetSearchQuery,
+    })
+      .then((matchedLineNumbers) => {
+        if (targetSearchRequestSequenceRef.current !== currentSequence) {
+          return;
+        }
+
+        const matchedLineNumberSet = new Set<number>(
+          Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
+        );
+        const matchedRows: number[] = [];
+        for (let rowIndex = 0; rowIndex < targetLineNumbers.length; rowIndex += 1) {
+          const lineNumber = targetLineNumbers[rowIndex] ?? 0;
+          if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
+            matchedRows.push(rowIndex);
+          }
+        }
+
+        setTargetSearchMatchedRows(matchedRows);
+      })
+      .catch((error) => {
+        if (targetSearchRequestSequenceRef.current !== currentSequence) {
+          return;
+        }
+
+        console.error('Failed to search target diff panel matches:', error);
+        setTargetSearchMatchedRows([]);
+      });
+  }, [targetLineNumbers, targetTabId, trimmedTargetSearchQuery]);
+
   const sourceSearchCurrentRow = useMemo(() => {
     if (sourceSearchMatchedRow === null) {
       return null;

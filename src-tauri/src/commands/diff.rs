@@ -89,6 +89,21 @@ fn load_document_is_dirty(state: &State<'_, AppState>, id: &str) -> Result<bool,
         || doc.line_ending != doc.saved_line_ending)
 }
 
+fn find_line_numbers_by_keyword(lines: &[String], normalized_keyword: &str) -> Vec<usize> {
+    if normalized_keyword.is_empty() {
+        return Vec::new();
+    }
+
+    let mut matches: Vec<usize> = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.to_lowercase().contains(normalized_keyword) {
+            matches.push(index.saturating_add(1));
+        }
+    }
+
+    matches
+}
+
 fn extract_actual_lines_from_aligned(aligned_lines: &[String], present: &[bool]) -> Vec<String> {
     let mut actual_lines: Vec<String> = Vec::new();
 
@@ -339,6 +354,25 @@ pub(super) async fn compare_documents_by_line_impl(
         .map_err(|error| error.to_string())
 }
 
+pub(super) async fn search_diff_panel_line_matches_impl(
+    state: State<'_, AppState>,
+    id: String,
+    keyword: String,
+) -> Result<Vec<usize>, String> {
+    let normalized_keyword = keyword.trim().to_lowercase();
+    if normalized_keyword.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let lines = load_document_lines(&state, &id)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        find_line_numbers_by_keyword(lines.as_slice(), normalized_keyword.as_str())
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn apply_aligned_diff_edit_impl(
     state: State<'_, AppState>,
@@ -398,7 +432,8 @@ pub(super) async fn apply_aligned_diff_edit_impl(
 mod tests {
     use super::{
         apply_serialized_text_to_document, build_line_diff_result, compute_text_patch,
-        extract_actual_lines_from_aligned, normalize_rope_line_text, serialize_actual_lines,
+        extract_actual_lines_from_aligned, find_line_numbers_by_keyword, normalize_rope_line_text,
+        serialize_actual_lines,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -539,5 +574,24 @@ mod tests {
         assert_eq!(doc.undo_stack.len(), 1);
         assert!(doc.redo_stack.is_empty());
         assert_eq!(doc.document_version, 1);
+    }
+
+    #[test]
+    fn find_line_numbers_by_keyword_should_match_case_insensitive_substring() {
+        let lines = vec![
+            "Alpha".to_string(),
+            "beta".to_string(),
+            "ALPHABET".to_string(),
+        ];
+
+        let matched = find_line_numbers_by_keyword(lines.as_slice(), "alp");
+        assert_eq!(matched, vec![1, 3]);
+    }
+
+    #[test]
+    fn find_line_numbers_by_keyword_should_return_empty_for_empty_keyword() {
+        let lines = vec!["alpha".to_string(), "beta".to_string()];
+        let matched = find_line_numbers_by_keyword(lines.as_slice(), "");
+        assert!(matched.is_empty());
     }
 }

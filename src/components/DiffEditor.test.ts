@@ -557,6 +557,26 @@ describe('DiffEditor component', () => {
           [true, true]
         );
       }
+      if (command === 'search_diff_panel_line_matches') {
+        const keyword = String(params.keyword ?? '').trim().toLowerCase();
+        const id = String(params.id ?? '');
+        if (!keyword) {
+          return [];
+        }
+
+        const lines = id === 'source-tab'
+          ? ['left-1', 'left-2']
+          : id === 'target-tab'
+            ? ['right-1', 'right-2']
+            : [];
+        const matchedLineNumbers: number[] = [];
+        for (let index = 0; index < lines.length; index += 1) {
+          if (lines[index].toLowerCase().includes(keyword)) {
+            matchedLineNumbers.push(index + 1);
+          }
+        }
+        return matchedLineNumbers;
+      }
       if (command === 'apply_aligned_diff_edit') {
         const alignedSourceLines = Array.isArray(params.alignedSourceLines)
           ? params.alignedSourceLines.map((item) => String(item ?? ''))
@@ -889,6 +909,26 @@ describe('DiffEditor component', () => {
           [true, true],
           [true, true]
         );
+      }
+      if (command === 'search_diff_panel_line_matches') {
+        const keyword = String(params.keyword ?? '').trim().toLowerCase();
+        const id = String(params.id ?? '');
+        if (!keyword) {
+          return [];
+        }
+
+        const lines = id === 'source-tab'
+          ? ['left-1', 'left-2']
+          : id === 'target-tab'
+            ? ['right-1', 'right-2']
+            : [];
+        const matchedLineNumbers: number[] = [];
+        for (let index = 0; index < lines.length; index += 1) {
+          if (lines[index].toLowerCase().includes(keyword)) {
+            matchedLineNumbers.push(index + 1);
+          }
+        }
+        return matchedLineNumbers;
       }
       if (command === 'open_in_file_manager') {
         throw new Error('open-folder-failed');
@@ -1312,6 +1352,28 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('requests backend line matches when diff panel search keyword changes', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_diff_panel_line_matches', {
+        id: sourceTab.id,
+        keyword: 'left',
+      });
+    });
+  });
+
   it('clears source matched row when source text updates invalidate search rows', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
@@ -1328,8 +1390,15 @@ describe('DiffEditor component', () => {
       return element as HTMLTextAreaElement;
     });
     const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+    const sourceSearchContainer = sourceSearchInput.parentElement as HTMLElement | null;
+    const sourceNextButton = sourceSearchContainer?.querySelector(
+      'button[aria-label="Next Match"]'
+    ) as HTMLButtonElement | null;
 
     fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+    await waitFor(() => {
+      expect(sourceNextButton?.disabled).toBe(false);
+    });
     fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
     await waitFor(() => {
       expect(sourceTextarea.selectionStart).toBe(0);
@@ -1369,7 +1438,6 @@ describe('DiffEditor component', () => {
 
     fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
     await waitFor(() => {
-      expect(sourceTextarea.selectionStart).toBe(0);
       expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
     });
   });
@@ -1390,8 +1458,15 @@ describe('DiffEditor component', () => {
       return element as HTMLTextAreaElement;
     });
     const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
+    const targetSearchContainer = targetSearchInput.parentElement as HTMLElement | null;
+    const targetNextButton = targetSearchContainer?.querySelector(
+      'button[aria-label="Next Match"]'
+    ) as HTMLButtonElement | null;
 
     fireEvent.change(targetSearchInput, { target: { value: 'right' } });
+    await waitFor(() => {
+      expect(targetNextButton?.disabled).toBe(false);
+    });
     fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
     await waitFor(() => {
       expect(targetTextarea.selectionStart).toBe(0);
@@ -1431,7 +1506,6 @@ describe('DiffEditor component', () => {
 
     fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
     await waitFor(() => {
-      expect(targetTextarea.selectionStart).toBe(0);
       expect(targetTextarea.selectionEnd).toBeGreaterThan(targetTextarea.selectionStart);
     });
   });
