@@ -24,7 +24,6 @@ import {
   type EditorSegmentState,
   type EditorSubmenuVerticalAlign,
   type PairHighlightPosition,
-  type PairOffsetsResultPayload,
   type RectangularSelectionState,
   type ReplaceRectangularSelectionResultPayload,
   type SearchHighlightState,
@@ -45,6 +44,7 @@ import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRendere
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
+import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
@@ -199,7 +199,6 @@ export function Editor({
   const lineNumberSelectionAnchorLineRef = useRef<number | null>(null);
   const lineNumberContextLineRef = useRef<number | null>(null);
   const selectionChangeRafRef = useRef<number | null>(null);
-  const pairHighlightRequestIdRef = useRef(0);
   const editableSegmentRef = useRef<EditorSegmentState>({
     startLine: 0,
     endLine: 0,
@@ -929,118 +928,23 @@ export function Editor({
       releaseHugeEditableWindowLock();
     }, HUGE_EDITABLE_WINDOW_UNLOCK_MS);
   }, [isHugeEditableMode, releaseHugeEditableWindowLock]);
-
-  const updateCursorPositionFromSelection = useCallback(() => {
-    if (!contentRef.current) {
-      return;
-    }
-
-    const text = normalizeSegmentText(getEditableText(contentRef.current));
-    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(contentRef.current);
-    const focusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(contentRef.current)?.end;
-
-    if (focusOffset === null || focusOffset === undefined) {
-      return;
-    }
-
-    const localPosition = codeUnitOffsetToLineColumn(text, focusOffset);
-
-    const absoluteLine = isHugeEditableMode
-      ? editableSegmentRef.current.startLine + localPosition.line
-      : localPosition.line;
-    const safeLine = Math.max(1, Math.min(Math.max(1, tab.lineCount), Math.floor(absoluteLine)));
-    const safeColumn = Math.max(1, Math.floor(localPosition.column + 1));
-
-    setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
-    setCursorPosition(tab.id, safeLine, safeColumn);
-  }, [isHugeEditableMode, setCursorPosition, tab.id, tab.lineCount]);
-
-  const updatePairHighlightsFromSelection = useCallback(async () => {
-    const requestId = pairHighlightRequestIdRef.current + 1;
-    pairHighlightRequestIdRef.current = requestId;
-
-    if (!isPairHighlightEnabled || !contentRef.current) {
-      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
-
-    const selectionOffsets = getSelectionOffsetsInElement(contentRef.current);
-
-    if (!selectionOffsets || !selectionOffsets.isCollapsed) {
-      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
-
-    const text = normalizeSegmentText(getEditableText(contentRef.current));
-
-    let matched: PairOffsetsResultPayload | null = null;
-    try {
-      matched = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
-        text,
-        offset: selectionOffsets.end,
-      });
-    } catch (error) {
-      if (requestId === pairHighlightRequestIdRef.current) {
-        setPairHighlights((prev) => (prev.length === 0 ? prev : []));
-      }
-      console.error('Failed to find matching pair offsets:', error);
-      return;
-    }
-
-    if (requestId !== pairHighlightRequestIdRef.current) {
-      return;
-    }
-
-    if (!matched) {
-      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
-
-    const sortedIndexes =
-      matched.leftOffset <= matched.rightOffset
-        ? [matched.leftOffset, matched.rightOffset]
-        : [matched.rightOffset, matched.leftOffset];
-    const resolveAbsoluteLine = (line: number) => {
-      const safeLine = Math.max(1, Math.floor(line));
-      return isHugeEditableMode ? editableSegmentRef.current.startLine + safeLine : safeLine;
-    };
-    const hasBackendPositions =
-      Number.isFinite(matched.leftLine)
-      && Number.isFinite(matched.leftColumn)
-      && Number.isFinite(matched.rightLine)
-      && Number.isFinite(matched.rightColumn);
-    const nextHighlights = hasBackendPositions
-      ? [
-        {
-          offset: matched.leftOffset,
-          line: resolveAbsoluteLine(matched.leftLine as number),
-          column: Math.max(1, Math.floor(matched.leftColumn as number)),
-        },
-        {
-          offset: matched.rightOffset,
-          line: resolveAbsoluteLine(matched.rightLine as number),
-          column: Math.max(1, Math.floor(matched.rightColumn as number)),
-        },
-      ]
-        .sort((left, right) => left.offset - right.offset)
-        .map((item) => ({ line: item.line, column: item.column }))
-      : sortedIndexes.map((offset) => {
-        const local = codeUnitOffsetToLineColumn(text, offset);
-        return {
-          line: resolveAbsoluteLine(local.line),
-          column: local.column + 1,
-        };
-      });
-
-    setPairHighlights((prev) =>
-      arePairHighlightPositionsEqual(prev, nextHighlights) ? prev : nextHighlights
-    );
-  }, [isHugeEditableMode, isPairHighlightEnabled]);
-
-  const syncSelectionState = useCallback(() => {
-    updateCursorPositionFromSelection();
-    void updatePairHighlightsFromSelection();
-  }, [updateCursorPositionFromSelection, updatePairHighlightsFromSelection]);
+  const { syncSelectionState } = useEditorSelectionStateSync({
+    isHugeEditableMode,
+    isPairHighlightEnabled,
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
+    contentRef,
+    editableSegmentRef,
+    setActiveLineNumber,
+    setCursorPosition,
+    setPairHighlights,
+    normalizeSegmentText,
+    getEditableText,
+    getSelectionAnchorFocusOffsetsInElement,
+    getSelectionOffsetsInElement,
+    codeUnitOffsetToLineColumn,
+    arePairHighlightPositionsEqual,
+  });
 
   const clearVerticalSelectionState = useCallback(() => {
     verticalSelectionRef.current = null;
