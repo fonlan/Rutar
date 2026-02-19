@@ -7,7 +7,6 @@ import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
 import {
   EditorContextMenu,
-  type EditorCleanupAction,
   type EditorContextMenuState,
   type EditorSubmenuKey,
 } from './EditorContextMenu';
@@ -35,6 +34,7 @@ import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
 import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
 import { useEditorContentSync } from './useEditorContentSync';
+import { useEditorContextCleanupAction } from './useEditorContextCleanupAction';
 import { useEditorContextConvertActions } from './useEditorContextConvertActions';
 import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
@@ -1569,41 +1569,16 @@ export function Editor({
     updateTab,
   ]);
 
-  const handleCleanupDocumentFromContext = useCallback(
-    async (action: EditorCleanupAction) => {
-      setEditorContextMenu(null);
-
-      try {
-        await flushPendingSync();
-
-        const newLineCount = await invoke<number>('cleanup_document', {
-          id: tab.id,
-          action,
-        });
-
-        const safeLineCount = Math.max(1, newLineCount);
-        updateTab(tab.id, {
-          lineCount: safeLineCount,
-          isDirty: true,
-        });
-        dispatchDocumentUpdated(tab.id);
-
-        await loadTextFromBackend();
-        await syncVisibleTokens(safeLineCount);
-        syncSelectionAfterInteraction();
-      } catch (error) {
-        console.error('Failed to cleanup document:', error);
-      }
-    },
-    [
-      flushPendingSync,
-      loadTextFromBackend,
-      syncSelectionAfterInteraction,
-      syncVisibleTokens,
-      tab.id,
-      updateTab,
-    ]
-  );
+  const { handleCleanupDocumentFromContext } = useEditorContextCleanupAction({
+    tabId: tab.id,
+    setEditorContextMenu,
+    flushPendingSync,
+    loadTextFromBackend,
+    syncVisibleTokens,
+    syncSelectionAfterInteraction,
+    updateTab,
+    dispatchDocumentUpdated,
+  });
 
   const { handleConvertSelectionFromContext } = useEditorContextConvertActions({
     editorContextMenuHasSelection: !!editorContextMenu?.hasSelection,
