@@ -37,6 +37,25 @@ vi.mock('@/lib/openFile', () => ({
 vi.mock('@/lib/tabClose', () => ({
   confirmTabClose: vi.fn(async () => 'discard'),
   saveTab: vi.fn(async () => true),
+  shouldEnableBulkTabCloseActions: vi.fn((tabs: Array<{ isDirty?: boolean }>, allowAllActions: boolean) => {
+    if (!allowAllActions) {
+      return false;
+    }
+
+    let dirtyCount = 0;
+    for (const tab of tabs) {
+      if (!tab?.isDirty) {
+        continue;
+      }
+
+      dirtyCount += 1;
+      if (dirtyCount > 1) {
+        return true;
+      }
+    }
+
+    return false;
+  }),
 }));
 
 vi.mock('@/lib/outline', () => ({
@@ -84,6 +103,10 @@ vi.mock('@/components/SearchReplacePanel', () => ({
 
 vi.mock('@/components/TabCloseConfirmModal', () => ({
   TabCloseConfirmModal: () => React.createElement('div', { 'data-testid': 'mock-tab-close-confirm-modal' }),
+}));
+
+vi.mock('@/components/GoToLineModal', () => ({
+  GoToLineModal: () => React.createElement('div', { 'data-testid': 'mock-go-to-line-modal' }),
 }));
 
 vi.mock('@/components/OutlineSidebar', () => ({
@@ -468,7 +491,7 @@ describe('App component', () => {
     expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(
       expect.objectContaining({ id: dirtyTab.id }),
       'en-US',
-      true
+      false
     );
     expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
     expect(vi.mocked(saveTab)).not.toHaveBeenCalled();
@@ -2248,7 +2271,7 @@ describe('App component', () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(dirtyTab, 'en-US', true);
+      expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(dirtyTab, 'en-US', false);
       expect(vi.mocked(saveTab)).toHaveBeenCalledWith(dirtyTab, expect.any(Function));
       expect(useStore.getState().tabs.some((tab) => tab.id === dirtyTab.id)).toBe(true);
     });
@@ -2322,7 +2345,7 @@ describe('App component', () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(dirtyTab, 'en-US', true);
+      expect(vi.mocked(confirmTabClose)).toHaveBeenCalledWith(dirtyTab, 'en-US', false);
       expect(useStore.getState().tabs.some((tab) => tab.id === dirtyTab.id)).toBe(true);
     });
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('close_files', expect.anything());

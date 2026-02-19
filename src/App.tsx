@@ -130,6 +130,10 @@ const TabCloseConfirmModal = lazy(async () => ({
   default: (await import('@/components/TabCloseConfirmModal')).TabCloseConfirmModal,
 }));
 
+const GoToLineModal = lazy(async () => ({
+  default: (await import('@/components/GoToLineModal')).GoToLineModal,
+}));
+
 function dispatchEditorForceRefresh(tabId: string, lineCount: number) {
   window.dispatchEvent(
     new CustomEvent('rutar:force-refresh', {
@@ -1439,6 +1443,7 @@ function App() {
       <Suspense fallback={null}>
         <SettingsModal />
         <TabCloseConfirmModal />
+        <GoToLineModal />
         <SearchReplacePanel />
       </Suspense>
       

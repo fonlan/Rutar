@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, SearchHighlightState } from './Editor.types';
 
@@ -75,6 +75,8 @@ export function useEditorNavigationAndRefreshEffects({
   mapLogicalOffsetToInputLayerOffset,
   setCaretToCodeUnitOffset,
 }: UseEditorNavigationAndRefreshEffectsParams) {
+  const navigationSerialRef = useRef(0);
+
   useEffect(() => {
     const handleNavigateToLine = (event: Event) => {
       const customEvent = event as CustomEvent<{
@@ -99,6 +101,8 @@ export function useEditorNavigationAndRefreshEffects({
       // Invalidate stale async segment fetches so old viewport requests cannot re-apply after navigation.
       currentRequestVersionRef.current += 1;
       pendingRestoreScrollTopRef.current = null;
+      navigationSerialRef.current += 1;
+      const navigationSerial = navigationSerialRef.current;
 
       const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
       const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
@@ -146,16 +150,48 @@ export function useEditorNavigationAndRefreshEffects({
       });
 
       const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
-      const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
-      const lineNumberElement = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+      const applyTargetScrollTop = () => {
+        if (navigationSerialRef.current !== navigationSerial) {
+          return;
+        }
+
+        const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
+        const lineNumberElement = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+
+        if (isHugeEditableMode) {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = targetScrollTop;
+          }
+        } else if (contentRef.current) {
+          contentRef.current.scrollTop = targetScrollTop;
+        }
+
+        if (listElement) {
+          listElement.scrollTop = targetScrollTop;
+        }
+
+        if (lineNumberElement) {
+          lineNumberElement.scrollTop = targetScrollTop;
+        }
+      };
+      const scheduleNavigationStabilization = () => {
+        window.requestAnimationFrame(() => {
+          applyTargetScrollTop();
+          placeCaretAtTargetPosition();
+
+          window.setTimeout(() => {
+            applyTargetScrollTop();
+            placeCaretAtTargetPosition();
+          }, 60);
+        });
+      };
 
       if (isHugeEditableMode) {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = targetScrollTop;
-        }
+        applyTargetScrollTop();
 
         if (contentRef.current) {
           contentRef.current.focus();
+          const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
 
           ensureSearchMatchVisibleHorizontally(
             scrollContainerRef.current,
@@ -166,30 +202,17 @@ export function useEditorNavigationAndRefreshEffects({
             targetOccludedRightPx,
             listElement
           );
-
-          window.requestAnimationFrame(() => {
-            placeCaretAtTargetPosition();
-            window.setTimeout(() => {
-              placeCaretAtTargetPosition();
-            }, 60);
-          });
         }
-
-        if (listElement) {
-          listElement.scrollTop = targetScrollTop;
-        }
-
-        if (lineNumberElement) {
-          lineNumberElement.scrollTop = targetScrollTop;
-        }
+        scheduleNavigationStabilization();
 
         void syncVisibleTokens(Math.max(1, tabLineCount));
         return;
       }
 
+      applyTargetScrollTop();
       if (contentRef.current) {
-        contentRef.current.scrollTop = targetScrollTop;
         contentRef.current.focus();
+        const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
 
         ensureSearchMatchVisibleHorizontally(
           contentRef.current,
@@ -200,19 +223,8 @@ export function useEditorNavigationAndRefreshEffects({
           targetOccludedRightPx,
           listElement
         );
-
-        window.requestAnimationFrame(() => {
-          placeCaretAtTargetPosition();
-        });
       }
-
-      if (listElement) {
-        listElement.scrollTop = targetScrollTop;
-      }
-
-      if (lineNumberElement) {
-        lineNumberElement.scrollTop = targetScrollTop;
-      }
+      scheduleNavigationStabilization();
 
       void syncVisibleTokens(Math.max(1, tabLineCount));
     };

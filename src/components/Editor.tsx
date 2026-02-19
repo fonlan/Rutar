@@ -750,6 +750,9 @@ export function Editor({
   });
 
   const { handleEditableKeyDown } = useEditorKeyboardActions({
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
+    activeLineNumber,
     contentRef,
     rectangularSelectionRef,
     lineNumberMultiSelection,

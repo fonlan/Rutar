@@ -368,6 +368,8 @@ describe("SettingsModal", () => {
       expect(screen.getByText("Action")).toBeInTheDocument();
       expect(screen.getByText("Shortcut")).toBeInTheDocument();
       expect(screen.getByText("F3 / Shift + F3")).toBeInTheDocument();
+      expect(screen.getByText("Go to Line")).toBeInTheDocument();
+      expect(screen.getByText("Ctrl + G")).toBeInTheDocument();
     });
   });
 

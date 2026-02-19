@@ -1,7 +1,11 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent, MutableRefObject } from 'react';
+import { dispatchGoToLineDialogRequest } from '@/lib/goToLineDialog';
 
 interface UseEditorKeyboardActionsParams {
+  tabId: string;
+  tabLineCount: number;
+  activeLineNumber: number;
   contentRef: MutableRefObject<any>;
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
@@ -30,6 +34,9 @@ interface UseEditorKeyboardActionsParams {
 }
 
 export function useEditorKeyboardActions({
+  tabId,
+  tabLineCount,
+  activeLineNumber,
   contentRef,
   rectangularSelectionRef,
   lineNumberMultiSelection,
@@ -156,6 +163,28 @@ export function useEditorKeyboardActions({
         return;
       }
 
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.nativeEvent.isComposing &&
+        event.key.toLowerCase() === 'g'
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        const maxLineNumber = Math.max(1, Math.floor(tabLineCount));
+        const defaultLineNumber = String(
+          Math.min(maxLineNumber, Math.max(1, Math.floor(activeLineNumber)))
+        );
+        const defaultLine = Number(defaultLineNumber);
+        dispatchGoToLineDialogRequest({
+          tabId,
+          maxLineNumber,
+          initialLineNumber: Number.isFinite(defaultLine) ? defaultLine : 1,
+        });
+        return;
+      }
+
       if (isVerticalSelectionShortcut(event)) {
         event.preventDefault();
         event.stopPropagation();
@@ -258,6 +287,7 @@ export function useEditorKeyboardActions({
       clearRectangularSelection,
       clearVerticalSelectionState,
       contentRef,
+      activeLineNumber,
       getEditableText,
       getSelectionOffsetsInElement,
       handleInput,
@@ -275,6 +305,8 @@ export function useEditorKeyboardActions({
       replaceRectangularSelection,
       setCaretToCodeUnitOffset,
       setInputLayerText,
+      tabId,
+      tabLineCount,
       toggleSelectedLinesComment,
     ]
   );

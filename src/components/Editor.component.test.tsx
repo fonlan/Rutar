@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { GO_TO_LINE_DIALOG_REQUEST_EVENT } from '@/lib/goToLineDialog';
 import { Editor } from './Editor';
 import { type FileTab, useStore } from '@/store/useStore';
 
@@ -1324,6 +1325,40 @@ describe('Editor component', () => {
     });
   });
 
+  it('re-aligns huge-mode scroll after temporary overwrite during navigate-to-line', async () => {
+    const tab = createTab({ id: 'tab-navigate-huge-mode-realign', lineCount: 22000 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'alpha\nbeta');
+
+    await waitFor(() => {
+      expect(container.querySelector('.editor-scroll-stable')).toBeTruthy();
+    });
+    const scrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 600,
+            column: 1,
+            length: 0,
+            lineText: 'alpha',
+            source: 'shortcut',
+          },
+        })
+      );
+
+      // Simulate scroll state being overwritten by asynchronous sync pipeline.
+      scrollContainer.scrollTop = 0;
+    });
+
+    await waitFor(() => {
+      expect(scrollContainer.scrollTop).toBeGreaterThan(0);
+    });
+  });
+
   it('ignores navigate-to-line event when detail is missing or tab id mismatches', async () => {
     const tab = createTab({ id: 'tab-navigate-ignore', lineCount: 12 });
     const { container } = render(<Editor tab={tab} />);
@@ -2476,6 +2511,56 @@ describe('Editor component', () => {
       });
     } finally {
       errorSpy.mockRestore();
+    }
+  });
+
+  it('requests go-to-line dialog when Ctrl+G is pressed', async () => {
+    const tab = createTab({ id: 'tab-shortcut-goto-line', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const requestedEvents: Array<{ tabId: string; maxLineNumber: number; initialLineNumber: number }> = [];
+    const requestListener = (event: Event) => {
+      requestedEvents.push((event as CustomEvent).detail as {
+        tabId: string;
+        maxLineNumber: number;
+        initialLineNumber: number;
+      });
+    };
+    window.addEventListener(GO_TO_LINE_DIALOG_REQUEST_EVENT, requestListener as EventListener);
+
+    try {
+      textarea.focus();
+      fireEvent.keyDown(textarea, { key: 'g', ctrlKey: true });
+
+      await waitFor(() => {
+        expect(requestedEvents).toEqual([
+          {
+            tabId: tab.id,
+            maxLineNumber: 12,
+            initialLineNumber: 1,
+          },
+        ]);
+      });
+    } finally {
+      window.removeEventListener(GO_TO_LINE_DIALOG_REQUEST_EVENT, requestListener as EventListener);
+    }
+  });
+
+  it('does not request go-to-line dialog when Ctrl+G is pressed with Shift', async () => {
+    const tab = createTab({ id: 'tab-shortcut-goto-line-shift', lineCount: 6 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const requestListener = vi.fn();
+    window.addEventListener(GO_TO_LINE_DIALOG_REQUEST_EVENT, requestListener as EventListener);
+
+    try {
+      textarea.focus();
+      fireEvent.keyDown(textarea, { key: 'g', ctrlKey: true, shiftKey: true });
+      expect(requestListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(GO_TO_LINE_DIALOG_REQUEST_EVENT, requestListener as EventListener);
     }
   });
 

@@ -154,6 +154,7 @@ export type I18nKey =
   | 'settings.shortcutsKey'
   | 'settings.shortcutCloseTab'
   | 'settings.shortcutFindNext'
+  | 'settings.shortcutGoToLine'
   | 'settings.shortcutBeautify'
   | 'settings.shortcutMinify'
   | 'settings.shortcutToggleComment'
@@ -201,7 +202,11 @@ export type I18nKey =
   | 'editor.context.cleanup.trimLeadingWhitespace'
   | 'editor.context.cleanup.trimTrailingWhitespace'
   | 'editor.context.cleanup.trimSurroundingWhitespace'
-  | 'editor.hyperlink.openHint';
+  | 'editor.hyperlink.openHint'
+  | 'editor.gotoLine.title'
+  | 'editor.gotoLine.description'
+  | 'editor.gotoLine.inputLabel'
+  | 'editor.gotoLine.confirm';
 
 type Messages = Record<I18nKey, string>;
 
@@ -359,6 +364,7 @@ const zhCN: Messages = {
   'settings.shortcutsKey': '快捷键',
   'settings.shortcutCloseTab': '关闭当前标签页',
   'settings.shortcutFindNext': '查找下一个/上一个',
+  'settings.shortcutGoToLine': '跳转到行',
   'settings.shortcutBeautify': '格式化文档',
   'settings.shortcutMinify': '最小化文档',
   'settings.shortcutToggleComment': '切换行注释',
@@ -407,6 +413,10 @@ const zhCN: Messages = {
   'editor.context.cleanup.trimTrailingWhitespace': '移除行尾空格',
   'editor.context.cleanup.trimSurroundingWhitespace': '移除行首行尾空格',
   'editor.hyperlink.openHint': 'Ctrl+左键打开',
+  'editor.gotoLine.title': '跳转到行',
+  'editor.gotoLine.description': '请输入目标行号（1-{maxLineNumber}）。',
+  'editor.gotoLine.inputLabel': '行号',
+  'editor.gotoLine.confirm': '跳转',
 };
 
 const enUS: Messages = {
@@ -563,6 +573,7 @@ const enUS: Messages = {
   'settings.shortcutsKey': 'Shortcut',
   'settings.shortcutCloseTab': 'Close Current Tab',
   'settings.shortcutFindNext': 'Find Next / Previous',
+  'settings.shortcutGoToLine': 'Go to Line',
   'settings.shortcutBeautify': 'Beautify Document',
   'settings.shortcutMinify': 'Minify Document',
   'settings.shortcutToggleComment': 'Toggle Line Comment',
@@ -611,6 +622,10 @@ const enUS: Messages = {
   'editor.context.cleanup.trimTrailingWhitespace': 'Trim Trailing Whitespace',
   'editor.context.cleanup.trimSurroundingWhitespace': 'Trim Leading/Trailing Whitespace',
   'editor.hyperlink.openHint': 'Ctrl+Left Click to open',
+  'editor.gotoLine.title': 'Go to Line',
+  'editor.gotoLine.description': 'Enter the target line number (1-{maxLineNumber}).',
+  'editor.gotoLine.inputLabel': 'Line Number',
+  'editor.gotoLine.confirm': 'Go',
 };
 
 const dictionaries: Record<AppLanguage, Messages> = {
