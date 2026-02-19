@@ -38,6 +38,7 @@ import { useEditorContextConvertActions } from './useEditorContextConvertActions
 import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorDocumentLoadEffects } from './useEditorDocumentLoadEffects';
+import { useEditorFlushPendingSync } from './useEditorFlushPendingSync';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorInputSyncActions } from './useEditorInputSyncActions';
@@ -572,36 +573,6 @@ export function Editor({
     }
   }, []);
 
-  const releaseHugeEditableWindowLock = useCallback(() => {
-    hugeWindowLockedRef.current = false;
-
-    if (!isHugeEditableMode) {
-      hugeWindowFollowScrollOnUnlockRef.current = false;
-      return;
-    }
-
-    if (!hugeWindowFollowScrollOnUnlockRef.current) {
-      return;
-    }
-
-    hugeWindowFollowScrollOnUnlockRef.current = false;
-    void syncVisibleTokens(Math.max(1, tab.lineCount));
-  }, [isHugeEditableMode, syncVisibleTokens, tab.lineCount]);
-
-  const scheduleHugeEditableWindowUnlock = useCallback(() => {
-    if (!isHugeEditableMode) {
-      return;
-    }
-
-    if (hugeWindowUnlockTimerRef.current) {
-      clearTimeout(hugeWindowUnlockTimerRef.current);
-    }
-
-    hugeWindowUnlockTimerRef.current = setTimeout(() => {
-      hugeWindowUnlockTimerRef.current = null;
-      releaseHugeEditableWindowLock();
-    }, HUGE_EDITABLE_WINDOW_UNLOCK_MS);
-  }, [isHugeEditableMode, releaseHugeEditableWindowLock]);
   const { syncSelectionState } = useEditorSelectionStateSync({
     isHugeEditableMode,
     isPairHighlightEnabled,
@@ -1456,124 +1427,35 @@ export function Editor({
     [getRectangularSelectionScrollElement]
   );
 
-  const flushPendingSync = useCallback(async () => {
-    if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
-      return;
-    }
-
-    const baseText = syncedTextRef.current;
-    const targetText = normalizeSegmentText(getEditableText(contentRef.current));
-    pendingSyncRequestedRef.current = false;
-
-    if (isHugeEditableMode) {
-      const segment = editableSegmentRef.current;
-      if (segment.endLine <= segment.startLine) {
-        return;
-      }
-
-      hugeWindowLockedRef.current = true;
-
-      if (baseText === targetText) {
-        syncedTextRef.current = targetText;
-        scheduleHugeEditableWindowUnlock();
-        return;
-      }
-
-      syncInFlightRef.current = true;
-
-      try {
-        const newLineCount = await invoke<number>('replace_line_range', {
-          id: tab.id,
-          startLine: segment.startLine,
-          endLine: segment.endLine,
-          newText: targetText,
-        });
-
-        const newLineCountSafe = Math.max(1, newLineCount);
-        const currentScrollTop = scrollContainerRef.current?.scrollTop ?? 0;
-        const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
-        const currentLine = Math.max(0, Math.floor(currentScrollTop / itemSize));
-        const buffer = largeFetchBuffer;
-        const nextStart = Math.max(0, currentLine - buffer);
-        const nextEnd = Math.max(nextStart + 1, Math.min(newLineCountSafe, currentLine + viewportLines + buffer));
-
-        const nextSegment: EditorSegmentState = {
-          startLine: nextStart,
-          endLine: nextEnd,
-          text: targetText,
-        };
-
-        editableSegmentRef.current = nextSegment;
-        setEditableSegment(nextSegment);
-        syncedTextRef.current = targetText;
-        suppressExternalReloadRef.current = true;
-        updateTab(tab.id, { lineCount: newLineCountSafe, isDirty: true });
-        dispatchDocumentUpdated(tab.id);
-
-        if (contentRef.current) {
-          const alignedTop = alignScrollOffset(currentScrollTop);
-          if (scrollContainerRef.current && Math.abs(scrollContainerRef.current.scrollTop - alignedTop) > 0.001) {
-            scrollContainerRef.current.scrollTop = alignedTop;
-          }
-        }
-      } catch (e) {
-        console.error('Large segment sync error:', e);
-      } finally {
-        syncInFlightRef.current = false;
-        scheduleHugeEditableWindowUnlock();
-
-        if (pendingSyncRequestedRef.current && !isComposingRef.current) {
-          void flushPendingSync();
-        }
-      }
-
-      return;
-    }
-
-    const diff = buildCodeUnitDiff(baseText, targetText);
-
-    if (!diff) {
-      syncedTextRef.current = targetText;
-      return;
-    }
-
-    syncInFlightRef.current = true;
-
-    try {
-      const startChar = codeUnitOffsetToUnicodeScalarIndex(baseText, diff.start);
-      const endChar = codeUnitOffsetToUnicodeScalarIndex(baseText, diff.end);
-
-      const newLineCount = await invoke<number>('edit_text', {
-        id: tab.id,
-        startChar,
-        endChar,
-        newText: diff.newText,
-      });
-
-      syncedTextRef.current = targetText;
-      suppressExternalReloadRef.current = true;
-      updateTab(tab.id, { lineCount: newLineCount, isDirty: true });
-      dispatchDocumentUpdated(tab.id);
-      await syncVisibleTokens(newLineCount);
-    } catch (e) {
-      console.error('Edit sync error:', e);
-    } finally {
-      syncInFlightRef.current = false;
-
-      if (pendingSyncRequestedRef.current && !isComposingRef.current) {
-        void flushPendingSync();
-      }
-    }
-  }, [
-    height,
+  const { flushPendingSync } = useEditorFlushPendingSync({
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
     isHugeEditableMode,
+    hugeEditableWindowUnlockMs: HUGE_EDITABLE_WINDOW_UNLOCK_MS,
+    height,
     itemSize,
     largeFetchBuffer,
-    scheduleHugeEditableWindowUnlock,
+    contentRef,
+    scrollContainerRef,
+    editableSegmentRef,
+    setEditableSegment,
+    syncedTextRef,
+    suppressExternalReloadRef,
+    pendingSyncRequestedRef,
+    syncInFlightRef,
+    isComposingRef,
+    hugeWindowLockedRef,
+    hugeWindowFollowScrollOnUnlockRef,
+    hugeWindowUnlockTimerRef,
     syncVisibleTokens,
-    tab.id,
     updateTab,
-  ]);
+    dispatchDocumentUpdated,
+    normalizeSegmentText,
+    getEditableText,
+    alignScrollOffset,
+    buildCodeUnitDiff,
+    codeUnitOffsetToUnicodeScalarIndex,
+  });
 
   const { handleCleanupDocumentFromContext } = useEditorContextCleanupAction({
     tabId: tab.id,
