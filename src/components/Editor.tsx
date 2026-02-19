@@ -38,6 +38,7 @@ import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
 import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
+import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
@@ -140,7 +141,6 @@ export function Editor({
     endLine: 0,
     text: '',
   });
-  const [hugeScrollableContentWidth, setHugeScrollableContentWidth] = useState(0);
   const [activeLineNumber, setActiveLineNumber] = useState(1);
   const [searchHighlight, setSearchHighlight] = useState<SearchHighlightState | null>(null);
   const [textSelectionHighlight, setTextSelectionHighlight] = useState<TextSelectionState | null>(null);
@@ -916,56 +916,18 @@ export function Editor({
       contentRef.current.style.webkitUserSelect = 'none';
     }
   }, [isHugeEditableMode]);
-
-  const editableSegmentLines = useMemo(() => {
-    if (!isHugeEditableMode) {
-      return [];
-    }
-
-    if (editableSegment.endLine <= editableSegment.startLine) {
-      return [];
-    }
-
-    return editableSegment.text.split('\n');
-  }, [editableSegment.endLine, editableSegment.startLine, editableSegment.text, isHugeEditableMode]);
-
-  const syncHugeScrollableContentWidth = useCallback(() => {
-    if (!isHugeEditableMode || wordWrap) {
-      setHugeScrollableContentWidth(0);
-      return;
-    }
-
-    const element = contentRef.current;
-    if (!element) {
-      return;
-    }
-
-    const measuredWidth = Math.max(contentViewportWidth, element.scrollWidth);
-    setHugeScrollableContentWidth((prev) => (prev === measuredWidth ? prev : measuredWidth));
-  }, [contentViewportWidth, isHugeEditableMode, wordWrap]);
-
-  useEffect(() => {
-    if (!isHugeEditableMode || wordWrap) {
-      setHugeScrollableContentWidth(0);
-      return;
-    }
-
-    const rafId = window.requestAnimationFrame(() => {
-      syncHugeScrollableContentWidth();
+  const { editableSegmentLines, hugeScrollableContentWidth, syncHugeScrollableContentWidth } =
+    useEditorHugeEditableLayout({
+      isHugeEditableMode,
+      wordWrap,
+      contentViewportWidth,
+      editableSegmentStartLine: editableSegment.startLine,
+      editableSegmentEndLine: editableSegment.endLine,
+      editableSegmentText: editableSegment.text,
+      renderedFontSizePx,
+      fontFamily: settings.fontFamily,
+      contentRef,
     });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [
-    contentViewportWidth,
-    editableSegment.text,
-    isHugeEditableMode,
-    renderedFontSizePx,
-    settings.fontFamily,
-    syncHugeScrollableContentWidth,
-    wordWrap,
-  ]);
 
   const fetchTokens = useCallback(
     async (start: number, end: number) => {
