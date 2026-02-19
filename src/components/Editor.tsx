@@ -56,6 +56,7 @@ import { useEditorPointerSelectionGuards } from './useEditorPointerSelectionGuar
 import { useEditorRectangularSelectionActions } from './useEditorRectangularSelectionActions';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSearchHorizontalNavigation } from './useEditorSearchHorizontalNavigation';
+import { useEditorSelectedTextReader } from './useEditorSelectedTextReader';
 import { useEditorSelectionPresence } from './useEditorSelectionPresence';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
@@ -546,39 +547,15 @@ export function Editor({
     getSelectionOffsetsInElement,
   });
 
-  const getSelectedEditorText = useCallback(() => {
-    const element = contentRef.current;
-    if (!element) {
-      return '';
-    }
-
-    if (normalizedRectangularSelection) {
-      const text = normalizeSegmentText(getEditableText(element));
-      return getRectangularSelectionText(text);
-    }
-
-    if (isTextareaInputElement(element)) {
-      const start = Math.max(0, Math.min(element.selectionStart ?? 0, element.value.length));
-      const end = Math.max(0, Math.min(element.selectionEnd ?? start, element.value.length));
-      if (end <= start) {
-        return '';
-      }
-
-      return normalizeLineText(element.value.slice(start, end));
-    }
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      return '';
-    }
-
-    const range = selection.getRangeAt(0);
-    if (!element.contains(range.commonAncestorContainer)) {
-      return '';
-    }
-
-    return normalizeLineText(selection.toString());
-  }, [getRectangularSelectionText, normalizedRectangularSelection]);
+  const { getSelectedEditorText } = useEditorSelectedTextReader({
+    contentRef,
+    normalizedRectangularSelection,
+    getRectangularSelectionText,
+    normalizeSegmentText,
+    normalizeLineText,
+    getEditableText,
+    isTextareaInputElement,
+  });
 
   const expandVerticalSelection = useCallback(
     (direction: 'up' | 'down') => {
