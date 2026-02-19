@@ -46,6 +46,7 @@ import { useEditorPointerInteractions } from './useEditorPointerInteractions';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
+import { useEditorTextMeasurement } from './useEditorTextMeasurement';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
 const MAX_LINE_RANGE = 2147483647;
@@ -192,7 +193,6 @@ export function Editor({
   const rectangularSelectionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0);
   const rectangularSelectionAutoScrollRafRef = useRef<number | null>(null);
   const textDragMoveStateRef = useRef<TextDragMoveState | null>(null);
-  const textDragMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const textDragCursorAppliedRef = useRef(false);
   const pointerSelectionActiveRef = useRef(false);
   const lineNumberSelectionAnchorLineRef = useRef<number | null>(null);
@@ -368,37 +368,13 @@ export function Editor({
 
     element.style.removeProperty('--editor-native-selection-bg');
   }, []);
-
-  const getTextDragMeasureContext = useCallback(() => {
-    if (!textDragMeasureCanvasRef.current) {
-      textDragMeasureCanvasRef.current = document.createElement('canvas');
-    }
-
-    return textDragMeasureCanvasRef.current.getContext('2d');
-  }, []);
-
-  const measureTextWidthByEditorStyle = useCallback(
-    (element: HTMLTextAreaElement, text: string) => {
-      if (!text) {
-        return 0;
-      }
-
-      const context = getTextDragMeasureContext();
-      if (!context) {
-        return 0;
-      }
-
-      const style = window.getComputedStyle(element);
-      const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
-      const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : '';
-      const fontWeight = style.fontWeight && style.fontWeight !== 'normal' ? `${style.fontWeight} ` : '';
-      const fontSize = style.fontSize || `${renderedFontSizePx}px`;
-      const fontFamily = style.fontFamily || settings.fontFamily;
-      context.font = `${fontStyle}${fontVariant}${fontWeight}${fontSize} ${fontFamily}`;
-      return context.measureText(text).width;
-    },
-    [getTextDragMeasureContext, renderedFontSizePx, settings.fontFamily]
-  );
+  const { measureTextWidthByEditorStyle, resolveDropOffsetFromPointer } = useEditorTextMeasurement({
+    renderedFontSizePx,
+    fontFamily: settings.fontFamily,
+    lineHeightPx,
+    wordWrap,
+    getEditableText,
+  });
 
   const estimateLineTextForNavigation = useCallback(
     (lineNumber: number, incomingLineText: string) => {
@@ -530,106 +506,6 @@ export function Editor({
     ]
   );
 
-  const estimateDropOffsetForTextareaPoint = useCallback(
-    (element: HTMLTextAreaElement, text: string, clientX: number, clientY: number) => {
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      const paddingLeft = Number.parseFloat(style.paddingLeft || '0') || 0;
-      const paddingRight = Number.parseFloat(style.paddingRight || '0') || 0;
-      const scrollLeft = element.scrollLeft;
-      const scrollTop = element.scrollTop;
-      const availableWidth = Math.max(16, element.clientWidth - paddingLeft - paddingRight);
-
-      const relativeY = Math.max(0, clientY - rect.top + scrollTop);
-      const lineIndex = Math.max(0, Math.floor(relativeY / lineHeightPx));
-
-      const lineStarts = [0];
-      for (let index = 0; index < text.length; index += 1) {
-        if (text[index] === '\n') {
-          lineStarts.push(index + 1);
-        }
-      }
-
-      const clampedLineIndex = Math.min(lineStarts.length - 1, lineIndex);
-      const lineStart = lineStarts[clampedLineIndex] ?? 0;
-      const lineEnd = clampedLineIndex + 1 < lineStarts.length ? lineStarts[clampedLineIndex + 1] - 1 : text.length;
-      const lineText = text.slice(lineStart, lineEnd);
-
-      const context = getTextDragMeasureContext();
-      if (!context) {
-        return lineStart;
-      }
-
-      const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
-      const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : '';
-      const fontWeight = style.fontWeight && style.fontWeight !== 'normal' ? `${style.fontWeight} ` : '';
-      const fontSize = style.fontSize || `${renderedFontSizePx}px`;
-      const fontFamily = style.fontFamily || settings.fontFamily;
-      context.font = `${fontStyle}${fontVariant}${fontWeight}${fontSize} ${fontFamily}`;
-
-      const pointerX = Math.max(0, clientX - rect.left + scrollLeft - paddingLeft);
-      const wrappedLines = wordWrap ? Math.max(1, Math.floor(pointerX / availableWidth)) : 0;
-
-      if (!wordWrap || wrappedLines === 0) {
-        let currentWidth = 0;
-        for (let index = 0; index < lineText.length; index += 1) {
-          const charWidth = context.measureText(lineText[index] ?? '').width;
-          if (pointerX <= currentWidth + charWidth / 2) {
-            return lineStart + index;
-          }
-          currentWidth += charWidth;
-        }
-        return lineEnd;
-      }
-
-      let wrappedStart = 0;
-      let wrappedRow = 0;
-      while (wrappedStart < lineText.length) {
-        let wrappedEnd = wrappedStart;
-        let wrappedWidth = 0;
-        while (wrappedEnd < lineText.length) {
-          const charWidth = context.measureText(lineText[wrappedEnd] ?? '').width;
-          if (wrappedWidth > 0 && wrappedWidth + charWidth > availableWidth) {
-            break;
-          }
-          wrappedWidth += charWidth;
-          wrappedEnd += 1;
-        }
-
-        if (wrappedEnd === wrappedStart) {
-          wrappedEnd = wrappedStart + 1;
-        }
-
-        if (wrappedRow === wrappedLines || wrappedEnd >= lineText.length) {
-          let currentWidth = 0;
-          for (let index = wrappedStart; index < wrappedEnd; index += 1) {
-            const charWidth = context.measureText(lineText[index] ?? '').width;
-            if (pointerX <= currentWidth + charWidth / 2 + wrappedRow * availableWidth) {
-              return lineStart + index;
-            }
-            currentWidth += charWidth;
-          }
-
-          return lineStart + wrappedEnd;
-        }
-
-        wrappedStart = wrappedEnd;
-        wrappedRow += 1;
-      }
-
-      return lineEnd;
-    },
-    [getTextDragMeasureContext, lineHeightPx, renderedFontSizePx, settings.fontFamily, wordWrap]
-  );
-
-  const resolveDropOffsetFromPointer = useCallback(
-    (element: HTMLTextAreaElement, clientX: number, clientY: number) => {
-      const text = getEditableText(element);
-      const estimated = estimateDropOffsetForTextareaPoint(element, text, clientX, clientY);
-      return Math.max(0, Math.min(text.length, estimated));
-    },
-    [estimateDropOffsetForTextareaPoint]
-  );
   const {
     handleEditorPointerMove,
     handleEditorPointerLeave,
