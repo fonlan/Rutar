@@ -56,6 +56,7 @@ import { useEditorPointerFinalizeEffects } from './useEditorPointerFinalizeEffec
 import { useEditorPointerInteractions } from './useEditorPointerInteractions';
 import { useEditorPointerSelectionGuards } from './useEditorPointerSelectionGuards';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
+import { useEditorSelectionPresence } from './useEditorSelectionPresence';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorTextMeasurement } from './useEditorTextMeasurement';
@@ -1136,29 +1137,11 @@ export function Editor({
     setTextSelectionHighlight((prev) => (prev === null ? prev : null));
   }, [normalizedRectangularSelection]);
 
-  const hasSelectionInsideEditor = useCallback(() => {
-    if (!contentRef.current) {
-      return false;
-    }
-
-    if (lineNumberMultiSelection.length > 0) {
-      return true;
-    }
-
-    if (isTextareaInputElement(contentRef.current)) {
-      const start = contentRef.current.selectionStart ?? 0;
-      const end = contentRef.current.selectionEnd ?? 0;
-      return end > start;
-    }
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      return false;
-    }
-
-    const range = selection.getRangeAt(0);
-    return contentRef.current.contains(range.commonAncestorContainer) && selection.toString().length > 0;
-  }, [lineNumberMultiSelection.length]);
+  const { hasSelectionInsideEditor } = useEditorSelectionPresence({
+    contentRef,
+    lineNumberMultiSelectionCount: lineNumberMultiSelection.length,
+    isTextareaInputElement,
+  });
 
   const {
     updateSubmenuVerticalAlignment,
