@@ -1309,7 +1309,7 @@ function ToolbarSplitMenu({
                             {items.map((item) => (
                                 <div
                                     key={item.path}
-                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground group-focus-within:bg-accent group-focus-within:text-accent-foreground"
                                 >
                                     <button
                                         type="button"
