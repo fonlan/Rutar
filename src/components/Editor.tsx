@@ -40,6 +40,7 @@ import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectio
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
+import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
@@ -3682,22 +3683,6 @@ export function Editor({
     replaceRectangularSelection,
   });
 
-  useEffect(() => {
-    if (isPairHighlightEnabled) {
-      return;
-    }
-
-    setPairHighlights((prev) => (prev.length === 0 ? prev : []));
-  }, [isPairHighlightEnabled]);
-
-  useEffect(() => {
-    return () => {
-      if (base64DecodeErrorToastTimerRef.current !== null) {
-        window.clearTimeout(base64DecodeErrorToastTimerRef.current);
-      }
-    };
-  }, []);
-
   useEditorUiInteractionEffects({
     selectionChangeRafRef,
     verticalSelectionRef,
@@ -3711,82 +3696,29 @@ export function Editor({
     setEditorContextMenu,
   });
 
-  useEffect(() => {
-    setEditorContextMenu(null);
-    lineNumberContextLineRef.current = null;
-    clearRectangularSelection();
-
-    if (textDragCursorAppliedRef.current) {
-      document.body.style.removeProperty('cursor');
-      const element = contentRef.current;
-      if (element) {
-        element.style.removeProperty('cursor');
-      }
-      textDragCursorAppliedRef.current = false;
-    }
-
-    textDragMoveStateRef.current = null;
-  }, [tab.id]);
-
-  useEffect(() => {
-    if (!highlightCurrentLine) {
-      return;
-    }
-
-    syncSelectionState();
-  }, [highlightCurrentLine, syncSelectionState]);
-
-  useEffect(() => {
-    const handleExternalPaste = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string; text?: string }>;
-      const detail = customEvent.detail;
-      if (!detail || detail.tabId !== tab.id) {
-        return;
-      }
-
-      const text = typeof detail.text === 'string' ? detail.text : '';
-      if (!tryPasteTextIntoEditor(text)) {
-        console.warn('Failed to paste text into editor.');
-      }
-    };
-
-    window.addEventListener('rutar:paste-text', handleExternalPaste as EventListener);
-    return () => {
-      window.removeEventListener('rutar:paste-text', handleExternalPaste as EventListener);
-    };
-  }, [tab.id, tryPasteTextIntoEditor]);
-
-  useEffect(() => {
-    return () => {
-      if (textDragCursorAppliedRef.current) {
-        document.body.style.removeProperty('cursor');
-        const element = contentRef.current;
-        if (element) {
-          element.style.removeProperty('cursor');
-        }
-        textDragCursorAppliedRef.current = false;
-      }
-
-      textDragMoveStateRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    setActiveLineNumber(1);
-    lineNumberSelectionAnchorLineRef.current = null;
-    setLineNumberMultiSelection([]);
-    setCursorPosition(tab.id, 1, 1);
-    setSearchHighlight(null);
-    setTextSelectionHighlight(null);
-    setPairHighlights([]);
-
-    if (outlineFlashTimerRef.current) {
-      window.clearTimeout(outlineFlashTimerRef.current);
-      outlineFlashTimerRef.current = null;
-    }
-
-    setOutlineFlashLine(null);
-  }, [setCursorPosition, tab.id]);
+  useEditorLocalLifecycleEffects({
+    isPairHighlightEnabled,
+    setPairHighlights,
+    base64DecodeErrorToastTimerRef,
+    setEditorContextMenu,
+    lineNumberContextLineRef,
+    clearRectangularSelection,
+    textDragCursorAppliedRef,
+    contentRef,
+    textDragMoveStateRef,
+    tabId: tab.id,
+    highlightCurrentLine,
+    syncSelectionState,
+    tryPasteTextIntoEditor,
+    setActiveLineNumber,
+    lineNumberSelectionAnchorLineRef,
+    setLineNumberMultiSelection,
+    setCursorPosition,
+    setSearchHighlight,
+    setTextSelectionHighlight,
+    outlineFlashTimerRef,
+    setOutlineFlashLine,
+  });
 
   useEditorNavigationAndRefreshEffects({
     tabId: tab.id,
