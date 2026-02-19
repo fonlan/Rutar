@@ -17,103 +17,25 @@ import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
 import { EditorBackdropLayer } from './EditorBackdropLayer';
 import { EditorInputLayer } from './EditorInputLayer';
 import { EditorLineNumberGutter } from './EditorLineNumberGutter';
+import {
+  DEFAULT_SUBMENU_MAX_HEIGHTS,
+  DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
+  type EditorInputElement,
+  type EditorSegmentState,
+  type EditorSubmenuVerticalAlign,
+  type PairHighlightPosition,
+  type PairOffsetsResultPayload,
+  type RectangularSelectionState,
+  type ReplaceRectangularSelectionResultPayload,
+  type SearchHighlightState,
+  type SyntaxToken,
+  type TextDragMoveState,
+  type TextSelectionState,
+  type ToggleLineCommentsBackendResult,
+  type VerticalSelectionState,
+} from './Editor.types';
 import { editorTestUtils } from './editorUtils';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
-
-interface SyntaxToken {
-  type?: string;
-  text?: string;
-  start_byte?: number;
-  end_byte?: number;
-}
-
-interface EditorSegmentState {
-  startLine: number;
-  endLine: number;
-  text: string;
-}
-
-interface SearchHighlightState {
-  line: number;
-  column: number;
-  length: number;
-  id: number;
-}
-
-interface PairHighlightPosition {
-  line: number;
-  column: number;
-}
-
-type EditorSubmenuVerticalAlign = 'top' | 'bottom';
-
-const DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS: Record<EditorSubmenuKey, EditorSubmenuVerticalAlign> = {
-  edit: 'top',
-  sort: 'top',
-  convert: 'top',
-  bookmark: 'top',
-};
-
-const DEFAULT_SUBMENU_MAX_HEIGHTS: Record<EditorSubmenuKey, number | null> = {
-  edit: null,
-  sort: null,
-  convert: null,
-  bookmark: null,
-};
-
-interface VerticalSelectionState {
-  baseLine: number;
-  baseColumn: number;
-  focusLine: number;
-}
-
-interface RectangularSelectionState {
-  anchorLine: number;
-  anchorColumn: number;
-  focusLine: number;
-  focusColumn: number;
-}
-
-interface TextSelectionState {
-  start: number;
-  end: number;
-}
-
-interface ToggleLineCommentsBackendResult {
-  changed: boolean;
-  lineCount: number;
-  documentVersion: number;
-  selectionStartChar: number;
-  selectionEndChar: number;
-}
-
-interface PairOffsetsResultPayload {
-  leftOffset: number;
-  rightOffset: number;
-  leftLine?: number;
-  leftColumn?: number;
-  rightLine?: number;
-  rightColumn?: number;
-}
-
-interface ReplaceRectangularSelectionResultPayload {
-  nextText: string;
-  caretOffset: number;
-}
-
-interface TextDragMoveState {
-  pointerId: number;
-  startClientX: number;
-  startClientY: number;
-  sourceStart: number;
-  sourceEnd: number;
-  sourceText: string;
-  baseText: string;
-  dropOffset: number;
-  dragging: boolean;
-}
-
-type EditorInputElement = HTMLDivElement | HTMLTextAreaElement;
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;

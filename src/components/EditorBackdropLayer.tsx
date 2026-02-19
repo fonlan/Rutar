@@ -1,12 +1,6 @@
 import type { MutableRefObject, ReactNode } from 'react';
 import { VariableSizeList as List } from 'react-window';
-
-interface SyntaxToken {
-  type?: string;
-  text?: string;
-  start_byte?: number;
-  end_byte?: number;
-}
+import type { SyntaxToken } from './Editor.types';
 
 interface EditorBackdropLayerProps {
   visible: boolean;

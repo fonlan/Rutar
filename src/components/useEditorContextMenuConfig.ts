@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { EditorCleanupAction, EditorSubmenuKey } from './EditorContextMenu';
-
-type EditorSubmenuVerticalAlign = 'top' | 'bottom';
+import type { EditorSubmenuVerticalAlign } from './Editor.types';
 
 interface UseEditorContextMenuConfigParams {
   tr: (key: string) => string;
