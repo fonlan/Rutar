@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
@@ -58,6 +58,7 @@ import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSearchHorizontalNavigation } from './useEditorSearchHorizontalNavigation';
 import { useEditorSelectedTextReader } from './useEditorSelectedTextReader';
 import { useEditorSelectionPresence } from './useEditorSelectionPresence';
+import { useEditorSelectionInteractionActions } from './useEditorSelectionInteractionActions';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorTextMeasurement } from './useEditorTextMeasurement';
@@ -461,21 +462,21 @@ export function Editor({
     arePairHighlightPositionsEqual,
   });
 
-  const clearVerticalSelectionState = useCallback(() => {
-    verticalSelectionRef.current = null;
-  }, []);
-
-  const clearRectangularSelection = useCallback(() => {
-    rectangularSelectionPointerActiveRef.current = false;
-    rectangularSelectionRef.current = null;
-    rectangularSelectionLastClientPointRef.current = null;
-    rectangularSelectionAutoScrollDirectionRef.current = 0;
-    if (rectangularSelectionAutoScrollRafRef.current !== null) {
-      window.cancelAnimationFrame(rectangularSelectionAutoScrollRafRef.current);
-      rectangularSelectionAutoScrollRafRef.current = null;
-    }
-    setRectangularSelection(null);
-  }, []);
+  const {
+    clearVerticalSelectionState,
+    clearRectangularSelection,
+    syncSelectionAfterInteraction,
+  } = useEditorSelectionInteractionActions({
+    verticalSelectionRef,
+    rectangularSelectionRef,
+    rectangularSelectionPointerActiveRef,
+    rectangularSelectionLastClientPointRef,
+    rectangularSelectionAutoScrollDirectionRef,
+    rectangularSelectionAutoScrollRafRef,
+    setRectangularSelection,
+    handleScroll,
+    syncSelectionState,
+  });
   const {
     clearLineNumberMultiSelection,
     mapAbsoluteLineToSourceLine,
@@ -556,73 +557,6 @@ export function Editor({
     getEditableText,
     isTextareaInputElement,
   });
-
-  const expandVerticalSelection = useCallback(
-    (direction: 'up' | 'down') => {
-      const element = contentRef.current;
-      if (!element) {
-        return false;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-      const logicalLineCount = Math.max(1, text.length === 0 ? 1 : text.split('\n').length);
-
-      const current = verticalSelectionRef.current;
-      if (!current) {
-        const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(element);
-        const resolvedFocusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(element)?.end ?? 0;
-        const position = codeUnitOffsetToLineColumn(text, resolvedFocusOffset);
-        const initialLine = Math.max(1, Math.min(logicalLineCount, position.line));
-        const initialColumn = Math.max(1, position.column + 1);
-
-        verticalSelectionRef.current = {
-          baseLine: initialLine,
-          baseColumn: initialColumn,
-          focusLine: initialLine,
-        };
-      }
-
-      const state = verticalSelectionRef.current;
-      if (!state) {
-        return false;
-      }
-
-      const nextFocusLine = direction === 'up'
-        ? Math.max(1, state.focusLine - 1)
-        : Math.min(logicalLineCount, state.focusLine + 1);
-
-      if (nextFocusLine === state.focusLine) {
-        return true;
-      }
-
-      state.focusLine = nextFocusLine;
-
-      const startLine = Math.min(state.baseLine, state.focusLine);
-      const endLine = Math.max(state.baseLine, state.focusLine);
-      const startOffset = getCodeUnitOffsetFromLineColumn(text, startLine, state.baseColumn);
-      const endOffset = getCodeUnitOffsetFromLineColumn(text, endLine, state.baseColumn);
-      const layerStartOffset = mapLogicalOffsetToInputLayerOffset(text, startOffset);
-      const layerEndOffset = mapLogicalOffsetToInputLayerOffset(text, endOffset);
-
-      setSelectionToCodeUnitOffsets(element, layerStartOffset, layerEndOffset);
-      window.requestAnimationFrame(() => {
-        syncSelectionState();
-      });
-      return true;
-    },
-    [syncSelectionState]
-  );
-
-  const syncSelectionAfterInteraction = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      handleScroll();
-      syncSelectionState();
-
-      window.requestAnimationFrame(() => {
-        handleScroll();
-      });
-    });
-  }, [handleScroll, syncSelectionState]);
 
   const { applyTextDragMove } = useEditorTextDragMoveAction({
     setInputLayerText,
