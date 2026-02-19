@@ -6206,14 +6206,14 @@ export function Editor({
             <>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={handleSelectCurrentLineFromContext}
               >
                 {selectCurrentLineLabel}
               </button>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={handleAddCurrentLineBookmarkFromContext}
               >
                 {addCurrentLineToBookmarkLabel}
@@ -6223,7 +6223,7 @@ export function Editor({
             <>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   handleEditorContextMenuAction('copy');
                 }}
@@ -6233,7 +6233,7 @@ export function Editor({
               </button>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   handleEditorContextMenuAction('cut');
                 }}
@@ -6243,7 +6243,7 @@ export function Editor({
               </button>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   handleEditorContextMenuAction('paste');
                 }}
@@ -6253,7 +6253,7 @@ export function Editor({
               </button>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   handleEditorContextMenuAction('delete');
                 }}
@@ -6263,7 +6263,7 @@ export function Editor({
               </button>
               <button
                 type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   handleEditorContextMenuAction('selectAll');
                 }}
@@ -6280,7 +6280,7 @@ export function Editor({
               >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <span>{editMenuLabel}</span>
                   <span className="text-[10px] text-muted-foreground">▶</span>
@@ -6296,7 +6296,7 @@ export function Editor({
                     <button
                       key={item.action}
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleCleanupDocumentFromContext(item.action);
                       }}
@@ -6314,7 +6314,7 @@ export function Editor({
               >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <span>{sortMenuLabel}</span>
                   <span className="text-[10px] text-muted-foreground">▶</span>
@@ -6330,7 +6330,7 @@ export function Editor({
                     <button
                       key={item.action}
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleCleanupDocumentFromContext(item.action);
                       }}
@@ -6349,7 +6349,7 @@ export function Editor({
                 >
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                    className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     <span>{convertMenuLabel}</span>
                     <span className="text-[10px] text-muted-foreground">▶</span>
@@ -6363,7 +6363,7 @@ export function Editor({
                   >
                     <button
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleConvertSelectionFromContext('base64_encode');
                       }}
@@ -6372,7 +6372,7 @@ export function Editor({
                     </button>
                     <button
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleConvertSelectionFromContext('base64_decode');
                       }}
@@ -6382,7 +6382,7 @@ export function Editor({
                     <div className="my-1 h-px bg-border" />
                     <button
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleConvertSelectionFromContext('copy_base64_encode');
                       }}
@@ -6391,7 +6391,7 @@ export function Editor({
                     </button>
                     <button
                       type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() => {
                         void handleConvertSelectionFromContext('copy_base64_decode');
                       }}
@@ -6410,7 +6410,7 @@ export function Editor({
               >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <span>{bookmarkMenuLabel}</span>
                   <span className="text-[10px] text-muted-foreground">▶</span>
@@ -6424,7 +6424,7 @@ export function Editor({
                 >
                   <button
                     type="button"
-                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={handleAddBookmarkFromContext}
                     disabled={hasContextBookmark}
                   >
@@ -6432,7 +6432,7 @@ export function Editor({
                   </button>
                   <button
                     type="button"
-                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={handleRemoveBookmarkFromContext}
                     disabled={!hasContextBookmark}
                   >
