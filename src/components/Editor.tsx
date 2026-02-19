@@ -44,6 +44,7 @@ import { useEditorInputSyncActions } from './useEditorInputSyncActions';
 import { useEditorKeyboardActions } from './useEditorKeyboardActions';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
+import { useEditorLineNumberContextActions } from './useEditorLineNumberContextActions';
 import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
@@ -1719,25 +1720,16 @@ export function Editor({
     },
   });
 
-  const handleSelectCurrentLineFromContext = useCallback(() => {
-    if (!editorContextMenu || editorContextMenu.target !== 'lineNumber') {
-      return;
-    }
-
-    const targetLine = lineNumberContextLineRef.current ?? editorContextMenu.lineNumber;
-    handleLineNumberClick(targetLine, false, false);
-    setEditorContextMenu(null);
-  }, [editorContextMenu, handleLineNumberClick]);
-
-  const handleAddCurrentLineBookmarkFromContext = useCallback(() => {
-    if (!editorContextMenu || editorContextMenu.target !== 'lineNumber') {
-      return;
-    }
-
-    const targetLine = lineNumberContextLineRef.current ?? editorContextMenu.lineNumber;
-    handleLineNumberDoubleClick(targetLine);
-    setEditorContextMenu(null);
-  }, [editorContextMenu, handleLineNumberDoubleClick]);
+  const {
+    handleSelectCurrentLineFromContext,
+    handleAddCurrentLineBookmarkFromContext,
+  } = useEditorLineNumberContextActions({
+    editorContextMenu,
+    lineNumberContextLineRef,
+    handleLineNumberClick,
+    handleLineNumberDoubleClick,
+    setEditorContextMenu,
+  });
 
   useEditorDocumentLoadEffects({
     tabId: tab.id,
