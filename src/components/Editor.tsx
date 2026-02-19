@@ -37,6 +37,7 @@ import {
 import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
 import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
+import { useEditorContentSync } from './useEditorContentSync';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
@@ -310,79 +311,35 @@ export function Editor({
     listRef,
     lineNumberListRef,
   });
-
-  const fetchPlainLines = useCallback(
-    async (start: number, end: number) => {
-      const version = ++currentRequestVersion.current;
-
-      try {
-        const lines = await invoke<string[]>('get_visible_lines_chunk', {
-          id: tab.id,
-          startLine: start,
-          endLine: end,
-        });
-
-        if (version !== currentRequestVersion.current) return;
-        if (!Array.isArray(lines)) return;
-
-        setPlainLines(lines.map(normalizeLineText));
-        setPlainStartLine(start);
-      } catch (e) {
-        console.error('Fetch visible lines error:', e);
-      }
-    },
-    [tab.id]
-  );
-
-  const fetchEditableSegment = useCallback(
-    async (start: number, end: number) => {
-      const version = ++currentRequestVersion.current;
-
-      try {
-        const lines = await invoke<string[]>('get_visible_lines_chunk', {
-          id: tab.id,
-          startLine: start,
-          endLine: end,
-        });
-
-        if (version !== currentRequestVersion.current) return;
-        if (!Array.isArray(lines)) return;
-
-        const normalizedLines = lines.map(normalizeEditableLineText);
-        const text = normalizedLines.join('\n');
-        const segment = {
-          startLine: start,
-          endLine: end,
-          text,
-        };
-
-        editableSegmentRef.current = segment;
-        setEditableSegment(segment);
-        if (!isScrollbarDragRef.current) {
-          pendingRestoreScrollTopRef.current = scrollContainerRef.current?.scrollTop ?? contentRef.current?.scrollTop ?? 0;
-        }
-
-        if (contentRef.current) {
-          setInputLayerText(contentRef.current, text);
-          // In huge editable mode, scrolling is controlled by the outer container.
-          // Keep textarea internal scroll at origin to avoid pointer/selection drift.
-          if (Math.abs(contentRef.current.scrollTop) > 0.001) {
-            contentRef.current.scrollTop = 0;
-          }
-
-          if (Math.abs(contentRef.current.scrollLeft) > 0.001) {
-            contentRef.current.scrollLeft = 0;
-          }
-        }
-
-        syncedTextRef.current = text;
-        pendingSyncRequestedRef.current = false;
-      } catch (e) {
-        console.error('Fetch editable segment error:', e);
-      }
-    },
-    [tab.id]
-  );
+  const { syncVisibleTokens, loadTextFromBackend } = useEditorContentSync({
+    maxLineRange: MAX_LINE_RANGE,
+    tabId: tab.id,
+    height,
+    itemSize,
+    largeFetchBuffer,
+    isHugeEditableMode,
+    usePlainLineRendering,
+    contentRef,
+    scrollContainerRef,
+    listRef,
+    isScrollbarDragRef,
+    currentRequestVersionRef: currentRequestVersion,
+    hugeWindowLockedRef,
+    hugeWindowFollowScrollOnUnlockRef,
+    editableSegmentRef,
+    pendingRestoreScrollTopRef,
+    syncedTextRef,
+    pendingSyncRequestedRef,
+    setPlainLines,
+    setPlainStartLine,
+    setLineTokens,
+    setStartLine,
+    setEditableSegment,
+    normalizeLineText,
+    normalizeEditableLineText,
+    normalizeEditorText,
+    setInputLayerText,
+  });
 
   const { handleScroll } = useEditorScrollSyncEffects({
     isHugeEditableMode,
@@ -929,80 +886,6 @@ export function Editor({
       contentRef,
     });
 
-  const fetchTokens = useCallback(
-    async (start: number, end: number) => {
-      const version = ++currentRequestVersion.current;
-      try {
-        const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
-          id: tab.id,
-          startLine: start,
-          endLine: end,
-        });
-
-        if (version !== currentRequestVersion.current) return;
-        if (!Array.isArray(lineResult)) return;
-
-        setLineTokens(lineResult);
-        setStartLine(start);
-      } catch (e) {
-        console.error('Fetch error:', e);
-      }
-    },
-    [tab.id]
-  );
-
-  const syncVisibleTokens = useCallback(
-    async (lineCount: number, visibleRange?: { start: number; stop: number }) => {
-      if (isHugeEditableMode && hugeWindowLockedRef.current) {
-        hugeWindowFollowScrollOnUnlockRef.current = true;
-        return;
-      }
-
-      const buffer = largeFetchBuffer;
-      let start = 0;
-      let end = 1;
-
-      if (visibleRange) {
-        start = Math.max(0, visibleRange.start - buffer);
-        end = Math.max(start + 1, Math.min(lineCount, visibleRange.stop + buffer));
-      } else {
-        const scrollTop = isHugeEditableMode
-          ? scrollContainerRef.current?.scrollTop ?? 0
-          : usePlainLineRendering
-          ? listRef.current?._outerRef?.scrollTop ?? 0
-          : contentRef.current?.scrollTop ?? 0;
-        const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
-        const currentLine = Math.max(0, Math.floor(scrollTop / itemSize));
-        start = Math.max(0, currentLine - buffer);
-        end = Math.max(start + 1, Math.min(lineCount, currentLine + viewportLines + buffer));
-      }
-
-      if (isHugeEditableMode) {
-        await fetchEditableSegment(start, end);
-        return;
-      }
-
-      if (usePlainLineRendering) {
-        await fetchPlainLines(start, end);
-        return;
-      }
-
-      await fetchTokens(start, end);
-    },
-    [
-      fetchEditableSegment,
-      fetchTokens,
-      fetchPlainLines,
-      height,
-      isHugeEditableMode,
-      itemSize,
-      largeFetchBuffer,
-      hugeWindowLockedRef,
-      hugeWindowFollowScrollOnUnlockRef,
-      usePlainLineRendering,
-    ]
-  );
-
   const endScrollbarDragSelectionGuard = useCallback(() => {
     if (!isScrollbarDragRef.current) {
       return;
@@ -1046,30 +929,6 @@ export function Editor({
       releaseHugeEditableWindowLock();
     }, HUGE_EDITABLE_WINDOW_UNLOCK_MS);
   }, [isHugeEditableMode, releaseHugeEditableWindowLock]);
-
-  const loadTextFromBackend = useCallback(async () => {
-    if (isHugeEditableMode) {
-      const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
-      const start = 0;
-      const end = Math.max(start + 1, viewportLines + largeFetchBuffer);
-      await fetchEditableSegment(start, end);
-      return;
-    }
-
-    const raw = await invoke<string>('get_visible_lines', {
-      id: tab.id,
-      startLine: 0,
-      endLine: MAX_LINE_RANGE,
-    });
-
-    const normalized = normalizeEditorText(raw || '');
-    if (contentRef.current) {
-      setInputLayerText(contentRef.current, normalized);
-    }
-
-    syncedTextRef.current = normalized;
-    pendingSyncRequestedRef.current = false;
-  }, [fetchEditableSegment, height, isHugeEditableMode, itemSize, largeFetchBuffer, tab.id]);
 
   const updateCursorPositionFromSelection = useCallback(() => {
     if (!contentRef.current) {
