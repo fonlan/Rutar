@@ -41,6 +41,7 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
+import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -3697,84 +3698,18 @@ export function Editor({
     };
   }, []);
 
-  useEffect(() => {
-    const flushSelectionChange = () => {
-      selectionChangeRafRef.current = null;
-
-      if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
-        clearVerticalSelectionState();
-      }
-
-      handleScroll();
-
-      syncSelectionState();
-      syncTextSelectionHighlight();
-    };
-
-    const handleSelectionChange = () => {
-      if (selectionChangeRafRef.current !== null) {
-        return;
-      }
-
-      selectionChangeRafRef.current = window.requestAnimationFrame(flushSelectionChange);
-    };
-
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange);
-      if (selectionChangeRafRef.current !== null) {
-        window.cancelAnimationFrame(selectionChangeRafRef.current);
-        selectionChangeRafRef.current = null;
-      }
-    };
-  }, [
+  useEditorUiInteractionEffects({
+    selectionChangeRafRef,
+    verticalSelectionRef,
+    hasSelectionInsideEditor,
     clearVerticalSelectionState,
     handleScroll,
-    hasSelectionInsideEditor,
     syncSelectionState,
     syncTextSelectionHighlight,
-  ]);
-
-  useEffect(() => {
-    if (!editorContextMenu) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (editorContextMenuRef.current && target && !editorContextMenuRef.current.contains(target)) {
-        setEditorContextMenu(null);
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setEditorContextMenu(null);
-      }
-    };
-
-    const handleWindowBlur = () => {
-      setEditorContextMenu(null);
-    };
-
-    const handleScroll = () => {
-      setEditorContextMenu(null);
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('keydown', handleEscape);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('resize', handleWindowBlur);
-    window.addEventListener('scroll', handleScroll, true);
-
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('resize', handleWindowBlur);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [editorContextMenu]);
+    editorContextMenu,
+    editorContextMenuRef,
+    setEditorContextMenu,
+  });
 
   useEffect(() => {
     setEditorContextMenu(null);
