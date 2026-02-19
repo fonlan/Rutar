@@ -39,6 +39,7 @@ import { editorTestUtils } from './editorUtils';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
+import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -3914,221 +3915,35 @@ export function Editor({
     setOutlineFlashLine(null);
   }, [setCursorPosition, tab.id]);
 
-  useEffect(() => {
-    const handleNavigateToLine = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        tabId?: string;
-        line?: number;
-        column?: number;
-        length?: number;
-        lineText?: string;
-        occludedRightPx?: number;
-        source?: string;
-      }>;
-      const detail = customEvent.detail;
-
-      if (!detail || detail.tabId !== tab.id) {
-        return;
-      }
-
-      if (requestTimeout.current) {
-        clearTimeout(requestTimeout.current);
-        requestTimeout.current = null;
-      }
-      // Invalidate stale async segment fetches so old viewport requests cannot re-apply after navigation.
-      currentRequestVersion.current += 1;
-      pendingRestoreScrollTopRef.current = null;
-
-      const targetLine = Number.isFinite(detail.line) ? Math.max(1, Math.floor(detail.line as number)) : 1;
-      const targetColumn = Number.isFinite(detail.column) ? Math.max(1, Math.floor(detail.column as number)) : 1;
-      const targetLength = Number.isFinite(detail.length) ? Math.max(0, Math.floor(detail.length as number)) : 0;
-      const targetLineText = typeof detail.lineText === 'string' ? detail.lineText : '';
-      const targetOccludedRightPx = Number.isFinite(detail.occludedRightPx)
-        ? Math.max(0, Math.floor(detail.occludedRightPx as number))
-        : 0;
-      const shouldMoveCaretToLineStart = detail.source === 'outline';
-      const targetCaretColumn = shouldMoveCaretToLineStart ? 1 : targetColumn;
-      setActiveLineNumber(targetLine);
-      setCursorPosition(tab.id, targetLine, targetCaretColumn);
-
-      const placeCaretAtTargetPosition = () => {
-        if (!contentRef.current) {
-          return;
-        }
-
-        const lineForCaret = isHugeEditableMode
-          ? Math.max(1, targetLine - editableSegmentRef.current.startLine)
-          : targetLine;
-        const columnForCaret = targetCaretColumn;
-
-        setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
-      };
-
-      if (detail.source === 'outline') {
-        if (outlineFlashTimerRef.current) {
-          window.clearTimeout(outlineFlashTimerRef.current);
-          outlineFlashTimerRef.current = null;
-        }
-
-        setOutlineFlashLine(targetLine);
-        outlineFlashTimerRef.current = window.setTimeout(() => {
-          setOutlineFlashLine(null);
-          outlineFlashTimerRef.current = null;
-        }, 1000);
-      }
-
-      setSearchHighlight({
-        line: targetLine,
-        column: targetColumn,
-        length: targetLength,
-        id: Date.now(),
-      });
-
-      const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
-      const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
-      const lineNumberElement = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
-
-      if (isHugeEditableMode) {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = targetScrollTop;
-        }
-
-        if (contentRef.current) {
-          contentRef.current.focus();
-
-          ensureSearchMatchVisibleHorizontally(
-            scrollContainerRef.current,
-            targetLine,
-            targetColumn,
-            targetLength,
-            targetLineText,
-            targetOccludedRightPx,
-            listElement
-          );
-
-          window.requestAnimationFrame(() => {
-            placeCaretAtTargetPosition();
-            window.setTimeout(() => {
-              placeCaretAtTargetPosition();
-            }, 60);
-          });
-        }
-
-        if (listElement) {
-          listElement.scrollTop = targetScrollTop;
-        }
-
-        if (lineNumberElement) {
-          lineNumberElement.scrollTop = targetScrollTop;
-        }
-
-        void syncVisibleTokens(Math.max(1, tab.lineCount));
-        return;
-      }
-
-      if (contentRef.current) {
-        contentRef.current.scrollTop = targetScrollTop;
-        contentRef.current.focus();
-
-        ensureSearchMatchVisibleHorizontally(
-          contentRef.current,
-          targetLine,
-          targetColumn,
-          targetLength,
-          targetLineText,
-          targetOccludedRightPx,
-          listElement
-        );
-
-        window.requestAnimationFrame(() => {
-          placeCaretAtTargetPosition();
-        });
-      }
-
-      if (listElement) {
-        listElement.scrollTop = targetScrollTop;
-      }
-
-      if (lineNumberElement) {
-        lineNumberElement.scrollTop = targetScrollTop;
-      }
-
-      void syncVisibleTokens(Math.max(1, tab.lineCount));
-    };
-
-    const handleSearchClose = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string }>;
-      const detail = customEvent.detail;
-
-      if (!detail || detail.tabId !== tab.id) {
-        return;
-      }
-
-      setSearchHighlight(null);
-    };
-
-    window.addEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
-    window.addEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
-    window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
-    return () => {
-      window.removeEventListener('rutar:navigate-to-line', handleNavigateToLine as EventListener);
-      window.removeEventListener('rutar:navigate-to-outline', handleNavigateToLine as EventListener);
-      window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
-    };
-  }, [
-    ensureSearchMatchVisibleHorizontally,
-    isHugeEditableMode,
+  useEditorNavigationAndRefreshEffects({
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
     itemSize,
+    isHugeEditableMode,
+    requestTimeoutRef: requestTimeout,
+    currentRequestVersionRef: currentRequestVersion,
+    pendingRestoreScrollTopRef,
+    outlineFlashTimerRef,
+    contentRef,
+    scrollContainerRef,
+    listRef,
+    lineNumberListRef,
+    editableSegmentRef,
+    setActiveLineNumber,
     setCursorPosition,
+    setOutlineFlashLine,
+    setSearchHighlight,
+    ensureSearchMatchVisibleHorizontally,
     syncVisibleTokens,
-    tab.id,
-    tab.lineCount,
-  ]);
-
-  useEffect(() => {
-    const handleForcedRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        tabId: string;
-        lineCount?: number;
-        preserveCaret?: boolean;
-      }>;
-      const detail = customEvent.detail;
-
-      if (!detail || detail.tabId !== tab.id) {
-        return;
-      }
-
-      const preserveCaret = detail.preserveCaret === true;
-      const caretOffsets = preserveCaret && contentRef.current
-        ? getSelectionOffsetsInElement(contentRef.current)
-        : null;
-      const caretLogicalOffset = caretOffsets
-        ? Math.max(0, caretOffsets.isCollapsed ? caretOffsets.end : caretOffsets.start)
-        : null;
-
-      if (typeof detail.lineCount === 'number' && Number.isFinite(detail.lineCount)) {
-        updateTab(tab.id, { lineCount: Math.max(1, detail.lineCount) });
-      }
-
-      void (async () => {
-        await loadTextFromBackend();
-
-        if (preserveCaret && caretLogicalOffset !== null && contentRef.current) {
-          const editorText = getEditableText(contentRef.current);
-          const safeLogicalOffset = Math.min(caretLogicalOffset, editorText.length);
-          const layerOffset = mapLogicalOffsetToInputLayerOffset(editorText, safeLogicalOffset);
-          setCaretToCodeUnitOffset(contentRef.current, layerOffset);
-        }
-
-        await syncVisibleTokens(Math.max(1, detail.lineCount ?? tab.lineCount));
-      })();
-    };
-
-    window.addEventListener('rutar:force-refresh', handleForcedRefresh as EventListener);
-    return () => {
-      window.removeEventListener('rutar:force-refresh', handleForcedRefresh as EventListener);
-    };
-  }, [loadTextFromBackend, syncVisibleTokens, tab.id, tab.lineCount, updateTab]);
+    alignScrollOffset,
+    setCaretToLineColumn,
+    loadTextFromBackend,
+    updateTab,
+    getSelectionOffsetsInElement,
+    getEditableText,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
+  });
 
   return (
     <div
