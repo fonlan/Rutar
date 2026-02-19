@@ -40,6 +40,7 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
+import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
 import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
@@ -1594,107 +1595,25 @@ export function Editor({
     },
     [bookmarkSidebarOpen, bookmarks, tab.id, toggleBookmark, toggleBookmarkSidebar]
   );
-
-  const getLineNumberFromGutterElement = useCallback((element: HTMLDivElement, fallbackLine: number) => {
-    const parsedLine = Number.parseInt((element.textContent || '').trim(), 10);
-    if (Number.isFinite(parsedLine)) {
-      return Math.max(1, parsedLine);
-    }
-
-    return Math.max(1, Math.floor(fallbackLine));
-  }, []);
-
-  const handleLineNumberClick = useCallback(
-    (line: number, shiftKey: boolean, additiveKey: boolean) => {
-      const safeLine = Math.max(1, Math.floor(line));
-
-      if (additiveKey) {
-        lineNumberSelectionAnchorLineRef.current = safeLine;
-        clearRectangularSelection();
-        setLineNumberMultiSelection((prev) => {
-          const exists = prev.includes(safeLine);
-          if (exists) {
-            return prev.filter((lineNumber) => lineNumber !== safeLine);
-          }
-
-          return [...prev, safeLine].sort((left, right) => left - right);
-        });
-
-        const element = contentRef.current;
-        if (element) {
-          const text = normalizeSegmentText(getEditableText(element));
-          const starts = buildLineStartOffsets(text);
-          const lineInSource = mapAbsoluteLineToSourceLine(safeLine);
-          if (lineInSource === null) {
-            return;
-          }
-          const bounds = getLineBoundsByLineNumber(text, starts, lineInSource);
-          if (bounds) {
-            const caretOffset = mapLogicalOffsetToInputLayerOffset(text, bounds.start);
-            setCaretToCodeUnitOffset(element, caretOffset);
-          }
-        }
-
-        setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
-        setCursorPosition(tab.id, safeLine, 1);
-        syncSelectionAfterInteraction();
-        return;
-      }
-
-      clearLineNumberMultiSelection();
-
-      if (lineNumberSelectionAnchorLineRef.current === null) {
-        lineNumberSelectionAnchorLineRef.current = safeLine;
-      }
-
-      const anchorLine = lineNumberSelectionAnchorLineRef.current;
-      const selectionStartLine = shiftKey ? Math.min(anchorLine, safeLine) : safeLine;
-      const selectionEndLine = shiftKey ? Math.max(anchorLine, safeLine) : safeLine;
-
-      if (!shiftKey) {
-        lineNumberSelectionAnchorLineRef.current = safeLine;
-      }
-
-      setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
-      setCursorPosition(tab.id, safeLine, 1);
-
-      const element = contentRef.current;
-      if (!element) {
-        return;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-      const starts = buildLineStartOffsets(text);
-      const startLineInSource = mapAbsoluteLineToSourceLine(selectionStartLine);
-      const endLineInSource = mapAbsoluteLineToSourceLine(selectionEndLine);
-      if (startLineInSource === null || endLineInSource === null) {
-        return;
-      }
-      const startBounds = getLineBoundsByLineNumber(text, starts, startLineInSource);
-      const endBounds = getLineBoundsByLineNumber(text, starts, endLineInSource);
-      if (!startBounds || !endBounds) {
-        return;
-      }
-
-      const selectionStartOffset = mapLogicalOffsetToInputLayerOffset(text, startBounds.start);
-      const logicalEndOffset = endBounds.end < text.length && text[endBounds.end] === '\n'
-        ? endBounds.end + 1
-        : endBounds.end;
-      const selectionEndOffset = mapLogicalOffsetToInputLayerOffset(text, logicalEndOffset);
-
-      clearRectangularSelection();
-      setSelectionToCodeUnitOffsets(element, selectionStartOffset, selectionEndOffset);
-      syncSelectionAfterInteraction();
-    },
-    [
-      clearLineNumberMultiSelection,
-      clearRectangularSelection,
-      mapAbsoluteLineToSourceLine,
-      setCursorPosition,
-      syncSelectionAfterInteraction,
-      tab.id,
-    ]
-  );
+  const { getLineNumberFromGutterElement, handleLineNumberClick } = useEditorLineNumberInteractions({
+    tabId: tab.id,
+    contentRef,
+    lineNumberSelectionAnchorLineRef,
+    clearLineNumberMultiSelection,
+    clearRectangularSelection,
+    mapAbsoluteLineToSourceLine,
+    setLineNumberMultiSelection,
+    setActiveLineNumber,
+    setCursorPosition,
+    syncSelectionAfterInteraction,
+    normalizeSegmentText,
+    getEditableText,
+    buildLineStartOffsets,
+    getLineBoundsByLineNumber,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
+    setSelectionToCodeUnitOffsets,
+  });
 
   const handleLineNumberWheel = useCallback(
     (event) => {
