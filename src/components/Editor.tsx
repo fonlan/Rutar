@@ -32,6 +32,7 @@ import {
 import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
 import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
+import { useEditorBookmarkActions } from './useEditorBookmarkActions';
 import { useEditorContentSync } from './useEditorContentSync';
 import { useEditorContextCleanupAction } from './useEditorContextCleanupAction';
 import { useEditorContextConvertActions } from './useEditorContextConvertActions';
@@ -1329,40 +1330,22 @@ export function Editor({
     handleScroll,
   });
 
-  const hasContextBookmark =
-    editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber);
-
-  const handleAddBookmarkFromContext = useCallback(() => {
-    if (!editorContextMenu) {
-      return;
-    }
-
-    addBookmark(tab.id, editorContextMenu.lineNumber);
-    setEditorContextMenu(null);
-  }, [addBookmark, editorContextMenu, tab.id]);
-
-  const handleRemoveBookmarkFromContext = useCallback(() => {
-    if (!editorContextMenu) {
-      return;
-    }
-
-    removeBookmark(tab.id, editorContextMenu.lineNumber);
-    setEditorContextMenu(null);
-  }, [editorContextMenu, removeBookmark, tab.id]);
-
-  const handleLineNumberDoubleClick = useCallback(
-    (line: number) => {
-      const safeLine = Math.max(1, Math.floor(line));
-      const hasBookmark = bookmarks.includes(safeLine);
-
-      toggleBookmark(tab.id, safeLine);
-
-      if (!hasBookmark && !bookmarkSidebarOpen) {
-        toggleBookmarkSidebar(true);
-      }
-    },
-    [bookmarkSidebarOpen, bookmarks, tab.id, toggleBookmark, toggleBookmarkSidebar]
-  );
+  const {
+    hasContextBookmark,
+    handleAddBookmarkFromContext,
+    handleRemoveBookmarkFromContext,
+    handleLineNumberDoubleClick,
+  } = useEditorBookmarkActions({
+    tabId: tab.id,
+    bookmarks,
+    bookmarkSidebarOpen,
+    editorContextMenu,
+    addBookmark,
+    removeBookmark,
+    toggleBookmark,
+    toggleBookmarkSidebar,
+    setEditorContextMenu,
+  });
   const { getLineNumberFromGutterElement, handleLineNumberClick } = useEditorLineNumberInteractions({
     tabId: tab.id,
     contentRef,
