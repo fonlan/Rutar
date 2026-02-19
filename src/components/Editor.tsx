@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
@@ -21,7 +20,6 @@ import {
   type EditorSubmenuVerticalAlign,
   type PairHighlightPosition,
   type RectangularSelectionState,
-  type ReplaceRectangularSelectionResultPayload,
   type SearchHighlightState,
   type SyntaxToken,
   type TextDragMoveState,
@@ -55,6 +53,7 @@ import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRe
 import { useEditorPointerFinalizeEffects } from './useEditorPointerFinalizeEffects';
 import { useEditorPointerInteractions } from './useEditorPointerInteractions';
 import { useEditorPointerSelectionGuards } from './useEditorPointerSelectionGuards';
+import { useEditorRectangularSelectionActions } from './useEditorRectangularSelectionActions';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionPresence } from './useEditorSelectionPresence';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
@@ -630,66 +629,39 @@ export function Editor({
     [rectangularSelection]
   );
 
-  const getRectangularSelectionText = useCallback(
-    (text: string) => {
-      if (!normalizedRectangularSelection) {
-        return '';
-      }
-
-      const starts = buildLineStartOffsets(text);
-      const lines: string[] = [];
-
-      for (
-        let line = normalizedRectangularSelection.startLine;
-        line <= normalizedRectangularSelection.endLine;
-        line += 1
-      ) {
-        const bounds = getLineBoundsByLineNumber(text, starts, line);
-        if (!bounds) {
-          lines.push('');
-          continue;
-        }
-
-        const segmentStart = getOffsetForColumnInLine(
-          bounds.start,
-          bounds.end,
-          normalizedRectangularSelection.startColumn
-        );
-        const segmentEnd = getOffsetForColumnInLine(
-          bounds.start,
-          bounds.end,
-          normalizedRectangularSelection.endColumn
-        );
-
-        lines.push(text.slice(segmentStart, segmentEnd));
-      }
-
-      return lines.join('\n');
-    },
-    [normalizedRectangularSelection]
-  );
-
-  const getRectangularSelectionTextFromBackend = useCallback(async () => {
-    const element = contentRef.current;
-    if (!element || !normalizedRectangularSelection) {
-      return '';
-    }
-
-    const text = normalizeSegmentText(getEditableText(element));
-
-    try {
-      return await invoke<string>('get_rectangular_selection_text', {
-        text,
-        startLine: normalizedRectangularSelection.startLine,
-        endLine: normalizedRectangularSelection.endLine,
-        startColumn: normalizedRectangularSelection.startColumn,
-        endColumn: normalizedRectangularSelection.endColumn,
-      });
-    } catch (error) {
-      console.error('Failed to get rectangular selection text from backend:', error);
-      return getRectangularSelectionText(text);
-    }
-  }, [getRectangularSelectionText, normalizedRectangularSelection]);
+  const {
+    getRectangularSelectionText,
+    getRectangularSelectionTextFromBackend,
+    replaceRectangularSelection,
+    updateRectangularSelectionFromPoint,
+    getRectangularSelectionScrollElement,
+    beginRectangularSelectionAtPoint,
+    beginRectangularSelectionFromCaret,
+    nudgeRectangularSelectionByKey,
+  } = useEditorRectangularSelectionActions({
+    isHugeEditableMode,
+    contentRef,
+    scrollContainerRef,
+    rectangularSelectionRef,
+    normalizedRectangularSelection,
+    setRectangularSelection,
+    clearRectangularSelection,
+    syncSelectionState,
+    normalizeSegmentText,
+    normalizeLineText,
+    getEditableText,
+    buildLineStartOffsets,
+    getLineBoundsByLineNumber,
+    getOffsetForColumnInLine,
+    setInputLayerText,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
+    dispatchEditorInputEvent,
+    getLogicalOffsetFromPoint,
+    codeUnitOffsetToLineColumn,
+    getSelectionAnchorFocusOffsetsInElement,
+    getSelectionOffsetsInElement,
+  });
 
   const getSelectedEditorText = useCallback(() => {
     const element = contentRef.current;
@@ -724,270 +696,6 @@ export function Editor({
 
     return normalizeLineText(selection.toString());
   }, [getRectangularSelectionText, normalizedRectangularSelection]);
-
-  const replaceRectangularSelectionLocally = useCallback(
-    (insertText: string, options?: { collapseToStart?: boolean }) => {
-      const element = contentRef.current;
-      if (!element || !normalizedRectangularSelection) {
-        return false;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-      const starts = buildLineStartOffsets(text);
-      const rawRows = normalizeLineText(insertText ?? '').split('\n');
-      const rowCount = normalizedRectangularSelection.lineCount;
-      const rows = Array.from({ length: rowCount }, (_, index) => {
-        if (rawRows.length === 0) {
-          return '';
-        }
-        return rawRows[Math.min(index, rawRows.length - 1)] ?? '';
-      });
-
-      const pieces: string[] = [];
-      let cursor = 0;
-      let caretLogicalOffset = 0;
-
-      for (
-        let line = normalizedRectangularSelection.startLine;
-        line <= normalizedRectangularSelection.endLine;
-        line += 1
-      ) {
-        const bounds = getLineBoundsByLineNumber(text, starts, line);
-        if (!bounds) {
-          continue;
-        }
-
-        const segmentStart = getOffsetForColumnInLine(
-          bounds.start,
-          bounds.end,
-          normalizedRectangularSelection.startColumn
-        );
-        const segmentEnd = getOffsetForColumnInLine(
-          bounds.start,
-          bounds.end,
-          normalizedRectangularSelection.endColumn
-        );
-
-        pieces.push(text.slice(cursor, segmentStart));
-        const replacementRow = rows[line - normalizedRectangularSelection.startLine] ?? '';
-        pieces.push(replacementRow);
-        cursor = segmentEnd;
-
-        if (line === normalizedRectangularSelection.endLine) {
-          caretLogicalOffset =
-            pieces.join('').length + (options?.collapseToStart ? 0 : replacementRow.length);
-        }
-      }
-
-      pieces.push(text.slice(cursor));
-      const nextText = pieces.join('');
-
-      setInputLayerText(element, nextText);
-      const layerCaretOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
-      setCaretToCodeUnitOffset(element, layerCaretOffset);
-      clearRectangularSelection();
-      dispatchEditorInputEvent(element);
-      window.requestAnimationFrame(() => {
-        syncSelectionState();
-      });
-      return true;
-    },
-    [clearRectangularSelection, normalizedRectangularSelection, syncSelectionState]
-  );
-
-  const replaceRectangularSelection = useCallback(
-    async (insertText: string, options?: { collapseToStart?: boolean }) => {
-      const element = contentRef.current;
-      if (!element || !normalizedRectangularSelection) {
-        return false;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-
-      try {
-        const result = await invoke<ReplaceRectangularSelectionResultPayload>(
-          'replace_rectangular_selection_text',
-          {
-            text,
-            startLine: normalizedRectangularSelection.startLine,
-            endLine: normalizedRectangularSelection.endLine,
-            startColumn: normalizedRectangularSelection.startColumn,
-            endColumn: normalizedRectangularSelection.endColumn,
-            insertText,
-            collapseToStart: options?.collapseToStart === true,
-          }
-        );
-
-        const nextText = normalizeSegmentText(result?.nextText ?? text);
-        const caretLogicalOffset = Math.max(
-          0,
-          Math.min(nextText.length, Math.floor(result?.caretOffset ?? 0))
-        );
-
-        setInputLayerText(element, nextText);
-        const layerCaretOffset = mapLogicalOffsetToInputLayerOffset(nextText, caretLogicalOffset);
-        setCaretToCodeUnitOffset(element, layerCaretOffset);
-        clearRectangularSelection();
-        dispatchEditorInputEvent(element);
-        window.requestAnimationFrame(() => {
-          syncSelectionState();
-        });
-        return true;
-      } catch (error) {
-        console.error('Failed to replace rectangular selection with backend command:', error);
-        return replaceRectangularSelectionLocally(insertText, options);
-      }
-    },
-    [
-      clearRectangularSelection,
-      normalizedRectangularSelection,
-      replaceRectangularSelectionLocally,
-      syncSelectionState,
-    ]
-  );
-
-  const updateRectangularSelectionFromPoint = useCallback(
-    (clientX: number, clientY: number) => {
-      const element = contentRef.current;
-      if (!element) {
-        return false;
-      }
-
-      const logicalOffset = getLogicalOffsetFromPoint(element, clientX, clientY);
-      if (logicalOffset === null) {
-        return false;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-      const position = codeUnitOffsetToLineColumn(text, logicalOffset);
-      const line = Math.max(1, position.line);
-      const column = Math.max(1, position.column + 1);
-      const current = rectangularSelectionRef.current;
-
-      if (!current) {
-        const next: RectangularSelectionState = {
-          anchorLine: line,
-          anchorColumn: column,
-          focusLine: line,
-          focusColumn: column,
-        };
-
-        rectangularSelectionRef.current = next;
-        setRectangularSelection(next);
-        return true;
-      }
-
-      const next: RectangularSelectionState = {
-        ...current,
-        focusLine: line,
-        focusColumn: column,
-      };
-
-      rectangularSelectionRef.current = next;
-      setRectangularSelection(next);
-      return true;
-    },
-    []
-  );
-
-  const getRectangularSelectionScrollElement = useCallback(() => {
-    if (isHugeEditableMode) {
-      return scrollContainerRef.current;
-    }
-
-    return contentRef.current;
-  }, [isHugeEditableMode]);
-
-  const beginRectangularSelectionAtPoint = useCallback((clientX: number, clientY: number) => {
-    const element = contentRef.current;
-    if (!element) {
-      return false;
-    }
-
-    const logicalOffset = getLogicalOffsetFromPoint(element, clientX, clientY);
-    if (logicalOffset === null) {
-      return false;
-    }
-
-    const text = normalizeSegmentText(getEditableText(element));
-    const position = codeUnitOffsetToLineColumn(text, logicalOffset);
-    const line = Math.max(1, position.line);
-    const column = Math.max(1, position.column + 1);
-    const next: RectangularSelectionState = {
-      anchorLine: line,
-      anchorColumn: column,
-      focusLine: line,
-      focusColumn: column,
-    };
-
-    rectangularSelectionRef.current = next;
-    setRectangularSelection(next);
-    return true;
-  }, []);
-
-  const beginRectangularSelectionFromCaret = useCallback(() => {
-    const element = contentRef.current;
-    if (!element) {
-      return false;
-    }
-
-    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(element);
-    const resolvedFocusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(element)?.end ?? 0;
-    const text = normalizeSegmentText(getEditableText(element));
-    const position = codeUnitOffsetToLineColumn(text, resolvedFocusOffset);
-    const line = Math.max(1, position.line);
-    const column = Math.max(1, position.column + 1);
-    const next: RectangularSelectionState = {
-      anchorLine: line,
-      anchorColumn: column,
-      focusLine: line,
-      focusColumn: column,
-    };
-
-    rectangularSelectionRef.current = next;
-    setRectangularSelection(next);
-    return true;
-  }, []);
-
-  const nudgeRectangularSelectionByKey = useCallback(
-    (direction: 'up' | 'down' | 'left' | 'right') => {
-      const current = rectangularSelectionRef.current;
-      if (!current) {
-        return false;
-      }
-
-      const element = contentRef.current;
-      if (!element) {
-        return false;
-      }
-
-      const text = normalizeSegmentText(getEditableText(element));
-      const logicalLineCount = Math.max(1, text.length === 0 ? 1 : text.split('\n').length);
-
-      const nextFocusLine = direction === 'up'
-        ? Math.max(1, current.focusLine - 1)
-        : direction === 'down'
-        ? Math.min(logicalLineCount, current.focusLine + 1)
-        : current.focusLine;
-
-      const nextFocusColumn = direction === 'left'
-        ? Math.max(1, current.focusColumn - 1)
-        : direction === 'right'
-        ? current.focusColumn + 1
-        : current.focusColumn;
-
-      const next: RectangularSelectionState = {
-        ...current,
-        focusLine: nextFocusLine,
-        focusColumn: nextFocusColumn,
-      };
-
-      rectangularSelectionRef.current = next;
-      setRectangularSelection(next);
-      return true;
-    },
-    []
-  );
 
   const expandVerticalSelection = useCallback(
     (direction: 'up' | 'down') => {
