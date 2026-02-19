@@ -39,6 +39,7 @@ import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
+import { useEditorInputSyncActions } from './useEditorInputSyncActions';
 import { useEditorKeyboardActions } from './useEditorKeyboardActions';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
@@ -1597,61 +1598,31 @@ export function Editor({
     writePlainTextToClipboard,
   });
 
-  const queueTextSync = useCallback(
-    () => {
-      pendingSyncRequestedRef.current = true;
-
-      if (isHugeEditableMode) {
-        hugeWindowLockedRef.current = true;
-      }
-
-      if (editTimeout.current) {
-        clearTimeout(editTimeout.current);
-      }
-
-      const debounceMs =
-        tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD
-          ? LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS
-          : NORMAL_EDIT_SYNC_DEBOUNCE_MS;
-
-      editTimeout.current = setTimeout(() => {
-        void flushPendingSync();
-      }, debounceMs);
-    },
-    [flushPendingSync, isHugeEditableMode, tab.lineCount]
-  );
-
-  const handleInput = useCallback(
-    () => {
-      clearVerticalSelectionState();
-
-      if (contentRef.current && !isComposingRef.current) {
-        normalizeInputLayerDom(contentRef.current);
-        syncHugeScrollableContentWidth();
-      }
-
-      if (!tab.isDirty) {
-        updateTab(tab.id, { isDirty: true });
-      }
-
-      syncSelectionAfterInteraction();
-      window.requestAnimationFrame(handleScroll);
-
-      if (!isComposingRef.current) {
-        queueTextSync();
-      }
-    },
-    [
-      clearVerticalSelectionState,
-      handleScroll,
-      tab.id,
-      tab.isDirty,
-      updateTab,
-      queueTextSync,
-      syncHugeScrollableContentWidth,
-      syncSelectionAfterInteraction,
-    ]
-  );
+  const {
+    handleInput,
+    handleCompositionStart,
+    handleCompositionEnd,
+  } = useEditorInputSyncActions({
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
+    tabIsDirty: tab.isDirty,
+    largeFilePlainRenderLineThreshold: LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD,
+    largeFileEditSyncDebounceMs: LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS,
+    normalEditSyncDebounceMs: NORMAL_EDIT_SYNC_DEBOUNCE_MS,
+    isHugeEditableMode,
+    pendingSyncRequestedRef,
+    hugeWindowLockedRef,
+    editTimeoutRef: editTimeout,
+    contentRef,
+    isComposingRef,
+    clearVerticalSelectionState,
+    normalizeInputLayerDom,
+    syncHugeScrollableContentWidth,
+    updateTab,
+    syncSelectionAfterInteraction,
+    handleScroll,
+    flushPendingSync,
+  });
 
   const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
     activeSyntaxKey,
@@ -1697,22 +1668,6 @@ export function Editor({
     clearLineNumberMultiSelection,
     handleInput,
   });
-
-  const handleCompositionStart = useCallback(() => {
-    isComposingRef.current = true;
-
-    if (isHugeEditableMode) {
-      hugeWindowLockedRef.current = true;
-    }
-  }, [isHugeEditableMode]);
-
-  const handleCompositionEnd = useCallback(
-    () => {
-      isComposingRef.current = false;
-      queueTextSync();
-    },
-    [queueTextSync]
-  );
 
   const onItemsRendered = useCallback(
     ({ visibleStartIndex, visibleStopIndex }) => {
