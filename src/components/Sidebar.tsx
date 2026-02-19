@@ -76,8 +76,8 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
 
-    const handleToggle = useCallback(async (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleToggle = useCallback(async (event?: { stopPropagation?: () => void }) => {
+        event?.stopPropagation?.();
         if (entry.is_dir) {
             if (!isOpen && children.length === 0) {
                 try {
@@ -102,16 +102,33 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
             }
         }
     }, [entry, isOpen, children.length, tabs, setActiveTab]);
+    const isActiveFile = !entry.is_dir
+        && Boolean(activeTabId)
+        && tabs.some((tab) => tab.id === activeTabId && tab.path === entry.path);
 
     return (
         <div>
             <div 
                 className={cn(
                     "flex items-center gap-1.5 px-2 py-1 cursor-pointer hover:bg-accent hover:text-accent-foreground text-xs transition-colors group",
-                    !entry.is_dir && activeTabId && tabs.find(t => t.id === activeTabId)?.path === entry.path && "bg-accent/50 text-accent-foreground border-l-2 border-primary pl-[calc(level*12px+6px)]"
+                    isActiveFile && "bg-accent/50 text-accent-foreground border-l-2 border-primary pl-[calc(level*12px+6px)]"
                 )}
                 style={{ paddingLeft: `${level * 12 + 8}px` }}
-                onClick={handleToggle}
+                onClick={(event) => {
+                    void handleToggle(event);
+                }}
+                onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    void handleToggle();
+                }}
+                role="button"
+                tabIndex={0}
+                aria-expanded={entry.is_dir ? isOpen : undefined}
+                aria-current={isActiveFile ? 'page' : undefined}
             >
                 {entry.is_dir ? (
                     <>

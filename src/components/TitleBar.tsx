@@ -215,6 +215,10 @@ export function TitleBar() {
     const alwaysOnTopTitle = isAlwaysOnTop
         ? tr('titleBar.disableAlwaysOnTop')
         : tr('titleBar.enableAlwaysOnTop');
+    const closeTabLabel = settings.language === 'zh-CN' ? '关闭标签页' : 'Close tab';
+    const minimizeWindowLabel = settings.language === 'zh-CN' ? '最小化窗口' : 'Minimize window';
+    const maximizeWindowLabel = settings.language === 'zh-CN' ? '切换最大化' : 'Toggle maximize window';
+    const closeWindowLabel = settings.language === 'zh-CN' ? '关闭窗口' : 'Close window';
     const contextMenuTab = tabContextMenu
         ? tabs.find((tab) => tab.id === tabContextMenu.tabId) ?? null
         : null;
@@ -1008,6 +1012,8 @@ export function TitleBar() {
                                     type="button"
                                     style={noDragStyle}
                                     draggable={false}
+                                    aria-label={closeTabLabel}
+                                    title={closeTabLabel}
                                     onContextMenu={handleWindowControlContextMenu}
                                     onPointerDown={(e) => {
                                         e.preventDefault();
@@ -1199,10 +1205,11 @@ export function TitleBar() {
                     onClick={() => void handleToggleAlwaysOnTop()}
                     onContextMenu={handleWindowControlContextMenu}
                     className={cn(
-                        'h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors',
+                        'h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                         isAlwaysOnTop && 'bg-accent text-accent-foreground'
                     )}
                     title={alwaysOnTopTitle}
+                    aria-label={alwaysOnTopTitle}
                 >
                     {isAlwaysOnTop ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                 </button>
@@ -1210,8 +1217,9 @@ export function TitleBar() {
                     type="button"
                     onClick={() => toggleSettings(true)}
                     onContextMenu={handleWindowControlContextMenu}
-                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
+                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     title={tr('titleBar.settings')}
+                    aria-label={tr('titleBar.settings')}
                 >
                     <Settings className="w-4 h-4" />
                 </button>
@@ -1220,7 +1228,9 @@ export function TitleBar() {
                     type="button"
                     onClick={handleMinimize}
                     onContextMenu={handleWindowControlContextMenu}
-                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
+                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    title={minimizeWindowLabel}
+                    aria-label={minimizeWindowLabel}
                 >
                     <Minus className="w-4 h-4" />
                 </button>
@@ -1228,7 +1238,9 @@ export function TitleBar() {
                     type="button"
                     onClick={handleMaximize}
                     onContextMenu={handleWindowControlContextMenu}
-                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors"
+                    className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    title={maximizeWindowLabel}
+                    aria-label={maximizeWindowLabel}
                 >
                     <Square className="w-3.5 h-3.5" />
                 </button>
@@ -1236,7 +1248,9 @@ export function TitleBar() {
                     type="button"
                     onClick={handleClose}
                     onContextMenu={handleWindowControlContextMenu}
-                    className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center rounded-md transition-colors"
+                    className="h-8 w-8 hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    title={closeWindowLabel}
+                    aria-label={closeWindowLabel}
                 >
                     <X className="w-4 h-4" />
                 </button>

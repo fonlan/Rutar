@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { TabCloseConfirmModal } from "./TabCloseConfirmModal";
 import {
@@ -136,5 +136,70 @@ describe("TabCloseConfirmModal", () => {
     expect(responses).toEqual([{ id: "confirm-discard-all", action: "discard_all" }]);
     expect(screen.queryByText("Unsaved Changes")).not.toBeInTheDocument();
     window.removeEventListener(TAB_CLOSE_CONFIRM_RESPONSE_EVENT, responseListener as EventListener);
+  });
+
+  it("renders accessible dialog semantics and focuses the cancel action", async () => {
+    render(<TabCloseConfirmModal />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(TAB_CLOSE_CONFIRM_REQUEST_EVENT, {
+          detail: {
+            id: "confirm-accessibility",
+            language: "en-US",
+            tabName: "dirty.ts",
+            allowAllActions: false,
+          },
+        })
+      );
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "Unsaved Changes" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("aria-describedby");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    });
+  });
+
+  it("submits cancel on Escape and restores previous focus", async () => {
+    const triggerButton = document.createElement("button");
+    triggerButton.textContent = "trigger";
+    document.body.appendChild(triggerButton);
+    triggerButton.focus();
+
+    render(<TabCloseConfirmModal />);
+
+    const responses: Array<{ id: string; action: string }> = [];
+    const responseListener = (event: Event) => {
+      responses.push((event as CustomEvent).detail as { id: string; action: string });
+    };
+    window.addEventListener(TAB_CLOSE_CONFIRM_RESPONSE_EVENT, responseListener as EventListener);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(TAB_CLOSE_CONFIRM_REQUEST_EVENT, {
+          detail: {
+            id: "confirm-escape",
+            language: "en-US",
+            tabName: "dirty.ts",
+            allowAllActions: false,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(responses).toEqual([{ id: "confirm-escape", action: "cancel" }]);
+    expect(screen.queryByRole("dialog", { name: "Unsaved Changes" })).not.toBeInTheDocument();
+    expect(triggerButton).toHaveFocus();
+
+    window.removeEventListener(TAB_CLOSE_CONFIRM_RESPONSE_EVENT, responseListener as EventListener);
+    triggerButton.remove();
   });
 });

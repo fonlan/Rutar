@@ -151,6 +151,17 @@ export function BookmarkSidebar() {
                 className="group flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
                 title={`${tr('bookmark.sidebar.line')} ${line}`}
                 onClick={() => dispatchNavigateToLineFromBookmark(activeTabId, line)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  dispatchNavigateToLineFromBookmark(activeTabId, line);
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`${tr('bookmark.sidebar.line')} ${line}`}
               >
                 <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
                   <Bookmark className="h-3.5 w-3.5 shrink-0 text-amber-500" />

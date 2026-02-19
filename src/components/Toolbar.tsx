@@ -1136,6 +1136,7 @@ function ToolbarBtn({ icon: Icon, title, onClick, disabled, active, disabledReas
                 }}
                 onClick={onClick}
                 disabled={disabled}
+                aria-label={resolvedTitle}
             >
                 <Icon className="w-4 h-4" />
             </button>
@@ -1275,6 +1276,7 @@ function ToolbarSplitMenu({
                 type="button"
                 className="py-2 pl-2 pr-1.5 rounded-l-md hover:bg-accent hover:text-accent-foreground transition-colors"
                 title={title}
+                aria-label={title}
                 onMouseDown={(event) => {
                     event.preventDefault();
                 }}
@@ -1289,6 +1291,7 @@ function ToolbarSplitMenu({
                     menuOpen && 'bg-accent text-accent-foreground'
                 )}
                 title={menuTitle}
+                aria-label={menuTitle}
                 onMouseDown={(event) => {
                     event.preventDefault();
                 }}
@@ -1306,52 +1309,49 @@ function ToolbarSplitMenu({
                             {items.map((item) => (
                                 <div
                                     key={item.path}
-                                    className="group flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
-                                    title={item.path}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => {
-                                        setItemContextMenu(null);
-                                        void onItemClick(item.path);
-                                    }}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter' || event.key === ' ') {
-                                            event.preventDefault();
+                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                                >
+                                    <button
+                                        type="button"
+                                        className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                                        title={item.path}
+                                        aria-label={item.path}
+                                        onClick={() => {
                                             setItemContextMenu(null);
                                             void onItemClick(item.path);
-                                        }
-                                    }}
-                                    onContextMenu={(event) => {
-                                        if (!onItemContextAction || !itemContextActionText) {
-                                            return;
-                                        }
+                                        }}
+                                        onContextMenu={(event) => {
+                                            if (!onItemContextAction || !itemContextActionText) {
+                                                return;
+                                            }
 
-                                        event.preventDefault();
-                                        event.stopPropagation();
+                                            event.preventDefault();
+                                            event.stopPropagation();
 
-                                        const menuWidth = 216;
-                                        const menuHeight = 38;
-                                        const viewportPadding = 8;
-                                        const x = Math.max(
-                                            viewportPadding,
-                                            Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
-                                        );
-                                        const y = Math.max(
-                                            viewportPadding,
-                                            Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
-                                        );
+                                            const menuWidth = 216;
+                                            const menuHeight = 38;
+                                            const viewportPadding = 8;
+                                            const x = Math.max(
+                                                viewportPadding,
+                                                Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+                                            );
+                                            const y = Math.max(
+                                                viewportPadding,
+                                                Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+                                            );
 
-                                        setItemContextMenu({
-                                            path: item.path,
-                                            x,
-                                            y,
-                                        });
-                                    }}
-                                >
-                                    <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
-                                        <span className="max-w-40 truncate text-foreground">{item.name}</span>
-                                        <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
-                                    </span>
+                                            setItemContextMenu({
+                                                path: item.path,
+                                                x,
+                                                y,
+                                            });
+                                        }}
+                                    >
+                                        <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                                            <span className="max-w-40 truncate text-foreground">{item.name}</span>
+                                            <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
+                                        </span>
+                                    </button>
                                     <button
                                         type="button"
                                         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"

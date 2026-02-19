@@ -246,6 +246,13 @@ function TreeNodeItem({
       dispatchNavigateToLineFromOutline(activeTabId, node.line, node.column);
     }
   };
+  const handleToggleExpand = () => {
+    if (!hasChildren) {
+      return;
+    }
+
+    setExpanded((value) => !value);
+  };
 
   return (
     <div>
@@ -255,15 +262,36 @@ function TreeNodeItem({
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleSelectNode}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+          }
+
+          event.preventDefault();
+          handleSelectNode();
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={node.label}
       >
         <span
           className="w-4 h-4 flex items-center justify-center"
           onClick={(event) => {
             event.stopPropagation();
-            if (hasChildren) {
-              setExpanded((value) => !value);
-            }
+            handleToggleExpand();
           }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            handleToggleExpand();
+          }}
+          role="button"
+          tabIndex={hasChildren ? 0 : -1}
+          aria-expanded={hasChildren ? isExpanded : undefined}
         >
           {hasChildren ? (
             isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
