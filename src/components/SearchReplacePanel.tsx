@@ -4672,12 +4672,14 @@ export function SearchReplacePanel() {
                   onKeyDown={handleKeywordKeyDown}
                   placeholder={messages.findPlaceholder}
                   aria-label={messages.findPlaceholder}
+                  name="search-keyword"
+                  autoComplete="off"
                   className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {keyword && (
                   <button
                     type="button"
-                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setKeyword('');
@@ -4698,7 +4700,7 @@ export function SearchReplacePanel() {
               <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   onClick={addFilterRule}
                 >
                   <CirclePlus className="h-3.5 w-3.5" />
@@ -4706,7 +4708,7 @@ export function SearchReplacePanel() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                   onClick={toggleResultPanelAndRefresh}
                   title={isFilterMode ? messages.filterRunHint : resultToggleTitle}
                 >
@@ -4722,12 +4724,14 @@ export function SearchReplacePanel() {
                       onChange={(event) => setFilterGroupNameInput(event.target.value)}
                       placeholder={messages.filterGroupNamePlaceholder}
                       aria-label={messages.filterGroupNamePlaceholder}
+                      name="filter-group-name"
+                      autoComplete="off"
                       className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                     />
                     {filterGroupNameInput && (
                       <button
                         type="button"
-                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => setFilterGroupNameInput('')}
                         title={messages.clearInput}
@@ -4739,7 +4743,7 @@ export function SearchReplacePanel() {
                   </div>
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void handleSaveFilterRuleGroup()}
                   >
                     {messages.filterSaveGroup}
@@ -4756,6 +4760,7 @@ export function SearchReplacePanel() {
                         setFilterGroupNameInput(nextName);
                       }
                     }}
+                    name="filter-group-select"
                     className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                     aria-label={messages.filterGroupSelectPlaceholder}
                   >
@@ -4768,14 +4773,14 @@ export function SearchReplacePanel() {
                   </select>
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={handleLoadFilterRuleGroup}
                   >
                     {messages.filterLoadGroup}
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void handleDeleteFilterRuleGroup()}
                   >
                     {messages.filterDeleteGroup}
@@ -4785,14 +4790,14 @@ export function SearchReplacePanel() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void handleImportFilterRuleGroups()}
                   >
                     {messages.filterImportGroups}
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void handleExportFilterRuleGroups()}
                   >
                     {messages.filterExportGroups}
@@ -4836,27 +4841,30 @@ export function SearchReplacePanel() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                         onClick={() => moveFilterRule(rule.id, -1)}
                         disabled={index === 0}
                         title={messages.filterMoveUp}
+                        aria-label={messages.filterMoveUp}
                       >
                         <ArrowUp className="h-3 w-3" />
                       </button>
                       <button
                         type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                         onClick={() => moveFilterRule(rule.id, 1)}
                         disabled={index === filterRules.length - 1}
                         title={messages.filterMoveDown}
+                        aria-label={messages.filterMoveDown}
                       >
                         <ArrowDown className="h-3 w-3" />
                       </button>
                       <button
                         type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onClick={() => removeFilterRule(rule.id)}
                         title={messages.filterDeleteRule}
+                        aria-label={messages.filterDeleteRule}
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -4875,12 +4883,14 @@ export function SearchReplacePanel() {
                       onKeyDown={handleKeywordKeyDown}
                       placeholder={messages.filterRuleKeywordPlaceholder}
                       aria-label={messages.filterRuleKeywordPlaceholder}
+                      name={`filter-rule-keyword-${rule.id}`}
+                      autoComplete="off"
                       className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                     />
                     {rule.keyword && (
                       <button
                         type="button"
-                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           updateFilterRule(rule.id, (previous) => ({
@@ -5049,12 +5059,14 @@ export function SearchReplacePanel() {
                   onChange={(event) => setReplaceValue(event.target.value)}
                   placeholder={messages.replacePlaceholder}
                   aria-label={messages.replacePlaceholder}
+                  name="replace-value"
+                  autoComplete="off"
                   className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {replaceValue && (
                   <button
                     type="button"
-                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => setReplaceValue('')}
                     title={messages.clearInput}
@@ -5125,7 +5137,7 @@ export function SearchReplacePanel() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void navigateByStep(-1)}
                     title={messages.prevMatch}
                   >
@@ -5135,7 +5147,7 @@ export function SearchReplacePanel() {
 
                   <button
                     type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void navigateByStep(1)}
                     title={messages.nextMatch}
                   >
@@ -5145,7 +5157,7 @@ export function SearchReplacePanel() {
 
                   <button
                     type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                     onClick={() => void handleReplaceCurrent()}
                     disabled={!canReplace}
                     title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
@@ -5154,7 +5166,7 @@ export function SearchReplacePanel() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                     onClick={() => void handleReplaceAll()}
                     disabled={!canReplace}
                     title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
@@ -5166,7 +5178,7 @@ export function SearchReplacePanel() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void navigateByStep(-1)}
                     title={messages.prevMatch}
                   >
@@ -5176,7 +5188,7 @@ export function SearchReplacePanel() {
 
                   <button
                     type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={() => void navigateByStep(1)}
                     title={messages.nextMatch}
                   >
@@ -5233,7 +5245,7 @@ export function SearchReplacePanel() {
           <button
             type="button"
             role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => void handleInputContextMenuAction('copy')}
             disabled={!inputContextMenu.hasSelection}
           >
@@ -5242,7 +5254,7 @@ export function SearchReplacePanel() {
           <button
             type="button"
             role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => void handleInputContextMenuAction('cut')}
             disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
           >
@@ -5251,7 +5263,7 @@ export function SearchReplacePanel() {
           <button
             type="button"
             role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => void handleInputContextMenuAction('paste')}
             disabled={!inputContextMenu.canEdit}
           >
@@ -5260,7 +5272,7 @@ export function SearchReplacePanel() {
           <button
             type="button"
             role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => void handleInputContextMenuAction('delete')}
             disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
           >
@@ -5307,6 +5319,8 @@ export function SearchReplacePanel() {
                   }}
                   placeholder={messages.resultFilterPlaceholder}
                   aria-label={messages.resultFilterPlaceholder}
+                  name="result-filter-keyword"
+                  autoComplete="off"
                   className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {resultFilterKeyword && (
@@ -5405,7 +5419,7 @@ export function SearchReplacePanel() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() => {
                   cancelPendingBatchLoad();
                   if (isFilterMode) {
@@ -5416,36 +5430,40 @@ export function SearchReplacePanel() {
                   void executeSearch(true);
                 }}
                 title={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
+                aria-label={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                 onClick={() => {
                   void copyPlainTextResults();
                 }}
                 title={messages.copyResults}
+                aria-label={messages.copyResults}
                 disabled={plainTextResultEntries.length === 0}
               >
                 <Copy className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() => setResultPanelState('minimized')}
                 title={messages.minimizeResults}
+                aria-label={messages.minimizeResults}
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() => {
                   cancelPendingBatchLoad();
                   setResultPanelState('closed');
                 }}
                 title={messages.closeResults}
+                aria-label={messages.closeResults}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
