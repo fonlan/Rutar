@@ -132,7 +132,7 @@ export function BookmarkSidebar() {
         <span className="truncate">{tr('bookmark.sidebar.title')}</span>
         <button
           type="button"
-          className="ml-auto inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
           title={tr('sidebar.close')}
           aria-label={tr('sidebar.close')}
           onClick={() => toggleBookmarkSidebar(false)}
@@ -179,7 +179,7 @@ export function BookmarkSidebar() {
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
                   title={tr('bookmark.remove')}
                   aria-label={tr('bookmark.remove')}
                   onClick={(event) => {

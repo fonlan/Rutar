@@ -2991,7 +2991,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
                 <button
                   type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3006,7 +3006,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3111,7 +3111,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
                 <button
                   type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3126,7 +3126,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}

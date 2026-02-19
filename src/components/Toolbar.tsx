@@ -1354,7 +1354,7 @@ function ToolbarSplitMenu({
                                     </button>
                                     <button
                                         type="button"
-                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
                                         title={removeItemText}
                                         aria-label={removeItemText}
                                         onClick={(event) => {

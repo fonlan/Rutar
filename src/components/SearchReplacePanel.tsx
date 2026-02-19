@@ -4677,7 +4677,7 @@ export function SearchReplacePanel() {
                 {keyword && (
                   <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setKeyword('');
@@ -4727,7 +4727,7 @@ export function SearchReplacePanel() {
                     {filterGroupNameInput && (
                       <button
                         type="button"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => setFilterGroupNameInput('')}
                         title={messages.clearInput}
@@ -4880,7 +4880,7 @@ export function SearchReplacePanel() {
                     {rule.keyword && (
                       <button
                         type="button"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           updateFilterRule(rule.id, (previous) => ({
@@ -5054,7 +5054,7 @@ export function SearchReplacePanel() {
                 {replaceValue && (
                   <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => setReplaceValue('')}
                     title={messages.clearInput}
@@ -5312,7 +5312,7 @@ export function SearchReplacePanel() {
                 {resultFilterKeyword && (
                   <button
                     type="button"
-                    className="-ml-5 mr-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="-ml-5 mr-0.5 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setResultFilterKeyword('');
@@ -5530,7 +5530,7 @@ export function SearchReplacePanel() {
             </span>
             <button
               type="button"
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => {
                 setResultPanelState('open');
 
@@ -5550,7 +5550,7 @@ export function SearchReplacePanel() {
             </button>
             <button
               type="button"
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => {
                 cancelPendingBatchLoad();
                 setResultPanelState('closed');
