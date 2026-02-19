@@ -40,6 +40,7 @@ import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
+import { useEditorKeyboardActions } from './useEditorKeyboardActions';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
 import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
@@ -1825,123 +1826,27 @@ export function Editor({
     ]
   );
 
-  const handleEditableKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (handleRectangularSelectionInputByKey(event)) {
-        return;
-      }
-
-      if (isVerticalSelectionShortcut(event)) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const direction =
-          event.key === 'ArrowUp'
-            ? 'up'
-            : event.key === 'ArrowDown'
-            ? 'down'
-            : event.key === 'ArrowLeft'
-            ? 'left'
-            : 'right';
-
-        if (!rectangularSelectionRef.current) {
-          beginRectangularSelectionFromCaret();
-        }
-
-        void nudgeRectangularSelectionByKey(direction as 'up' | 'down' | 'left' | 'right');
-        return;
-      }
-
-      if (isToggleLineCommentShortcut(event)) {
-        clearVerticalSelectionState();
-        void toggleSelectedLinesComment(event);
-        return;
-      }
-
-      if (event.key !== 'Enter' || event.isComposing) {
-        if (event.key === 'Delete' && lineNumberMultiSelection.length > 0) {
-          event.preventDefault();
-          event.stopPropagation();
-          void applyLineNumberMultiSelectionEdit('delete');
-          return;
-        }
-
-        if (
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === 'x' &&
-          lineNumberMultiSelection.length > 0
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          void applyLineNumberMultiSelectionEdit('cut');
-          return;
-        }
-
-        if (
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === 'c' &&
-          lineNumberMultiSelection.length > 0
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          const element = contentRef.current;
-          if (element) {
-            const text = normalizeSegmentText(getEditableText(element));
-            const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
-            if (selected && navigator.clipboard?.writeText) {
-              void navigator.clipboard.writeText(selected).catch(() => {
-                console.warn('Failed to write line selection to clipboard.');
-              });
-            }
-          }
-          return;
-        }
-
-        if (
-          normalizedRectangularSelection &&
-          (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-        ) {
-          clearRectangularSelection();
-        }
-        if (!event.shiftKey && !event.ctrlKey && !event.metaKey && event.key !== 'Shift') {
-          clearLineNumberMultiSelection();
-        }
-        if (!event.shiftKey || event.key !== 'Shift') {
-          clearVerticalSelectionState();
-        }
-        return;
-      }
-
-      clearVerticalSelectionState();
-      clearRectangularSelection();
-      clearLineNumberMultiSelection();
-      event.preventDefault();
-      event.stopPropagation();
-      if (insertTextAtSelection('\n')) {
-        handleInput();
-      }
-    },
-    [
-      applyLineNumberMultiSelectionEdit,
-      buildLineNumberSelectionRangeText,
-      clearLineNumberMultiSelection,
-      clearRectangularSelection,
-      clearVerticalSelectionState,
-      beginRectangularSelectionFromCaret,
-      expandVerticalSelection,
-      lineNumberMultiSelection,
-      handleInput,
-      handleRectangularSelectionInputByKey,
-      insertTextAtSelection,
-      nudgeRectangularSelectionByKey,
-      normalizedRectangularSelection,
-      toggleSelectedLinesComment,
-    ]
-  );
+  const { handleEditableKeyDown } = useEditorKeyboardActions({
+    contentRef,
+    rectangularSelectionRef,
+    lineNumberMultiSelection,
+    normalizedRectangularSelection,
+    handleRectangularSelectionInputByKey,
+    isVerticalSelectionShortcut,
+    beginRectangularSelectionFromCaret,
+    nudgeRectangularSelectionByKey,
+    clearVerticalSelectionState,
+    isToggleLineCommentShortcut,
+    toggleSelectedLinesComment,
+    applyLineNumberMultiSelectionEdit,
+    buildLineNumberSelectionRangeText,
+    normalizeSegmentText,
+    getEditableText,
+    clearRectangularSelection,
+    clearLineNumberMultiSelection,
+    insertTextAtSelection,
+    handleInput,
+  });
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
