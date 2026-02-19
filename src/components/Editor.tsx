@@ -15,6 +15,7 @@ import {
   type EditorSubmenuKey,
 } from './EditorContextMenu';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
+import { EditorLineNumberGutter } from './EditorLineNumberGutter';
 import { editorTestUtils } from './editorUtils';
 
 interface SyntaxToken {
@@ -292,6 +293,10 @@ export function Editor({
   const showLineNumbers = settings.showLineNumbers !== false;
   const highlightCurrentLine = settings.highlightCurrentLine !== false;
   const renderedFontSizePx = useMemo(() => alignToDevicePixel(fontSize), [fontSize]);
+  const lineNumberFontSizePx = useMemo(
+    () => alignToDevicePixel(Math.max(10, renderedFontSizePx - 2)),
+    [renderedFontSizePx]
+  );
   const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
   const itemSize = lineHeightPx;
   const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
@@ -5312,86 +5317,28 @@ export function Editor({
         </div>
       )}
 
-      {width > 0 && height > 0 && showLineNumbers && (
-        <div
-          className="absolute left-0 top-0 bottom-0 z-30 border-r border-border/50 bg-background"
-          style={{ width: `${lineNumberColumnWidthPx}px` }}
-          onWheel={handleLineNumberWheel}
-        >
-          <List
-            ref={lineNumberListRef}
-            height={height}
-            width={lineNumberColumnWidthPx}
-            itemCount={lineNumberVirtualItemCount}
-            itemSize={getLineNumberListItemSize}
-            estimatedItemSize={itemSize}
-            overscanCount={20}
-            style={{
-              overflowX: 'hidden',
-              overflowY: 'hidden',
-            }}
-          >
-            {({ index, style }) => {
-              if (index >= tab.lineCount) {
-                return (
-                  <div
-                    data-testid="line-number-bottom-spacer"
-                    aria-hidden
-                    style={style}
-                    className="pointer-events-none select-none"
-                  />
-                );
-              }
-
-              return (
-                <div
-                  style={{
-                    ...style,
-                    fontFamily: settings.fontFamily,
-                    fontSize: `${alignToDevicePixel(Math.max(10, renderedFontSizePx - 2))}px`,
-                    lineHeight: `${lineHeightPx}px`,
-                  }}
-                  className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
-                    diffHighlightLineSet.has(index + 1)
-                      ? 'text-red-600 dark:text-red-300 font-semibold'
-                      : bookmarks.includes(index + 1)
-                      ? 'text-amber-500/90 font-semibold'
-                      : lineNumberMultiSelectionSet.has(index + 1)
-                      ? 'text-blue-600 dark:text-blue-300 font-semibold'
-                      : 'text-muted-foreground/45'
-                  } pointer-events-auto cursor-pointer select-none`}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
-
-                    if (event.detail === 2) {
-                      handleLineNumberDoubleClick(lineNumber);
-                      return;
-                    }
-
-                    handleLineNumberClick(
-                      lineNumber,
-                      event.shiftKey,
-                      event.ctrlKey || event.metaKey
-                    );
-                  }}
-                  onContextMenu={(event) => {
-                    const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
-                    handleLineNumberContextMenu(event, lineNumber);
-                  }}
-                >
-                  {index + 1}
-                </div>
-              );
-            }}
-          </List>
-        </div>
-      )}
+      <EditorLineNumberGutter
+        visible={showLineNumbers}
+        width={width}
+        height={height}
+        tabLineCount={tab.lineCount}
+        lineNumberColumnWidthPx={lineNumberColumnWidthPx}
+        lineNumberVirtualItemCount={lineNumberVirtualItemCount}
+        itemSize={itemSize}
+        lineHeightPx={lineHeightPx}
+        lineNumberFontSizePx={lineNumberFontSizePx}
+        fontFamily={settings.fontFamily}
+        lineNumberListRef={lineNumberListRef}
+        diffHighlightLineSet={diffHighlightLineSet}
+        bookmarks={bookmarks}
+        lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
+        getLineNumberListItemSize={getLineNumberListItemSize}
+        getLineNumberFromGutterElement={getLineNumberFromGutterElement}
+        onLineNumberWheel={handleLineNumberWheel}
+        onLineNumberDoubleClick={handleLineNumberDoubleClick}
+        onLineNumberClick={handleLineNumberClick}
+        onLineNumberContextMenu={handleLineNumberContextMenu}
+      />
 
       <EditorContextMenu
         editorContextMenu={editorContextMenu}
