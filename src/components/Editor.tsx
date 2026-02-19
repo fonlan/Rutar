@@ -62,6 +62,7 @@ import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorTextMeasurement } from './useEditorTextMeasurement';
 import { useEditorTextDragMoveAction } from './useEditorTextDragMoveAction';
 import { useEditorToggleLineCommentsAction } from './useEditorToggleLineCommentsAction';
+import { useEditorTextSelectionHighlightSync } from './useEditorTextSelectionHighlightSync';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 import { useEditorVisibleItemsRendered } from './useEditorVisibleItemsRendered';
 
@@ -654,43 +655,13 @@ export function Editor({
     syncSelectionAfterInteraction,
   });
 
-  const syncTextSelectionHighlight = useCallback(() => {
-    const element = contentRef.current;
-    if (!element) {
-      setTextSelectionHighlight(null);
-      return;
-    }
-
-    if (rectangularSelectionRef.current) {
-      setTextSelectionHighlight((prev) => (prev === null ? prev : null));
-      return;
-    }
-
-    const offsets = getSelectionOffsetsInElement(element);
-    if (!offsets || offsets.isCollapsed) {
-      setTextSelectionHighlight((prev) => (prev === null ? prev : null));
-      return;
-    }
-
-    const start = Math.min(offsets.start, offsets.end);
-    const end = Math.max(offsets.start, offsets.end);
-
-    setTextSelectionHighlight((prev) => {
-      if (prev && prev.start === start && prev.end === end) {
-        return prev;
-      }
-
-      return { start, end };
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!normalizedRectangularSelection) {
-      return;
-    }
-
-    setTextSelectionHighlight((prev) => (prev === null ? prev : null));
-  }, [normalizedRectangularSelection]);
+  const { syncTextSelectionHighlight } = useEditorTextSelectionHighlightSync({
+    contentRef,
+    rectangularSelectionRef,
+    normalizedRectangularSelection,
+    setTextSelectionHighlight,
+    getSelectionOffsetsInElement,
+  });
 
   const { hasSelectionInsideEditor } = useEditorSelectionPresence({
     contentRef,
