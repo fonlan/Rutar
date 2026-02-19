@@ -3267,7 +3267,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           }}
                           role={linePresent ? 'button' : undefined}
                           tabIndex={linePresent ? 0 : -1}
-                          aria-label={linePresent ? `${sourceTitlePrefix} line ${lineNumber}` : undefined}
+                          aria-label={linePresent ? `${sourceTitlePrefix} ${lineNumber}` : undefined}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
@@ -3473,7 +3473,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           }}
                           role={linePresent ? 'button' : undefined}
                           tabIndex={linePresent ? 0 : -1}
-                          aria-label={linePresent ? `${targetTitlePrefix} line ${lineNumber}` : undefined}
+                          aria-label={linePresent ? `${targetTitlePrefix} ${lineNumber}` : undefined}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
