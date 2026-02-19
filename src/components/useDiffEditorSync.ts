@@ -2,25 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
-
-type ActivePanel = 'source' | 'target';
-
-interface LineDiffComparisonResult {
-  alignedSourceLines: string[];
-  alignedTargetLines: string[];
-  alignedSourcePresent: boolean[];
-  alignedTargetPresent: boolean[];
-  diffLineNumbers: number[];
-  sourceDiffLineNumbers: number[];
-  targetDiffLineNumbers: number[];
-  alignedDiffKinds?: Array<'insert' | 'delete' | 'modify' | null>;
-  sourceLineNumbersByAlignedRow?: number[];
-  targetLineNumbersByAlignedRow?: number[];
-  diffRowIndexes?: number[];
-  sourceLineCount: number;
-  targetLineCount: number;
-  alignedLineCount: number;
-}
+import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 
 interface ApplyAlignedDiffEditResult {
   lineDiff: LineDiffComparisonResult;

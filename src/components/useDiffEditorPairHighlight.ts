@@ -1,8 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import { editorTestUtils } from './editorUtils';
-
-type ActivePanel = 'source' | 'target';
 
 interface PairHighlightPosition {
   line: number;
@@ -19,7 +18,7 @@ interface PairOffsetsResultPayload {
 }
 
 interface UseDiffEditorPairHighlightParams {
-  lineDiff: unknown;
+  lineDiff: LineDiffComparisonResult;
 }
 
 const { codeUnitOffsetToLineColumn, arePairHighlightPositionsEqual } = editorTestUtils;

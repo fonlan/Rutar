@@ -16,6 +16,7 @@ import { saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import { editorTestUtils } from './editorUtils';
 import { useDiffEditorPairHighlight } from './useDiffEditorPairHighlight';
 import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
@@ -23,23 +24,6 @@ import { useDiffEditorSync } from './useDiffEditorSync';
 
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
-}
-
-interface LineDiffComparisonResult {
-  alignedSourceLines: string[];
-  alignedTargetLines: string[];
-  alignedSourcePresent: boolean[];
-  alignedTargetPresent: boolean[];
-  diffLineNumbers: number[];
-  sourceDiffLineNumbers: number[];
-  targetDiffLineNumbers: number[];
-  alignedDiffKinds?: Array<DiffLineKind | null>;
-  sourceLineNumbersByAlignedRow?: number[];
-  targetLineNumbersByAlignedRow?: number[];
-  diffRowIndexes?: number[];
-  sourceLineCount: number;
-  targetLineCount: number;
-  alignedLineCount: number;
 }
 
 interface ApplyAlignedDiffPanelCopyResult {
@@ -87,9 +71,6 @@ interface PairHighlightPosition {
   line: number;
   column: number;
 }
-
-type ActivePanel = 'source' | 'target';
-type DiffLineKind = 'insert' | 'delete' | 'modify';
 
 const MIN_RATIO = 0.2;
 const MAX_RATIO = 0.8;
