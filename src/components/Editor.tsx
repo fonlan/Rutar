@@ -40,6 +40,7 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorLayoutConfig } from './useEditorLayoutConfig';
+import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
@@ -626,210 +627,37 @@ export function Editor({
     }
     setRectangularSelection(null);
   }, []);
-
-  const clearLineNumberMultiSelection = useCallback(() => {
-    setLineNumberMultiSelection((prev) => (prev.length === 0 ? prev : []));
-  }, []);
-
-  const mapAbsoluteLineToSourceLine = useCallback(
-    (absoluteLine: number) => {
-      const safeLine = Math.max(1, Math.floor(absoluteLine));
-      if (!isHugeEditableMode) {
-        return safeLine;
-      }
-
-      const segment = editableSegmentRef.current;
-      const segmentStartLine = segment.startLine + 1;
-      const segmentEndLine = segment.endLine;
-      if (safeLine < segmentStartLine || safeLine > segmentEndLine) {
-        return null;
-      }
-
-      return safeLine - segment.startLine;
-    },
-    [isHugeEditableMode]
-  );
-
-  const buildLineNumberSelectionRangeText = useCallback(
-    (text: string, selectedLines: number[]) => {
-      if (!text || selectedLines.length === 0) {
-        return '';
-      }
-
-      const starts = buildLineStartOffsets(text);
-      const segments: string[] = [];
-
-      for (const line of selectedLines) {
-        const sourceLine = mapAbsoluteLineToSourceLine(line);
-        if (sourceLine === null) {
-          continue;
-        }
-        const bounds = getLineBoundsByLineNumber(text, starts, sourceLine);
-        if (!bounds) {
-          continue;
-        }
-
-        const endOffset = bounds.end < text.length && text[bounds.end] === '\n' ? bounds.end + 1 : bounds.end;
-        segments.push(text.slice(bounds.start, endOffset));
-      }
-
-      return segments.join('');
-    },
-    [mapAbsoluteLineToSourceLine]
-  );
-
-  const applyLineNumberMultiSelectionEdit = useCallback(
-    async (mode: 'cut' | 'delete') => {
-      const selectedLines = lineNumberMultiSelection;
-      if (selectedLines.length === 0) {
-        return false;
-      }
-
-      const element = contentRef.current;
-      if (!element) {
-        return false;
-      }
-
-      const baseText = normalizeSegmentText(getEditableText(element));
-      if (!baseText) {
-        clearLineNumberMultiSelection();
-        return false;
-      }
-
-      const starts = buildLineStartOffsets(baseText);
-      const ranges = selectedLines
-        .map((line) => {
-          const sourceLine = mapAbsoluteLineToSourceLine(line);
-          if (sourceLine === null) {
-            return null;
-          }
-          const bounds = getLineBoundsByLineNumber(baseText, starts, sourceLine);
-          if (!bounds) {
-            return null;
-          }
-
-          const endOffset =
-            bounds.end < baseText.length && baseText[bounds.end] === '\n' ? bounds.end + 1 : bounds.end;
-
-          return {
-            start: bounds.start,
-            end: endOffset,
-          };
-        })
-        .filter((range): range is { start: number; end: number } => !!range)
-        .sort((left, right) => left.start - right.start);
-
-      if (ranges.length === 0) {
-        clearLineNumberMultiSelection();
-        return false;
-      }
-
-      const mergedRanges: Array<{ start: number; end: number }> = [];
-      for (const range of ranges) {
-        const previous = mergedRanges[mergedRanges.length - 1];
-        if (!previous || range.start > previous.end) {
-          mergedRanges.push({ ...range });
-          continue;
-        }
-
-        if (range.end > previous.end) {
-          previous.end = range.end;
-        }
-      }
-
-      if (mode === 'cut') {
-        const selectedText = mergedRanges.map((range) => baseText.slice(range.start, range.end)).join('');
-        if (selectedText && navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(selectedText).catch(() => {
-            console.warn('Failed to write line selection to clipboard.');
-          });
-        }
-      }
-
-      const nextPieces: string[] = [];
-      let cursor = 0;
-      for (const range of mergedRanges) {
-        nextPieces.push(baseText.slice(cursor, range.start));
-        cursor = range.end;
-      }
-      nextPieces.push(baseText.slice(cursor));
-      const nextText = nextPieces.join('');
-
-      if (nextText === baseText) {
-        clearLineNumberMultiSelection();
-        return false;
-      }
-
-      const startChar = codeUnitOffsetToUnicodeScalarIndex(baseText, 0);
-      const endChar = codeUnitOffsetToUnicodeScalarIndex(baseText, baseText.length);
-
-      try {
-        const newLineCount = isHugeEditableMode
-          ? await invoke<number>('replace_line_range', {
-              id: tab.id,
-              startLine: editableSegmentRef.current.startLine,
-              endLine: editableSegmentRef.current.endLine,
-              newText: nextText,
-            })
-          : await invoke<number>('edit_text', {
-              id: tab.id,
-              startChar,
-              endChar,
-              newText: nextText,
-            });
-
-        setInputLayerText(element, nextText);
-        setCaretToCodeUnitOffset(element, 0);
-
-        if (isHugeEditableMode) {
-          const nextSegment: EditorSegmentState = {
-            startLine: editableSegmentRef.current.startLine,
-            endLine: editableSegmentRef.current.endLine,
-            text: nextText,
-          };
-          editableSegmentRef.current = nextSegment;
-          setEditableSegment(nextSegment);
-        }
-
-        syncedTextRef.current = nextText;
-        suppressExternalReloadRef.current = true;
-
-        const safeLineCount = Math.max(1, newLineCount);
-        updateTab(tab.id, { lineCount: safeLineCount, isDirty: true });
-        dispatchDocumentUpdated(tab.id);
-
-        clearLineNumberMultiSelection();
-        lineNumberSelectionAnchorLineRef.current = null;
-        setActiveLineNumber(1);
-        setCursorPosition(tab.id, 1, 1);
-        window.requestAnimationFrame(() => {
-          handleScroll();
-          syncSelectionState();
-
-          window.requestAnimationFrame(() => {
-            handleScroll();
-          });
-        });
-
-        await syncVisibleTokens(safeLineCount);
-        return true;
-      } catch (error) {
-        console.error('Failed to apply line-number multi-selection edit:', error);
-        return false;
-      }
-    },
-    [
-      clearLineNumberMultiSelection,
-      lineNumberMultiSelection,
-      mapAbsoluteLineToSourceLine,
-      setCursorPosition,
-      handleScroll,
-      syncSelectionState,
-      syncVisibleTokens,
-      tab.id,
-      updateTab,
-    ]
-  );
+  const {
+    clearLineNumberMultiSelection,
+    mapAbsoluteLineToSourceLine,
+    buildLineNumberSelectionRangeText,
+    applyLineNumberMultiSelectionEdit,
+  } = useEditorLineNumberMultiSelection({
+    lineNumberMultiSelection,
+    setLineNumberMultiSelection,
+    isHugeEditableMode,
+    tabId: tab.id,
+    contentRef,
+    editableSegmentRef,
+    setEditableSegment,
+    syncedTextRef,
+    suppressExternalReloadRef,
+    lineNumberSelectionAnchorLineRef,
+    normalizeSegmentText,
+    getEditableText,
+    buildLineStartOffsets,
+    getLineBoundsByLineNumber,
+    codeUnitOffsetToUnicodeScalarIndex,
+    setInputLayerText,
+    setCaretToCodeUnitOffset,
+    setActiveLineNumber,
+    setCursorPosition,
+    handleScroll,
+    syncSelectionState,
+    syncVisibleTokens,
+    updateTab,
+    dispatchDocumentUpdated,
+  });
 
   const normalizedRectangularSelection = useMemo(
     () => normalizeRectangularSelection(rectangularSelection),
