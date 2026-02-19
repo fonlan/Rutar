@@ -1,8 +1,8 @@
 import type { CSSProperties, MutableRefObject } from 'react';
 
-type EditorContextMenuAction = 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll';
-type EditorSubmenuKey = 'edit' | 'sort' | 'convert' | 'bookmark';
-type EditorCleanupAction =
+export type EditorContextMenuAction = 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll';
+export type EditorSubmenuKey = 'edit' | 'sort' | 'convert' | 'bookmark';
+export type EditorCleanupAction =
   | 'remove_empty_lines'
   | 'remove_duplicate_lines'
   | 'trim_leading_whitespace'
@@ -14,13 +14,13 @@ type EditorCleanupAction =
   | 'sort_lines_descending_ignore_case'
   | 'sort_lines_pinyin_ascending'
   | 'sort_lines_pinyin_descending';
-type EditorConvertAction =
+export type EditorConvertAction =
   | 'base64_encode'
   | 'base64_decode'
   | 'copy_base64_encode'
   | 'copy_base64_decode';
 
-interface EditorContextMenuState {
+export interface EditorContextMenuState {
   target: 'editor' | 'lineNumber';
   x: number;
   y: number;

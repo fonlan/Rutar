@@ -8,7 +8,13 @@ import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
-import { EditorContextMenu } from './EditorContextMenu';
+import {
+  EditorContextMenu,
+  type EditorCleanupAction,
+  type EditorContextMenuState,
+  type EditorSubmenuKey,
+} from './EditorContextMenu';
+import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
 import { editorTestUtils } from './editorUtils';
 
 interface SyntaxToken {
@@ -36,16 +42,6 @@ interface PairHighlightPosition {
   column: number;
 }
 
-interface EditorContextMenuState {
-  target: 'editor' | 'lineNumber';
-  x: number;
-  y: number;
-  hasSelection: boolean;
-  lineNumber: number;
-  submenuDirection: 'left' | 'right';
-}
-
-type EditorSubmenuKey = 'edit' | 'sort' | 'convert' | 'bookmark';
 type EditorSubmenuVerticalAlign = 'top' | 'bottom';
 
 const DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS: Record<EditorSubmenuKey, EditorSubmenuVerticalAlign> = {
@@ -115,19 +111,6 @@ interface TextDragMoveState {
 }
 
 type EditorInputElement = HTMLDivElement | HTMLTextAreaElement;
-
-type EditorCleanupAction =
-  | 'remove_empty_lines'
-  | 'remove_duplicate_lines'
-  | 'trim_leading_whitespace'
-  | 'trim_trailing_whitespace'
-  | 'trim_surrounding_whitespace'
-  | 'sort_lines_ascending'
-  | 'sort_lines_ascending_ignore_case'
-  | 'sort_lines_descending'
-  | 'sort_lines_descending_ignore_case'
-  | 'sort_lines_pinyin_ascending'
-  | 'sort_lines_pinyin_descending';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -5453,15 +5436,10 @@ export function Editor({
         onRemoveBookmark={handleRemoveBookmarkFromContext}
       />
 
-      <div
-        className={`pointer-events-none fixed bottom-6 right-6 z-[100] rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-900 shadow-lg transition-[opacity,transform] dark:text-red-200 ${
-          showBase64DecodeErrorToast ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-        }`}
-        role="status"
-        aria-live="polite"
-      >
-        {base64DecodeFailedToastLabel}
-      </div>
+      <EditorBase64DecodeToast
+        visible={showBase64DecodeErrorToast}
+        message={base64DecodeFailedToastLabel}
+      />
     </div>
   );
 }
