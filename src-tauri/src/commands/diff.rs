@@ -37,6 +37,13 @@ pub struct ApplyAlignedDiffEditResult {
     pub target_is_dirty: bool,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyAlignedDiffPanelCopyResult {
+    pub line_diff: LineDiffResult,
+    pub changed: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DiffEditSide {
     Source,
@@ -141,6 +148,114 @@ fn map_matched_line_numbers_to_aligned_rows(
     }
 
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_aligned_diff_panel_copy(
+    from_side: DiffEditSide,
+    to_side: DiffEditSide,
+    start_row_index: usize,
+    end_row_index: usize,
+    mut aligned_source_lines: Vec<String>,
+    mut aligned_target_lines: Vec<String>,
+    mut aligned_source_present: Vec<bool>,
+    mut aligned_target_present: Vec<bool>,
+) -> ApplyAlignedDiffPanelCopyResult {
+    let normalized_line_count = [
+        aligned_source_lines.len(),
+        aligned_target_lines.len(),
+        aligned_source_present.len(),
+        aligned_target_present.len(),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0);
+
+    aligned_source_lines.resize(normalized_line_count, String::new());
+    aligned_target_lines.resize(normalized_line_count, String::new());
+    aligned_source_present.resize(normalized_line_count, false);
+    aligned_target_present.resize(normalized_line_count, false);
+
+    if from_side == to_side || normalized_line_count == 0 {
+        return ApplyAlignedDiffPanelCopyResult {
+            line_diff: build_line_diff_result_from_aligned(
+                aligned_source_lines,
+                aligned_target_lines,
+                aligned_source_present,
+                aligned_target_present,
+            ),
+            changed: false,
+        };
+    }
+
+    let max_index = normalized_line_count.saturating_sub(1);
+    let safe_start = start_row_index.min(max_index);
+    let safe_end = end_row_index.min(max_index).max(safe_start);
+    let mut changed = false;
+
+    for row_index in safe_start..=safe_end {
+        match (from_side, to_side) {
+            (DiffEditSide::Source, DiffEditSide::Target) => {
+                let source_line = aligned_source_lines[row_index].clone();
+                let source_present = aligned_source_present[row_index];
+                let destination_line = &mut aligned_target_lines[row_index];
+                let destination_present = &mut aligned_target_present[row_index];
+
+                if !source_present {
+                    if destination_line.is_empty() && !*destination_present {
+                        continue;
+                    }
+                    destination_line.clear();
+                    *destination_present = false;
+                    changed = true;
+                    continue;
+                }
+
+                if *destination_present && destination_line == &source_line {
+                    continue;
+                }
+
+                *destination_line = source_line;
+                *destination_present = true;
+                changed = true;
+            }
+            (DiffEditSide::Target, DiffEditSide::Source) => {
+                let source_line = aligned_target_lines[row_index].clone();
+                let source_present = aligned_target_present[row_index];
+                let destination_line = &mut aligned_source_lines[row_index];
+                let destination_present = &mut aligned_source_present[row_index];
+
+                if !source_present {
+                    if destination_line.is_empty() && !*destination_present {
+                        continue;
+                    }
+                    destination_line.clear();
+                    *destination_present = false;
+                    changed = true;
+                    continue;
+                }
+
+                if *destination_present && destination_line == &source_line {
+                    continue;
+                }
+
+                *destination_line = source_line;
+                *destination_present = true;
+                changed = true;
+            }
+            _ => {}
+        }
+    }
+
+    ApplyAlignedDiffPanelCopyResult {
+        line_diff: build_line_diff_result_from_aligned(
+            aligned_source_lines,
+            aligned_target_lines,
+            aligned_source_present,
+            aligned_target_present,
+        ),
+        changed,
+    }
 }
 
 fn extract_actual_lines_from_aligned(aligned_lines: &[String], present: &[bool]) -> Vec<String> {
@@ -629,6 +744,36 @@ pub(super) async fn preview_aligned_diff_state_impl(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) async fn apply_aligned_diff_panel_copy_impl(
+    from_side: String,
+    to_side: String,
+    start_row_index: usize,
+    end_row_index: usize,
+    aligned_source_lines: Vec<String>,
+    aligned_target_lines: Vec<String>,
+    aligned_source_present: Vec<bool>,
+    aligned_target_present: Vec<bool>,
+) -> Result<ApplyAlignedDiffPanelCopyResult, String> {
+    let parsed_from_side = DiffEditSide::parse(from_side.as_str())?;
+    let parsed_to_side = DiffEditSide::parse(to_side.as_str())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        apply_aligned_diff_panel_copy(
+            parsed_from_side,
+            parsed_to_side,
+            start_row_index,
+            end_row_index,
+            aligned_source_lines,
+            aligned_target_lines,
+            aligned_source_present,
+            aligned_target_present,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn apply_aligned_diff_edit_impl(
     state: State<'_, AppState>,
     source_id: String,
@@ -686,10 +831,11 @@ pub(super) async fn apply_aligned_diff_edit_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_serialized_text_to_document, build_line_diff_result,
+        apply_aligned_diff_panel_copy, apply_serialized_text_to_document, build_line_diff_result,
         build_line_diff_result_from_aligned, compute_text_patch, extract_actual_lines_from_aligned,
         find_line_numbers_by_keyword, map_matched_line_numbers_to_aligned_rows,
         normalize_rope_line_text, serialize_actual_lines, AlignedDiffKind,
+        DiffEditSide,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -927,5 +1073,48 @@ mod tests {
     fn map_matched_line_numbers_to_aligned_rows_should_return_empty_when_no_matches() {
         let rows = map_matched_line_numbers_to_aligned_rows(&[], &[true, true, false]);
         assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn apply_aligned_diff_panel_copy_should_copy_source_rows_to_target_and_clear_virtual_rows() {
+        let result = apply_aligned_diff_panel_copy(
+            DiffEditSide::Source,
+            DiffEditSide::Target,
+            0,
+            1,
+            vec!["left-1".to_string(), "".to_string(), "left-3".to_string()],
+            vec![
+                "right-1".to_string(),
+                "right-2".to_string(),
+                "right-3".to_string(),
+            ],
+            vec![true, false, true],
+            vec![true, true, true],
+        );
+
+        assert!(result.changed);
+        assert_eq!(
+            result.line_diff.aligned_target_lines,
+            vec!["left-1", "", "right-3"]
+        );
+        assert_eq!(result.line_diff.aligned_target_present, vec![true, false, true]);
+    }
+
+    #[test]
+    fn apply_aligned_diff_panel_copy_should_return_unchanged_when_target_already_matches() {
+        let result = apply_aligned_diff_panel_copy(
+            DiffEditSide::Source,
+            DiffEditSide::Target,
+            0,
+            2,
+            vec!["same-1".to_string(), "same-2".to_string()],
+            vec!["same-1".to_string(), "same-2".to_string()],
+            vec![true, true],
+            vec![true, true],
+        );
+
+        assert!(!result.changed);
+        assert_eq!(result.line_diff.aligned_source_lines, vec!["same-1", "same-2"]);
+        assert_eq!(result.line_diff.aligned_target_lines, vec!["same-1", "same-2"]);
     }
 }

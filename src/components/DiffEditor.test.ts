@@ -163,6 +163,78 @@ function buildMatchedRowsByKeyword(lines: string[], keyword: string, alignedPres
   return matchedRows;
 }
 
+function buildAlignedDiffPanelCopyResult(
+  fromSide: 'source' | 'target',
+  toSide: 'source' | 'target',
+  startRowIndex: number,
+  endRowIndex: number,
+  alignedSourceLines: string[],
+  alignedTargetLines: string[],
+  alignedSourcePresent: boolean[],
+  alignedTargetPresent: boolean[]
+) {
+  const alignedLineCount = Math.max(
+    alignedSourceLines.length,
+    alignedTargetLines.length,
+    alignedSourcePresent.length,
+    alignedTargetPresent.length
+  );
+  const sourceLines = [...alignedSourceLines];
+  const targetLines = [...alignedTargetLines];
+  const sourcePresent = [...alignedSourcePresent];
+  const targetPresent = [...alignedTargetPresent];
+  while (sourceLines.length < alignedLineCount) {
+    sourceLines.push('');
+  }
+  while (targetLines.length < alignedLineCount) {
+    targetLines.push('');
+  }
+  while (sourcePresent.length < alignedLineCount) {
+    sourcePresent.push(false);
+  }
+  while (targetPresent.length < alignedLineCount) {
+    targetPresent.push(false);
+  }
+
+  let changed = false;
+  if (fromSide !== toSide && alignedLineCount > 0) {
+    const maxIndex = alignedLineCount - 1;
+    const safeStart = Math.max(0, Math.min(Math.floor(startRowIndex), maxIndex));
+    const safeEnd = Math.max(safeStart, Math.min(Math.floor(endRowIndex), maxIndex));
+
+    for (let rowIndex = safeStart; rowIndex <= safeEnd; rowIndex += 1) {
+      const sourceLine = fromSide === 'source' ? sourceLines[rowIndex] : targetLines[rowIndex];
+      const linePresent = fromSide === 'source' ? sourcePresent[rowIndex] : targetPresent[rowIndex];
+      const destinationLines = toSide === 'source' ? sourceLines : targetLines;
+      const destinationPresent = toSide === 'source' ? sourcePresent : targetPresent;
+
+      if (!linePresent) {
+        if (destinationLines[rowIndex] === '' && destinationPresent[rowIndex] === false) {
+          continue;
+        }
+
+        destinationLines[rowIndex] = '';
+        destinationPresent[rowIndex] = false;
+        changed = true;
+        continue;
+      }
+
+      if (destinationLines[rowIndex] === sourceLine && destinationPresent[rowIndex] === true) {
+        continue;
+      }
+
+      destinationLines[rowIndex] = sourceLine;
+      destinationPresent[rowIndex] = true;
+      changed = true;
+    }
+  }
+
+  return {
+    changed,
+    lineDiff: buildLineDiffResponse(sourceLines, targetLines, sourcePresent, targetPresent),
+  };
+}
+
 describe('diffEditorTestUtils.getParentDirectoryPath', () => {
   it('returns parent directory for normal file paths', () => {
     expect(diffEditorTestUtils.getParentDirectoryPath(' C:\\repo\\src\\main.ts ')).toBe('C:\\repo\\src');
@@ -709,6 +781,32 @@ describe('DiffEditor component', () => {
       }
       if (command === 'find_matching_pair_offsets') {
         return null;
+      }
+      if (command === 'apply_aligned_diff_panel_copy') {
+        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+          ? params.alignedSourceLines.map((item) => String(item ?? ''))
+          : ['left-1', 'left-2'];
+        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+          ? params.alignedTargetLines.map((item) => String(item ?? ''))
+          : ['right-1', 'right-2'];
+        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
+          ? params.alignedSourcePresent.map((item) => item === true)
+          : [true, true];
+        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
+          ? params.alignedTargetPresent.map((item) => item === true)
+          : [true, true];
+        const fromSide = params.fromSide === 'target' ? 'target' : 'source';
+        const toSide = params.toSide === 'source' ? 'source' : 'target';
+        return buildAlignedDiffPanelCopyResult(
+          fromSide,
+          toSide,
+          Number(params.startRowIndex ?? 0),
+          Number(params.endRowIndex ?? 0),
+          alignedSourceLines,
+          alignedTargetLines,
+          alignedSourcePresent,
+          alignedTargetPresent
+        );
       }
       if (command === 'apply_aligned_diff_edit') {
         const alignedSourceLines = Array.isArray(params.alignedSourceLines)
@@ -2223,6 +2321,14 @@ describe('DiffEditor component', () => {
     await waitFor(() => {
       expect(targetTextarea.value.startsWith('left-1')).toBe(true);
     });
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+      'apply_aligned_diff_panel_copy',
+      expect.objectContaining({
+        fromSide: 'source',
+        toSide: 'target',
+      })
+    );
   });
 
   it('copies selected target line to left panel from context menu', async () => {
@@ -2254,6 +2360,14 @@ describe('DiffEditor component', () => {
     await waitFor(() => {
       expect(sourceTextarea.value.startsWith('right-1')).toBe(true);
     });
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+      'apply_aligned_diff_panel_copy',
+      expect.objectContaining({
+        fromSide: 'target',
+        toSide: 'source',
+      })
+    );
   });
 
   it('ignores diff toolbar paste event when diffTabId mismatches', async () => {

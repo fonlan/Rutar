@@ -301,6 +301,31 @@ pub async fn preview_aligned_diff_state(
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
+pub async fn apply_aligned_diff_panel_copy(
+    from_side: String,
+    to_side: String,
+    start_row_index: usize,
+    end_row_index: usize,
+    aligned_source_lines: Vec<String>,
+    aligned_target_lines: Vec<String>,
+    aligned_source_present: Vec<bool>,
+    aligned_target_present: Vec<bool>,
+) -> Result<diff::ApplyAlignedDiffPanelCopyResult, String> {
+    diff::apply_aligned_diff_panel_copy_impl(
+        from_side,
+        to_side,
+        start_row_index,
+        end_row_index,
+        aligned_source_lines,
+        aligned_target_lines,
+        aligned_source_present,
+        aligned_target_present,
+    )
+    .await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_aligned_diff_edit(
     state: State<'_, AppState>,
     source_id: String,

@@ -44,6 +44,11 @@ interface ApplyAlignedDiffEditResult {
   targetIsDirty: boolean;
 }
 
+interface ApplyAlignedDiffPanelCopyResult {
+  lineDiff: LineDiffComparisonResult;
+  changed: boolean;
+}
+
 interface PairOffsetsResultPayload {
   leftOffset: number;
   rightOffset: number;
@@ -979,6 +984,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const deferredBackendApplyTimerRef = useRef<number | null>(null);
   const previewMetadataTimerRef = useRef<number | null>(null);
   const previewMetadataSequenceRef = useRef(0);
+  const copyLinesRequestSequenceRef = useRef(0);
   const sourceSearchRequestSequenceRef = useRef(0);
   const targetSearchRequestSequenceRef = useRef(0);
   const pairHighlightRequestIdRef = useRef<{ source: number; target: number }>({
@@ -2167,7 +2173,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const handleCopyLinesToPanel = useCallback(
-    (fromSide: ActivePanel, targetSide: ActivePanel) => {
+    async (fromSide: ActivePanel, targetSide: ActivePanel) => {
       if (fromSide === targetSide) {
         return;
       }
@@ -2190,105 +2196,51 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         selectionStart,
         selectionEnd
       );
+      const snapshot = lineDiffRef.current;
+      const requestSequence = copyLinesRequestSequenceRef.current + 1;
+      copyLinesRequestSequenceRef.current = requestSequence;
 
-      let changed = false;
-      lastEditAtRef.current = Date.now();
-      capturePanelScrollSnapshot();
-      setLineDiff((previous) => {
-        const sourceLines = fromSide === 'source'
-          ? previous.alignedSourceLines
-          : previous.alignedTargetLines;
-        const sourcePresent = fromSide === 'source'
-          ? previous.alignedSourcePresent
-          : previous.alignedTargetPresent;
+      try {
+        const result = await invoke<ApplyAlignedDiffPanelCopyResult>('apply_aligned_diff_panel_copy', {
+          fromSide,
+          toSide: targetSide,
+          startRowIndex: Math.max(0, Math.floor(startLine)),
+          endRowIndex: Math.max(0, Math.floor(endLine)),
+          alignedSourceLines: snapshot.alignedSourceLines,
+          alignedTargetLines: snapshot.alignedTargetLines,
+          alignedSourcePresent: snapshot.alignedSourcePresent,
+          alignedTargetPresent: snapshot.alignedTargetPresent,
+        });
 
-        const nextSourceLines = [...previous.alignedSourceLines];
-        const nextSourcePresent = [...previous.alignedSourcePresent];
-        const nextTargetLines = [...previous.alignedTargetLines];
-        const nextTargetPresent = [...previous.alignedTargetPresent];
-
-        const destinationLines = targetSide === 'source' ? nextSourceLines : nextTargetLines;
-        const destinationPresent = targetSide === 'source' ? nextSourcePresent : nextTargetPresent;
-
-        const maxIndex = Math.min(sourceLines.length, destinationLines.length) - 1;
-        if (maxIndex < 0) {
-          return previous;
+        if (copyLinesRequestSequenceRef.current !== requestSequence) {
+          return;
         }
 
-        const safeStart = Math.max(0, Math.min(startLine, maxIndex));
-        const safeEnd = Math.max(safeStart, Math.min(endLine, maxIndex));
-
-        for (let rowIndex = safeStart; rowIndex <= safeEnd; rowIndex += 1) {
-          const sourceLine = sourceLines[rowIndex] ?? '';
-          const linePresent = sourcePresent[rowIndex] === true;
-          if (!linePresent) {
-            if (destinationLines[rowIndex] === '' && destinationPresent[rowIndex] === false) {
-              continue;
-            }
-
-            destinationLines[rowIndex] = '';
-            destinationPresent[rowIndex] = false;
-            changed = true;
-            continue;
-          }
-
-          if (destinationLines[rowIndex] === sourceLine && destinationPresent[rowIndex] === true) {
-            continue;
-          }
-
-          destinationLines[rowIndex] = sourceLine;
-          destinationPresent[rowIndex] = true;
-          changed = true;
+        if (!result?.changed) {
+          return;
         }
 
-        if (!changed) {
-          return previous;
-        }
-
-        const nextAlignedCount = Math.max(1, nextSourceLines.length, nextTargetLines.length);
-        if (shouldOffloadDiffMetadataComputation(nextAlignedCount)) {
-          const nextState = {
-            ...previous,
-            alignedSourceLines: nextSourceLines,
-            alignedTargetLines: nextTargetLines,
-            alignedSourcePresent: nextSourcePresent,
-            alignedTargetPresent: nextTargetPresent,
-            alignedLineCount: nextAlignedCount,
-          };
-          lineDiffRef.current = nextState;
-          schedulePreviewMetadataComputation(
-            nextSourceLines,
-            nextTargetLines,
-            nextSourcePresent,
-            nextTargetPresent
-          );
-          return nextState;
-        }
-
-        const metadata = buildAlignedDiffMetadata(
-          nextSourceLines,
-          nextTargetLines,
-          nextSourcePresent,
-          nextTargetPresent
-        );
-
-        const nextState = {
-          ...previous,
-          alignedSourceLines: nextSourceLines,
-          alignedTargetLines: nextTargetLines,
-          alignedSourcePresent: nextSourcePresent,
-          alignedTargetPresent: nextTargetPresent,
-          ...metadata,
-        };
-        lineDiffRef.current = nextState;
-        return nextState;
-      });
-
-      if (changed) {
+        lastEditAtRef.current = Date.now();
+        capturePanelScrollSnapshot();
+        invalidatePreviewMetadataComputation();
+        const normalized = normalizeLineDiffResult(result.lineDiff);
+        lineDiffRef.current = normalized;
+        setLineDiff(normalized);
         scheduleSideCommit(targetSide);
+      } catch (error) {
+        if (copyLinesRequestSequenceRef.current !== requestSequence) {
+          return;
+        }
+        console.error('Failed to copy diff lines to panel:', error);
       }
     },
-    [capturePanelScrollSnapshot, schedulePreviewMetadataComputation, scheduleSideCommit, sourceTab, targetTab]
+    [
+      capturePanelScrollSnapshot,
+      invalidatePreviewMetadataComputation,
+      scheduleSideCommit,
+      sourceTab,
+      targetTab,
+    ]
   );
 
   const runClipboardExecCommand = useCallback((command: 'copy' | 'cut' | 'paste') => {
@@ -3729,7 +3681,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'source')}
               onClick={() => {
-                handleCopyLinesToPanel(diffContextMenu.side, 'source');
+                void handleCopyLinesToPanel(diffContextMenu.side, 'source');
                 setDiffContextMenu(null);
               }}
             >
@@ -3742,7 +3694,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'target')}
               onClick={() => {
-                handleCopyLinesToPanel(diffContextMenu.side, 'target');
+                void handleCopyLinesToPanel(diffContextMenu.side, 'target');
                 setDiffContextMenu(null);
               }}
             >
