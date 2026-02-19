@@ -4,27 +4,10 @@ import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
-import {
-  EditorContextMenu,
-  type EditorContextMenuState,
-  type EditorSubmenuKey,
-} from './EditorContextMenu';
-import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
-import { EditorBackdropLayer } from './EditorBackdropLayer';
-import { EditorInputLayer } from './EditorInputLayer';
-import { EditorLineNumberGutter } from './EditorLineNumberGutter';
+import { EditorView } from './EditorView';
 import {
   DEFAULT_SUBMENU_MAX_HEIGHTS,
   DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
-  type EditorSegmentState,
-  type EditorSubmenuVerticalAlign,
-  type PairHighlightPosition,
-  type RectangularSelectionState,
-  type SearchHighlightState,
-  type SyntaxToken,
-  type TextDragMoveState,
-  type TextSelectionState,
-  type VerticalSelectionState,
 } from './Editor.types';
 import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
@@ -981,153 +964,114 @@ export function Editor({
   });
 
   return (
-    <div
-      ref={containerRef}
-      className={`flex-1 w-full h-full overflow-hidden bg-background relative focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/40 editor-syntax-${activeSyntaxKey}`}
-      tabIndex={-1}
-    >
-      <EditorInputLayer
-        isHugeEditableMode={isHugeEditableMode}
-        contentRef={contentRef}
-        scrollContainerRef={scrollContainerRef}
-        contentViewportLeftPx={contentViewportLeftPx}
-        contentViewportWidth={contentViewportWidth}
-        horizontalOverflowMode={horizontalOverflowMode}
-        onScroll={handleScroll}
-        onHugeScrollablePointerDown={handleHugeScrollablePointerDown}
-        tabLineCount={tab.lineCount}
-        itemSize={itemSize}
-        wordWrap={wordWrap}
-        hugeScrollableContentWidth={hugeScrollableContentWidth}
-        hugeEditablePaddingTop={hugeEditablePaddingTop}
-        hugeEditableSegmentHeightPx={hugeEditableSegmentHeightPx}
-        fontFamily={settings.fontFamily}
-        renderedFontSizePx={renderedFontSizePx}
-        lineHeightPx={lineHeightPx}
-        tabSize={tabSize}
-        contentTextPadding={contentTextPadding}
-        contentTextRightPadding={contentTextRightPadding}
-        contentBottomSafetyPadding={contentBottomSafetyPadding}
-        onInput={handleInput}
-        onEditableKeyDown={handleEditableKeyDown}
-        onEditorPointerDown={handleEditorPointerDown}
-        onEditorPointerMove={handleEditorPointerMove}
-        onEditorPointerLeave={handleEditorPointerLeave}
-        onSyncSelectionAfterInteraction={syncSelectionAfterInteraction}
-        onEditorContextMenu={handleEditorContextMenu}
-        onCompositionStart={handleCompositionStart}
-        onCompositionEnd={handleCompositionEnd}
-      />
-
-      <EditorBackdropLayer
-        visible={true}
-        width={width}
-        height={height}
-        contentViewportLeftPx={contentViewportLeftPx}
-        contentViewportWidth={contentViewportWidth}
-        contentBottomSafetyPadding={contentBottomSafetyPadding}
-        tabLineCount={tab.lineCount}
-        itemSize={itemSize}
-        listRef={listRef}
-        getListItemSize={getListItemSize}
-        onItemsRendered={onItemsRendered}
-        isHugeEditableMode={isHugeEditableMode}
-        editableSegmentStartLine={editableSegment.startLine}
-        usePlainLineRendering={usePlainLineRendering}
-        plainStartLine={plainStartLine}
-        startLine={startLine}
-        lineTokens={lineTokens}
-        editableSegmentLines={editableSegmentLines}
-        plainLines={plainLines}
-        measureRenderedLineHeight={measureRenderedLineHeight}
-        wordWrap={wordWrap}
-        contentTextPadding={contentTextPadding}
-        contentTextRightPadding={contentTextRightPadding}
-        fontFamily={settings.fontFamily}
-        renderedFontSizePx={renderedFontSizePx}
-        lineHeightPx={lineHeightPx}
-        hugeScrollableContentWidth={hugeScrollableContentWidth}
-        diffHighlightLineSet={diffHighlightLineSet}
-        outlineFlashLine={outlineFlashLine}
-        lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
-        highlightCurrentLine={highlightCurrentLine}
-        activeLineNumber={activeLineNumber}
-        tabSize={tabSize}
-        renderHighlightedPlainLine={renderHighlightedPlainLine}
-        renderHighlightedTokens={renderHighlightedTokens}
-      />
-
-      <EditorLineNumberGutter
-        visible={showLineNumbers}
-        width={width}
-        height={height}
-        tabLineCount={tab.lineCount}
-        lineNumberColumnWidthPx={lineNumberColumnWidthPx}
-        lineNumberVirtualItemCount={lineNumberVirtualItemCount}
-        itemSize={itemSize}
-        lineHeightPx={lineHeightPx}
-        lineNumberFontSizePx={lineNumberFontSizePx}
-        fontFamily={settings.fontFamily}
-        lineNumberListRef={lineNumberListRef}
-        diffHighlightLineSet={diffHighlightLineSet}
-        bookmarks={bookmarks}
-        lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
-        getLineNumberListItemSize={getLineNumberListItemSize}
-        getLineNumberFromGutterElement={getLineNumberFromGutterElement}
-        onLineNumberWheel={handleLineNumberWheel}
-        onLineNumberDoubleClick={handleLineNumberDoubleClick}
-        onLineNumberClick={handleLineNumberClick}
-        onLineNumberContextMenu={handleLineNumberContextMenu}
-      />
-
-      <EditorContextMenu
-        editorContextMenu={editorContextMenu}
-        editorContextMenuRef={editorContextMenuRef}
-        submenuPanelRefs={submenuPanelRefs}
-        editSubmenuStyle={editSubmenuStyle}
-        sortSubmenuStyle={sortSubmenuStyle}
-        convertSubmenuStyle={convertSubmenuStyle}
-        bookmarkSubmenuStyle={bookmarkSubmenuStyle}
-        editSubmenuPositionClassName={editSubmenuPositionClassName}
-        sortSubmenuPositionClassName={sortSubmenuPositionClassName}
-        convertSubmenuPositionClassName={convertSubmenuPositionClassName}
-        bookmarkSubmenuPositionClassName={bookmarkSubmenuPositionClassName}
-        cleanupMenuItems={cleanupMenuItems}
-        sortMenuItems={sortMenuItems}
-        copyLabel={copyLabel}
-        cutLabel={cutLabel}
-        pasteLabel={pasteLabel}
-        deleteLabel={deleteLabel}
-        selectAllLabel={selectAllLabel}
-        selectCurrentLineLabel={selectCurrentLineLabel}
-        addCurrentLineToBookmarkLabel={addCurrentLineToBookmarkLabel}
-        editMenuLabel={editMenuLabel}
-        sortMenuLabel={sortMenuLabel}
-        convertMenuLabel={convertMenuLabel}
-        convertBase64EncodeLabel={convertBase64EncodeLabel}
-        convertBase64DecodeLabel={convertBase64DecodeLabel}
-        copyBase64EncodeResultLabel={copyBase64EncodeResultLabel}
-        copyBase64DecodeResultLabel={copyBase64DecodeResultLabel}
-        bookmarkMenuLabel={bookmarkMenuLabel}
-        addBookmarkLabel={addBookmarkLabel}
-        removeBookmarkLabel={removeBookmarkLabel}
-        hasContextBookmark={hasContextBookmark}
-        onSelectCurrentLine={handleSelectCurrentLineFromContext}
-        onAddCurrentLineBookmark={handleAddCurrentLineBookmarkFromContext}
-        onEditorAction={handleEditorContextMenuAction}
-        isEditorActionDisabled={isEditorContextMenuActionDisabled}
-        onUpdateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
-        onCleanup={handleCleanupDocumentFromContext}
-        onConvert={handleConvertSelectionFromContext}
-        onAddBookmark={handleAddBookmarkFromContext}
-        onRemoveBookmark={handleRemoveBookmarkFromContext}
-      />
-
-      <EditorBase64DecodeToast
-        visible={showBase64DecodeErrorToast}
-        message={base64DecodeFailedToastLabel}
-      />
-    </div>
+    <EditorView
+      containerRef={containerRef}
+      activeSyntaxKey={activeSyntaxKey}
+      isHugeEditableMode={isHugeEditableMode}
+      contentRef={contentRef}
+      scrollContainerRef={scrollContainerRef}
+      contentViewportLeftPx={contentViewportLeftPx}
+      contentViewportWidth={contentViewportWidth}
+      horizontalOverflowMode={horizontalOverflowMode}
+      handleScroll={handleScroll}
+      handleHugeScrollablePointerDown={handleHugeScrollablePointerDown}
+      tab={tab}
+      itemSize={itemSize}
+      wordWrap={wordWrap}
+      hugeScrollableContentWidth={hugeScrollableContentWidth}
+      hugeEditablePaddingTop={hugeEditablePaddingTop}
+      hugeEditableSegmentHeightPx={hugeEditableSegmentHeightPx}
+      settings={settings}
+      renderedFontSizePx={renderedFontSizePx}
+      lineHeightPx={lineHeightPx}
+      tabSize={tabSize}
+      contentTextPadding={contentTextPadding}
+      contentTextRightPadding={contentTextRightPadding}
+      contentBottomSafetyPadding={contentBottomSafetyPadding}
+      handleInput={handleInput}
+      handleEditableKeyDown={handleEditableKeyDown}
+      handleEditorPointerDown={handleEditorPointerDown}
+      handleEditorPointerMove={handleEditorPointerMove}
+      handleEditorPointerLeave={handleEditorPointerLeave}
+      syncSelectionAfterInteraction={syncSelectionAfterInteraction}
+      handleEditorContextMenu={handleEditorContextMenu}
+      handleCompositionStart={handleCompositionStart}
+      handleCompositionEnd={handleCompositionEnd}
+      width={width}
+      height={height}
+      listRef={listRef}
+      getListItemSize={getListItemSize}
+      onItemsRendered={onItemsRendered}
+      editableSegment={editableSegment}
+      usePlainLineRendering={usePlainLineRendering}
+      plainStartLine={plainStartLine}
+      startLine={startLine}
+      lineTokens={lineTokens}
+      editableSegmentLines={editableSegmentLines}
+      plainLines={plainLines}
+      measureRenderedLineHeight={measureRenderedLineHeight}
+      diffHighlightLineSet={diffHighlightLineSet}
+      outlineFlashLine={outlineFlashLine}
+      lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
+      highlightCurrentLine={highlightCurrentLine}
+      activeLineNumber={activeLineNumber}
+      renderHighlightedPlainLine={renderHighlightedPlainLine}
+      renderHighlightedTokens={renderHighlightedTokens}
+      showLineNumbers={showLineNumbers}
+      lineNumberColumnWidthPx={lineNumberColumnWidthPx}
+      lineNumberVirtualItemCount={lineNumberVirtualItemCount}
+      lineNumberFontSizePx={lineNumberFontSizePx}
+      lineNumberListRef={lineNumberListRef}
+      bookmarks={bookmarks}
+      getLineNumberListItemSize={getLineNumberListItemSize}
+      getLineNumberFromGutterElement={getLineNumberFromGutterElement}
+      handleLineNumberWheel={handleLineNumberWheel}
+      handleLineNumberDoubleClick={handleLineNumberDoubleClick}
+      handleLineNumberClick={handleLineNumberClick}
+      handleLineNumberContextMenu={handleLineNumberContextMenu}
+      editorContextMenu={editorContextMenu}
+      editorContextMenuRef={editorContextMenuRef}
+      submenuPanelRefs={submenuPanelRefs}
+      editSubmenuStyle={editSubmenuStyle}
+      sortSubmenuStyle={sortSubmenuStyle}
+      convertSubmenuStyle={convertSubmenuStyle}
+      bookmarkSubmenuStyle={bookmarkSubmenuStyle}
+      editSubmenuPositionClassName={editSubmenuPositionClassName}
+      sortSubmenuPositionClassName={sortSubmenuPositionClassName}
+      convertSubmenuPositionClassName={convertSubmenuPositionClassName}
+      bookmarkSubmenuPositionClassName={bookmarkSubmenuPositionClassName}
+      cleanupMenuItems={cleanupMenuItems}
+      sortMenuItems={sortMenuItems}
+      copyLabel={copyLabel}
+      cutLabel={cutLabel}
+      pasteLabel={pasteLabel}
+      deleteLabel={deleteLabel}
+      selectAllLabel={selectAllLabel}
+      selectCurrentLineLabel={selectCurrentLineLabel}
+      addCurrentLineToBookmarkLabel={addCurrentLineToBookmarkLabel}
+      editMenuLabel={editMenuLabel}
+      sortMenuLabel={sortMenuLabel}
+      convertMenuLabel={convertMenuLabel}
+      convertBase64EncodeLabel={convertBase64EncodeLabel}
+      convertBase64DecodeLabel={convertBase64DecodeLabel}
+      copyBase64EncodeResultLabel={copyBase64EncodeResultLabel}
+      copyBase64DecodeResultLabel={copyBase64DecodeResultLabel}
+      bookmarkMenuLabel={bookmarkMenuLabel}
+      addBookmarkLabel={addBookmarkLabel}
+      removeBookmarkLabel={removeBookmarkLabel}
+      hasContextBookmark={hasContextBookmark}
+      handleSelectCurrentLineFromContext={handleSelectCurrentLineFromContext}
+      handleAddCurrentLineBookmarkFromContext={handleAddCurrentLineBookmarkFromContext}
+      handleEditorContextMenuAction={handleEditorContextMenuAction}
+      isEditorContextMenuActionDisabled={isEditorContextMenuActionDisabled}
+      updateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
+      handleCleanupDocumentFromContext={handleCleanupDocumentFromContext}
+      handleConvertSelectionFromContext={handleConvertSelectionFromContext}
+      handleAddBookmarkFromContext={handleAddBookmarkFromContext}
+      handleRemoveBookmarkFromContext={handleRemoveBookmarkFromContext}
+      showBase64DecodeErrorToast={showBase64DecodeErrorToast}
+      base64DecodeFailedToastLabel={base64DecodeFailedToastLabel}
+    />
   );
 }
 
