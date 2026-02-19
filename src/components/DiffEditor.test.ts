@@ -1324,6 +1324,86 @@ describe('DiffEditor component', () => {
     }
   });
 
+  it('suppresses context menu on both line-number gutters', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const lineNumberCells = await screen.findAllByText('1');
+    const sourceCancelled = fireEvent.contextMenu(lineNumberCells[0], {
+      clientX: 132,
+      clientY: 132,
+    });
+    const targetCancelled = fireEvent.contextMenu(lineNumberCells[lineNumberCells.length - 1], {
+      clientX: 164,
+      clientY: 132,
+    });
+
+    expect(sourceCancelled).toBe(false);
+    expect(targetCancelled).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+  });
+
+  it('suppresses context menu on both diff panel scrollers', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const scrollers = await waitFor(() => {
+      const elements = container.querySelectorAll('.editor-scroll-stable');
+      expect(elements.length).toBe(2);
+      return elements;
+    });
+
+    const sourceCancelled = fireEvent.contextMenu(scrollers[0], {
+      clientX: 176,
+      clientY: 188,
+    });
+    const targetCancelled = fireEvent.contextMenu(scrollers[1], {
+      clientX: 196,
+      clientY: 208,
+    });
+
+    expect(sourceCancelled).toBe(false);
+    expect(targetCancelled).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+  });
+
+  it('suppresses context menu on diff splitter', async () => {
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(React.createElement(DiffEditor, { tab: diffTab }));
+
+    const splitter = await screen.findByRole('separator', { name: 'Resize diff panels' });
+    const cancelled = fireEvent.contextMenu(splitter, {
+      clientX: 600,
+      clientY: 220,
+    });
+
+    expect(cancelled).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+  });
+
   it('closes panel context menu on window blur', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });

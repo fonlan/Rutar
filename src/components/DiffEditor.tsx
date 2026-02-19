@@ -2089,6 +2089,40 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     []
   );
 
+  const handleLineNumberContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDiffContextMenu(null);
+      setDiffHeaderContextMenu(null);
+    },
+    []
+  );
+
+  const handleScrollerContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setDiffContextMenu(null);
+      setDiffHeaderContextMenu(null);
+    },
+    []
+  );
+
+  const handleSplitterContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDiffContextMenu(null);
+      setDiffHeaderContextMenu(null);
+    },
+    []
+  );
+
   const handleHeaderContextMenu = useCallback(
     (side: ActivePanel, event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault();
@@ -3173,6 +3207,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               <div
                 ref={handleSourceScrollerRef}
                 className="editor-scroll-stable h-full overflow-auto"
+                onContextMenu={handleScrollerContextMenu}
               >
                 <div
                   className="relative flex"
@@ -3184,6 +3219,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                   <div
                     className="sticky left-0 z-20 shrink-0 border-r border-border/40 bg-background"
                     style={{ width: `${lineNumberColumnWidth}px` }}
+                    onContextMenu={handleLineNumberContextMenu}
                   >
                     {Array.from({ length: alignedLineCount }).map((_, index) => {
                       const diffKind = alignedDiffKindByLine.get(index + 1);
@@ -3370,6 +3406,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               <div
                 ref={handleTargetScrollerRef}
                 className="editor-scroll-stable h-full overflow-auto"
+                onContextMenu={handleScrollerContextMenu}
               >
                 <div
                   className="relative flex"
@@ -3381,6 +3418,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                   <div
                     className="sticky left-0 z-20 shrink-0 border-r border-border/40 bg-background"
                     style={{ width: `${lineNumberColumnWidth}px` }}
+                    onContextMenu={handleLineNumberContextMenu}
                   >
                     {Array.from({ length: alignedLineCount }).map((_, index) => {
                       const diffKind = alignedDiffKindByLine.get(index + 1);
@@ -3584,6 +3622,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           className="absolute top-0 bottom-0 z-30 cursor-col-resize"
           style={{ left: separatorLeftPx, width: SPLITTER_WIDTH_PX }}
           onPointerDown={handleSplitterPointerDown}
+          onContextMenu={handleSplitterContextMenu}
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize diff panels"
