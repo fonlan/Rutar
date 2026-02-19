@@ -5307,7 +5307,7 @@ export function SearchReplacePanel() {
                   }}
                   placeholder={messages.resultFilterPlaceholder}
                   aria-label={messages.resultFilterPlaceholder}
-                  className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none"
+                  className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {resultFilterKeyword && (
                   <button
