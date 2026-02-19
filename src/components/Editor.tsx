@@ -17,7 +17,6 @@ import { EditorLineNumberGutter } from './EditorLineNumberGutter';
 import {
   DEFAULT_SUBMENU_MAX_HEIGHTS,
   DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
-  type EditorInputElement,
   type EditorSegmentState,
   type EditorSubmenuVerticalAlign,
   type PairHighlightPosition,
@@ -36,6 +35,7 @@ import { useEditorBookmarkActions } from './useEditorBookmarkActions';
 import { useEditorContentSync } from './useEditorContentSync';
 import { useEditorContextCleanupAction } from './useEditorContextCleanupAction';
 import { useEditorContextConvertActions } from './useEditorContextConvertActions';
+import { useEditorContextMenuInteractions } from './useEditorContextMenuInteractions';
 import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorDocumentLoadEffects } from './useEditorDocumentLoadEffects';
@@ -1181,128 +1181,23 @@ export function Editor({
     return contentRef.current.contains(range.commonAncestorContainer) && selection.toString().length > 0;
   }, [lineNumberMultiSelection.length]);
 
-  const updateSubmenuVerticalAlignment = useCallback(
-    (submenuKey: EditorSubmenuKey, anchorElement: HTMLDivElement) => {
-      const submenuElement = submenuPanelRefs.current[submenuKey];
-      if (!submenuElement) {
-        return;
-      }
-
-      const viewportPadding = 8;
-      const submenuHeight = submenuElement.scrollHeight;
-      if (submenuHeight <= 0) {
-        return;
-      }
-
-      const anchorRect = anchorElement.getBoundingClientRect();
-      const availableBelow = Math.max(0, Math.floor(window.innerHeight - viewportPadding - anchorRect.top));
-      const availableAbove = Math.max(0, Math.floor(anchorRect.bottom - viewportPadding));
-      const topAlignedBottom = anchorRect.top + submenuHeight;
-      const bottomAlignedTop = anchorRect.bottom - submenuHeight;
-      let nextAlign: EditorSubmenuVerticalAlign = 'top';
-
-      if (topAlignedBottom > window.innerHeight - viewportPadding) {
-        if (bottomAlignedTop >= viewportPadding) {
-          nextAlign = 'bottom';
-        } else {
-          nextAlign = availableAbove > availableBelow ? 'bottom' : 'top';
-        }
-      }
-
-      const availableForCurrentAlign = nextAlign === 'bottom' ? availableAbove : availableBelow;
-      const nextMaxHeight =
-        submenuHeight > availableForCurrentAlign && availableForCurrentAlign > 0
-          ? availableForCurrentAlign
-          : null;
-
-      setSubmenuVerticalAlignments((current) =>
-        current[submenuKey] === nextAlign
-          ? current
-          : {
-              ...current,
-              [submenuKey]: nextAlign,
-            }
-      );
-      setSubmenuMaxHeights((current) =>
-        current[submenuKey] === nextMaxHeight
-          ? current
-          : {
-              ...current,
-              [submenuKey]: nextMaxHeight,
-            }
-      );
-    },
-    []
-  );
-
-  const handleEditorContextMenu = useCallback(
-    (event: React.MouseEvent<EditorInputElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (!contentRef.current) {
-        return;
-      }
-
-      contentRef.current.focus();
-
-      const menuWidth = 160;
-      const menuHeight = 360;
-      const submenuWidth = 192;
-      const submenuGap = 4;
-      const viewportPadding = 8;
-
-      const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
-      const boundedY = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding);
-      const safeX = Math.max(viewportPadding, boundedX);
-      const canOpenSubmenuRight =
-        safeX + menuWidth + submenuGap + submenuWidth + viewportPadding <= window.innerWidth;
-
-      setSubmenuVerticalAlignments({ ...DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS });
-      setSubmenuMaxHeights({ ...DEFAULT_SUBMENU_MAX_HEIGHTS });
-
-      setEditorContextMenu({
-        target: 'editor',
-        x: safeX,
-        y: Math.max(viewportPadding, boundedY),
-        hasSelection:
-          hasSelectionInsideEditor() ||
-          ((normalizedRectangularSelection?.width ?? 0) > 0 && normalizedRectangularSelection !== null),
-        lineNumber: activeLineNumber,
-        submenuDirection: canOpenSubmenuRight ? 'right' : 'left',
-      });
-    },
-    [activeLineNumber, hasSelectionInsideEditor, normalizedRectangularSelection]
-  );
-
-  const handleLineNumberContextMenu = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>, line: number) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const menuWidth = 176;
-      const menuHeight = 96;
-      const viewportPadding = 8;
-      const parsedLine = Number.parseInt((event.currentTarget.textContent || '').trim(), 10);
-      const safeLine = Number.isFinite(parsedLine)
-        ? Math.max(1, parsedLine)
-        : Math.max(1, Math.floor(line));
-
-      const boundedX = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding);
-      const boundedY = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding);
-
-      lineNumberContextLineRef.current = safeLine;
-      setEditorContextMenu({
-        target: 'lineNumber',
-        x: Math.max(viewportPadding, boundedX),
-        y: Math.max(viewportPadding, boundedY),
-        hasSelection: false,
-        lineNumber: safeLine,
-        submenuDirection: 'right',
-      });
-    },
-    []
-  );
+  const {
+    updateSubmenuVerticalAlignment,
+    handleEditorContextMenu,
+    handleLineNumberContextMenu,
+  } = useEditorContextMenuInteractions({
+    contentRef,
+    submenuPanelRefs,
+    lineNumberContextLineRef,
+    activeLineNumber,
+    normalizedRectangularSelection,
+    hasSelectionInsideEditor,
+    defaultSubmenuVerticalAlignments: DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
+    defaultSubmenuMaxHeights: DEFAULT_SUBMENU_MAX_HEIGHTS,
+    setSubmenuVerticalAlignments,
+    setSubmenuMaxHeights,
+    setEditorContextMenu,
+  });
 
   const {
     tryPasteTextIntoEditor,
