@@ -48,6 +48,7 @@ import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
 import { useEditorLineNumberContextActions } from './useEditorLineNumberContextActions';
 import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
+import { useEditorLineNumberWheel } from './useEditorLineNumberWheel';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
@@ -1366,49 +1367,10 @@ export function Editor({
     setSelectionToCodeUnitOffsets,
   });
 
-  const handleLineNumberWheel = useCallback(
-    (event) => {
-      if (event.ctrlKey) {
-        return;
-      }
-
-      const scrollElement = getRectangularSelectionScrollElement();
-      if (!scrollElement) {
-        return;
-      }
-
-      const hasVerticalDelta = Math.abs(event.deltaY) > 0.001;
-      const horizontalDelta = Math.abs(event.deltaX) > 0.001 ? event.deltaX : event.shiftKey ? event.deltaY : 0;
-      const hasHorizontalDelta = Math.abs(horizontalDelta) > 0.001;
-
-      if (!hasVerticalDelta && !hasHorizontalDelta) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (hasVerticalDelta) {
-        const maxTop = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
-        const targetTop = Math.max(0, Math.min(maxTop, alignScrollOffset(scrollElement.scrollTop + event.deltaY)));
-        if (Math.abs(scrollElement.scrollTop - targetTop) > 0.001) {
-          scrollElement.scrollTop = targetTop;
-        }
-      }
-
-      if (hasHorizontalDelta) {
-        const maxLeft = Math.max(0, scrollElement.scrollWidth - scrollElement.clientWidth);
-        const targetLeft = Math.max(
-          0,
-          Math.min(maxLeft, alignScrollOffset(scrollElement.scrollLeft + horizontalDelta))
-        );
-
-        if (Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
-          scrollElement.scrollLeft = targetLeft;
-        }
-      }
-    },
-    [getRectangularSelectionScrollElement]
-  );
+  const { handleLineNumberWheel } = useEditorLineNumberWheel({
+    getRectangularSelectionScrollElement,
+    alignScrollOffset,
+  });
 
   const { flushPendingSync } = useEditorFlushPendingSync({
     tabId: tab.id,
