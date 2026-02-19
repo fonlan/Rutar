@@ -3103,7 +3103,7 @@ describe('Editor component', () => {
       clientY: 0,
     });
     expect(textarea.style.cursor).toBe('pointer');
-    expect(textarea.title).toBe('Ctrl+左键打开');
+    expect(textarea.title).toBe('Ctrl+Left Click to open');
 
     textarea.value = 'plain text\nbeta\n';
     fireEvent.pointerMove(textarea, {
@@ -3119,10 +3119,29 @@ describe('Editor component', () => {
       clientY: 0,
     });
     expect(textarea.style.cursor).toBe('pointer');
-    expect(textarea.title).toBe('Ctrl+左键打开');
+    expect(textarea.title).toBe('Ctrl+Left Click to open');
     fireEvent.pointerLeave(textarea);
     expect(textarea.style.cursor).toBe('');
     expect(textarea.title).toBe('');
+  });
+
+  it('localizes hyperlink hover hint based on app language', async () => {
+    useStore.getState().updateSettings({
+      language: 'zh-CN',
+    });
+
+    const tab = createTab({ id: 'tab-link-hover-hint-zh' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+    fireEvent.pointerMove(textarea, {
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('pointer');
+    expect(textarea.title).toBe('Ctrl+左键打开');
   });
 
   it('does not open hyperlink on regular left click', async () => {

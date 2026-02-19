@@ -200,7 +200,8 @@ export type I18nKey =
   | 'editor.context.cleanup.removeDuplicateLines'
   | 'editor.context.cleanup.trimLeadingWhitespace'
   | 'editor.context.cleanup.trimTrailingWhitespace'
-  | 'editor.context.cleanup.trimSurroundingWhitespace';
+  | 'editor.context.cleanup.trimSurroundingWhitespace'
+  | 'editor.hyperlink.openHint';
 
 type Messages = Record<I18nKey, string>;
 
@@ -405,6 +406,7 @@ const zhCN: Messages = {
   'editor.context.cleanup.trimLeadingWhitespace': '移除行首空格',
   'editor.context.cleanup.trimTrailingWhitespace': '移除行尾空格',
   'editor.context.cleanup.trimSurroundingWhitespace': '移除行首行尾空格',
+  'editor.hyperlink.openHint': 'Ctrl+左键打开',
 };
 
 const enUS: Messages = {
@@ -608,6 +610,7 @@ const enUS: Messages = {
   'editor.context.cleanup.trimLeadingWhitespace': 'Trim Leading Whitespace',
   'editor.context.cleanup.trimTrailingWhitespace': 'Trim Trailing Whitespace',
   'editor.context.cleanup.trimSurroundingWhitespace': 'Trim Leading/Trailing Whitespace',
+  'editor.hyperlink.openHint': 'Ctrl+Left Click to open',
 };
 
 const dictionaries: Record<AppLanguage, Messages> = {

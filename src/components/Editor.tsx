@@ -513,6 +513,7 @@ export function Editor({
     handleHugeScrollablePointerDown,
   } = useEditorPointerInteractions({
     isHugeEditableMode,
+    hyperlinkHoverHint: tr('editor.hyperlink.openHint'),
     contentRef,
     scrollContainerRef,
     textDragMoveStateRef,

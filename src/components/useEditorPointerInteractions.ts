@@ -4,10 +4,9 @@ import type React from 'react';
 import type { MutableRefObject } from 'react';
 import type { RectangularSelectionState, TextDragMoveState, VerticalSelectionState } from './Editor.types';
 
-const HYPERLINK_HOVER_HINT = 'Ctrl+左键打开';
-
 interface UseEditorPointerInteractionsParams {
   isHugeEditableMode: boolean;
+  hyperlinkHoverHint: string;
   contentRef: MutableRefObject<HTMLTextAreaElement | null>;
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   textDragMoveStateRef: MutableRefObject<TextDragMoveState | null>;
@@ -33,6 +32,7 @@ interface UseEditorPointerInteractionsParams {
 
 export function useEditorPointerInteractions({
   isHugeEditableMode,
+  hyperlinkHoverHint,
   contentRef,
   scrollContainerRef,
   textDragMoveStateRef,
@@ -75,7 +75,7 @@ export function useEditorPointerInteractions({
       const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
       const targetUrl = getHttpUrlAtTextOffset(currentElement.value, pointerLogicalOffset);
       const nextCursor = targetUrl ? 'pointer' : '';
-      const nextTitle = targetUrl ? HYPERLINK_HOVER_HINT : '';
+      const nextTitle = targetUrl ? hyperlinkHoverHint : '';
       if (currentElement.style.cursor !== nextCursor) {
         currentElement.style.cursor = nextCursor;
       }
@@ -83,7 +83,14 @@ export function useEditorPointerInteractions({
         currentElement.title = nextTitle;
       }
     },
-    [contentRef, getHttpUrlAtTextOffset, isPointerOnScrollbar, isTextareaInputElement, resolveDropOffsetFromPointer]
+    [
+      contentRef,
+      getHttpUrlAtTextOffset,
+      hyperlinkHoverHint,
+      isPointerOnScrollbar,
+      isTextareaInputElement,
+      resolveDropOffsetFromPointer,
+    ]
   );
 
   const handleEditorPointerLeave = useCallback(() => {
