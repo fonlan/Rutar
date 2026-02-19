@@ -6,7 +6,7 @@ interface UseEditorKeyboardActionsParams {
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
   normalizedRectangularSelection: unknown;
-  handleRectangularSelectionInputByKey: (event: KeyboardEvent<HTMLDivElement>) => boolean;
+  replaceRectangularSelection: (insertText: string) => Promise<boolean>;
   isVerticalSelectionShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
   beginRectangularSelectionFromCaret: () => void;
   nudgeRectangularSelectionByKey: (direction: 'up' | 'down' | 'left' | 'right') => Promise<unknown>;
@@ -28,7 +28,7 @@ export function useEditorKeyboardActions({
   rectangularSelectionRef,
   lineNumberMultiSelection,
   normalizedRectangularSelection,
-  handleRectangularSelectionInputByKey,
+  replaceRectangularSelection,
   isVerticalSelectionShortcut,
   beginRectangularSelectionFromCaret,
   nudgeRectangularSelectionByKey,
@@ -44,6 +44,63 @@ export function useEditorKeyboardActions({
   insertTextAtSelection,
   handleInput,
 }: UseEditorKeyboardActionsParams) {
+  const handleRectangularSelectionInputByKey = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!normalizedRectangularSelection || event.nativeEvent.isComposing) {
+        return false;
+      }
+
+      const key = event.key;
+      const lower = key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        if (lower === 'c' || lower === 'x' || lower === 'v') {
+          return false;
+        }
+
+        if (lower === 'a') {
+          event.preventDefault();
+          event.stopPropagation();
+          clearRectangularSelection();
+          return true;
+        }
+
+        return false;
+      }
+
+      if (key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        clearRectangularSelection();
+        return true;
+      }
+
+      if (key === 'Backspace' || key === 'Delete') {
+        event.preventDefault();
+        event.stopPropagation();
+        void replaceRectangularSelection('');
+        return true;
+      }
+
+      if (key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        void replaceRectangularSelection('\t');
+        return true;
+      }
+
+      if (!event.altKey && !event.ctrlKey && !event.metaKey && key.length === 1) {
+        event.preventDefault();
+        event.stopPropagation();
+        void replaceRectangularSelection(key);
+        return true;
+      }
+
+      return false;
+    },
+    [clearRectangularSelection, normalizedRectangularSelection, replaceRectangularSelection]
+  );
+
   const handleEditableKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (handleRectangularSelectionInputByKey(event)) {
@@ -163,6 +220,7 @@ export function useEditorKeyboardActions({
       normalizeSegmentText,
       nudgeRectangularSelectionByKey,
       rectangularSelectionRef,
+      replaceRectangularSelection,
       toggleSelectedLinesComment,
     ]
   );

@@ -1653,63 +1653,6 @@ export function Editor({
     ]
   );
 
-  const handleRectangularSelectionInputByKey = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!normalizedRectangularSelection || event.isComposing) {
-        return false;
-      }
-
-      const key = event.key;
-      const lower = key.toLowerCase();
-
-      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        if (lower === 'c' || lower === 'x' || lower === 'v') {
-          return false;
-        }
-
-        if (lower === 'a') {
-          event.preventDefault();
-          event.stopPropagation();
-          clearRectangularSelection();
-          return true;
-        }
-
-        return false;
-      }
-
-      if (key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        clearRectangularSelection();
-        return true;
-      }
-
-      if (key === 'Backspace' || key === 'Delete') {
-        event.preventDefault();
-        event.stopPropagation();
-        void replaceRectangularSelection('');
-        return true;
-      }
-
-      if (key === 'Tab') {
-        event.preventDefault();
-        event.stopPropagation();
-        void replaceRectangularSelection('\t');
-        return true;
-      }
-
-      if (!event.altKey && !event.ctrlKey && !event.metaKey && key.length === 1) {
-        event.preventDefault();
-        event.stopPropagation();
-        void replaceRectangularSelection(key);
-        return true;
-      }
-
-      return false;
-    },
-    [clearRectangularSelection, normalizedRectangularSelection, replaceRectangularSelection]
-  );
-
   const insertTextAtSelection = useCallback((text: string) => {
     const element = contentRef.current;
     if (!element) {
@@ -1765,7 +1708,7 @@ export function Editor({
     rectangularSelectionRef,
     lineNumberMultiSelection,
     normalizedRectangularSelection,
-    handleRectangularSelectionInputByKey,
+    replaceRectangularSelection,
     isVerticalSelectionShortcut,
     beginRectangularSelectionFromCaret,
     nudgeRectangularSelectionByKey,
