@@ -1191,7 +1191,7 @@ export function SettingsModal() {
                                 type="button"
                                 onClick={() => handleTogglePresetExtension(extension)}
                                 className={cn(
-                                  'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                                  'rounded-md border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                                   selected
                                     ? 'border-emerald-500/80 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                     : 'border-border bg-background/70 hover:bg-muted'
@@ -1384,7 +1384,7 @@ export function SettingsModal() {
                                   data-font-index={index}
                                   type="button"
                                   className={cn(
-                                    'flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
+                                    'flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                                     index === activeFontSuggestionIndex ? 'bg-muted' : '',
                                   )}
                                   onMouseDown={(event) => {

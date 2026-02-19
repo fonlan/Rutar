@@ -3056,7 +3056,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             <button
               type="button"
               className={cn(
-                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
+                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 sourceTab?.isDirty
                   ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -3176,7 +3176,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             <button
               type="button"
               className={cn(
-                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
+                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 targetTab?.isDirty
                   ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted'
