@@ -8,6 +8,7 @@ import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
+import { EditorContextMenu } from './EditorContextMenu';
 import { editorTestUtils } from './editorUtils';
 
 interface SyntaxToken {
@@ -325,6 +326,9 @@ export function Editor({
   const isPairHighlightEnabled = !usePlainLineRendering;
   const deleteLabel = tr('editor.context.delete');
   const selectAllLabel = tr('editor.context.selectAll');
+  const copyLabel = tr('toolbar.copy');
+  const cutLabel = tr('toolbar.cut');
+  const pasteLabel = tr('toolbar.paste');
   const selectCurrentLineLabel = tr('editor.context.selectCurrentLine');
   const addCurrentLineToBookmarkLabel = tr('editor.context.addCurrentLineToBookmark');
   const editMenuLabel = tr('editor.context.edit');
@@ -5406,256 +5410,48 @@ export function Editor({
         </div>
       )}
 
-      {editorContextMenu && (
-        <div
-          ref={editorContextMenuRef}
-          className={`fixed z-[90] rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm ${
-            editorContextMenu.target === 'lineNumber' ? 'w-44' : 'w-40'
-          }`}
-          style={{ left: editorContextMenu.x, top: editorContextMenu.y }}
-        >
-          {editorContextMenu.target === 'lineNumber' ? (
-            <>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={handleSelectCurrentLineFromContext}
-              >
-                {selectCurrentLineLabel}
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={handleAddCurrentLineBookmarkFromContext}
-              >
-                {addCurrentLineToBookmarkLabel}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => {
-                  handleEditorContextMenuAction('copy');
-                }}
-                disabled={isEditorContextMenuActionDisabled('copy')}
-              >
-                {tr('toolbar.copy')}
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => {
-                  handleEditorContextMenuAction('cut');
-                }}
-                disabled={isEditorContextMenuActionDisabled('cut')}
-              >
-                {tr('toolbar.cut')}
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => {
-                  handleEditorContextMenuAction('paste');
-                }}
-                disabled={isEditorContextMenuActionDisabled('paste')}
-              >
-                {tr('toolbar.paste')}
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => {
-                  handleEditorContextMenuAction('delete');
-                }}
-                disabled={isEditorContextMenuActionDisabled('delete')}
-              >
-                {deleteLabel}
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => {
-                  handleEditorContextMenuAction('selectAll');
-                }}
-                disabled={isEditorContextMenuActionDisabled('selectAll')}
-              >
-                {selectAllLabel}
-              </button>
-              <div className="my-1 h-px bg-border" />
-              <div
-                className="group/edit relative"
-                onMouseEnter={(event) => {
-                  updateSubmenuVerticalAlignment('edit', event.currentTarget);
-                }}
-              >
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <span>{editMenuLabel}</span>
-                  <span className="text-[10px] text-muted-foreground">▶</span>
-                </button>
-                <div
-                  ref={(element) => {
-                    submenuPanelRefs.current.edit = element;
-                  }}
-                  style={editSubmenuStyle}
-                  className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${editSubmenuPositionClassName} group-hover/edit:pointer-events-auto group-hover/edit:visible group-hover/edit:opacity-100`}
-                >
-                  {cleanupMenuItems.map((item) => (
-                    <button
-                      key={item.action}
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleCleanupDocumentFromContext(item.action);
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div
-                className="group/sort relative"
-                onMouseEnter={(event) => {
-                  updateSubmenuVerticalAlignment('sort', event.currentTarget);
-                }}
-              >
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <span>{sortMenuLabel}</span>
-                  <span className="text-[10px] text-muted-foreground">▶</span>
-                </button>
-                <div
-                  ref={(element) => {
-                    submenuPanelRefs.current.sort = element;
-                  }}
-                  style={sortSubmenuStyle}
-                  className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${sortSubmenuPositionClassName} group-hover/sort:pointer-events-auto group-hover/sort:visible group-hover/sort:opacity-100`}
-                >
-                  {sortMenuItems.map((item) => (
-                    <button
-                      key={item.action}
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleCleanupDocumentFromContext(item.action);
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {editorContextMenu.hasSelection && (
-                <div
-                  className="group/convert relative"
-                  onMouseEnter={(event) => {
-                    updateSubmenuVerticalAlignment('convert', event.currentTarget);
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <span>{convertMenuLabel}</span>
-                    <span className="text-[10px] text-muted-foreground">▶</span>
-                  </button>
-                  <div
-                    ref={(element) => {
-                      submenuPanelRefs.current.convert = element;
-                    }}
-                    style={convertSubmenuStyle}
-                    className={`pointer-events-none invisible absolute z-[95] w-48 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${convertSubmenuPositionClassName} group-hover/convert:pointer-events-auto group-hover/convert:visible group-hover/convert:opacity-100`}
-                  >
-                    <button
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleConvertSelectionFromContext('base64_encode');
-                      }}
-                    >
-                      {convertBase64EncodeLabel}
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleConvertSelectionFromContext('base64_decode');
-                      }}
-                    >
-                      {convertBase64DecodeLabel}
-                    </button>
-                    <div className="my-1 h-px bg-border" />
-                    <button
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleConvertSelectionFromContext('copy_base64_encode');
-                      }}
-                    >
-                      {copyBase64EncodeResultLabel}
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        void handleConvertSelectionFromContext('copy_base64_decode');
-                      }}
-                    >
-                      {copyBase64DecodeResultLabel}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="my-1 h-px bg-border" />
-              <div
-                className="group/bookmark relative"
-                onMouseEnter={(event) => {
-                  updateSubmenuVerticalAlignment('bookmark', event.currentTarget);
-                }}
-              >
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <span>{bookmarkMenuLabel}</span>
-                  <span className="text-[10px] text-muted-foreground">▶</span>
-                </button>
-                <div
-                  ref={(element) => {
-                    submenuPanelRefs.current.bookmark = element;
-                  }}
-                  style={bookmarkSubmenuStyle}
-                  className={`pointer-events-none invisible absolute z-[95] w-28 rounded-md border border-border bg-background/95 p-1 opacity-0 shadow-xl transition-opacity duration-75 before:absolute before:top-0 before:h-full before:w-2 before:content-[''] ${bookmarkSubmenuPositionClassName} group-hover/bookmark:pointer-events-auto group-hover/bookmark:visible group-hover/bookmark:opacity-100`}
-                >
-                  <button
-                    type="button"
-                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={handleAddBookmarkFromContext}
-                    disabled={hasContextBookmark}
-                  >
-                    {addBookmarkLabel}
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={handleRemoveBookmarkFromContext}
-                    disabled={!hasContextBookmark}
-                  >
-                    {removeBookmarkLabel}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <EditorContextMenu
+        editorContextMenu={editorContextMenu}
+        editorContextMenuRef={editorContextMenuRef}
+        submenuPanelRefs={submenuPanelRefs}
+        editSubmenuStyle={editSubmenuStyle}
+        sortSubmenuStyle={sortSubmenuStyle}
+        convertSubmenuStyle={convertSubmenuStyle}
+        bookmarkSubmenuStyle={bookmarkSubmenuStyle}
+        editSubmenuPositionClassName={editSubmenuPositionClassName}
+        sortSubmenuPositionClassName={sortSubmenuPositionClassName}
+        convertSubmenuPositionClassName={convertSubmenuPositionClassName}
+        bookmarkSubmenuPositionClassName={bookmarkSubmenuPositionClassName}
+        cleanupMenuItems={cleanupMenuItems}
+        sortMenuItems={sortMenuItems}
+        copyLabel={copyLabel}
+        cutLabel={cutLabel}
+        pasteLabel={pasteLabel}
+        deleteLabel={deleteLabel}
+        selectAllLabel={selectAllLabel}
+        selectCurrentLineLabel={selectCurrentLineLabel}
+        addCurrentLineToBookmarkLabel={addCurrentLineToBookmarkLabel}
+        editMenuLabel={editMenuLabel}
+        sortMenuLabel={sortMenuLabel}
+        convertMenuLabel={convertMenuLabel}
+        convertBase64EncodeLabel={convertBase64EncodeLabel}
+        convertBase64DecodeLabel={convertBase64DecodeLabel}
+        copyBase64EncodeResultLabel={copyBase64EncodeResultLabel}
+        copyBase64DecodeResultLabel={copyBase64DecodeResultLabel}
+        bookmarkMenuLabel={bookmarkMenuLabel}
+        addBookmarkLabel={addBookmarkLabel}
+        removeBookmarkLabel={removeBookmarkLabel}
+        hasContextBookmark={hasContextBookmark}
+        onSelectCurrentLine={handleSelectCurrentLineFromContext}
+        onAddCurrentLineBookmark={handleAddCurrentLineBookmarkFromContext}
+        onEditorAction={handleEditorContextMenuAction}
+        isEditorActionDisabled={isEditorContextMenuActionDisabled}
+        onUpdateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
+        onCleanup={handleCleanupDocumentFromContext}
+        onConvert={handleConvertSelectionFromContext}
+        onAddBookmark={handleAddBookmarkFromContext}
+        onRemoveBookmark={handleRemoveBookmarkFromContext}
+      />
 
       <div
         className={`pointer-events-none fixed bottom-6 right-6 z-[100] rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-900 shadow-lg transition-[opacity,transform] dark:text-red-200 ${
