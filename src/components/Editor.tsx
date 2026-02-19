@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
@@ -36,6 +36,7 @@ import { useEditorContextConvertActions } from './useEditorContextConvertActions
 import { useEditorContextMenuInteractions } from './useEditorContextMenuInteractions';
 import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
+import { useEditorDerivedState } from './useEditorDerivedState';
 import { useEditorDocumentLoadEffects } from './useEditorDocumentLoadEffects';
 import { useEditorFlushPendingSync } from './useEditorFlushPendingSync';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
@@ -224,16 +225,16 @@ export function Editor({
   });
 
   const syncedTextRef = useRef('');
-  const lineNumberMultiSelectionSet = useMemo(() => new Set(lineNumberMultiSelection), [lineNumberMultiSelection]);
-  const diffHighlightLineSet = useMemo(
-    () =>
-      new Set(
-        (diffHighlightLines || [])
-          .filter((line) => Number.isFinite(line) && line > 0)
-          .map((line) => Math.floor(line))
-      ),
-    [diffHighlightLines]
-  );
+  const {
+    lineNumberMultiSelectionSet,
+    diffHighlightLineSet,
+    normalizedRectangularSelection,
+  } = useEditorDerivedState({
+    lineNumberMultiSelection,
+    diffHighlightLines,
+    rectangularSelection,
+    normalizeRectangularSelection,
+  });
 
   const {
     tabSize,
@@ -508,11 +509,6 @@ export function Editor({
     updateTab,
     dispatchDocumentUpdated,
   });
-
-  const normalizedRectangularSelection = useMemo(
-    () => normalizeRectangularSelection(rectangularSelection),
-    [rectangularSelection]
-  );
 
   const {
     getRectangularSelectionText,
