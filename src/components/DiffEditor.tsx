@@ -20,6 +20,7 @@ import { editorTestUtils } from './editorUtils';
 import { useDiffEditorLineNumberSelection } from './useDiffEditorLineNumberSelection';
 import { useDiffEditorMenusAndClipboard } from './useDiffEditorMenusAndClipboard';
 import { useDiffEditorPairHighlight } from './useDiffEditorPairHighlight';
+import { useDiffEditorPanelScrollSync } from './useDiffEditorPanelScrollSync';
 import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
 import { useDiffEditorSync } from './useDiffEditorSync';
 import { useExternalPasteEvent } from './useExternalPasteEvent';
@@ -859,13 +860,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     persistedActivePanel === 'target' ? 'target' : 'source'
   );
   const [lineDiff, setLineDiff] = useState<LineDiffComparisonResult>(() => buildInitialDiff(tab.diffPayload));
-  const [sourceViewport, setSourceViewport] = useState<ViewportMetrics>(DEFAULT_VIEWPORT);
-  const [targetViewport, setTargetViewport] = useState<ViewportMetrics>(DEFAULT_VIEWPORT);
-  const [sourceScroller, setSourceScroller] = useState<HTMLElement | null>(null);
-  const [targetScroller, setTargetScroller] = useState<HTMLElement | null>(null);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
-  const scrollSyncLockRef = useRef(false);
   const lineDiffRef = useRef(lineDiff);
   const pendingScrollRestoreRef = useRef<PanelScrollSnapshot | null>(null);
   const pendingCaretRestoreRef = useRef<CaretSnapshot | null>(null);
@@ -903,13 +899,17 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [sourceDisplayName, targetDisplayName]
   );
 
-  const handleSourceScrollerRef = useCallback((element: HTMLElement | null) => {
-    setSourceScroller((previous) => (previous === element ? previous : element));
-  }, []);
-
-  const handleTargetScrollerRef = useCallback((element: HTMLElement | null) => {
-    setTargetScroller((previous) => (previous === element ? previous : element));
-  }, []);
+  const {
+    sourceViewport,
+    targetViewport,
+    sourceScroller,
+    targetScroller,
+    handleSourceScrollerRef,
+    handleTargetScrollerRef,
+  } = useDiffEditorPanelScrollSync({
+    defaultViewport: DEFAULT_VIEWPORT,
+    bindScrollerViewport,
+  });
 
   const capturePanelScrollSnapshot = useCallback(() => {
     if (!sourceScroller || !targetScroller) {
@@ -993,52 +993,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     buildInitialDiff,
     dispatchDocumentUpdated,
   });
-
-  useEffect(() => bindScrollerViewport(sourceScroller, setSourceViewport), [sourceScroller]);
-  useEffect(() => bindScrollerViewport(targetScroller, setTargetViewport), [targetScroller]);
-
-  useEffect(() => {
-    if (!sourceScroller || !targetScroller) {
-      return;
-    }
-
-    const syncScrollPosition = (from: HTMLElement, to: HTMLElement) => {
-      const fromMaxTop = Math.max(0, from.scrollHeight - from.clientHeight);
-      const toMaxTop = Math.max(0, to.scrollHeight - to.clientHeight);
-      const fromMaxLeft = Math.max(0, from.scrollWidth - from.clientWidth);
-      const toMaxLeft = Math.max(0, to.scrollWidth - to.clientWidth);
-      const verticalRatio = fromMaxTop <= 0 ? 0 : from.scrollTop / fromMaxTop;
-      const horizontalRatio = fromMaxLeft <= 0 ? 0 : from.scrollLeft / fromMaxLeft;
-
-      to.scrollTop = toMaxTop * verticalRatio;
-      to.scrollLeft = toMaxLeft * horizontalRatio;
-    };
-
-    const createScrollHandler = (from: HTMLElement, to: HTMLElement) => () => {
-      if (scrollSyncLockRef.current) {
-        return;
-      }
-
-      scrollSyncLockRef.current = true;
-      syncScrollPosition(from, to);
-      window.requestAnimationFrame(() => {
-        scrollSyncLockRef.current = false;
-      });
-    };
-
-    const syncTargetFromSource = createScrollHandler(sourceScroller, targetScroller);
-    const syncSourceFromTarget = createScrollHandler(targetScroller, sourceScroller);
-
-    sourceScroller.addEventListener('scroll', syncTargetFromSource, { passive: true });
-    targetScroller.addEventListener('scroll', syncSourceFromTarget, { passive: true });
-    syncScrollPosition(sourceScroller, targetScroller);
-
-    return () => {
-      sourceScroller.removeEventListener('scroll', syncTargetFromSource);
-      targetScroller.removeEventListener('scroll', syncSourceFromTarget);
-      scrollSyncLockRef.current = false;
-    };
-  }, [sourceScroller, targetScroller]);
 
   const handleSavePanel = useCallback(
     async (panel: ActivePanel) => {
