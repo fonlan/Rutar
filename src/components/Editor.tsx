@@ -54,6 +54,7 @@ import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
 import { useEditorPointerFinalizeEffects } from './useEditorPointerFinalizeEffects';
 import { useEditorPointerInteractions } from './useEditorPointerInteractions';
+import { useEditorPointerSelectionGuards } from './useEditorPointerSelectionGuards';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
@@ -368,19 +369,15 @@ export function Editor({
     isScrollbarDragRef,
   });
 
-  const setPointerSelectionNativeHighlightMode = useCallback((enabled: boolean) => {
-    const element = contentRef.current;
-    if (!element) {
-      return;
-    }
-
-    if (enabled) {
-      element.style.setProperty('--editor-native-selection-bg', 'hsl(217 91% 60% / 0.28)');
-      return;
-    }
-
-    element.style.removeProperty('--editor-native-selection-bg');
-  }, []);
+  const {
+    setPointerSelectionNativeHighlightMode,
+    endScrollbarDragSelectionGuard,
+    finalizePointerSelectionInteraction,
+  } = useEditorPointerSelectionGuards({
+    contentRef,
+    isScrollbarDragRef,
+    pointerSelectionActiveRef,
+  });
   const { measureTextWidthByEditorStyle, resolveDropOffsetFromPointer } = useEditorTextMeasurement({
     renderedFontSizePx,
     fontFamily: settings.fontFamily,
@@ -561,19 +558,6 @@ export function Editor({
       fontFamily: settings.fontFamily,
       contentRef,
     });
-
-  const endScrollbarDragSelectionGuard = useCallback(() => {
-    if (!isScrollbarDragRef.current) {
-      return;
-    }
-
-    isScrollbarDragRef.current = false;
-
-    if (contentRef.current) {
-      contentRef.current.style.userSelect = 'text';
-      contentRef.current.style.webkitUserSelect = 'text';
-    }
-  }, []);
 
   const { syncSelectionState } = useEditorSelectionStateSync({
     isHugeEditableMode,
@@ -1143,11 +1127,6 @@ export function Editor({
       return { start, end };
     });
   }, []);
-
-  const finalizePointerSelectionInteraction = useCallback(() => {
-    pointerSelectionActiveRef.current = false;
-    setPointerSelectionNativeHighlightMode(false);
-  }, [setPointerSelectionNativeHighlightMode]);
 
   useEffect(() => {
     if (!normalizedRectangularSelection) {
