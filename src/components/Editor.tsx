@@ -15,6 +15,7 @@ import {
 } from './EditorContextMenu';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
 import { EditorBackdropLayer } from './EditorBackdropLayer';
+import { EditorInputLayer } from './EditorInputLayer';
 import { EditorLineNumberGutter } from './EditorLineNumberGutter';
 import { editorTestUtils } from './editorUtils';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
@@ -5042,103 +5043,38 @@ export function Editor({
       className={`flex-1 w-full h-full overflow-hidden bg-background relative focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/40 editor-syntax-${activeSyntaxKey}`}
       tabIndex={-1}
     >
-      {isHugeEditableMode && (
-        <div
-          ref={scrollContainerRef}
-          className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-scroll-stable"
-          style={{
-            left: `${contentViewportLeftPx}px`,
-            width: `${contentViewportWidth}px`,
-            overflowX: horizontalOverflowMode,
-            overflowY: 'auto',
-          }}
-          onScroll={handleScroll}
-          onPointerDown={handleHugeScrollablePointerDown}
-        >
-          <div
-            className="relative"
-            style={{
-              minHeight: `${Math.max(1, tab.lineCount) * itemSize}px`,
-              minWidth: wordWrap
-                ? '100%'
-                : `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`,
-            }}
-          >
-            <textarea
-              ref={contentRef}
-              className="absolute left-0 right-0 editor-input-layer"
-              style={{
-                top: hugeEditablePaddingTop,
-                height: hugeEditableSegmentHeightPx,
-                width: wordWrap
-                  ? '100%'
-                  : `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`,
-                right: 'auto',
-                fontFamily: settings.fontFamily,
-                fontSize: `${renderedFontSizePx}px`,
-                lineHeight: `${lineHeightPx}px`,
-                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                tabSize,
-                paddingLeft: contentTextPadding,
-                paddingRight: contentTextRightPadding,
-                paddingBottom: contentBottomSafetyPadding,
-                resize: 'none',
-                overflowX: 'hidden',
-                overflowY: 'hidden',
-              }}
-              wrap={wordWrap ? 'soft' : 'off'}
-              onInput={handleInput}
-              onKeyDown={handleEditableKeyDown}
-              onPointerDown={handleEditorPointerDown}
-              onPointerMove={handleEditorPointerMove}
-              onPointerLeave={handleEditorPointerLeave}
-              onKeyUp={syncSelectionAfterInteraction}
-              onPointerUp={syncSelectionAfterInteraction}
-              onFocus={syncSelectionAfterInteraction}
-              onContextMenu={handleEditorContextMenu}
-              onCompositionStart={handleCompositionStart}
-              onCompositionEnd={handleCompositionEnd}
-              spellCheck={false}
-            />
-          </div>
-        </div>
-      )}
-
-      {!isHugeEditableMode && (
-        <textarea
-          ref={contentRef}
-          className="absolute top-0 bottom-0 right-0 z-20 outline-none overflow-auto editor-input-layer editor-scroll-stable"
-          style={{
-            left: `${contentViewportLeftPx}px`,
-            width: `${contentViewportWidth}px`,
-            overflowX: horizontalOverflowMode,
-            overflowY: 'auto',
-            fontFamily: settings.fontFamily,
-            fontSize: `${renderedFontSizePx}px`,
-            lineHeight: `${lineHeightPx}px`,
-            whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-            tabSize,
-            paddingLeft: contentTextPadding,
-            paddingRight: contentTextRightPadding,
-            paddingBottom: contentBottomSafetyPadding,
-            resize: 'none',
-          }}
-          wrap={wordWrap ? 'soft' : 'off'}
-          onInput={handleInput}
-          onKeyDown={handleEditableKeyDown}
-          onScroll={handleScroll}
-          onPointerDown={handleEditorPointerDown}
-          onPointerMove={handleEditorPointerMove}
-          onPointerLeave={handleEditorPointerLeave}
-          onKeyUp={syncSelectionAfterInteraction}
-          onPointerUp={syncSelectionAfterInteraction}
-          onFocus={syncSelectionAfterInteraction}
-          onContextMenu={handleEditorContextMenu}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
-          spellCheck={false}
-        />
-      )}
+      <EditorInputLayer
+        isHugeEditableMode={isHugeEditableMode}
+        contentRef={contentRef}
+        scrollContainerRef={scrollContainerRef}
+        contentViewportLeftPx={contentViewportLeftPx}
+        contentViewportWidth={contentViewportWidth}
+        horizontalOverflowMode={horizontalOverflowMode}
+        onScroll={handleScroll}
+        onHugeScrollablePointerDown={handleHugeScrollablePointerDown}
+        tabLineCount={tab.lineCount}
+        itemSize={itemSize}
+        wordWrap={wordWrap}
+        hugeScrollableContentWidth={hugeScrollableContentWidth}
+        hugeEditablePaddingTop={hugeEditablePaddingTop}
+        hugeEditableSegmentHeightPx={hugeEditableSegmentHeightPx}
+        fontFamily={settings.fontFamily}
+        renderedFontSizePx={renderedFontSizePx}
+        lineHeightPx={lineHeightPx}
+        tabSize={tabSize}
+        contentTextPadding={contentTextPadding}
+        contentTextRightPadding={contentTextRightPadding}
+        contentBottomSafetyPadding={contentBottomSafetyPadding}
+        onInput={handleInput}
+        onEditableKeyDown={handleEditableKeyDown}
+        onEditorPointerDown={handleEditorPointerDown}
+        onEditorPointerMove={handleEditorPointerMove}
+        onEditorPointerLeave={handleEditorPointerLeave}
+        onSyncSelectionAfterInteraction={syncSelectionAfterInteraction}
+        onEditorContextMenu={handleEditorContextMenu}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
+      />
 
       <EditorBackdropLayer
         visible={true}
