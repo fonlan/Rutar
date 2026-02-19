@@ -16,6 +16,9 @@ import { saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import { editorTestUtils } from './editorUtils';
+import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
+import { useDiffEditorSync } from './useDiffEditorSync';
 
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
@@ -36,12 +39,6 @@ interface LineDiffComparisonResult {
   sourceLineCount: number;
   targetLineCount: number;
   alignedLineCount: number;
-}
-
-interface ApplyAlignedDiffEditResult {
-  lineDiff: LineDiffComparisonResult;
-  sourceIsDirty: boolean;
-  targetIsDirty: boolean;
 }
 
 interface ApplyAlignedDiffPanelCopyResult {
@@ -107,14 +104,16 @@ const MAX_RATIO = 0.8;
 const DEFAULT_RATIO = 0.5;
 const MIN_PANEL_WIDTH_PX = 220;
 const SPLITTER_WIDTH_PX = 16;
-const REFRESH_DEBOUNCE_MS = 120;
-const EDIT_DEBOUNCE_MS = 90;
-const PREVIEW_METADATA_DEBOUNCE_MS = 70;
 const OFFLOAD_METADATA_MIN_LINES = 0;
-const INPUT_ACTIVE_HOLD_MS = 450;
 const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
 const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
+const {
+  normalizeLineText,
+  codeUnitOffsetToLineColumn,
+  arePairHighlightPositionsEqual,
+  dispatchDocumentUpdated,
+} = editorTestUtils;
 
 function isPairCandidateCharacter(char: string) {
   return char === '(' || char === ')' || char === '[' || char === ']' || char === '{' || char === '}' || char === '"' || char === "'";
@@ -214,7 +213,7 @@ function shouldOffloadDiffMetadataComputation(alignedLineCount: number) {
 }
 
 function normalizeTextToLines(text: string) {
-  const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalized = normalizeLineText(text || '');
   const lines = normalized.split('\n');
   return lines.length > 0 ? lines : [''];
 }
@@ -533,36 +532,6 @@ function getLineIndexFromTextOffset(text: string, offset: number) {
     }
   }
   return lineIndex;
-}
-
-function codeUnitOffsetToLineColumn(text: string, offset: number) {
-  const safeOffset = Math.max(0, Math.min(text.length, Math.floor(offset)));
-  const prefix = text.slice(0, safeOffset);
-  const line = prefix.split('\n').length;
-  const lastNewline = prefix.lastIndexOf('\n');
-  const column = safeOffset - (lastNewline + 1);
-
-  return {
-    line,
-    column,
-  };
-}
-
-function arePairHighlightPositionsEqual(
-  left: PairHighlightPosition[],
-  right: PairHighlightPosition[]
-) {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index].line !== right[index].line || left[index].column !== right[index].column) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 function buildPairHighlightRows(pairHighlights: PairHighlightPosition[], lines: string[]) {
@@ -889,14 +858,6 @@ function bindScrollerViewport(
   };
 }
 
-function dispatchDocumentUpdated(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:document-updated', {
-      detail: { tabId },
-    })
-  );
-}
-
 export const diffEditorTestUtils = {
   getParentDirectoryPath,
   pathBaseName,
@@ -947,46 +908,16 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const [targetScroller, setTargetScroller] = useState<HTMLElement | null>(null);
   const [diffContextMenu, setDiffContextMenu] = useState<DiffContextMenuState | null>(null);
   const [diffHeaderContextMenu, setDiffHeaderContextMenu] = useState<DiffHeaderContextMenuState | null>(null);
-  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
-  const [targetSearchQuery, setTargetSearchQuery] = useState('');
-  const [sourceSearchMatchedRows, setSourceSearchMatchedRows] = useState<number[]>([]);
-  const [targetSearchMatchedRows, setTargetSearchMatchedRows] = useState<number[]>([]);
-  const [sourceSearchMatchedRow, setSourceSearchMatchedRow] = useState<number | null>(null);
-  const [targetSearchMatchedRow, setTargetSearchMatchedRow] = useState<number | null>(null);
   const [sourcePairHighlights, setSourcePairHighlights] = useState<PairHighlightPosition[]>([]);
   const [targetPairHighlights, setTargetPairHighlights] = useState<PairHighlightPosition[]>([]);
 
   const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
-  const refreshTimerRef = useRef<number | null>(null);
-  const refreshSequenceRef = useRef(0);
   const scrollSyncLockRef = useRef(false);
   const lineDiffRef = useRef(lineDiff);
-  const sourceCommittedTextRef = useRef('');
-  const targetCommittedTextRef = useRef('');
-  const sourceTrailingNewlineRef = useRef(false);
-  const targetTrailingNewlineRef = useRef(false);
-  const sideCommitTimerRef = useRef<{ source: number | null; target: number | null }>({
-    source: null,
-    target: null,
-  });
-  const sideCommitInFlightRef = useRef<{ source: boolean; target: boolean }>({
-    source: false,
-    target: false,
-  });
-  const sideCommitPendingRef = useRef<{ source: boolean; target: boolean }>({
-    source: false,
-    target: false,
-  });
   const pendingScrollRestoreRef = useRef<PanelScrollSnapshot | null>(null);
   const pendingCaretRestoreRef = useRef<CaretSnapshot | null>(null);
   const lastEditAtRef = useRef(0);
-  const deferredBackendDiffRef = useRef<LineDiffComparisonResult | null>(null);
-  const deferredBackendApplyTimerRef = useRef<number | null>(null);
-  const previewMetadataTimerRef = useRef<number | null>(null);
-  const previewMetadataSequenceRef = useRef(0);
   const copyLinesRequestSequenceRef = useRef(0);
-  const sourceSearchRequestSequenceRef = useRef(0);
-  const targetSearchRequestSequenceRef = useRef(0);
   const pairHighlightRequestIdRef = useRef<{ source: number; target: number }>({
     source: 0,
     target: 0,
@@ -1083,407 +1014,38 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     };
   }, []);
 
-  const isInputEditingActive = useCallback(() => {
-    const activeElement = document.activeElement;
-    if (!(activeElement instanceof HTMLTextAreaElement)) {
-      return false;
-    }
-
-    const panel = activeElement.dataset.diffPanel;
-    if (panel !== 'source' && panel !== 'target') {
-      return false;
-    }
-
-    return Date.now() - lastEditAtRef.current < INPUT_ACTIVE_HOLD_MS;
-  }, []);
-
-  const clearPreviewMetadataTimer = useCallback(() => {
-    if (previewMetadataTimerRef.current !== null) {
-      window.clearTimeout(previewMetadataTimerRef.current);
-      previewMetadataTimerRef.current = null;
-    }
-  }, []);
-
-  const applyPreviewMetadataResult = useCallback((result: LineDiffComparisonResult) => {
-    const normalized = normalizeLineDiffResult(result);
-    setLineDiff((previous) => {
-      const nextState = {
-        ...previous,
-        diffLineNumbers: normalized.diffLineNumbers,
-        sourceDiffLineNumbers: normalized.sourceDiffLineNumbers,
-        targetDiffLineNumbers: normalized.targetDiffLineNumbers,
-        alignedDiffKinds: normalized.alignedDiffKinds,
-        sourceLineNumbersByAlignedRow: normalized.sourceLineNumbersByAlignedRow,
-        targetLineNumbersByAlignedRow: normalized.targetLineNumbersByAlignedRow,
-        diffRowIndexes: normalized.diffRowIndexes,
-        sourceLineCount: normalized.sourceLineCount,
-        targetLineCount: normalized.targetLineCount,
-        alignedLineCount: normalized.alignedLineCount,
-      };
-      lineDiffRef.current = nextState;
-      return nextState;
-    });
-  }, []);
-
-  const schedulePreviewMetadataComputation = useCallback(
-    (
-      alignedSourceLines: string[],
-      alignedTargetLines: string[],
-      alignedSourcePresent: boolean[],
-      alignedTargetPresent: boolean[]
-    ) => {
-      const sequence = previewMetadataSequenceRef.current + 1;
-      previewMetadataSequenceRef.current = sequence;
-      clearPreviewMetadataTimer();
-      previewMetadataTimerRef.current = window.setTimeout(() => {
-        previewMetadataTimerRef.current = null;
-        void invoke<LineDiffComparisonResult>('preview_aligned_diff_state', {
-          alignedSourceLines,
-          alignedTargetLines,
-          alignedSourcePresent,
-          alignedTargetPresent,
-        })
-          .then((result) => {
-            if (previewMetadataSequenceRef.current !== sequence) {
-              return;
-            }
-            applyPreviewMetadataResult(result);
-          })
-          .catch((error) => {
-            if (previewMetadataSequenceRef.current !== sequence) {
-              return;
-            }
-            console.error('Failed to preview aligned diff metadata:', error);
-          });
-      }, PREVIEW_METADATA_DEBOUNCE_MS);
-    },
-    [applyPreviewMetadataResult, clearPreviewMetadataTimer]
-  );
-
-  const invalidatePreviewMetadataComputation = useCallback(() => {
-    previewMetadataSequenceRef.current = previewMetadataSequenceRef.current + 1;
-    clearPreviewMetadataTimer();
-  }, [clearPreviewMetadataTimer]);
-
-  const applyBackendDiffResult = useCallback(
-    (result: LineDiffComparisonResult) => {
-      invalidatePreviewMetadataComputation();
-      capturePanelScrollSnapshot();
-      const focusedCaret = captureFocusedCaretSnapshot();
-      const normalized = normalizeLineDiffResult(result);
-      const sourceActualLines = extractActualLines(
-        normalized.alignedSourceLines,
-        normalized.alignedSourcePresent
-      );
-      const targetActualLines = extractActualLines(
-        normalized.alignedTargetLines,
-        normalized.alignedTargetPresent
-      );
-      const sourceTrailing = inferTrailingNewlineFromLines(normalized.sourceLineCount, sourceActualLines);
-      const targetTrailing = inferTrailingNewlineFromLines(normalized.targetLineCount, targetActualLines);
-
-      sourceTrailingNewlineRef.current = sourceTrailing;
-      targetTrailingNewlineRef.current = targetTrailing;
-      sourceCommittedTextRef.current = serializeLines(sourceActualLines, sourceTrailing);
-      targetCommittedTextRef.current = serializeLines(targetActualLines, targetTrailing);
-
-      lineDiffRef.current = normalized;
-      if (focusedCaret) {
-        const present = focusedCaret.side === 'source'
-          ? normalized.alignedSourcePresent
-          : normalized.alignedTargetPresent;
-        const mappedRowIndex = findAlignedRowIndexByLineNumber(present, focusedCaret.lineNumber);
-        const nextRowIndex = mappedRowIndex >= 0 ? mappedRowIndex : focusedCaret.rowIndex;
-        pendingCaretRestoreRef.current = {
-          ...focusedCaret,
-          rowIndex: Math.max(0, Math.min(nextRowIndex, Math.max(0, present.length - 1))),
-        };
-      }
-      setLineDiff(normalized);
-      const nextLineCount = Math.max(1, normalized.alignedLineCount);
-      const currentDiffTab = useStore.getState().tabs.find((item) => item.id === tab.id);
-      if ((currentDiffTab?.lineCount ?? 0) !== nextLineCount) {
-        updateTab(tab.id, {
-          lineCount: nextLineCount,
-        });
-      }
-    },
-    [
-      captureFocusedCaretSnapshot,
-      capturePanelScrollSnapshot,
-      invalidatePreviewMetadataComputation,
-      tab.id,
-      updateTab,
-    ]
-  );
-
-  const scheduleDeferredBackendApply = useCallback(() => {
-    if (deferredBackendApplyTimerRef.current !== null) {
-      window.clearTimeout(deferredBackendApplyTimerRef.current);
-    }
-
-    deferredBackendApplyTimerRef.current = window.setTimeout(() => {
-      deferredBackendApplyTimerRef.current = null;
-      const pendingResult = deferredBackendDiffRef.current;
-      if (!pendingResult) {
-        return;
-      }
-
-      if (isInputEditingActive()) {
-        scheduleDeferredBackendApply();
-        return;
-      }
-
-      deferredBackendDiffRef.current = null;
-      applyBackendDiffResult(pendingResult);
-    }, INPUT_ACTIVE_HOLD_MS);
-  }, [applyBackendDiffResult, isInputEditingActive]);
-
-  useEffect(() => {
-    applyBackendDiffResult(buildInitialDiff(tab.diffPayload));
-  }, [applyBackendDiffResult, tab.diffPayload]);
-
-  useEffect(() => {
-    lineDiffRef.current = lineDiff;
-  }, [lineDiff]);
-
-  useEffect(() => {
-    const snapshot = pendingCaretRestoreRef.current;
-    if (!snapshot) {
-      return;
-    }
-
-    pendingCaretRestoreRef.current = null;
-    window.requestAnimationFrame(() => {
-      const textareaSelector = `textarea[data-diff-panel="${snapshot.side}"]`;
-      const textarea = document.querySelector(textareaSelector) as HTMLTextAreaElement | null;
-      if (!textarea) {
-        return;
-      }
-
-      textarea.focus({ preventScroll: true });
-      const valueLength = textarea.value.length;
-      const start = Math.max(0, Math.min(snapshot.selectionStart, valueLength));
-      const end = Math.max(0, Math.min(snapshot.selectionEnd, valueLength));
-      textarea.setSelectionRange(start, end);
-    });
-  }, [lineDiff]);
-
-  useEffect(() => {
-    const snapshot = pendingScrollRestoreRef.current;
-    if (!snapshot || !sourceScroller || !targetScroller) {
-      return;
-    }
-
-    pendingScrollRestoreRef.current = null;
-    window.requestAnimationFrame(() => {
-      if (sourceScroller) {
-        sourceScroller.scrollTop = snapshot.sourceTop;
-        sourceScroller.scrollLeft = snapshot.sourceLeft;
-      }
-
-      if (targetScroller) {
-        targetScroller.scrollTop = snapshot.targetTop;
-        targetScroller.scrollLeft = snapshot.targetLeft;
-      }
-    });
-  }, [lineDiff, sourceScroller, targetScroller]);
-
-  const runDiffRefresh = useCallback(async () => {
-    if (!sourceTab || !targetTab) {
-      return;
-    }
-
-    const currentSequence = refreshSequenceRef.current + 1;
-    refreshSequenceRef.current = currentSequence;
-
-    try {
-      const result = await invoke<LineDiffComparisonResult>('compare_documents_by_line', {
-        sourceId: sourceTab.id,
-        targetId: targetTab.id,
-      });
-
-      if (refreshSequenceRef.current !== currentSequence) {
-        return;
-      }
-
-      if (isInputEditingActive()) {
-        deferredBackendDiffRef.current = result;
-        scheduleDeferredBackendApply();
-        return;
-      }
-
-      applyBackendDiffResult(result);
-    } catch (error) {
-      if (refreshSequenceRef.current === currentSequence) {
-        console.error('Failed to refresh diff result:', error);
-      }
-    }
-  }, [applyBackendDiffResult, isInputEditingActive, scheduleDeferredBackendApply, sourceTab, targetTab]);
-
-  const scheduleDiffRefresh = useCallback(() => {
-    if (refreshTimerRef.current !== null) {
-      window.clearTimeout(refreshTimerRef.current);
-    }
-
-    refreshTimerRef.current = window.setTimeout(() => {
-      refreshTimerRef.current = null;
-      void runDiffRefresh();
-    }, REFRESH_DEBOUNCE_MS);
-  }, [runDiffRefresh]);
-
-  const flushSideCommit = useCallback(
-    async (side: ActivePanel) => {
-      const panelTab = side === 'source' ? sourceTab : targetTab;
-      if (!panelTab || !sourceTab || !targetTab) {
-        return;
-      }
-
-      if (sideCommitInFlightRef.current[side]) {
-        sideCommitPendingRef.current[side] = true;
-        return;
-      }
-
-      const snapshot = lineDiffRef.current;
-      const alignedLines = side === 'source'
-        ? snapshot.alignedSourceLines
-        : snapshot.alignedTargetLines;
-      const present = side === 'source'
-        ? snapshot.alignedSourcePresent
-        : snapshot.alignedTargetPresent;
-      const actualLines = extractActualLines(alignedLines, present);
-      const trailingNewline = side === 'source'
-        ? sourceTrailingNewlineRef.current
-        : targetTrailingNewlineRef.current;
-      const previousText = side === 'source'
-        ? sourceCommittedTextRef.current
-        : targetCommittedTextRef.current;
-      const nextText = serializeLines(actualLines, trailingNewline);
-
-      if (previousText === nextText) {
-        return;
-      }
-
-      sideCommitInFlightRef.current[side] = true;
-
-      try {
-        const result = await invoke<ApplyAlignedDiffEditResult>('apply_aligned_diff_edit', {
-          sourceId: sourceTab.id,
-          targetId: targetTab.id,
-          editedSide: side,
-          alignedSourceLines: snapshot.alignedSourceLines,
-          alignedTargetLines: snapshot.alignedTargetLines,
-          alignedSourcePresent: snapshot.alignedSourcePresent,
-          alignedTargetPresent: snapshot.alignedTargetPresent,
-          editedTrailingNewline: trailingNewline,
-        });
-
-        if (side === 'source') {
-          sourceCommittedTextRef.current = nextText;
-          sourceTrailingNewlineRef.current = trailingNewline;
-        } else {
-          targetCommittedTextRef.current = nextText;
-          targetTrailingNewlineRef.current = trailingNewline;
-        }
-
-        if (sourceTab) {
-          updateTab(sourceTab.id, {
-            lineCount: Math.max(1, result.lineDiff.sourceLineCount),
-            isDirty: result.sourceIsDirty,
-          });
-        }
-
-        if (targetTab) {
-          updateTab(targetTab.id, {
-            lineCount: Math.max(1, result.lineDiff.targetLineCount),
-            isDirty: result.targetIsDirty,
-          });
-        }
-
-        if (isInputEditingActive()) {
-          deferredBackendDiffRef.current = result.lineDiff;
-          scheduleDeferredBackendApply();
-        } else {
-          applyBackendDiffResult(result.lineDiff);
-        }
-
-        dispatchDocumentUpdated(panelTab.id);
-      } catch (error) {
-        console.error('Failed to write aligned diff edit:', error);
-      } finally {
-        sideCommitInFlightRef.current[side] = false;
-        if (sideCommitPendingRef.current[side]) {
-          sideCommitPendingRef.current[side] = false;
-          void flushSideCommit(side);
-        }
-      }
-    },
-    [applyBackendDiffResult, isInputEditingActive, scheduleDeferredBackendApply, sourceTab, targetTab, updateTab]
-  );
-
-  const scheduleSideCommit = useCallback(
-    (side: ActivePanel) => {
-      const timer = sideCommitTimerRef.current[side];
-      if (timer !== null) {
-        window.clearTimeout(timer);
-      }
-
-      sideCommitTimerRef.current[side] = window.setTimeout(() => {
-        sideCommitTimerRef.current[side] = null;
-        void flushSideCommit(side);
-      }, EDIT_DEBOUNCE_MS);
-    },
-    [flushSideCommit]
-  );
-
-  useEffect(() => {
-    void runDiffRefresh();
-  }, [runDiffRefresh]);
-
-  useEffect(() => {
-    const handleDocumentUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string }>;
-      const changedId = customEvent.detail?.tabId;
-      if (!changedId) {
-        return;
-      }
-
-      if (changedId !== sourceTab?.id && changedId !== targetTab?.id) {
-        return;
-      }
-
-      scheduleDiffRefresh();
-    };
-
-    window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
-    return () => {
-      window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
-    };
-  }, [scheduleDiffRefresh, sourceTab?.id, targetTab?.id]);
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current !== null) {
-        window.clearTimeout(refreshTimerRef.current);
-      }
-
-      if (deferredBackendApplyTimerRef.current !== null) {
-        window.clearTimeout(deferredBackendApplyTimerRef.current);
-      }
-
-      if (previewMetadataTimerRef.current !== null) {
-        window.clearTimeout(previewMetadataTimerRef.current);
-      }
-
-      if (sideCommitTimerRef.current.source !== null) {
-        window.clearTimeout(sideCommitTimerRef.current.source);
-      }
-
-      if (sideCommitTimerRef.current.target !== null) {
-        window.clearTimeout(sideCommitTimerRef.current.target);
-      }
-    };
-  }, []);
+  const {
+    schedulePreviewMetadataComputation,
+    invalidatePreviewMetadataComputation,
+    scheduleDiffRefresh,
+    flushSideCommit,
+    scheduleSideCommit,
+    clearSideCommitTimer,
+    applyDeferredBackendResultIfIdle,
+  } = useDiffEditorSync({
+    tabId: tab.id,
+    diffPayload: tab.diffPayload,
+    sourceTab,
+    targetTab,
+    sourceScroller,
+    targetScroller,
+    lineDiff,
+    setLineDiff,
+    lineDiffRef,
+    pendingScrollRestoreRef,
+    pendingCaretRestoreRef,
+    lastEditAtRef,
+    updateTab,
+    capturePanelScrollSnapshot,
+    captureFocusedCaretSnapshot,
+    normalizeLineDiffResult,
+    extractActualLines,
+    inferTrailingNewlineFromLines,
+    serializeLines,
+    findAlignedRowIndexByLineNumber,
+    buildInitialDiff,
+    dispatchDocumentUpdated,
+  });
 
   useEffect(() => bindScrollerViewport(sourceScroller, setSourceViewport), [sourceScroller]);
   useEffect(() => bindScrollerViewport(targetScroller, setTargetViewport), [targetScroller]);
@@ -1538,10 +1100,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         return;
       }
 
-      if (sideCommitTimerRef.current[panel] !== null) {
-        window.clearTimeout(sideCommitTimerRef.current[panel] as number);
-        sideCommitTimerRef.current[panel] = null;
-      }
+      clearSideCommitTimer(panel);
 
       await flushSideCommit(panel);
 
@@ -1560,7 +1119,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         console.error('Failed to save panel tab:', error);
       }
     },
-    [flushSideCommit, scheduleDiffRefresh, sourceTab, targetTab, updateTab]
+    [clearSideCommitTimer, flushSideCommit, scheduleDiffRefresh, sourceTab, targetTab, updateTab]
   );
 
   const handleSaveActivePanel = useCallback(async () => {
@@ -1580,10 +1139,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         textarea.focus({ preventScroll: true });
       }
 
-      if (sideCommitTimerRef.current[side] !== null) {
-        window.clearTimeout(sideCommitTimerRef.current[side] as number);
-        sideCommitTimerRef.current[side] = null;
-      }
+      clearSideCommitTimer(side);
 
       await flushSideCommit(side);
 
@@ -1607,7 +1163,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         console.warn(`Failed to ${action} panel tab:`, error);
       }
     },
-    [flushSideCommit, scheduleDiffRefresh, sourceTab, targetTab, updateTab]
+    [clearSideCommitTimer, flushSideCommit, scheduleDiffRefresh, sourceTab, targetTab, updateTab]
   );
 
   useEffect(() => {
@@ -1711,15 +1267,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
   const handlePanelInputBlur = useCallback(() => {
     window.requestAnimationFrame(() => {
-      const pendingResult = deferredBackendDiffRef.current;
-      if (!pendingResult || isInputEditingActive()) {
-        return;
-      }
-
-      deferredBackendDiffRef.current = null;
-      applyBackendDiffResult(pendingResult);
+      applyDeferredBackendResultIfIdle();
     });
-  }, [applyBackendDiffResult, isInputEditingActive]);
+  }, [applyDeferredBackendResultIfIdle]);
 
   const setPairHighlightsForSide = useCallback(
     (side: ActivePanel, nextHighlights: PairHighlightPosition[]) => {
@@ -2552,181 +2102,30 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const rowHeightPx = Math.max(22, Math.round(settings.fontSize * 1.6));
-  const trimmedSourceSearchQuery = sourceSearchQuery.trim();
-  const trimmedTargetSearchQuery = targetSearchQuery.trim();
-
-  const normalizeMatchedRows = useCallback((matchedRows: unknown, alignedLineCountValue: number) => {
-    if (!Array.isArray(matchedRows)) {
-      return [];
-    }
-
-    return matchedRows
-      .map((value) => (Number.isFinite(value) ? Math.floor(value) : -1))
-      .filter((value) => value >= 0 && value < alignedLineCountValue);
-  }, []);
-
-  const mapMatchedLineNumbersToRows = useCallback((matchedLineNumbers: unknown, lineNumbers: number[]) => {
-    const matchedLineNumberSet = new Set<number>(
-      Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
-    );
-    const matchedRows: number[] = [];
-    for (let rowIndex = 0; rowIndex < lineNumbers.length; rowIndex += 1) {
-      const lineNumber = lineNumbers[rowIndex] ?? 0;
-      if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
-        matchedRows.push(rowIndex);
-      }
-    }
-    return matchedRows;
-  }, []);
-
-  const queryPanelSearchMatchedRows = useCallback(
-    async (
-      id: string,
-      keyword: string,
-      alignedPresent: boolean[],
-      lineNumbers: number[],
-      alignedLineCountValue: number
-    ) => {
-      try {
-        const matchedRows = await invoke<number[]>('search_diff_panel_aligned_row_matches', {
-          id,
-          keyword,
-          alignedPresent,
-        });
-        return normalizeMatchedRows(matchedRows, alignedLineCountValue);
-      } catch {
-        // keep fallback path for older backend runtime
-      }
-
-      const matchedLineNumbers = await invoke<number[]>('search_diff_panel_line_matches', {
-        id,
-        keyword,
-      });
-      return mapMatchedLineNumbersToRows(matchedLineNumbers, lineNumbers);
-    },
-    [mapMatchedLineNumbersToRows, normalizeMatchedRows]
-  );
-
-  useEffect(() => {
-    if (!sourceTabId || !trimmedSourceSearchQuery) {
-      sourceSearchRequestSequenceRef.current = sourceSearchRequestSequenceRef.current + 1;
-      setSourceSearchMatchedRows([]);
-      return;
-    }
-
-    const currentSequence = sourceSearchRequestSequenceRef.current + 1;
-    sourceSearchRequestSequenceRef.current = currentSequence;
-
-    void queryPanelSearchMatchedRows(
-      sourceTabId,
-      trimmedSourceSearchQuery,
-      lineDiff.alignedSourcePresent,
-      sourceLineNumbers,
-      alignedLineCount
-    )
-      .then((matchedRows) => {
-        if (sourceSearchRequestSequenceRef.current !== currentSequence) {
-          return;
-        }
-
-        setSourceSearchMatchedRows(matchedRows);
-      })
-      .catch((error) => {
-        if (sourceSearchRequestSequenceRef.current !== currentSequence) {
-          return;
-        }
-
-        console.error('Failed to search source diff panel matches:', error);
-        setSourceSearchMatchedRows([]);
-      });
-  }, [
-    alignedLineCount,
-    lineDiff.alignedSourcePresent,
-    queryPanelSearchMatchedRows,
-    sourceLineNumbers,
+  const {
+    sourceSearchQuery,
+    setSourceSearchQuery,
+    targetSearchQuery,
+    setTargetSearchQuery,
+    sourceSearchMatchedRows,
+    targetSearchMatchedRows,
+    sourceSearchMatchedRow,
+    setSourceSearchMatchedRow,
+    targetSearchMatchedRow,
+    setTargetSearchMatchedRow,
+    sourceSearchCurrentRow,
+    targetSearchCurrentRow,
+    sourceSearchDisabled,
+    targetSearchDisabled,
+  } = useDiffEditorSearchNavigation({
     sourceTabId,
-    trimmedSourceSearchQuery,
-  ]);
-
-  useEffect(() => {
-    if (!targetTabId || !trimmedTargetSearchQuery) {
-      targetSearchRequestSequenceRef.current = targetSearchRequestSequenceRef.current + 1;
-      setTargetSearchMatchedRows([]);
-      return;
-    }
-
-    const currentSequence = targetSearchRequestSequenceRef.current + 1;
-    targetSearchRequestSequenceRef.current = currentSequence;
-
-    void queryPanelSearchMatchedRows(
-      targetTabId,
-      trimmedTargetSearchQuery,
-      lineDiff.alignedTargetPresent,
-      targetLineNumbers,
-      alignedLineCount
-    )
-      .then((matchedRows) => {
-        if (targetSearchRequestSequenceRef.current !== currentSequence) {
-          return;
-        }
-
-        setTargetSearchMatchedRows(matchedRows);
-      })
-      .catch((error) => {
-        if (targetSearchRequestSequenceRef.current !== currentSequence) {
-          return;
-        }
-
-        console.error('Failed to search target diff panel matches:', error);
-        setTargetSearchMatchedRows([]);
-      });
-  }, [
-    alignedLineCount,
-    lineDiff.alignedTargetPresent,
-    queryPanelSearchMatchedRows,
-    targetLineNumbers,
     targetTabId,
-    trimmedTargetSearchQuery,
-  ]);
-
-  const sourceSearchCurrentRow = useMemo(() => {
-    if (sourceSearchMatchedRow === null) {
-      return null;
-    }
-
-    return sourceSearchMatchedRows.includes(sourceSearchMatchedRow)
-      ? sourceSearchMatchedRow
-      : null;
-  }, [sourceSearchMatchedRow, sourceSearchMatchedRows]);
-  const targetSearchCurrentRow = useMemo(() => {
-    if (targetSearchMatchedRow === null) {
-      return null;
-    }
-
-    return targetSearchMatchedRows.includes(targetSearchMatchedRow)
-      ? targetSearchMatchedRow
-      : null;
-  }, [targetSearchMatchedRow, targetSearchMatchedRows]);
-
-  useEffect(() => {
-    if (sourceSearchMatchedRow === null) {
-      return;
-    }
-
-    if (!sourceSearchMatchedRows.includes(sourceSearchMatchedRow)) {
-      setSourceSearchMatchedRow(null);
-    }
-  }, [sourceSearchMatchedRow, sourceSearchMatchedRows]);
-
-  useEffect(() => {
-    if (targetSearchMatchedRow === null) {
-      return;
-    }
-
-    if (!targetSearchMatchedRows.includes(targetSearchMatchedRow)) {
-      setTargetSearchMatchedRow(null);
-    }
-  }, [targetSearchMatchedRow, targetSearchMatchedRows]);
+    alignedLineCount,
+    sourceAlignedPresent: lineDiff.alignedSourcePresent,
+    targetAlignedPresent: lineDiff.alignedTargetPresent,
+    sourceLineNumbers,
+    targetLineNumbers,
+  });
 
   useEffect(() => {
     const activeElement = document.activeElement;
@@ -2884,8 +2283,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
   const sourceDiffJumpDisabled = diffRowIndexes.length === 0 || !sourceTab;
   const targetDiffJumpDisabled = diffRowIndexes.length === 0 || !targetTab;
-  const sourceSearchDisabled = sourceSearchMatchedRows.length === 0;
-  const targetSearchDisabled = targetSearchMatchedRows.length === 0;
   const lineNumberColumnWidth = Math.max(
     44,
     String(Math.max(lineDiff.sourceLineCount, lineDiff.targetLineCount, 1)).length * 10 + 16
