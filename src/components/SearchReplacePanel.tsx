@@ -5292,7 +5292,7 @@ export function SearchReplacePanel() {
         >
           <button
             type="button"
-            className="flex h-2 w-full cursor-row-resize items-center justify-center rounded-t-lg text-muted-foreground/60 hover:bg-muted/40"
+            className="flex h-2 w-full cursor-row-resize items-center justify-center rounded-t-lg text-muted-foreground/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onMouseDown={handleResultPanelResizeMouseDown}
             title="Resize results panel"
             aria-label="Resize results panel"
