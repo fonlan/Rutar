@@ -5312,7 +5312,7 @@ export function SearchReplacePanel() {
                 {resultFilterKeyword && (
                   <button
                     type="button"
-                    className="-ml-5 mr-0.5 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="-ml-5 mr-0.5 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setResultFilterKeyword('');
@@ -5326,7 +5326,7 @@ export function SearchReplacePanel() {
                 )}
                 <button
                   type="button"
-                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-40"
+                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                   onClick={() => {
                     if (resultFilterStepLoadingDirection === 'prev') {
                       cancelPendingBatchLoad();
@@ -5353,7 +5353,7 @@ export function SearchReplacePanel() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-40"
+                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                   onClick={() => {
                     if (resultFilterStepLoadingDirection === 'next') {
                       cancelPendingBatchLoad();
@@ -5380,7 +5380,7 @@ export function SearchReplacePanel() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                  className="rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
                   onClick={() => {
                     if (isResultFilterSearching) {
                       requestStopResultFilterSearch();
