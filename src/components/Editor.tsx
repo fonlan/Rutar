@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { invoke } from '@tauri-apps/api/core';
-import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
@@ -36,6 +35,7 @@ import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
 import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
 import { useEditorContentSync } from './useEditorContentSync';
+import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
@@ -1324,242 +1324,32 @@ export function Editor({
     []
   );
 
-  const runEditorContextCommand = useCallback((action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
-    if (!contentRef.current) {
-      return false;
-    }
-
-    contentRef.current.focus();
-
-    if (normalizedRectangularSelection) {
-      if (action === 'copy') {
-        const text = normalizeSegmentText(getEditableText(contentRef.current));
-        const content = getRectangularSelectionText(text);
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(content).catch(() => {
-            console.warn('Failed to write rectangular selection to clipboard.');
-          });
-        }
-        return true;
-      }
-
-      if (action === 'cut') {
-        const text = normalizeSegmentText(getEditableText(contentRef.current));
-        const content = getRectangularSelectionText(text);
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(content).catch(() => {
-            console.warn('Failed to write rectangular selection to clipboard.');
-          });
-        }
-        void replaceRectangularSelection('');
-        return true;
-      }
-
-      if (action === 'delete') {
-        void replaceRectangularSelection('');
-        return true;
-      }
-
-      if (action === 'paste') {
-        return false;
-      }
-
-      if (action === 'selectAll') {
-        clearRectangularSelection();
-      }
-    }
-
-    if (action === 'selectAll') {
-      const text = getEditableText(contentRef.current);
-      setSelectionToCodeUnitOffsets(contentRef.current, 0, text.length);
-      return true;
-    }
-
-    if (action === 'paste') {
-      return false;
-    }
-
-    if (action === 'delete') {
-      const deleted = replaceSelectionWithText(contentRef.current, '');
-      if (deleted) {
-        dispatchEditorInputEvent(contentRef.current);
-      }
-      return deleted;
-    }
-
-    if (action === 'copy' || action === 'cut') {
-      const selected = getSelectedEditorText();
-      if (!selected) {
-        return false;
-      }
-
-      if (navigator.clipboard?.writeText) {
-        void navigator.clipboard.writeText(selected).catch(() => {
-          console.warn('Failed to write selection to clipboard.');
-        });
-      }
-
-      if (action === 'cut') {
-        const cut = replaceSelectionWithText(contentRef.current, '');
-        if (cut) {
-          dispatchEditorInputEvent(contentRef.current);
-        }
-        return cut;
-      }
-
-      return true;
-    }
-
-    return false;
-  }, [
-    clearRectangularSelection,
+  const {
+    tryPasteTextIntoEditor,
+    isEditorContextMenuActionDisabled,
+    handleEditorContextMenuAction,
+  } = useEditorContextMenuActions({
+    contentRef,
+    editorContextMenuHasSelection: !!editorContextMenu?.hasSelection,
+    lineNumberMultiSelection,
+    normalizedRectangularSelection,
+    setEditorContextMenu,
+    clearLineNumberMultiSelection,
+    buildLineNumberSelectionRangeText,
+    applyLineNumberMultiSelectionEdit,
+    getRectangularSelectionTextFromBackend,
+    replaceRectangularSelection,
+    syncSelectionAfterInteraction,
     getRectangularSelectionText,
     getSelectedEditorText,
-    normalizedRectangularSelection,
-    replaceRectangularSelection,
-  ]);
-
-  const tryPasteTextIntoEditor = useCallback(
-    (text: string) => {
-      if (!contentRef.current) {
-        return false;
-      }
-
-      const inserted = replaceSelectionWithText(contentRef.current, text);
-      if (!inserted) {
-        return false;
-      }
-
-      dispatchEditorInputEvent(contentRef.current);
-      syncSelectionAfterInteraction();
-      window.requestAnimationFrame(() => {
-        handleScroll();
-        window.requestAnimationFrame(() => {
-          handleScroll();
-        });
-      });
-      return true;
-    },
-    [handleScroll, syncSelectionAfterInteraction]
-  );
-
-  const isEditorContextMenuActionDisabled = useCallback(
-    (action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
-      const hasSelection = !!editorContextMenu?.hasSelection;
-
-      switch (action) {
-        case 'copy':
-          return !hasSelection;
-        case 'cut':
-        case 'delete':
-          return !hasSelection;
-        case 'paste':
-          return false;
-        case 'selectAll':
-          return false;
-        default:
-          return false;
-      }
-    },
-    [editorContextMenu?.hasSelection]
-  );
-
-  const handleEditorContextMenuAction = useCallback(
-    async (action: 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll') => {
-      if (isEditorContextMenuActionDisabled(action)) {
-        setEditorContextMenu(null);
-        return;
-      }
-
-      if ((action === 'copy' || action === 'cut' || action === 'delete') && lineNumberMultiSelection.length > 0) {
-        if (action === 'copy') {
-          if (contentRef.current) {
-            const text = normalizeSegmentText(getEditableText(contentRef.current));
-            const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
-            if (selected && navigator.clipboard?.writeText) {
-              void navigator.clipboard.writeText(selected).catch(() => {
-                console.warn('Failed to write line selection to clipboard.');
-              });
-            }
-          }
-
-          setEditorContextMenu(null);
-          return;
-        }
-
-        await applyLineNumberMultiSelectionEdit(action === 'cut' ? 'cut' : 'delete');
-        setEditorContextMenu(null);
-        return;
-      }
-
-      if (action === 'selectAll' && lineNumberMultiSelection.length > 0) {
-        clearLineNumberMultiSelection();
-      }
-
-      if (action === 'paste') {
-        let pasted = false;
-
-        try {
-          const clipboardText = await readClipboardText();
-          pasted = tryPasteTextIntoEditor(clipboardText);
-        } catch (error) {
-          console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
-        }
-
-        if (!pasted) {
-          const commandSucceeded = document.execCommand('paste');
-          if (!commandSucceeded) {
-            console.warn('Paste command blocked. Use Ctrl+V in editor.');
-          }
-        }
-
-        setEditorContextMenu(null);
-        return;
-      }
-
-      if ((action === 'copy' || action === 'cut') && normalizedRectangularSelection) {
-        const selected = await getRectangularSelectionTextFromBackend();
-        if (!selected) {
-          setEditorContextMenu(null);
-          return;
-        }
-
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(selected).catch(() => {
-            console.warn('Failed to write rectangular selection to clipboard.');
-          });
-        }
-
-        if (action === 'cut') {
-          void replaceRectangularSelection('');
-          syncSelectionAfterInteraction();
-        }
-
-        setEditorContextMenu(null);
-        return;
-      }
-
-      const succeeded = runEditorContextCommand(action);
-
-      setEditorContextMenu(null);
-      if (succeeded) {
-        syncSelectionAfterInteraction();
-      }
-    },
-    [
-      applyLineNumberMultiSelectionEdit,
-      buildLineNumberSelectionRangeText,
-      clearLineNumberMultiSelection,
-      getRectangularSelectionTextFromBackend,
-      isEditorContextMenuActionDisabled,
-      lineNumberMultiSelection,
-      normalizedRectangularSelection,
-      replaceRectangularSelection,
-      runEditorContextCommand,
-      syncSelectionAfterInteraction,
-      tryPasteTextIntoEditor,
-    ]
-  );
+    clearRectangularSelection,
+    normalizeSegmentText,
+    getEditableText,
+    setSelectionToCodeUnitOffsets,
+    replaceSelectionWithText,
+    dispatchEditorInputEvent,
+    handleScroll,
+  });
 
   const hasContextBookmark =
     editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber);
