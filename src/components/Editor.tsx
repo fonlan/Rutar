@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { VariableSizeList as List } from 'react-window';
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -15,8 +14,10 @@ import {
   type EditorSubmenuKey,
 } from './EditorContextMenu';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
+import { EditorBackdropLayer } from './EditorBackdropLayer';
 import { EditorLineNumberGutter } from './EditorLineNumberGutter';
 import { editorTestUtils } from './editorUtils';
+import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 
 interface SyntaxToken {
   type?: string;
@@ -230,7 +231,6 @@ export function Editor({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
   const lineNumberListRef = useRef<any>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
   const requestTimeout = useRef<any>(null);
   const editTimeout = useRef<any>(null);
   const isScrollbarDragRef = useRef(false);
@@ -312,126 +312,41 @@ export function Editor({
   const usePlainLineRendering = tab.largeFileMode || tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isHugeEditableMode = tab.lineCount >= LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD;
   const isPairHighlightEnabled = !usePlainLineRendering;
-  const deleteLabel = tr('editor.context.delete');
-  const selectAllLabel = tr('editor.context.selectAll');
-  const copyLabel = tr('toolbar.copy');
-  const cutLabel = tr('toolbar.cut');
-  const pasteLabel = tr('toolbar.paste');
-  const selectCurrentLineLabel = tr('editor.context.selectCurrentLine');
-  const addCurrentLineToBookmarkLabel = tr('editor.context.addCurrentLineToBookmark');
-  const editMenuLabel = tr('editor.context.edit');
-  const sortMenuLabel = tr('editor.context.sort');
-  const convertMenuLabel = tr('editor.context.convert');
-  const convertBase64EncodeLabel = tr('editor.context.convert.base64Encode');
-  const convertBase64DecodeLabel = tr('editor.context.convert.base64Decode');
-  const copyBase64EncodeResultLabel = tr('editor.context.convert.copyBase64EncodeResult');
-  const copyBase64DecodeResultLabel = tr('editor.context.convert.copyBase64DecodeResult');
-  const base64DecodeFailedToastLabel = tr('editor.context.convert.base64DecodeFailed');
-  const bookmarkMenuLabel = tr('bookmark.menu.title');
-  const addBookmarkLabel = tr('bookmark.add');
-  const removeBookmarkLabel = tr('bookmark.remove');
-  const submenuHorizontalPositionClassName =
-    editorContextMenu?.submenuDirection === 'left'
-      ? 'right-full mr-1 before:-right-2'
-      : 'left-full ml-1 before:-left-2';
-  const editSubmenuPositionClassName =
-    submenuVerticalAlignments.edit === 'bottom'
-      ? `${submenuHorizontalPositionClassName} bottom-0`
-      : `${submenuHorizontalPositionClassName} top-0`;
-  const sortSubmenuPositionClassName =
-    submenuVerticalAlignments.sort === 'bottom'
-      ? `${submenuHorizontalPositionClassName} bottom-0`
-      : `${submenuHorizontalPositionClassName} top-0`;
-  const convertSubmenuPositionClassName =
-    submenuVerticalAlignments.convert === 'bottom'
-      ? `${submenuHorizontalPositionClassName} bottom-0`
-      : `${submenuHorizontalPositionClassName} top-0`;
-  const bookmarkSubmenuPositionClassName =
-    submenuVerticalAlignments.bookmark === 'bottom'
-      ? `${submenuHorizontalPositionClassName} bottom-0`
-      : `${submenuHorizontalPositionClassName} top-0`;
-  const editSubmenuStyle =
-    submenuMaxHeights.edit === null
-      ? undefined
-      : {
-          maxHeight: `${submenuMaxHeights.edit}px`,
-          overflowY: 'auto' as const,
-        };
-  const sortSubmenuStyle =
-    submenuMaxHeights.sort === null
-      ? undefined
-      : {
-          maxHeight: `${submenuMaxHeights.sort}px`,
-          overflowY: 'auto' as const,
-        };
-  const convertSubmenuStyle =
-    submenuMaxHeights.convert === null
-      ? undefined
-      : {
-          maxHeight: `${submenuMaxHeights.convert}px`,
-          overflowY: 'auto' as const,
-        };
-  const bookmarkSubmenuStyle =
-    submenuMaxHeights.bookmark === null
-      ? undefined
-      : {
-          maxHeight: `${submenuMaxHeights.bookmark}px`,
-          overflowY: 'auto' as const,
-        };
-  const cleanupMenuItems = useMemo(
-    () => [
-      {
-        action: 'remove_empty_lines' as EditorCleanupAction,
-        label: tr('editor.context.cleanup.removeEmptyLines'),
-      },
-      {
-        action: 'remove_duplicate_lines' as EditorCleanupAction,
-        label: tr('editor.context.cleanup.removeDuplicateLines'),
-      },
-      {
-        action: 'trim_leading_whitespace' as EditorCleanupAction,
-        label: tr('editor.context.cleanup.trimLeadingWhitespace'),
-      },
-      {
-        action: 'trim_trailing_whitespace' as EditorCleanupAction,
-        label: tr('editor.context.cleanup.trimTrailingWhitespace'),
-      },
-      {
-        action: 'trim_surrounding_whitespace' as EditorCleanupAction,
-        label: tr('editor.context.cleanup.trimSurroundingWhitespace'),
-      },
-    ],
-    [tr]
-  );
-  const sortMenuItems = useMemo(
-    () => [
-      {
-        action: 'sort_lines_ascending' as EditorCleanupAction,
-        label: tr('editor.context.sort.ascending'),
-      },
-      {
-        action: 'sort_lines_ascending_ignore_case' as EditorCleanupAction,
-        label: tr('editor.context.sort.ascendingIgnoreCase'),
-      },
-      {
-        action: 'sort_lines_descending' as EditorCleanupAction,
-        label: tr('editor.context.sort.descending'),
-      },
-      {
-        action: 'sort_lines_descending_ignore_case' as EditorCleanupAction,
-        label: tr('editor.context.sort.descendingIgnoreCase'),
-      },
-      {
-        action: 'sort_lines_pinyin_ascending' as EditorCleanupAction,
-        label: tr('editor.context.sort.pinyinAscending'),
-      },
-      {
-        action: 'sort_lines_pinyin_descending' as EditorCleanupAction,
-        label: tr('editor.context.sort.pinyinDescending'),
-      },
-    ],
-    [tr]
-  );
+  const {
+    deleteLabel,
+    selectAllLabel,
+    copyLabel,
+    cutLabel,
+    pasteLabel,
+    selectCurrentLineLabel,
+    addCurrentLineToBookmarkLabel,
+    editMenuLabel,
+    sortMenuLabel,
+    convertMenuLabel,
+    convertBase64EncodeLabel,
+    convertBase64DecodeLabel,
+    copyBase64EncodeResultLabel,
+    copyBase64DecodeResultLabel,
+    base64DecodeFailedToastLabel,
+    bookmarkMenuLabel,
+    addBookmarkLabel,
+    removeBookmarkLabel,
+    editSubmenuPositionClassName,
+    sortSubmenuPositionClassName,
+    convertSubmenuPositionClassName,
+    bookmarkSubmenuPositionClassName,
+    editSubmenuStyle,
+    sortSubmenuStyle,
+    convertSubmenuStyle,
+    bookmarkSubmenuStyle,
+    cleanupMenuItems,
+    sortMenuItems,
+  } = useEditorContextMenuConfig({
+    tr,
+    submenuDirection: editorContextMenu?.submenuDirection,
+    submenuVerticalAlignments,
+    submenuMaxHeights,
+  });
 
   const addBookmark = useStore((state) => state.addBookmark);
   const removeBookmark = useStore((state) => state.removeBookmark);
@@ -5225,97 +5140,43 @@ export function Editor({
         />
       )}
 
-      {width > 0 && height > 0 && (
-        <div
-          ref={backdropRef}
-          className="absolute top-0 bottom-0 right-0 z-10 overflow-hidden pointer-events-none"
-          style={{
-            left: `${contentViewportLeftPx}px`,
-            width: `${contentViewportWidth}px`,
-          }}
-        >
-          <List
-            ref={listRef}
-            height={height}
-            width={contentViewportWidth}
-            itemCount={tab.lineCount}
-            itemSize={getListItemSize}
-            estimatedItemSize={itemSize}
-            onItemsRendered={onItemsRendered}
-            overscanCount={20}
-            style={{
-              overflowX: 'hidden',
-              overflowY: 'hidden',
-              paddingBottom: contentBottomSafetyPadding,
-            }}
-          >
-            {({ index, style }) => {
-              const relativeIndex = isHugeEditableMode
-                ? index - editableSegment.startLine
-                : usePlainLineRendering
-                ? index - plainStartLine
-                : index - startLine;
-              const plainRelativeIndex = index - plainStartLine;
-              const lineTokensArr =
-                !usePlainLineRendering && relativeIndex >= 0 && relativeIndex < lineTokens.length
-                  ? lineTokens[relativeIndex]
-                  : [];
-              const plainLine =
-                isHugeEditableMode && relativeIndex >= 0 && relativeIndex < editableSegmentLines.length
-                  ? editableSegmentLines[relativeIndex]
-                  : usePlainLineRendering && plainRelativeIndex >= 0 && plainRelativeIndex < plainLines.length
-                  ? plainLines[plainRelativeIndex]
-                  : '';
-
-              return (
-                <div
-                  ref={(element) => measureRenderedLineHeight(index, element)}
-                  style={{
-                    ...style,
-                    width: wordWrap ? '100%' : 'max-content',
-                    minWidth:
-                      !wordWrap && isHugeEditableMode
-                        ? `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`
-                        : '100%',
-                    paddingLeft: contentTextPadding,
-                    paddingRight: contentTextRightPadding,
-                    fontFamily: settings.fontFamily,
-                    fontSize: `${renderedFontSizePx}px`,
-                    lineHeight: `${lineHeightPx}px`,
-                  }}
-                className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
-                    diffHighlightLineSet.has(index + 1)
-                      ? 'bg-red-500/10 dark:bg-red-500/14'
-                      : ''
-                  } ${
-                    outlineFlashLine === index + 1
-                      ? 'bg-primary/15 dark:bg-primary/20'
-                      : lineNumberMultiSelectionSet.has(index + 1)
-                      ? 'bg-blue-500/25 dark:bg-blue-500/20'
-                      : highlightCurrentLine && activeLineNumber === index + 1
-                      ? 'bg-violet-300/35 dark:bg-violet-500/25'
-                      : ''
-                  }`}
-                >
-                  <div
-                    className={wordWrap ? 'min-w-0 flex-1' : 'shrink-0'}
-                    style={{
-                      whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-                      tabSize,
-                    }}
-                  >
-                    {usePlainLineRendering
-                      ? renderHighlightedPlainLine(plainLine, index + 1)
-                      : lineTokensArr.length > 0
-                      ? renderHighlightedTokens(lineTokensArr, index + 1)
-                      : <span className="opacity-10 italic">...</span>}
-                  </div>
-                </div>
-              );
-            }}
-          </List>
-        </div>
-      )}
+      <EditorBackdropLayer
+        visible={true}
+        width={width}
+        height={height}
+        contentViewportLeftPx={contentViewportLeftPx}
+        contentViewportWidth={contentViewportWidth}
+        contentBottomSafetyPadding={contentBottomSafetyPadding}
+        tabLineCount={tab.lineCount}
+        itemSize={itemSize}
+        listRef={listRef}
+        getListItemSize={getListItemSize}
+        onItemsRendered={onItemsRendered}
+        isHugeEditableMode={isHugeEditableMode}
+        editableSegmentStartLine={editableSegment.startLine}
+        usePlainLineRendering={usePlainLineRendering}
+        plainStartLine={plainStartLine}
+        startLine={startLine}
+        lineTokens={lineTokens}
+        editableSegmentLines={editableSegmentLines}
+        plainLines={plainLines}
+        measureRenderedLineHeight={measureRenderedLineHeight}
+        wordWrap={wordWrap}
+        contentTextPadding={contentTextPadding}
+        contentTextRightPadding={contentTextRightPadding}
+        fontFamily={settings.fontFamily}
+        renderedFontSizePx={renderedFontSizePx}
+        lineHeightPx={lineHeightPx}
+        hugeScrollableContentWidth={hugeScrollableContentWidth}
+        diffHighlightLineSet={diffHighlightLineSet}
+        outlineFlashLine={outlineFlashLine}
+        lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
+        highlightCurrentLine={highlightCurrentLine}
+        activeLineNumber={activeLineNumber}
+        tabSize={tabSize}
+        renderHighlightedPlainLine={renderHighlightedPlainLine}
+        renderHighlightedTokens={renderHighlightedTokens}
+      />
 
       <EditorLineNumberGutter
         visible={showLineNumbers}
