@@ -48,6 +48,7 @@ import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSel
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
+import { useEditorPointerFinalizeEffects } from './useEditorPointerFinalizeEffects';
 import { useEditorPointerInteractions } from './useEditorPointerInteractions';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
@@ -1763,29 +1764,10 @@ export function Editor({
   });
 
 
-  useEffect(() => {
-    window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
-    window.addEventListener('pointercancel', endScrollbarDragSelectionGuard);
-    window.addEventListener('blur', endScrollbarDragSelectionGuard);
-
-    return () => {
-      window.removeEventListener('pointerup', endScrollbarDragSelectionGuard);
-      window.removeEventListener('pointercancel', endScrollbarDragSelectionGuard);
-      window.removeEventListener('blur', endScrollbarDragSelectionGuard);
-    };
-  }, [endScrollbarDragSelectionGuard]);
-
-  useEffect(() => {
-    window.addEventListener('pointerup', finalizePointerSelectionInteraction);
-    window.addEventListener('pointercancel', finalizePointerSelectionInteraction);
-    window.addEventListener('blur', finalizePointerSelectionInteraction);
-
-    return () => {
-      window.removeEventListener('pointerup', finalizePointerSelectionInteraction);
-      window.removeEventListener('pointercancel', finalizePointerSelectionInteraction);
-      window.removeEventListener('blur', finalizePointerSelectionInteraction);
-    };
-  }, [finalizePointerSelectionInteraction]);
+  useEditorPointerFinalizeEffects({
+    endScrollbarDragSelectionGuard,
+    finalizePointerSelectionInteraction,
+  });
 
   useEditorGlobalPointerEffects({
     rectangularAutoScrollEdgePx: RECTANGULAR_AUTO_SCROLL_EDGE_PX,
