@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { invoke } from '@tauri-apps/api/core';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
@@ -43,6 +42,7 @@ import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
+import { useEditorPointerInteractions } from './useEditorPointerInteractions';
 import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
@@ -76,7 +76,6 @@ const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
 const EMPTY_BOOKMARKS: number[] = [];
 const HYPERLINK_UNDERLINE_CLASS =
   'underline decoration-sky-500/80 underline-offset-2 text-sky-600 dark:text-sky-300';
-const HYPERLINK_HOVER_HINT = 'Ctrl+左键打开';
 
 export { editorTestUtils } from './editorUtils';
 
@@ -631,247 +630,35 @@ export function Editor({
     },
     [estimateDropOffsetForTextareaPoint]
   );
-
-  const handleEditorPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const currentElement = contentRef.current;
-      if (!currentElement || !isTextareaInputElement(currentElement)) {
-        return;
-      }
-
-      if (isPointerOnScrollbar(currentElement, event.clientX, event.clientY)) {
-        if (currentElement.style.cursor) {
-          currentElement.style.cursor = '';
-        }
-        if (currentElement.title) {
-          currentElement.title = '';
-        }
-        return;
-      }
-
-      const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
-      const targetUrl = getHttpUrlAtTextOffset(currentElement.value, pointerLogicalOffset);
-      const nextCursor = targetUrl ? 'pointer' : '';
-      const nextTitle = targetUrl ? HYPERLINK_HOVER_HINT : '';
-      if (currentElement.style.cursor !== nextCursor) {
-        currentElement.style.cursor = nextCursor;
-      }
-      if (currentElement.title !== nextTitle) {
-        currentElement.title = nextTitle;
-      }
-    },
-    [getHttpUrlAtTextOffset, resolveDropOffsetFromPointer]
-  );
-
-  const handleEditorPointerLeave = useCallback(() => {
-    if (!contentRef.current) {
-      return;
-    }
-
-    if (contentRef.current.style.cursor) {
-      contentRef.current.style.cursor = '';
-    }
-    if (contentRef.current.title) {
-      contentRef.current.title = '';
-    }
-  }, []);
-
-  const handleEditorPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
-        setLineNumberMultiSelection((prev) => (prev.length === 0 ? prev : []));
-      }
-      const currentElement = contentRef.current;
-      const pointerOnEditorScrollbar =
-        currentElement &&
-        isTextareaInputElement(currentElement) &&
-        isPointerOnScrollbar(currentElement, event.clientX, event.clientY);
-
-      if (
-        currentElement &&
-        isTextareaInputElement(currentElement) &&
-        event.button === 0 &&
-        !pointerOnEditorScrollbar &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.ctrlKey || event.metaKey)
-      ) {
-        const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
-        const targetUrl = getHttpUrlAtTextOffset(getEditableText(currentElement), pointerLogicalOffset);
-        if (targetUrl) {
-          event.preventDefault();
-          event.stopPropagation();
-          void openUrl(targetUrl).catch((error) => {
-            console.error('Failed to open hyperlink from editor:', error);
-          });
-          return;
-        }
-      }
-
-      if (
-        currentElement &&
-        isTextareaInputElement(currentElement) &&
-        event.button === 2 &&
-        rectangularSelectionRef.current
-      ) {
-        textDragMoveStateRef.current = null;
-        pointerSelectionActiveRef.current = false;
-        setPointerSelectionNativeHighlightMode(false);
-        verticalSelectionRef.current = null;
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-
-      if (
-        currentElement &&
-        isTextareaInputElement(currentElement) &&
-        event.button === 0 &&
-        !pointerOnEditorScrollbar &&
-        !event.altKey &&
-        !event.shiftKey &&
-        !event.metaKey &&
-        !event.ctrlKey
-      ) {
-        const selectionOffsets = getSelectionOffsetsInElement(currentElement);
-        if (selectionOffsets && !selectionOffsets.isCollapsed) {
-          const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
-          if (pointerLogicalOffset >= selectionOffsets.start && pointerLogicalOffset <= selectionOffsets.end) {
-            textDragMoveStateRef.current = {
-              pointerId: event.pointerId,
-              startClientX: event.clientX,
-              startClientY: event.clientY,
-              sourceStart: selectionOffsets.start,
-              sourceEnd: selectionOffsets.end,
-              sourceText: currentElement.value.slice(selectionOffsets.start, selectionOffsets.end),
-              baseText: currentElement.value,
-              dropOffset: pointerLogicalOffset,
-              dragging: false,
-            };
-          } else {
-            textDragMoveStateRef.current = null;
-          }
-        } else {
-          textDragMoveStateRef.current = null;
-        }
-      } else {
-        textDragMoveStateRef.current = null;
-      }
-
-      pointerSelectionActiveRef.current = false;
-      setPointerSelectionNativeHighlightMode(false);
-      verticalSelectionRef.current = null;
-
-      if (
-        event.altKey &&
-        event.shiftKey &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        contentRef.current
-      ) {
-        event.stopPropagation();
-        const isTextarea = isTextareaInputElement(contentRef.current);
-        if (!isTextarea) {
-          event.preventDefault();
-        }
-
-        const clientX = event.clientX;
-        const clientY = event.clientY;
-
-        contentRef.current.focus();
-        rectangularSelectionPointerActiveRef.current = true;
-        rectangularSelectionLastClientPointRef.current = { x: clientX, y: clientY };
-
-        if (isTextarea) {
-          window.requestAnimationFrame(() => {
-            if (!rectangularSelectionPointerActiveRef.current || !contentRef.current) {
-              return;
-            }
-
-            const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, clientX, clientY);
-            if (logicalOffset === null) {
-              return;
-            }
-
-            const text = normalizeSegmentText(getEditableText(contentRef.current));
-            const position = codeUnitOffsetToLineColumn(text, logicalOffset);
-            const line = Math.max(1, position.line);
-            const column = Math.max(1, position.column + 1);
-            const next: RectangularSelectionState = {
-              anchorLine: line,
-              anchorColumn: column,
-              focusLine: line,
-              focusColumn: column,
-            };
-
-            rectangularSelectionRef.current = next;
-            setRectangularSelection(next);
-          });
-
-          return;
-        }
-
-        const logicalOffset = getLogicalOffsetFromPoint(contentRef.current, clientX, clientY);
-        if (logicalOffset !== null) {
-          const text = normalizeSegmentText(getEditableText(contentRef.current));
-          const position = codeUnitOffsetToLineColumn(text, logicalOffset);
-          const line = Math.max(1, position.line);
-          const column = Math.max(1, position.column + 1);
-          const next: RectangularSelectionState = {
-            anchorLine: line,
-            anchorColumn: column,
-            focusLine: line,
-            focusColumn: column,
-          };
-
-          rectangularSelectionRef.current = next;
-          setRectangularSelection(next);
-        }
-        return;
-      }
-
-      rectangularSelectionPointerActiveRef.current = false;
-      rectangularSelectionLastClientPointRef.current = null;
-      rectangularSelectionRef.current = null;
-      setRectangularSelection(null);
-
-      if (!contentRef.current) {
-        return;
-      }
-
-      const editorElement = contentRef.current;
-      if (!pointerOnEditorScrollbar) {
-        return;
-      }
-
-      textDragMoveStateRef.current = null;
-      isScrollbarDragRef.current = true;
-      editorElement.style.userSelect = 'none';
-      editorElement.style.webkitUserSelect = 'none';
-    },
-    [
-      getHttpUrlAtTextOffset,
-      resolveDropOffsetFromPointer,
-      setPointerSelectionNativeHighlightMode,
-    ]
-  );
-
-  const handleHugeScrollablePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isHugeEditableMode || !scrollContainerRef.current) {
-      return;
-    }
-
-    if (!isPointerOnScrollbar(scrollContainerRef.current, event.clientX, event.clientY)) {
-      return;
-    }
-
-    textDragMoveStateRef.current = null;
-    isScrollbarDragRef.current = true;
-    if (contentRef.current) {
-      contentRef.current.style.userSelect = 'none';
-      contentRef.current.style.webkitUserSelect = 'none';
-    }
-  }, [isHugeEditableMode]);
+  const {
+    handleEditorPointerMove,
+    handleEditorPointerLeave,
+    handleEditorPointerDown,
+    handleHugeScrollablePointerDown,
+  } = useEditorPointerInteractions({
+    isHugeEditableMode,
+    contentRef,
+    scrollContainerRef,
+    textDragMoveStateRef,
+    isScrollbarDragRef,
+    pointerSelectionActiveRef,
+    verticalSelectionRef,
+    rectangularSelectionRef,
+    rectangularSelectionPointerActiveRef,
+    rectangularSelectionLastClientPointRef,
+    setLineNumberMultiSelection,
+    setPointerSelectionNativeHighlightMode,
+    setRectangularSelection,
+    isPointerOnScrollbar,
+    isTextareaInputElement,
+    resolveDropOffsetFromPointer,
+    getHttpUrlAtTextOffset,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    getLogicalOffsetFromPoint,
+    normalizeSegmentText,
+    codeUnitOffsetToLineColumn,
+  });
   const { editableSegmentLines, hugeScrollableContentWidth, syncHugeScrollableContentWidth } =
     useEditorHugeEditableLayout({
       isHugeEditableMode,
