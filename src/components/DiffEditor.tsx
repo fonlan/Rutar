@@ -8,7 +8,6 @@ import {
   useState,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { saveTab } from '@/lib/tabClose';
 import { cn } from '@/lib/utils';
@@ -22,6 +21,7 @@ import { useDiffEditorMenusAndClipboard } from './useDiffEditorMenusAndClipboard
 import { useDiffEditorPairHighlight } from './useDiffEditorPairHighlight';
 import { useDiffEditorPanelScrollSync } from './useDiffEditorPanelScrollSync';
 import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
+import { useDiffEditorSplitter } from './useDiffEditorSplitter';
 import { useDiffEditorSync } from './useDiffEditorSync';
 import { useExternalPasteEvent } from './useExternalPasteEvent';
 
@@ -855,13 +855,11 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const setActiveDiffPanel = useStore((state) => state.setActiveDiffPanel);
   const persistedActivePanel = useStore((state) => state.activeDiffPanelByTab[tab.id]);
   const { ref: viewportRef, width } = useResizeObserver<HTMLDivElement>();
-  const [splitRatio, setSplitRatio] = useState(DEFAULT_RATIO);
   const [activePanel, setActivePanel] = useState<ActivePanel>(
     persistedActivePanel === 'target' ? 'target' : 'source'
   );
   const [lineDiff, setLineDiff] = useState<LineDiffComparisonResult>(() => buildInitialDiff(tab.diffPayload));
 
-  const dragStateRef = useRef<{ pointerId: number; startX: number; startRatio: number } | null>(null);
   const lineDiffRef = useRef(lineDiff);
   const pendingScrollRestoreRef = useRef<PanelScrollSnapshot | null>(null);
   const pendingCaretRestoreRef = useRef<CaretSnapshot | null>(null);
@@ -898,6 +896,18 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     (side: ActivePanel) => (side === 'source' ? sourceDisplayName : targetDisplayName),
     [sourceDisplayName, targetDisplayName]
   );
+  const {
+    leftWidthPx,
+    rightWidthPx,
+    separatorLeftPx,
+    handleSplitterPointerDown,
+  } = useDiffEditorSplitter({
+    width,
+    defaultRatio: DEFAULT_RATIO,
+    minPanelWidthPx: MIN_PANEL_WIDTH_PX,
+    splitterWidthPx: SPLITTER_WIDTH_PX,
+    clampRatio,
+  });
 
   const {
     sourceViewport,
@@ -1115,56 +1125,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [handleSaveActivePanel]);
-
-  const handleSplitterPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0 || width <= 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      dragStateRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startRatio: splitRatio,
-      };
-    },
-    [splitRatio, width]
-  );
-
-  useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId || width <= 0) {
-        return;
-      }
-
-      const deltaX = event.clientX - dragState.startX;
-      const nextRatio = clampRatio(dragState.startRatio + deltaX / width);
-      setSplitRatio(nextRatio);
-    };
-
-    const handlePointerEnd = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) {
-        return;
-      }
-
-      dragStateRef.current = null;
-    };
-
-    window.addEventListener('pointermove', handlePointerMove, true);
-    window.addEventListener('pointerup', handlePointerEnd, true);
-    window.addEventListener('pointercancel', handlePointerEnd, true);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove, true);
-      window.removeEventListener('pointerup', handlePointerEnd, true);
-      window.removeEventListener('pointercancel', handlePointerEnd, true);
-    };
-  }, [width]);
 
   const handlePanelInputBlur = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -1521,17 +1481,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     setActivePanel,
     getLineSelectionRange,
   });
-
-  const availableWidth = Math.max(0, width);
-  const contentWidth = Math.max(0, availableWidth - SPLITTER_WIDTH_PX);
-  const minimumPairWidth = MIN_PANEL_WIDTH_PX * 2;
-  const rawLeftWidth = Math.round(contentWidth * splitRatio);
-  const leftWidthPx =
-    contentWidth <= minimumPairWidth
-      ? Math.max(0, Math.round(contentWidth / 2))
-      : Math.max(MIN_PANEL_WIDTH_PX, Math.min(contentWidth - MIN_PANEL_WIDTH_PX, rawLeftWidth));
-  const rightWidthPx = Math.max(0, contentWidth - leftWidthPx);
-  const separatorLeftPx = leftWidthPx;
 
   const alignedLineCount = Math.max(
     1,
