@@ -42,6 +42,7 @@ import { useEditorLayoutConfig } from './useEditorLayoutConfig';
 import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
 import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
 import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
+import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
 const MAX_LINE_RANGE = 2147483647;
@@ -163,7 +164,6 @@ export function Editor({
   const requestTimeout = useRef<any>(null);
   const editTimeout = useRef<any>(null);
   const isScrollbarDragRef = useRef(false);
-  const rowHeightsRef = useRef<Map<number, number>>(new Map());
   const editorContextMenuRef = useRef<HTMLDivElement>(null);
   const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
     edit: null,
@@ -295,54 +295,20 @@ export function Editor({
     : tab.largeFileMode
     ? LARGE_FILE_FETCH_BUFFER_LINES
     : DEFAULT_FETCH_BUFFER_LINES;
-
-  const getListItemSize = useCallback(
-    (index: number) => {
-      if (!wordWrap) {
-        return itemSize;
-      }
-
-      return rowHeightsRef.current.get(index) ?? itemSize;
-    },
-    [itemSize, wordWrap]
-  );
-
-  const getLineNumberListItemSize = useCallback(
-    (index: number) => {
-      if (index >= tab.lineCount) {
-        return lineNumberBottomSpacerHeightPx;
-      }
-
-      return getListItemSize(index);
-    },
-    [getListItemSize, lineNumberBottomSpacerHeightPx, tab.lineCount]
-  );
-
-  const measureRenderedLineHeight = useCallback(
-    (index: number, element: HTMLDivElement | null) => {
-      if (!wordWrap || !element) {
-        return;
-      }
-
-      const measuredHeight = Math.max(itemSize, Math.round(element.scrollHeight));
-      const previousHeight = rowHeightsRef.current.get(index);
-
-      if (previousHeight !== undefined && Math.abs(previousHeight - measuredHeight) < 0.5) {
-        return;
-      }
-
-      rowHeightsRef.current.set(index, measuredHeight);
-      listRef.current?.resetAfterIndex?.(index);
-      lineNumberListRef.current?.resetAfterIndex?.(index);
-    },
-    [itemSize, wordWrap]
-  );
-
-  useEffect(() => {
-    rowHeightsRef.current.clear();
-    listRef.current?.resetAfterIndex?.(0, true);
-    lineNumberListRef.current?.resetAfterIndex?.(0, true);
-  }, [lineHeightPx, renderedFontSizePx, settings.fontFamily, tab.id, tab.lineCount, width, wordWrap, showLineNumbers]);
+  const { getListItemSize, getLineNumberListItemSize, measureRenderedLineHeight } = useEditorRowMeasurement({
+    itemSize,
+    wordWrap,
+    lineNumberBottomSpacerHeightPx,
+    tabLineCount: tab.lineCount,
+    lineHeightPx,
+    renderedFontSizePx,
+    fontFamily: settings.fontFamily,
+    tabId: tab.id,
+    width,
+    showLineNumbers,
+    listRef,
+    lineNumberListRef,
+  });
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
