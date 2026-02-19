@@ -90,12 +90,13 @@ describe("SettingsModal", () => {
 
     render(<SettingsModal />);
 
-    const languageSelect = screen.getByDisplayValue("English (US)");
+    const languageSelect = screen.getByRole("combobox", { name: "Language" });
     fireEvent.change(languageSelect, { target: { value: "zh-CN" } });
 
     await waitFor(() => {
       expect(useStore.getState().settings.language).toBe("zh-CN");
     });
+    expect(screen.getByRole("combobox", { name: "新建文件换行符" })).toBeInTheDocument();
   });
 
   it("toggles word wrap switch", async () => {
@@ -306,7 +307,7 @@ describe("SettingsModal", () => {
 
     render(<SettingsModal />);
 
-    fireEvent.change(await screen.findByPlaceholderText("Custom extension, e.g. .env"), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Custom extension, e.g. .env" }), {
       target: { value: ".sql" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -464,6 +465,10 @@ describe("SettingsModal", () => {
     render(<SettingsModal />);
 
     fireEvent.click(screen.getByText("Mouse Gestures"));
+    expect(await screen.findByRole("textbox", { name: "Gesture Sequence 1" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Action 1" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Gesture Sequence" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Action" })).toBeInTheDocument();
 
     const actionSelects = await screen.findAllByRole("combobox");
     fireEvent.change(actionSelects[0], { target: { value: "closeCurrentTab" } });

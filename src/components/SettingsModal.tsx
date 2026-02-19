@@ -859,9 +859,11 @@ export function SettingsModal() {
                   </div>
                   <div className="space-y-2">
                     <select
+                      id="settings-language-select"
                       className={controlClassName}
                       value={settings.language}
                       onChange={(e) => updateSettings({ language: e.target.value as typeof settings.language })}
+                      aria-label={tr('settings.language')}
                     >
                       <option value="zh-CN">{tr('settings.language.zhCN')}</option>
                       <option value="en-US">{tr('settings.language.enUS')}</option>
@@ -967,6 +969,7 @@ export function SettingsModal() {
                   </div>
                   <div className="space-y-2">
                     <select
+                      id="settings-new-file-line-ending-select"
                       className={controlClassName}
                       value={settings.newFileLineEnding}
                       onChange={(event) => {
@@ -974,6 +977,7 @@ export function SettingsModal() {
                           newFileLineEnding: event.target.value as typeof settings.newFileLineEnding,
                         });
                       }}
+                      aria-label={tr('settings.newFileLineEnding')}
                     >
                       {LINE_ENDING_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -1213,6 +1217,7 @@ export function SettingsModal() {
                               handleAddCustomExtension();
                             }}
                             placeholder={tr('settings.customExtensionPlaceholder')}
+                            aria-label={tr('settings.customExtensionPlaceholder')}
                           />
                           <button
                             type="button"
@@ -1693,11 +1698,13 @@ export function SettingsModal() {
                               inputMode="text"
                               autoComplete="off"
                               spellCheck={false}
+                              aria-label={`${mouseGestureSequenceLabel} ${index + 1}`}
                             />
                             <select
                               value={gesture.action}
                               onChange={(event) => handleChangeGestureAction(index, event.target.value as MouseGestureAction)}
                               className={cn(controlClassName, 'h-9')}
+                              aria-label={`${mouseGestureActionLabel} ${index + 1}`}
                             >
                               {MOUSE_GESTURE_ACTIONS.map((action) => (
                                 <option key={action} value={action}>
@@ -1726,11 +1733,13 @@ export function SettingsModal() {
                           inputMode="text"
                           autoComplete="off"
                           spellCheck={false}
+                          aria-label={mouseGestureSequenceLabel}
                         />
                         <select
                           value={newGestureActionInput}
                           onChange={(event) => setNewGestureActionInput(event.target.value as MouseGestureAction)}
                           className={cn(controlClassName, 'h-9')}
+                          aria-label={mouseGestureActionLabel}
                         >
                           {MOUSE_GESTURE_ACTIONS.map((action) => (
                             <option key={action} value={action}>
