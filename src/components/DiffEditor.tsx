@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
+import { DiffPanelView } from './DiffPanelView';
 import { editorTestUtils } from './editorUtils';
 import { useDiffEditorPairHighlight } from './useDiffEditorPairHighlight';
 import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
@@ -2130,12 +2131,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     ? getParentDirectoryPath(diffHeaderMenuPath)
     : null;
 
-  const renderUnavailable = (text: string) => (
-    <div className="flex h-full items-center justify-center bg-muted/10 text-xs text-muted-foreground">
-      {text}
-    </div>
-  );
-
   const sourcePanelText = useMemo(
     () => lineDiff.alignedSourceLines.join('\n'),
     [lineDiff.alignedSourceLines]
@@ -2399,205 +2394,46 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       <div ref={viewportRef} className="relative h-[calc(100%-2.5rem)] w-full overflow-hidden">
         <div className="absolute inset-0 flex">
-          <div
-            className={cn(
-              'relative h-full overflow-hidden',
-              activePanel === 'source' && 'ring-1 ring-inset ring-blue-500/30'
-            )}
-            style={{ width: leftWidthPx }}
-          >
-            {sourceTab ? (
-              <div
-                ref={handleSourceScrollerRef}
-                className="editor-scroll-stable h-full overflow-auto"
-                onContextMenu={handleScrollerContextMenu}
-              >
-                <div
-                  className="relative flex"
-                  style={{
-                    minWidth: `${sourceContentWidthPx}px`,
-                    height: `${sourcePanelHeightPx}px`,
-                  }}
-                >
-                  <div
-                    className="sticky left-0 z-20 shrink-0 border-r border-border/40 bg-background"
-                    style={{ width: `${lineNumberColumnWidth}px` }}
-                    onContextMenu={handleLineNumberContextMenu}
-                  >
-                    {Array.from({ length: alignedLineCount }).map((_, index) => {
-                      const diffKind = alignedDiffKindByLine.get(index + 1);
-                      const isDiffLine = Boolean(diffKind);
-                      const diffStyle = diffKind ? getDiffKindStyle(diffKind) : null;
-                      const linePresent = lineDiff.alignedSourcePresent[index] === true;
-                      const lineNumber = sourceLineNumbers[index] ?? 0;
-                      const lineText = lineDiff.alignedSourceLines[index] ?? '';
-                      return (
-                        <div
-                          key={`source-ln-${index}`}
-                          className={cn(
-                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
-                            linePresent
-                              && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                            isDiffLine && diffStyle?.lineNumberClass,
-                            sourceSearchCurrentRow === index
-                              && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
-                          )}
-                          onPointerDown={(event) => {
-                            handleLineNumberPointerDown('source', index, event);
-                          }}
-                          onKeyDown={(event) => {
-                            handleLineNumberKeyDown('source', index, event);
-                          }}
-                          role={linePresent ? 'button' : undefined}
-                          tabIndex={linePresent ? 0 : -1}
-                          aria-label={linePresent ? `${sourceTitlePrefix} ${lineNumber}` : undefined}
-                          style={{
-                            height: `${rowHeightPx}px`,
-                            lineHeight: `${rowHeightPx}px`,
-                            fontFamily: settings.fontFamily,
-                            fontSize: `${Math.max(10, settings.fontSize - 2)}px`,
-                          }}
-                        >
-                          {linePresent ? lineNumber : lineText.length > 0 ? '+' : ''}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="relative min-w-0 flex-1">
-                    <div className="pointer-events-none absolute inset-0 z-0">
-                      {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
-                        const diffStyle = getDiffKindStyle(kind);
-                        return (
-                          <div
-                            key={`source-diff-bg-${lineNumber}`}
-                            className={cn('absolute left-0 right-0', diffStyle.rowBackgroundClass)}
-                            style={{
-                              top: `${(lineNumber - 1) * rowHeightPx}px`,
-                              height: `${rowHeightPx}px`,
-                            }}
-                          />
-                        );
-                      })}
-                      {sourceSearchCurrentRow !== null && (
-                        <div
-                          key={`source-search-current-bg-${sourceSearchCurrentRow}`}
-                          className="absolute left-0 right-0 bg-sky-400/22 dark:bg-sky-300/20"
-                          style={{
-                            top: `${sourceSearchCurrentRow * rowHeightPx}px`,
-                            height: `${rowHeightPx}px`,
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <textarea
-                      ref={sourceTextareaRef}
-                      value={sourcePanelText}
-                      onChange={(event) => {
-                        const target = event.currentTarget;
-                        const selectionStart = target.selectionStart ?? target.value.length;
-                        const selectionEnd = target.selectionEnd ?? target.value.length;
-                        handlePanelTextareaChange(
-                          'source',
-                          target.value,
-                          selectionStart,
-                          selectionEnd
-                        );
-                        void updatePairHighlightsForSide('source', target.value, selectionStart, selectionEnd);
-                      }}
-                      onKeyDown={(event) => {
-                        handlePanelTextareaKeyDown('source', event);
-                      }}
-                      onSelect={(event) => {
-                        const target = event.currentTarget;
-                        schedulePairHighlightSyncForSide('source', target);
-                      }}
-                      onCopy={(event) => {
-                        handlePanelTextareaCopy('source', event);
-                      }}
-                      onContextMenu={(event) => {
-                        handlePanelContextMenu('source', event);
-                      }}
-                      onFocus={(event) => {
-                        setActivePanel('source');
-                        const target = event.currentTarget;
-                        schedulePairHighlightSyncForSide('source', target);
-                      }}
-                      onBlur={() => {
-                        handlePanelInputBlur();
-                        clearPairHighlightsForSide('source');
-                      }}
-                      data-diff-panel="source"
-                      className="relative z-10 block w-full resize-none border-0 bg-transparent px-2 outline-none"
-                      style={{
-                        height: `${sourcePanelHeightPx}px`,
-                        fontFamily: settings.fontFamily,
-                        fontSize: `${settings.fontSize}px`,
-                        lineHeight: `${rowHeightPx}px`,
-                        whiteSpace: 'pre',
-                        overflow: 'hidden',
-                        tabSize: 4,
-                      }}
-                      spellCheck={false}
-                      wrap="off"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                    />
-
-                    {sourcePairHighlightRows.size > 0 && (
-                      <div className="pointer-events-none absolute inset-0 z-[5]">
-                        {Array.from(sourcePairHighlightRows.entries()).map(([rowIndex, pairColumns]) => {
-                          const lineText = lineDiff.alignedSourceLines[rowIndex] ?? '';
-                          const segments = buildPairHighlightSegments(lineText.length, pairColumns);
-                          if (segments.length === 0) {
-                            return null;
-                          }
-
-                          return (
-                            <div
-                              key={`source-pair-highlight-row-${rowIndex}`}
-                              className="absolute left-0 right-0 whitespace-pre px-2"
-                              style={{
-                                top: `${rowIndex * rowHeightPx}px`,
-                                height: `${rowHeightPx}px`,
-                                lineHeight: `${rowHeightPx}px`,
-                                fontFamily: settings.fontFamily,
-                                fontSize: `${settings.fontSize}px`,
-                                color: 'transparent',
-                              }}
-                            >
-                              {segments.map((segment, segmentIndex) => {
-                                const part = lineText.slice(segment.start, segment.end);
-                                if (!segment.isPair) {
-                                  return (
-                                    <span key={`source-pair-highlight-segment-${rowIndex}-${segmentIndex}`}>
-                                      {part}
-                                    </span>
-                                  );
-                                }
-
-                                return (
-                                  <mark
-                                    key={`source-pair-highlight-segment-${rowIndex}-${segmentIndex}`}
-                                    data-diff-pair-highlight="source"
-                                    className={`${PAIR_HIGHLIGHT_CLASS} text-transparent`}
-                                  >
-                                    {part}
-                                  </mark>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : renderUnavailable(sourceUnavailableLabel)}
-          </div>
+          <DiffPanelView
+            side="source"
+            panelWidthPx={leftWidthPx}
+            isActive={activePanel === 'source'}
+            hasTab={Boolean(sourceTab)}
+            unavailableText={sourceUnavailableLabel}
+            scrollerRef={handleSourceScrollerRef}
+            onScrollerContextMenu={handleScrollerContextMenu}
+            contentWidthPx={sourceContentWidthPx}
+            panelHeightPx={sourcePanelHeightPx}
+            lineNumberColumnWidth={lineNumberColumnWidth}
+            alignedLineCount={alignedLineCount}
+            alignedDiffKindByLine={alignedDiffKindByLine}
+            getDiffKindStyle={getDiffKindStyle}
+            lines={lineDiff.alignedSourceLines}
+            present={lineDiff.alignedSourcePresent}
+            lineNumbers={sourceLineNumbers}
+            searchCurrentRow={sourceSearchCurrentRow}
+            titlePrefix={sourceTitlePrefix}
+            rowHeightPx={rowHeightPx}
+            fontFamily={settings.fontFamily}
+            fontSize={settings.fontSize}
+            onLineNumberPointerDown={handleLineNumberPointerDown}
+            onLineNumberKeyDown={handleLineNumberKeyDown}
+            textareaRef={sourceTextareaRef}
+            panelText={sourcePanelText}
+            onTextareaChange={handlePanelTextareaChange}
+            onTextareaKeyDown={handlePanelTextareaKeyDown}
+            onTextareaCopy={handlePanelTextareaCopy}
+            onPanelContextMenu={handlePanelContextMenu}
+            setActivePanel={setActivePanel}
+            schedulePairHighlightSyncForSide={schedulePairHighlightSyncForSide}
+            onPanelInputBlur={handlePanelInputBlur}
+            clearPairHighlightsForSide={clearPairHighlightsForSide}
+            updatePairHighlightsForSide={updatePairHighlightsForSide}
+            pairHighlightRows={sourcePairHighlightRows}
+            buildPairHighlightSegments={buildPairHighlightSegments}
+            pairHighlightClass={PAIR_HIGHLIGHT_CLASS}
+            onLineNumberContextMenu={handleLineNumberContextMenu}
+          />
 
           <div
             className="border-x border-border/70 bg-muted/30"
@@ -2605,205 +2441,46 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             aria-hidden="true"
           />
 
-          <div
-            className={cn(
-              'relative h-full overflow-hidden',
-              activePanel === 'target' && 'ring-1 ring-inset ring-blue-500/30'
-            )}
-            style={{ width: rightWidthPx }}
-          >
-            {targetTab ? (
-              <div
-                ref={handleTargetScrollerRef}
-                className="editor-scroll-stable h-full overflow-auto"
-                onContextMenu={handleScrollerContextMenu}
-              >
-                <div
-                  className="relative flex"
-                  style={{
-                    minWidth: `${targetContentWidthPx}px`,
-                    height: `${targetPanelHeightPx}px`,
-                  }}
-                >
-                  <div
-                    className="sticky left-0 z-20 shrink-0 border-r border-border/40 bg-background"
-                    style={{ width: `${lineNumberColumnWidth}px` }}
-                    onContextMenu={handleLineNumberContextMenu}
-                  >
-                    {Array.from({ length: alignedLineCount }).map((_, index) => {
-                      const diffKind = alignedDiffKindByLine.get(index + 1);
-                      const isDiffLine = Boolean(diffKind);
-                      const diffStyle = diffKind ? getDiffKindStyle(diffKind) : null;
-                      const linePresent = lineDiff.alignedTargetPresent[index] === true;
-                      const lineNumber = targetLineNumbers[index] ?? 0;
-                      const lineText = lineDiff.alignedTargetLines[index] ?? '';
-                      return (
-                        <div
-                          key={`target-ln-${index}`}
-                          className={cn(
-                            'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
-                            linePresent
-                              && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                            isDiffLine && diffStyle?.lineNumberClass,
-                            targetSearchCurrentRow === index
-                              && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
-                          )}
-                          onPointerDown={(event) => {
-                            handleLineNumberPointerDown('target', index, event);
-                          }}
-                          onKeyDown={(event) => {
-                            handleLineNumberKeyDown('target', index, event);
-                          }}
-                          role={linePresent ? 'button' : undefined}
-                          tabIndex={linePresent ? 0 : -1}
-                          aria-label={linePresent ? `${targetTitlePrefix} ${lineNumber}` : undefined}
-                          style={{
-                            height: `${rowHeightPx}px`,
-                            lineHeight: `${rowHeightPx}px`,
-                            fontFamily: settings.fontFamily,
-                            fontSize: `${Math.max(10, settings.fontSize - 2)}px`,
-                          }}
-                        >
-                          {linePresent ? lineNumber : lineText.length > 0 ? '+' : ''}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="relative min-w-0 flex-1">
-                    <div className="pointer-events-none absolute inset-0 z-0">
-                      {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
-                        const diffStyle = getDiffKindStyle(kind);
-                        return (
-                          <div
-                            key={`target-diff-bg-${lineNumber}`}
-                            className={cn('absolute left-0 right-0', diffStyle.rowBackgroundClass)}
-                            style={{
-                              top: `${(lineNumber - 1) * rowHeightPx}px`,
-                              height: `${rowHeightPx}px`,
-                            }}
-                          />
-                        );
-                      })}
-                      {targetSearchCurrentRow !== null && (
-                        <div
-                          key={`target-search-current-bg-${targetSearchCurrentRow}`}
-                          className="absolute left-0 right-0 bg-sky-400/22 dark:bg-sky-300/20"
-                          style={{
-                            top: `${targetSearchCurrentRow * rowHeightPx}px`,
-                            height: `${rowHeightPx}px`,
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <textarea
-                      ref={targetTextareaRef}
-                      value={targetPanelText}
-                      onChange={(event) => {
-                        const target = event.currentTarget;
-                        const selectionStart = target.selectionStart ?? target.value.length;
-                        const selectionEnd = target.selectionEnd ?? target.value.length;
-                        handlePanelTextareaChange(
-                          'target',
-                          target.value,
-                          selectionStart,
-                          selectionEnd
-                        );
-                        void updatePairHighlightsForSide('target', target.value, selectionStart, selectionEnd);
-                      }}
-                      onKeyDown={(event) => {
-                        handlePanelTextareaKeyDown('target', event);
-                      }}
-                      onSelect={(event) => {
-                        const target = event.currentTarget;
-                        schedulePairHighlightSyncForSide('target', target);
-                      }}
-                      onCopy={(event) => {
-                        handlePanelTextareaCopy('target', event);
-                      }}
-                      onContextMenu={(event) => {
-                        handlePanelContextMenu('target', event);
-                      }}
-                      onFocus={(event) => {
-                        setActivePanel('target');
-                        const target = event.currentTarget;
-                        schedulePairHighlightSyncForSide('target', target);
-                      }}
-                      onBlur={() => {
-                        handlePanelInputBlur();
-                        clearPairHighlightsForSide('target');
-                      }}
-                      data-diff-panel="target"
-                      className="relative z-10 block w-full resize-none border-0 bg-transparent px-2 outline-none"
-                      style={{
-                        height: `${targetPanelHeightPx}px`,
-                        fontFamily: settings.fontFamily,
-                        fontSize: `${settings.fontSize}px`,
-                        lineHeight: `${rowHeightPx}px`,
-                        whiteSpace: 'pre',
-                        overflow: 'hidden',
-                        tabSize: 4,
-                      }}
-                      spellCheck={false}
-                      wrap="off"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                    />
-
-                    {targetPairHighlightRows.size > 0 && (
-                      <div className="pointer-events-none absolute inset-0 z-[5]">
-                        {Array.from(targetPairHighlightRows.entries()).map(([rowIndex, pairColumns]) => {
-                          const lineText = lineDiff.alignedTargetLines[rowIndex] ?? '';
-                          const segments = buildPairHighlightSegments(lineText.length, pairColumns);
-                          if (segments.length === 0) {
-                            return null;
-                          }
-
-                          return (
-                            <div
-                              key={`target-pair-highlight-row-${rowIndex}`}
-                              className="absolute left-0 right-0 whitespace-pre px-2"
-                              style={{
-                                top: `${rowIndex * rowHeightPx}px`,
-                                height: `${rowHeightPx}px`,
-                                lineHeight: `${rowHeightPx}px`,
-                                fontFamily: settings.fontFamily,
-                                fontSize: `${settings.fontSize}px`,
-                                color: 'transparent',
-                              }}
-                            >
-                              {segments.map((segment, segmentIndex) => {
-                                const part = lineText.slice(segment.start, segment.end);
-                                if (!segment.isPair) {
-                                  return (
-                                    <span key={`target-pair-highlight-segment-${rowIndex}-${segmentIndex}`}>
-                                      {part}
-                                    </span>
-                                  );
-                                }
-
-                                return (
-                                  <mark
-                                    key={`target-pair-highlight-segment-${rowIndex}-${segmentIndex}`}
-                                    data-diff-pair-highlight="target"
-                                    className={`${PAIR_HIGHLIGHT_CLASS} text-transparent`}
-                                  >
-                                    {part}
-                                  </mark>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : renderUnavailable(targetUnavailableLabel)}
-          </div>
+          <DiffPanelView
+            side="target"
+            panelWidthPx={rightWidthPx}
+            isActive={activePanel === 'target'}
+            hasTab={Boolean(targetTab)}
+            unavailableText={targetUnavailableLabel}
+            scrollerRef={handleTargetScrollerRef}
+            onScrollerContextMenu={handleScrollerContextMenu}
+            contentWidthPx={targetContentWidthPx}
+            panelHeightPx={targetPanelHeightPx}
+            lineNumberColumnWidth={lineNumberColumnWidth}
+            alignedLineCount={alignedLineCount}
+            alignedDiffKindByLine={alignedDiffKindByLine}
+            getDiffKindStyle={getDiffKindStyle}
+            lines={lineDiff.alignedTargetLines}
+            present={lineDiff.alignedTargetPresent}
+            lineNumbers={targetLineNumbers}
+            searchCurrentRow={targetSearchCurrentRow}
+            titlePrefix={targetTitlePrefix}
+            rowHeightPx={rowHeightPx}
+            fontFamily={settings.fontFamily}
+            fontSize={settings.fontSize}
+            onLineNumberPointerDown={handleLineNumberPointerDown}
+            onLineNumberKeyDown={handleLineNumberKeyDown}
+            textareaRef={targetTextareaRef}
+            panelText={targetPanelText}
+            onTextareaChange={handlePanelTextareaChange}
+            onTextareaKeyDown={handlePanelTextareaKeyDown}
+            onTextareaCopy={handlePanelTextareaCopy}
+            onPanelContextMenu={handlePanelContextMenu}
+            setActivePanel={setActivePanel}
+            schedulePairHighlightSyncForSide={schedulePairHighlightSyncForSide}
+            onPanelInputBlur={handlePanelInputBlur}
+            clearPairHighlightsForSide={clearPairHighlightsForSide}
+            updatePairHighlightsForSide={updatePairHighlightsForSide}
+            pairHighlightRows={targetPairHighlightRows}
+            buildPairHighlightSegments={buildPairHighlightSegments}
+            pairHighlightClass={PAIR_HIGHLIGHT_CLASS}
+            onLineNumberContextMenu={handleLineNumberContextMenu}
+          />
         </div>
 
         <div
