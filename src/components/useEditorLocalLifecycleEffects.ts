@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorContextMenuState } from './EditorContextMenu';
 import type { PairHighlightPosition, SearchHighlightState, TextSelectionState } from './Editor.types';
+import { useExternalPasteEvent } from './useExternalPasteEvent';
 
 interface UseEditorLocalLifecycleEffectsParams {
   isPairHighlightEnabled: boolean;
@@ -50,6 +51,26 @@ export function useEditorLocalLifecycleEffects({
   outlineFlashTimerRef,
   setOutlineFlashLine,
 }: UseEditorLocalLifecycleEffectsParams) {
+  const shouldHandleExternalPaste = useCallback(
+    (detail: { tabId?: string }) => detail.tabId === tabId,
+    [tabId]
+  );
+
+  const handleExternalPaste = useCallback(
+    (text: string) => {
+      if (!tryPasteTextIntoEditor(text)) {
+        console.warn('Failed to paste text into editor.');
+      }
+    },
+    [tryPasteTextIntoEditor]
+  );
+
+  useExternalPasteEvent<{ tabId?: string; text?: string }>({
+    eventName: 'rutar:paste-text',
+    shouldHandle: shouldHandleExternalPaste,
+    onPasteText: handleExternalPaste,
+  });
+
   useEffect(() => {
     if (isPairHighlightEnabled) {
       return;
@@ -90,26 +111,6 @@ export function useEditorLocalLifecycleEffects({
 
     syncSelectionState();
   }, [highlightCurrentLine, syncSelectionState]);
-
-  useEffect(() => {
-    const handleExternalPaste = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string; text?: string }>;
-      const detail = customEvent.detail;
-      if (!detail || detail.tabId !== tabId) {
-        return;
-      }
-
-      const text = typeof detail.text === 'string' ? detail.text : '';
-      if (!tryPasteTextIntoEditor(text)) {
-        console.warn('Failed to paste text into editor.');
-      }
-    };
-
-    window.addEventListener('rutar:paste-text', handleExternalPaste as EventListener);
-    return () => {
-      window.removeEventListener('rutar:paste-text', handleExternalPaste as EventListener);
-    };
-  }, [tabId, tryPasteTextIntoEditor]);
 
   useEffect(() => {
     return () => {

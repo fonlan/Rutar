@@ -17,10 +17,12 @@ import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from 
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import { DiffPanelView } from './DiffPanelView';
 import { editorTestUtils } from './editorUtils';
+import { useDiffEditorLineNumberSelection } from './useDiffEditorLineNumberSelection';
 import { useDiffEditorMenusAndClipboard } from './useDiffEditorMenusAndClipboard';
 import { useDiffEditorPairHighlight } from './useDiffEditorPairHighlight';
 import { useDiffEditorSearchNavigation } from './useDiffEditorSearchNavigation';
 import { useDiffEditorSync } from './useDiffEditorSync';
+import { useExternalPasteEvent } from './useExternalPasteEvent';
 
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
@@ -1380,26 +1382,28 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     getParentDirectoryPath,
   });
 
-  useEffect(() => {
-    const handleDiffToolbarPaste = (event: Event) => {
-      const customEvent = event as CustomEvent<{ diffTabId?: string; panel?: DiffPanelSide; text?: string }>;
-      if (customEvent.detail?.diffTabId !== tab.id) {
-        return;
-      }
+  const shouldHandleExternalDiffPaste = useCallback(
+    (detail: { diffTabId?: string }) => detail.diffTabId === tab.id,
+    [tab.id]
+  );
 
-      const targetPanel = customEvent.detail.panel === 'target'
+  const handleExternalDiffPaste = useCallback(
+    (text: string, detail: { panel?: DiffPanelSide }) => {
+      const targetPanel = detail.panel === 'target'
         ? 'target'
-        : customEvent.detail.panel === 'source'
+        : detail.panel === 'source'
           ? 'source'
           : activePanel;
-      handlePanelPasteText(targetPanel, customEvent.detail.text ?? '');
-    };
+      handlePanelPasteText(targetPanel, text);
+    },
+    [activePanel, handlePanelPasteText]
+  );
 
-    window.addEventListener('rutar:diff-paste-text', handleDiffToolbarPaste as EventListener);
-    return () => {
-      window.removeEventListener('rutar:diff-paste-text', handleDiffToolbarPaste as EventListener);
-    };
-  }, [activePanel, handlePanelPasteText, tab.id]);
+  useExternalPasteEvent<{ diffTabId?: string; panel?: DiffPanelSide; text?: string }>({
+    eventName: 'rutar:diff-paste-text',
+    shouldHandle: shouldHandleExternalDiffPaste,
+    onPasteText: handleExternalDiffPaste,
+  });
 
   const handlePanelTextareaKeyDown = useCallback(
     (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -1556,53 +1560,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [sourceTab, targetTab]
   );
 
-  const activateLineNumberSelection = useCallback((side: ActivePanel, rowIndex: number) => {
-      const snapshot = lineDiffRef.current;
-      const present = side === 'source'
-        ? snapshot.alignedSourcePresent
-        : snapshot.alignedTargetPresent;
-      if (!present[rowIndex]) {
-        return;
-      }
-
-      const textarea = side === 'source'
-        ? sourceTextareaRef.current
-        : targetTextareaRef.current;
-      if (!textarea) {
-        return;
-      }
-
-      const lines = side === 'source'
-        ? snapshot.alignedSourceLines
-        : snapshot.alignedTargetLines;
-      const { start, end } = getLineSelectionRange(lines, rowIndex);
-
-      setActivePanel(side);
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(start, end);
-    }, []);
-
-  const handleLineNumberPointerDown = useCallback(
-    (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      activateLineNumberSelection(side, rowIndex);
-    },
-    [activateLineNumberSelection]
-  );
-
-  const handleLineNumberKeyDown = useCallback(
-    (side: ActivePanel, rowIndex: number, event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.key !== 'Enter' && event.key !== ' ') {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      activateLineNumberSelection(side, rowIndex);
-    },
-    [activateLineNumberSelection]
-  );
+  const { handleLineNumberPointerDown, handleLineNumberKeyDown } = useDiffEditorLineNumberSelection({
+    sourceTextareaRef,
+    targetTextareaRef,
+    lineDiffRef,
+    setActivePanel,
+    getLineSelectionRange,
+  });
 
   const availableWidth = Math.max(0, width);
   const contentWidth = Math.max(0, availableWidth - SPLITTER_WIDTH_PX);
