@@ -88,6 +88,24 @@ describe("StatusBar", () => {
     expect(screen.getByRole("combobox", { name: "Syntax" })).toBeInTheDocument();
   });
 
+  it("uses statusbar-themed classes for all dropdowns and options", () => {
+    const tab = createTab({ id: "tab-status-theme-classes" });
+    useStore.getState().addTab(tab);
+
+    const { container } = render(<StatusBar />);
+    const selects = container.querySelectorAll("select");
+    const options = container.querySelectorAll("option");
+
+    expect(selects.length).toBe(3);
+    selects.forEach((select) => {
+      expect(select.className).toContain("statusbar-select");
+    });
+    expect(options.length).toBeGreaterThan(0);
+    options.forEach((option) => {
+      expect(option.className).toContain("statusbar-option");
+    });
+  });
+
   it("prevents native context menu when active tab exists", () => {
     const tab = createTab({ id: "tab-status-context-active" });
     useStore.getState().addTab(tab);

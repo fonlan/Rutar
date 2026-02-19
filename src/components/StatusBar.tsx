@@ -118,6 +118,9 @@ export function StatusBar() {
     const lineEndingSelectLabel = settings.language === 'zh-CN' ? '行尾符' : 'Line ending';
     const encodingSelectLabel = settings.language === 'zh-CN' ? '编码' : 'Encoding';
     const syntaxSelectLabel = settings.language === 'zh-CN' ? '语法' : 'Syntax';
+    const statusSelectClassName =
+        'statusbar-select border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring';
+    const statusOptionClassName = 'statusbar-option';
 
     return (
         <div
@@ -149,14 +152,14 @@ export function StatusBar() {
             <div className="flex items-center gap-4">
                 <div className="group flex items-center gap-1.5 cursor-pointer transition-colors hover:text-foreground focus-within:text-foreground">
                     <select
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
+                        className={statusSelectClassName}
                         value={activeTab.lineEnding}
                         onChange={(e) => handleLineEndingChange(e.target.value as LineEnding)}
                         aria-label={lineEndingSelectLabel}
                         name="status-line-ending"
                     >
                         {lineEndingOptions.map((option) => (
-                            <option key={option.value} value={option.value} className="bg-background text-foreground">
+                            <option key={option.value} value={option.value} className={statusOptionClassName}>
                                 {option.label}
                             </option>
                         ))}
@@ -166,32 +169,32 @@ export function StatusBar() {
                 <div className="group flex items-center gap-1.5 cursor-pointer transition-colors hover:text-foreground focus-within:text-foreground">
                     <Globe className="w-3 h-3" />
                     <select 
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
+                        className={statusSelectClassName}
                         value={activeTab.encoding}
                         onChange={(e) => handleEncodingChange(e.target.value)}
                         aria-label={encodingSelectLabel}
                         name="status-encoding"
                     >
                         {encodings.map(enc => (
-                            <option key={enc} value={enc} className="bg-background text-foreground">{enc}</option>
+                            <option key={enc} value={enc} className={statusOptionClassName}>{enc}</option>
                         ))}
                     </select>
                 </div>
                 <div className="w-[1px] h-3 bg-border" />
                 <div className="group flex items-center gap-1.5 cursor-pointer transition-colors hover:text-foreground focus-within:text-foreground">
                     <select
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
+                        className={statusSelectClassName}
                         value={syntaxSelectValue}
                         onChange={(e) => handleSyntaxChange(e.target.value)}
                         title={currentSyntax ? getSyntaxLabel(currentSyntax) : autoSyntaxLabel}
                         aria-label={syntaxSelectLabel}
                         name="status-syntax"
                     >
-                        <option value="auto" className="bg-background text-foreground">
+                        <option value="auto" className={statusOptionClassName}>
                             {autoSyntaxLabel}
                         </option>
                         {SYNTAX_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value} className="bg-background text-foreground">
+                            <option key={option.value} value={option.value} className={statusOptionClassName}>
                                 {option.label}
                             </option>
                         ))}

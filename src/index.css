@@ -100,6 +100,16 @@ option {
   background-color: hsl(var(--background));
 }
 
+.statusbar-select {
+  background-color: hsl(var(--muted) / 0.5);
+  color: hsl(var(--muted-foreground));
+}
+
+.statusbar-option {
+  background-color: hsl(var(--muted) / 0.5);
+  color: hsl(var(--foreground));
+}
+
 .editor-input-layer::selection {
   background: var(--editor-native-selection-bg, transparent) !important;
   color: transparent !important;
