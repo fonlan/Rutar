@@ -884,7 +884,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ doubleClickCloseTab: !settings.doubleClickCloseTab })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.doubleClickCloseTab
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -928,7 +928,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ wordWrap: !settings.wordWrap })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.wordWrap
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1004,7 +1004,7 @@ export function SettingsModal() {
                         showSingleInstanceRestartToast();
                       }}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.singleInstanceMode
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1048,7 +1048,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ rememberWindowState: !settings.rememberWindowState })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.rememberWindowState
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1097,7 +1097,7 @@ export function SettingsModal() {
                           type="button"
                           onClick={() => void handleToggleWindowsContextMenu()}
                           className={cn(
-                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                             settings.windowsContextMenuEnabled
                               ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1145,7 +1145,7 @@ export function SettingsModal() {
                           onClick={() => void handleToggleWindowsFileAssociations()}
                           disabled={isUpdatingFileAssociations}
                           className={cn(
-                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
+                            'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200 disabled:cursor-not-allowed disabled:opacity-60',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                             settings.windowsFileAssociationEnabled
                               ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1517,7 +1517,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ showLineNumbers: !settings.showLineNumbers })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.showLineNumbers
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1561,7 +1561,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ highlightCurrentLine: !settings.highlightCurrentLine })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.highlightCurrentLine
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1644,7 +1644,7 @@ export function SettingsModal() {
                       type="button"
                       onClick={() => updateSettings({ mouseGesturesEnabled: !settings.mouseGesturesEnabled })}
                       className={cn(
-                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-all duration-200',
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                         settings.mouseGesturesEnabled
                           ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
@@ -1837,7 +1837,7 @@ export function SettingsModal() {
 
       <div
         className={cn(
-          'pointer-events-none fixed bottom-6 right-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 shadow-lg transition-all dark:text-amber-200',
+          'pointer-events-none fixed bottom-6 right-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 shadow-lg transition-[opacity,transform] dark:text-amber-200',
           showRestartToast ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
         )}
         role="status"
