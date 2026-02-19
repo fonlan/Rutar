@@ -149,6 +149,7 @@ export function OutlineSidebar({
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
             className="h-7 w-full rounded-md border border-input bg-background px-2 pr-7 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
           />
           {searchValue ? (

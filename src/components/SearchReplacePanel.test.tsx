@@ -288,15 +288,21 @@ describe("SearchReplacePanel", () => {
       expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
     });
 
+    expect(screen.getByRole("textbox", { name: "Find text" })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Replace with")).toBeInTheDocument();
     });
+    expect(screen.getByRole("textbox", { name: "Replace with" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
     });
+    expect(screen.getByRole("textbox", { name: "Rule group name" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Select rule group" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Filter keyword" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Find" }));
     await waitFor(() => {

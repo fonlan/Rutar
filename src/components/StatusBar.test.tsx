@@ -77,6 +77,17 @@ describe("StatusBar", () => {
     });
   });
 
+  it("exposes accessible labels for status comboboxes", () => {
+    const tab = createTab({ id: "tab-status-a11y" });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    expect(screen.getByRole("combobox", { name: "Line ending" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Encoding" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Syntax" })).toBeInTheDocument();
+  });
+
   it("prevents native context menu when active tab exists", () => {
     const tab = createTab({ id: "tab-status-context-active" });
     useStore.getState().addTab(tab);

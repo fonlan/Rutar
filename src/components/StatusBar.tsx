@@ -115,6 +115,9 @@ export function StatusBar() {
     const currentSyntax = activeTab.syntaxOverride ?? null;
     const syntaxSelectValue = currentSyntax ?? 'auto';
     const autoSyntaxLabel = `Auto (${getSyntaxLabel(detectedSyntax)})`;
+    const lineEndingSelectLabel = settings.language === 'zh-CN' ? '行尾符' : 'Line ending';
+    const encodingSelectLabel = settings.language === 'zh-CN' ? '编码' : 'Encoding';
+    const syntaxSelectLabel = settings.language === 'zh-CN' ? '语法' : 'Syntax';
 
     return (
         <div
@@ -146,9 +149,10 @@ export function StatusBar() {
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
                     <select
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px]"
+                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
                         value={activeTab.lineEnding}
                         onChange={(e) => handleLineEndingChange(e.target.value as LineEnding)}
+                        aria-label={lineEndingSelectLabel}
                     >
                         {lineEndingOptions.map((option) => (
                             <option key={option.value} value={option.value} className="bg-background text-foreground">
@@ -161,9 +165,10 @@ export function StatusBar() {
                 <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
                     <Globe className="w-3 h-3" />
                     <select 
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px]"
+                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
                         value={activeTab.encoding}
                         onChange={(e) => handleEncodingChange(e.target.value)}
+                        aria-label={encodingSelectLabel}
                     >
                         {encodings.map(enc => (
                             <option key={enc} value={enc} className="bg-background text-foreground">{enc}</option>
@@ -173,10 +178,11 @@ export function StatusBar() {
                 <div className="w-[1px] h-3 bg-border" />
                 <div className="flex items-center gap-1.5 group cursor-pointer hover:text-foreground transition-colors">
                     <select
-                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px]"
+                        className="bg-transparent border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring"
                         value={syntaxSelectValue}
                         onChange={(e) => handleSyntaxChange(e.target.value)}
                         title={currentSyntax ? getSyntaxLabel(currentSyntax) : autoSyntaxLabel}
+                        aria-label={syntaxSelectLabel}
                     >
                         <option value="auto" className="bg-background text-foreground">
                             {autoSyntaxLabel}

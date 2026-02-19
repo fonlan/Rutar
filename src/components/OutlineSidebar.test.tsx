@@ -96,7 +96,7 @@ describe("OutlineSidebar", () => {
 
     render(<OutlineSidebar nodes={nodes} activeType="json" parseError={null} />);
 
-    const searchInput = screen.getByPlaceholderText("Search outline...");
+    const searchInput = screen.getByRole("textbox", { name: "Search outline..." });
     fireEvent.change(searchInput, { target: { value: "leaf" } });
 
     await waitFor(() => {

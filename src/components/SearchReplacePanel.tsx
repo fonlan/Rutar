@@ -4650,6 +4650,7 @@ export function SearchReplacePanel() {
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => setIsOpen(false)}
               title={messages.close}
+              aria-label={messages.close}
             >
               <X className="h-4 w-4" />
             </button>
@@ -4670,6 +4671,7 @@ export function SearchReplacePanel() {
                   }}
                   onKeyDown={handleKeywordKeyDown}
                   placeholder={messages.findPlaceholder}
+                  aria-label={messages.findPlaceholder}
                   className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {keyword && (
@@ -4719,6 +4721,7 @@ export function SearchReplacePanel() {
                       value={filterGroupNameInput}
                       onChange={(event) => setFilterGroupNameInput(event.target.value)}
                       placeholder={messages.filterGroupNamePlaceholder}
+                      aria-label={messages.filterGroupNamePlaceholder}
                       className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                     />
                     {filterGroupNameInput && (
@@ -4754,6 +4757,7 @@ export function SearchReplacePanel() {
                       }
                     }}
                     className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={messages.filterGroupSelectPlaceholder}
                   >
                     <option value="">{messages.filterGroupSelectPlaceholder}</option>
                     {normalizedFilterRuleGroups.map((group) => (
@@ -4870,6 +4874,7 @@ export function SearchReplacePanel() {
                       }}
                       onKeyDown={handleKeywordKeyDown}
                       placeholder={messages.filterRuleKeywordPlaceholder}
+                      aria-label={messages.filterRuleKeywordPlaceholder}
                       className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                     />
                     {rule.keyword && (
@@ -5043,6 +5048,7 @@ export function SearchReplacePanel() {
                   value={replaceValue}
                   onChange={(event) => setReplaceValue(event.target.value)}
                   placeholder={messages.replacePlaceholder}
+                  aria-label={messages.replacePlaceholder}
                   className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 {replaceValue && (
@@ -5300,6 +5306,7 @@ export function SearchReplacePanel() {
                     }
                   }}
                   placeholder={messages.resultFilterPlaceholder}
+                  aria-label={messages.resultFilterPlaceholder}
                   className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none"
                 />
                 {resultFilterKeyword && (
