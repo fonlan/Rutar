@@ -2389,11 +2389,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     };
   }, [diffContextMenu, diffHeaderContextMenu]);
 
-  const handleLineNumberPointerDown = useCallback(
-    (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-
+  const activateLineNumberSelection = useCallback((side: ActivePanel, rowIndex: number) => {
       const snapshot = lineDiffRef.current;
       const present = side === 'source'
         ? snapshot.alignedSourcePresent
@@ -2417,8 +2413,28 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       setActivePanel(side);
       textarea.focus({ preventScroll: true });
       textarea.setSelectionRange(start, end);
+    }, []);
+
+  const handleLineNumberPointerDown = useCallback(
+    (side: ActivePanel, rowIndex: number, event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      activateLineNumberSelection(side, rowIndex);
     },
-    []
+    [activateLineNumberSelection]
+  );
+
+  const handleLineNumberKeyDown = useCallback(
+    (side: ActivePanel, rowIndex: number, event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      activateLineNumberSelection(side, rowIndex);
+    },
+    [activateLineNumberSelection]
   );
 
   const availableWidth = Math.max(0, width);
@@ -3233,7 +3249,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           key={`source-ln-${index}`}
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
-                            linePresent && 'cursor-pointer hover:bg-muted/40',
+                            linePresent
+                              && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                             isDiffLine && diffStyle?.lineNumberClass,
                             sourceSearchCurrentRow === index
                               && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
@@ -3241,6 +3258,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('source', index, event);
                           }}
+                          onKeyDown={(event) => {
+                            handleLineNumberKeyDown('source', index, event);
+                          }}
+                          role={linePresent ? 'button' : undefined}
+                          tabIndex={linePresent ? 0 : -1}
+                          aria-label={linePresent ? `${sourceTitlePrefix} line ${lineNumber}` : undefined}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
@@ -3432,7 +3455,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           key={`target-ln-${index}`}
                           className={cn(
                             'border-b border-border/35 px-2 text-right text-xs text-muted-foreground select-none',
-                            linePresent && 'cursor-pointer hover:bg-muted/40',
+                            linePresent
+                              && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                             isDiffLine && diffStyle?.lineNumberClass,
                             targetSearchCurrentRow === index
                               && 'bg-sky-400/22 text-sky-700 dark:bg-sky-300/20 dark:text-sky-200'
@@ -3440,6 +3464,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                           onPointerDown={(event) => {
                             handleLineNumberPointerDown('target', index, event);
                           }}
+                          onKeyDown={(event) => {
+                            handleLineNumberKeyDown('target', index, event);
+                          }}
+                          role={linePresent ? 'button' : undefined}
+                          tabIndex={linePresent ? 0 : -1}
+                          aria-label={linePresent ? `${targetTitlePrefix} line ${lineNumber}` : undefined}
                           style={{
                             height: `${rowHeightPx}px`,
                             lineHeight: `${rowHeightPx}px`,
