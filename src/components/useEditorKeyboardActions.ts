@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { KeyboardEvent, MutableRefObject } from 'react';
 
 interface UseEditorKeyboardActionsParams {
-  contentRef: MutableRefObject<HTMLTextAreaElement | null>;
+  contentRef: MutableRefObject<any>;
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
   normalizedRectangularSelection: unknown;
@@ -16,10 +16,16 @@ interface UseEditorKeyboardActionsParams {
   applyLineNumberMultiSelectionEdit: (mode: 'cut' | 'delete') => Promise<boolean>;
   buildLineNumberSelectionRangeText: (text: string, selectedLines: number[]) => string;
   normalizeSegmentText: (text: string) => string;
-  getEditableText: (element: HTMLTextAreaElement) => string;
+  getEditableText: (element: any) => string;
+  getSelectionOffsetsInElement: (
+    element: any
+  ) => { start: number; end: number; isCollapsed: boolean } | null;
+  isTextareaInputElement: (element: unknown) => element is HTMLTextAreaElement;
+  setInputLayerText: (element: any, text: string) => void;
+  mapLogicalOffsetToInputLayerOffset: (text: string, offset: number) => number;
+  setCaretToCodeUnitOffset: (element: any, offset: number) => void;
   clearRectangularSelection: () => void;
   clearLineNumberMultiSelection: () => void;
-  insertTextAtSelection: (text: string) => boolean;
   handleInput: () => void;
 }
 
@@ -39,9 +45,13 @@ export function useEditorKeyboardActions({
   buildLineNumberSelectionRangeText,
   normalizeSegmentText,
   getEditableText,
+  getSelectionOffsetsInElement,
+  isTextareaInputElement,
+  setInputLayerText,
+  mapLogicalOffsetToInputLayerOffset,
+  setCaretToCodeUnitOffset,
   clearRectangularSelection,
   clearLineNumberMultiSelection,
-  insertTextAtSelection,
   handleInput,
 }: UseEditorKeyboardActionsParams) {
   const handleRectangularSelectionInputByKey = useCallback(
@@ -100,6 +110,45 @@ export function useEditorKeyboardActions({
     },
     [clearRectangularSelection, normalizedRectangularSelection, replaceRectangularSelection]
   );
+
+  const insertTextAtSelection = useCallback((text: string) => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets) {
+      return false;
+    }
+
+    if (isTextareaInputElement(element)) {
+      const start = selectionOffsets.start;
+      const end = selectionOffsets.end;
+      const nextText = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
+      element.setRangeText(text, start, end, 'end');
+      if (element.value !== nextText) {
+        element.value = nextText;
+      }
+      return true;
+    }
+
+    const currentText = getEditableText(element);
+    const nextText = `${currentText.slice(0, selectionOffsets.start)}${text}${currentText.slice(selectionOffsets.end)}`;
+    setInputLayerText(element, nextText);
+    const logicalNextOffset = selectionOffsets.start + text.length;
+    const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
+    setCaretToCodeUnitOffset(element, layerNextOffset);
+    return true;
+  }, [
+    contentRef,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    isTextareaInputElement,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
+    setInputLayerText,
+  ]);
 
   const handleEditableKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -210,17 +259,22 @@ export function useEditorKeyboardActions({
       clearVerticalSelectionState,
       contentRef,
       getEditableText,
+      getSelectionOffsetsInElement,
       handleInput,
       handleRectangularSelectionInputByKey,
       insertTextAtSelection,
+      isTextareaInputElement,
       isToggleLineCommentShortcut,
       isVerticalSelectionShortcut,
       lineNumberMultiSelection,
+      mapLogicalOffsetToInputLayerOffset,
       normalizedRectangularSelection,
       normalizeSegmentText,
       nudgeRectangularSelectionByKey,
       rectangularSelectionRef,
       replaceRectangularSelection,
+      setCaretToCodeUnitOffset,
+      setInputLayerText,
       toggleSelectedLinesComment,
     ]
   );

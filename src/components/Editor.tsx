@@ -1653,37 +1653,6 @@ export function Editor({
     ]
   );
 
-  const insertTextAtSelection = useCallback((text: string) => {
-    const element = contentRef.current;
-    if (!element) {
-      return false;
-    }
-
-    const selectionOffsets = getSelectionOffsetsInElement(element);
-    if (!selectionOffsets) {
-      return false;
-    }
-
-    if (isTextareaInputElement(element)) {
-      const start = selectionOffsets.start;
-      const end = selectionOffsets.end;
-      const nextText = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
-      element.setRangeText(text, start, end, 'end');
-      if (element.value !== nextText) {
-        element.value = nextText;
-      }
-      return true;
-    }
-
-    const currentText = getEditableText(element);
-    const nextText = `${currentText.slice(0, selectionOffsets.start)}${text}${currentText.slice(selectionOffsets.end)}`;
-    setInputLayerText(element, nextText);
-    const logicalNextOffset = selectionOffsets.start + text.length;
-    const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
-    setCaretToCodeUnitOffset(element, layerNextOffset);
-    return true;
-  }, []);
-
   const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
     activeSyntaxKey,
     tabId: tab.id,
@@ -1719,9 +1688,13 @@ export function Editor({
     buildLineNumberSelectionRangeText,
     normalizeSegmentText,
     getEditableText,
+    getSelectionOffsetsInElement,
+    isTextareaInputElement,
+    setInputLayerText,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
     clearRectangularSelection,
     clearLineNumberMultiSelection,
-    insertTextAtSelection,
     handleInput,
   });
 
