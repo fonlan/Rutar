@@ -37,6 +37,7 @@ import { useEditorContextCleanupAction } from './useEditorContextCleanupAction';
 import { useEditorContextConvertActions } from './useEditorContextConvertActions';
 import { useEditorContextMenuActions } from './useEditorContextMenuActions';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
+import { useEditorDocumentLoadEffects } from './useEditorDocumentLoadEffects';
 import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
 import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
 import { useEditorInputSyncActions } from './useEditorInputSyncActions';
@@ -1737,91 +1738,29 @@ export function Editor({
     setEditorContextMenu(null);
   }, [editorContextMenu, handleLineNumberDoubleClick]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    initializedRef.current = false;
-    suppressExternalReloadRef.current = false;
-    syncInFlightRef.current = false;
-    pendingSyncRequestedRef.current = false;
-    hugeWindowLockedRef.current = false;
-    hugeWindowFollowScrollOnUnlockRef.current = false;
-    if (hugeWindowUnlockTimerRef.current) {
-      clearTimeout(hugeWindowUnlockTimerRef.current);
-      hugeWindowUnlockTimerRef.current = null;
-    }
-    syncedTextRef.current = '';
-    setLineTokens([]);
-    editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
-    setEditableSegment({ startLine: 0, endLine: 0, text: '' });
-
-    const bootstrap = async () => {
-      try {
-        await loadTextFromBackend();
-        if (cancelled) return;
-
-        await syncVisibleTokens(Math.max(1, tab.lineCount));
-        if (!cancelled) {
-          initializedRef.current = true;
-        }
-      } catch (e) {
-        console.error('Failed to load file text:', e);
-      }
-    };
-
-    bootstrap();
-
-    return () => {
-      cancelled = true;
-      if (requestTimeout.current) clearTimeout(requestTimeout.current);
-      if (editTimeout.current) clearTimeout(editTimeout.current);
-      if (hugeWindowUnlockTimerRef.current) {
-        clearTimeout(hugeWindowUnlockTimerRef.current);
-        hugeWindowUnlockTimerRef.current = null;
-      }
-    };
-  }, [tab.id, loadTextFromBackend, syncVisibleTokens]);
-
-  useEffect(() => {
-    if (!initializedRef.current) {
-      return;
-    }
-
-    if (suppressExternalReloadRef.current) {
-      suppressExternalReloadRef.current = false;
-      return;
-    }
-
-    const syncExternalChange = async () => {
-      try {
-        await loadTextFromBackend();
-        await syncVisibleTokens(Math.max(1, tab.lineCount));
-      } catch (e) {
-        console.error('Failed to sync external edit:', e);
-      }
-    };
-
-    syncExternalChange();
-  }, [tab.lineCount, loadTextFromBackend, syncVisibleTokens]);
-
-  useEffect(() => {
-    if (!usePlainLineRendering) {
-      setPlainLines([]);
-      setPlainStartLine(0);
-    }
-
-    if (!isHugeEditableMode) {
-      editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
-      setEditableSegment({ startLine: 0, endLine: 0, text: '' });
-      hugeWindowLockedRef.current = false;
-      hugeWindowFollowScrollOnUnlockRef.current = false;
-      if (hugeWindowUnlockTimerRef.current) {
-        clearTimeout(hugeWindowUnlockTimerRef.current);
-        hugeWindowUnlockTimerRef.current = null;
-      }
-    }
-
-  }, [isHugeEditableMode, usePlainLineRendering]);
+  useEditorDocumentLoadEffects({
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
+    usePlainLineRendering,
+    isHugeEditableMode,
+    initializedRef,
+    suppressExternalReloadRef,
+    syncInFlightRef,
+    pendingSyncRequestedRef,
+    hugeWindowLockedRef,
+    hugeWindowFollowScrollOnUnlockRef,
+    hugeWindowUnlockTimerRef,
+    syncedTextRef,
+    requestTimeoutRef: requestTimeout,
+    editTimeoutRef: editTimeout,
+    editableSegmentRef,
+    setLineTokens,
+    setEditableSegment,
+    setPlainLines,
+    setPlainStartLine,
+    loadTextFromBackend,
+    syncVisibleTokens,
+  });
 
 
   useEffect(() => {
