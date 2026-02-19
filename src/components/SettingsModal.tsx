@@ -842,7 +842,7 @@ export function SettingsModal() {
             </div>
             <button 
                 onClick={() => toggleSettings(false)}
-                className="hover:bg-destructive/10 hover:text-destructive rounded-md p-1.5 transition-colors"
+                className="rounded-md p-1.5 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 aria-label={tr('settings.close')}
             >
                 <X className="w-4 h-4" />
@@ -864,6 +864,7 @@ export function SettingsModal() {
                       value={settings.language}
                       onChange={(e) => updateSettings({ language: e.target.value as typeof settings.language })}
                       aria-label={tr('settings.language')}
+                      name="settings-language"
                     >
                       <option value="zh-CN">{tr('settings.language.zhCN')}</option>
                       <option value="en-US">{tr('settings.language.enUS')}</option>
@@ -978,6 +979,7 @@ export function SettingsModal() {
                         });
                       }}
                       aria-label={tr('settings.newFileLineEnding')}
+                      name="settings-new-file-line-ending"
                     >
                       {LINE_ENDING_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -1218,11 +1220,13 @@ export function SettingsModal() {
                             }}
                             placeholder={tr('settings.customExtensionPlaceholder')}
                             aria-label={tr('settings.customExtensionPlaceholder')}
+                            name="settings-custom-extension"
+                            autoComplete="off"
                           />
                           <button
                             type="button"
                             onClick={() => handleAddCustomExtension()}
-                            className="h-9 shrink-0 min-w-[4.5rem] whitespace-nowrap rounded-md border border-border px-4 text-xs font-medium hover:bg-muted transition-colors"
+                            className="h-9 shrink-0 min-w-[4.5rem] whitespace-nowrap rounded-md border border-border px-4 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           >
                             {addExtensionButtonLabel}
                           </button>
@@ -1235,7 +1239,7 @@ export function SettingsModal() {
                                 key={extension}
                                 type="button"
                                 onClick={() => handleRemoveCustomExtension(extension)}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               >
                                 {extension} ×
                               </button>
@@ -1263,6 +1267,7 @@ export function SettingsModal() {
                       value={settings.theme}
                       onChange={(e) => updateSettings({ theme: e.target.value as typeof settings.theme })}
                       aria-label={tr('settings.theme')}
+                      name="settings-theme"
                     >
                       <option value="light">{tr('settings.theme.light')}</option>
                       <option value="dark">{tr('settings.theme.dark')}</option>
@@ -1371,6 +1376,8 @@ export function SettingsModal() {
                               }
                             }}
                             placeholder={fontPickerPlaceholder}
+                            name="settings-font-family"
+                            autoComplete="off"
                           />
 
                           {isFontDropdownOpen && filteredFontSuggestions.length > 0 && (
@@ -1472,6 +1479,7 @@ export function SettingsModal() {
                           onChange={(e) => updateSettings({ fontSize: parseInt(e.target.value) || 12 })}
                           min={8}
                           max={72}
+                          name="settings-font-size"
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
                           px
@@ -1495,6 +1503,7 @@ export function SettingsModal() {
                           }}
                           min={1}
                           max={8}
+                          name="settings-tab-width"
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
                           sp
@@ -1699,12 +1708,14 @@ export function SettingsModal() {
                               autoComplete="off"
                               spellCheck={false}
                               aria-label={`${mouseGestureSequenceLabel} ${index + 1}`}
+                              name={`settings-gesture-sequence-${index + 1}`}
                             />
                             <select
                               value={gesture.action}
                               onChange={(event) => handleChangeGestureAction(index, event.target.value as MouseGestureAction)}
                               className={cn(controlClassName, 'h-9')}
                               aria-label={`${mouseGestureActionLabel} ${index + 1}`}
+                              name={`settings-gesture-action-${index + 1}`}
                             >
                               {MOUSE_GESTURE_ACTIONS.map((action) => (
                                 <option key={action} value={action}>
@@ -1715,7 +1726,7 @@ export function SettingsModal() {
                             <button
                               type="button"
                               onClick={() => handleDeleteGesture(index)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/40 text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               aria-label={mouseGestureDeleteLabel}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1734,12 +1745,14 @@ export function SettingsModal() {
                           autoComplete="off"
                           spellCheck={false}
                           aria-label={mouseGestureSequenceLabel}
+                          name="settings-new-gesture-sequence"
                         />
                         <select
                           value={newGestureActionInput}
                           onChange={(event) => setNewGestureActionInput(event.target.value as MouseGestureAction)}
                           className={cn(controlClassName, 'h-9')}
                           aria-label={mouseGestureActionLabel}
+                          name="settings-new-gesture-action"
                         >
                           {MOUSE_GESTURE_ACTIONS.map((action) => (
                             <option key={action} value={action}>
@@ -1751,7 +1764,7 @@ export function SettingsModal() {
                           type="button"
                           onClick={handleAddGesture}
                           disabled={addGestureDisabled}
-                          className="h-9 rounded-md border border-border px-3 text-xs hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-9 rounded-md border border-border px-3 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {mouseGestureAddLabel}
                         </button>
@@ -1810,7 +1823,7 @@ export function SettingsModal() {
                             <button
                               type="button"
                               onClick={() => void handleOpenProjectHome()}
-                              className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                              className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             >
                               {projectHomeOpenLabel}
                             </button>
