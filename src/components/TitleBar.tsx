@@ -1068,7 +1068,7 @@ export function TitleBar() {
                     </div>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             setTabContextMenu(null);
                             handleSetCompareSource(contextMenuTab);
@@ -1081,7 +1081,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             setTabContextMenu(null);
                             void handleCreateDiffTab(contextMenuTab);
@@ -1093,7 +1093,7 @@ export function TitleBar() {
                     <div className="my-1 h-px bg-border" />
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onClick={() => {
                             const fileName = contextMenuTab?.name;
                             setTabContextMenu(null);
@@ -1109,7 +1109,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             setTabContextMenu(null);
 
@@ -1125,7 +1125,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             const filePath = contextMenuTab?.path;
                             setTabContextMenu(null);
@@ -1142,7 +1142,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             const filePath = contextMenuTab?.path;
                             setTabContextMenu(null);
@@ -1162,7 +1162,7 @@ export function TitleBar() {
                     <div className="my-1 h-px bg-border" />
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             setTabContextMenu(null);
                             handleToggleTabLock(contextMenuTab);
@@ -1173,7 +1173,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                             setTabContextMenu(null);
                             if (!contextMenuTab) {
@@ -1187,7 +1187,7 @@ export function TitleBar() {
                     </button>
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-destructive/10 hover:text-destructive"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onClick={() => {
                             setTabContextMenu(null);
                             void handleCloseAllTabs();

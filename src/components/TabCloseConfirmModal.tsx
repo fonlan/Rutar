@@ -152,21 +152,21 @@ export function TabCloseConfirmModal() {
           <button
             ref={cancelButtonRef}
             type="button"
-            className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => submit('cancel')}
           >
             {text.cancel}
           </button>
           <button
             type="button"
-            className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => submit('discard')}
           >
             {text.discard}
           </button>
           <button
             type="button"
-            className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
+            className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => submit('save')}
           >
             {text.save}
@@ -175,14 +175,14 @@ export function TabCloseConfirmModal() {
             <>
               <button
                 type="button"
-                className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() => submit('discard_all')}
               >
                 {text.discardAll}
               </button>
               <button
                 type="button"
-                className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
+                className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() => submit('save_all')}
               >
                 {text.saveAll}

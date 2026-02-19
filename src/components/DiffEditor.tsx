@@ -3002,12 +3002,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 }}
                 placeholder={searchPlaceholderLabel}
                 aria-label={`${sourceTitlePrefix} ${searchPlaceholderLabel}`}
+                name="diff-source-search"
+                autoComplete="off"
                 className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
               />
               <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
                 <button
                   type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3022,7 +3024,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3040,7 +3042,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             <div className="flex shrink-0 items-center gap-0.5">
               <button
                 type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
@@ -3055,7 +3057,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               </button>
               <button
                 type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
@@ -3122,12 +3124,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 }}
                 placeholder={searchPlaceholderLabel}
                 aria-label={`${targetTitlePrefix} ${searchPlaceholderLabel}`}
+                name="diff-target-search"
+                autoComplete="off"
                 className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
               />
               <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
                 <button
                   type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3142,7 +3146,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
@@ -3160,7 +3164,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
             <div className="flex shrink-0 items-center gap-0.5">
               <button
                 type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
@@ -3175,7 +3179,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
               </button>
               <button
                 type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
@@ -3669,7 +3673,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         >
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => {
               void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-file-name');
             }}
@@ -3678,7 +3682,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           </button>
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => {
               void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-directory');
             }}
@@ -3688,7 +3692,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           </button>
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => {
               void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-path');
             }}
@@ -3698,7 +3702,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           </button>
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => {
               void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'open-containing-folder');
             }}
@@ -3718,7 +3722,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         >
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => {
               void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'copy');
             }}
@@ -3727,7 +3731,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           </button>
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => {
               void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'cut');
             }}
@@ -3736,7 +3740,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           </button>
           <button
             type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => {
               void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'paste');
             }}
@@ -3747,7 +3751,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           {diffContextMenu.side === 'target' && (
             <button
               type="button"
-              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'source')}
               onClick={() => {
                 void handleCopyLinesToPanel(diffContextMenu.side, 'source');
@@ -3760,7 +3764,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           {diffContextMenu.side === 'source' && (
             <button
               type="button"
-              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'target')}
               onClick={() => {
                 void handleCopyLinesToPanel(diffContextMenu.side, 'target');
