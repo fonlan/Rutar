@@ -754,7 +754,7 @@ export function SettingsModal() {
           <button
             onClick={() => setActiveTab('general')}
             className={cn(
-              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               activeTab === 'general'
                 ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
                 : 'hover:bg-muted/70 border-transparent'
@@ -770,7 +770,7 @@ export function SettingsModal() {
           <button
             onClick={() => setActiveTab('appearance')}
             className={cn(
-              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               activeTab === 'appearance'
                 ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
                 : 'hover:bg-muted/70 border-transparent'
@@ -786,7 +786,7 @@ export function SettingsModal() {
           <button
             onClick={() => setActiveTab('mouseGestures')}
             className={cn(
-              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               activeTab === 'mouseGestures'
                 ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
                 : 'hover:bg-muted/70 border-transparent'
@@ -802,7 +802,7 @@ export function SettingsModal() {
           <button
             onClick={() => setActiveTab('shortcuts')}
             className={cn(
-              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               activeTab === 'shortcuts'
                 ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
                 : 'hover:bg-muted/70 border-transparent'
@@ -818,7 +818,7 @@ export function SettingsModal() {
           <button
             onClick={() => setActiveTab('about')}
             className={cn(
-              'flex items-start gap-3 px-3 py-3 rounded-lg text-left transition-colors border',
+              'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               activeTab === 'about'
                 ? 'bg-accent/70 text-accent-foreground border-accent-foreground/10 shadow-sm'
                 : 'hover:bg-muted/70 border-transparent'

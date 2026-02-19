@@ -4597,7 +4597,7 @@ export function SearchReplacePanel() {
               <button
                 type="button"
                 className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors',
+                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                   panelMode === 'find'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -4612,7 +4612,7 @@ export function SearchReplacePanel() {
               <button
                 type="button"
                 className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
+                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
                   panelMode === 'replace'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -4629,7 +4629,7 @@ export function SearchReplacePanel() {
               <button
                 type="button"
                 className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors disabled:opacity-50',
+                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
                   panelMode === 'filter'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -4647,7 +4647,7 @@ export function SearchReplacePanel() {
 
             <button
               type="button"
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => setIsOpen(false)}
               title={messages.close}
               aria-label={messages.close}
@@ -4997,7 +4997,7 @@ export function SearchReplacePanel() {
                     <button
                       type="button"
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                         rule.applyTo === 'line'
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -5014,7 +5014,7 @@ export function SearchReplacePanel() {
                     <button
                       type="button"
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors',
+                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                         rule.applyTo === 'match'
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -5186,7 +5186,7 @@ export function SearchReplacePanel() {
 
                   <button
                     type="button"
-                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90"
+                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={toggleResultPanelAndRefresh}
                     title={resultToggleTitle}
                   >
@@ -5530,7 +5530,7 @@ export function SearchReplacePanel() {
             </span>
             <button
               type="button"
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => {
                 setResultPanelState('open');
 
@@ -5545,17 +5545,19 @@ export function SearchReplacePanel() {
                 }
               }}
               title={isFilterMode ? messages.openFilterResults : messages.openResults}
+              aria-label={isFilterMode ? messages.openFilterResults : messages.openResults}
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => {
                 cancelPendingBatchLoad();
                 setResultPanelState('closed');
               }}
               title={messages.closeResults}
+              aria-label={messages.closeResults}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -5571,7 +5573,7 @@ function ModeButton({ active, label, onClick }: { active: boolean; label: string
     <button
       type="button"
       className={cn(
-        'rounded-md border px-2 py-1 text-xs transition-colors',
+        'rounded-md border px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         active
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'

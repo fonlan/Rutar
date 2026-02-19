@@ -1274,7 +1274,7 @@ function ToolbarSplitMenu({
         <div ref={rootRef} className="relative flex items-center flex-shrink-0">
             <button
                 type="button"
-                className="py-2 pl-2 pr-1.5 rounded-l-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="rounded-l-md py-2 pl-2 pr-1.5 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 title={title}
                 aria-label={title}
                 onMouseDown={(event) => {
@@ -1287,7 +1287,7 @@ function ToolbarSplitMenu({
             <button
                 type="button"
                 className={cn(
-                    'py-2 pl-0.5 pr-1 -ml-0.5 rounded-r-md hover:bg-accent hover:text-accent-foreground transition-colors',
+                    '-ml-0.5 rounded-r-md py-2 pl-0.5 pr-1 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                     menuOpen && 'bg-accent text-accent-foreground'
                 )}
                 title={menuTitle}
@@ -1313,7 +1313,7 @@ function ToolbarSplitMenu({
                                 >
                                     <button
                                         type="button"
-                                        className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                                        className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         title={item.path}
                                         aria-label={item.path}
                                         onClick={() => {
@@ -1354,7 +1354,7 @@ function ToolbarSplitMenu({
                                     </button>
                                     <button
                                         type="button"
-                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         title={removeItemText}
                                         aria-label={removeItemText}
                                         onClick={(event) => {
@@ -1370,7 +1370,7 @@ function ToolbarSplitMenu({
                             <div className="my-1 h-px bg-border" />
                             <button
                                 type="button"
-                                className="w-full rounded-sm px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                className="w-full rounded-sm px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 onClick={onClear}
                             >
                                 {clearText}
@@ -1393,7 +1393,7 @@ function ToolbarSplitMenu({
                 >
                     <button
                         type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onClick={(event) => {
                             event.stopPropagation();
                             setItemContextMenu(null);
