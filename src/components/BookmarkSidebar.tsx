@@ -132,7 +132,7 @@ export function BookmarkSidebar() {
         <span className="truncate">{tr('bookmark.sidebar.title')}</span>
         <button
           type="button"
-          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           title={tr('sidebar.close')}
           aria-label={tr('sidebar.close')}
           onClick={() => toggleBookmarkSidebar(false)}
