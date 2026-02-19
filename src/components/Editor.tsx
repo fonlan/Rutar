@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { detectSyntaxKeyFromTab, getLineCommentPrefixForSyntaxKey } from '@/lib/syntax';
+import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
@@ -27,7 +27,6 @@ import {
   type SyntaxToken,
   type TextDragMoveState,
   type TextSelectionState,
-  type ToggleLineCommentsBackendResult,
   type VerticalSelectionState,
 } from './Editor.types';
 import { resolveTokenTypeClass } from './editorTokenClass';
@@ -52,6 +51,7 @@ import { useEditorRowMeasurement } from './useEditorRowMeasurement';
 import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
 import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorTextMeasurement } from './useEditorTextMeasurement';
+import { useEditorToggleLineCommentsAction } from './useEditorToggleLineCommentsAction';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 
 const MAX_LINE_RANGE = 2147483647;
@@ -1741,90 +1741,24 @@ export function Editor({
     return true;
   }, []);
 
-  const toggleSelectedLinesComment = useCallback(
-    async (event: React.KeyboardEvent<HTMLDivElement>) => {
-      const element = contentRef.current;
-      if (!element) {
-        return;
-      }
-
-      let selectionOffsets = getSelectionOffsetsInElement(element);
-      if (!selectionOffsets) {
-        const text = normalizeSegmentText(getEditableText(element));
-        const layerEndOffset = mapLogicalOffsetToInputLayerOffset(text, text.length);
-        setCaretToCodeUnitOffset(element, layerEndOffset);
-        selectionOffsets = getSelectionOffsetsInElement(element);
-      }
-
-      if (!selectionOffsets) {
-        return;
-      }
-      const prefix = getLineCommentPrefixForSyntaxKey(activeSyntaxKey);
-
-      try {
-        const baseText = normalizeSegmentText(getEditableText(element));
-        const startChar = codeUnitOffsetToUnicodeScalarIndex(baseText, selectionOffsets.start);
-        const endChar = codeUnitOffsetToUnicodeScalarIndex(baseText, selectionOffsets.end);
-
-        const result = await invoke<ToggleLineCommentsBackendResult>('toggle_line_comments', {
-          id: tab.id,
-          startChar,
-          endChar,
-          isCollapsed: selectionOffsets.isCollapsed,
-          prefix,
-        });
-
-        if (!result.changed) {
-          return;
-        }
-
-        const safeLineCount = Math.max(1, result.lineCount ?? tab.lineCount);
-        updateTab(tab.id, {
-          lineCount: safeLineCount,
-          isDirty: true,
-        });
-        dispatchDocumentUpdated(tab.id);
-
-        await loadTextFromBackend();
-        await syncVisibleTokens(safeLineCount);
-
-        const refreshedElement = contentRef.current;
-        if (refreshedElement) {
-          const refreshedText = normalizeSegmentText(getEditableText(refreshedElement));
-
-          const selectionStartLogical =
-            Math.max(0, Math.min(refreshedText.length, result.selectionStartChar ?? 0));
-          const selectionEndLogical =
-            Math.max(0, Math.min(refreshedText.length, result.selectionEndChar ?? selectionStartLogical));
-
-          const selectionStartLayer = mapLogicalOffsetToInputLayerOffset(refreshedText, selectionStartLogical);
-          const selectionEndLayer = mapLogicalOffsetToInputLayerOffset(refreshedText, selectionEndLogical);
-
-          if (selectionOffsets.isCollapsed) {
-            setCaretToCodeUnitOffset(refreshedElement, selectionEndLayer);
-          } else {
-            setSelectionToCodeUnitOffsets(refreshedElement, selectionStartLayer, selectionEndLayer);
-          }
-
-          syncSelectionAfterInteraction();
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-      } catch (error) {
-        console.error('Failed to toggle line comments:', error);
-      }
-    },
-    [
-      activeSyntaxKey,
-      loadTextFromBackend,
-      syncSelectionAfterInteraction,
-      syncVisibleTokens,
-      tab.id,
-      tab.lineCount,
-      updateTab,
-    ]
-  );
+  const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
+    activeSyntaxKey,
+    tabId: tab.id,
+    tabLineCount: tab.lineCount,
+    contentRef,
+    updateTab,
+    dispatchDocumentUpdated,
+    loadTextFromBackend,
+    syncVisibleTokens,
+    syncSelectionAfterInteraction,
+    getSelectionOffsetsInElement,
+    normalizeSegmentText,
+    getEditableText,
+    mapLogicalOffsetToInputLayerOffset,
+    setCaretToCodeUnitOffset,
+    codeUnitOffsetToUnicodeScalarIndex,
+    setSelectionToCodeUnitOffsets,
+  });
 
   const { handleEditableKeyDown } = useEditorKeyboardActions({
     contentRef,
