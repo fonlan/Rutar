@@ -54,6 +54,7 @@ import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
 import { useEditorTextMeasurement } from './useEditorTextMeasurement';
 import { useEditorToggleLineCommentsAction } from './useEditorToggleLineCommentsAction';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
+import { useEditorVisibleItemsRendered } from './useEditorVisibleItemsRendered';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -1669,68 +1670,27 @@ export function Editor({
     handleInput,
   });
 
-  const onItemsRendered = useCallback(
-    ({ visibleStartIndex, visibleStopIndex }) => {
-      if (isHugeEditableMode && (pendingSyncRequestedRef.current || syncInFlightRef.current || isComposingRef.current)) {
-        return;
-      }
-
-      const buffer = largeFetchBuffer;
-      const start = Math.max(0, visibleStartIndex - buffer);
-      const end = Math.min(tab.lineCount, visibleStopIndex + buffer);
-
-      const cachedCount = isHugeEditableMode
-        ? Math.max(0, editableSegment.endLine - editableSegment.startLine)
-        : usePlainLineRendering
-        ? plainLines.length
-        : lineTokens.length;
-      const cachedStart = isHugeEditableMode
-        ? editableSegment.startLine
-        : usePlainLineRendering
-        ? plainStartLine
-        : startLine;
-      const hasNoCache = isHugeEditableMode
-        ? editableSegment.endLine <= editableSegment.startLine
-        : usePlainLineRendering
-        ? plainLines.length === 0
-        : lineTokens.length === 0;
-      const isOutside = hasNoCache || start < cachedStart || end > cachedStart + cachedCount;
-
-      if (isOutside) {
-        if (requestTimeout.current) clearTimeout(requestTimeout.current);
-        const debounceMs = isHugeEditableMode
-          ? HUGE_EDITABLE_FETCH_DEBOUNCE_MS
-          : tab.largeFileMode
-          ? LARGE_FILE_FETCH_DEBOUNCE_MS
-          : NORMAL_FILE_FETCH_DEBOUNCE_MS;
-        requestTimeout.current = setTimeout(
-          () => syncVisibleTokens(tab.lineCount, {
-            start: visibleStartIndex,
-            stop: visibleStopIndex,
-          }),
-          debounceMs
-        );
-      }
-    },
-    [
-      editableSegment.endLine,
-      editableSegment.startLine,
-      isHugeEditableMode,
-      isComposingRef,
-      largeFetchBuffer,
-      usePlainLineRendering,
-      plainLines.length,
-      plainStartLine,
-      lineTokens.length,
-      pendingSyncRequestedRef,
-      lineTokens.length,
-      syncInFlightRef,
-      startLine,
-      syncVisibleTokens,
-      tab.lineCount,
-      tab.largeFileMode,
-    ]
-  );
+  const { onItemsRendered } = useEditorVisibleItemsRendered({
+    isHugeEditableMode,
+    pendingSyncRequestedRef,
+    syncInFlightRef,
+    isComposingRef,
+    largeFetchBuffer,
+    tabLineCount: tab.lineCount,
+    tabLargeFileMode: tab.largeFileMode,
+    editableSegmentStartLine: editableSegment.startLine,
+    editableSegmentEndLine: editableSegment.endLine,
+    usePlainLineRendering,
+    plainLinesLength: plainLines.length,
+    plainStartLine,
+    lineTokensLength: lineTokens.length,
+    startLine,
+    requestTimeoutRef: requestTimeout,
+    hugeEditableFetchDebounceMs: HUGE_EDITABLE_FETCH_DEBOUNCE_MS,
+    largeFileFetchDebounceMs: LARGE_FILE_FETCH_DEBOUNCE_MS,
+    normalFileFetchDebounceMs: NORMAL_FILE_FETCH_DEBOUNCE_MS,
+    syncVisibleTokens,
+  });
 
   const { renderHighlightedPlainLine, renderHighlightedTokens } = useEditorLineHighlightRenderers({
     searchHighlight,
