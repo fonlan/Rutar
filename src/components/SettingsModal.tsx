@@ -1253,9 +1253,11 @@ export function SettingsModal() {
                   </div>
                   <div className="space-y-2">
                     <select
+                      id="settings-theme-select"
                       className={controlClassName}
                       value={settings.theme}
                       onChange={(e) => updateSettings({ theme: e.target.value as typeof settings.theme })}
+                      aria-label={tr('settings.theme')}
                     >
                       <option value="light">{tr('settings.theme.light')}</option>
                       <option value="dark">{tr('settings.theme.dark')}</option>
@@ -1273,7 +1275,7 @@ export function SettingsModal() {
                   </div>
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_160px]">
                     <div className="min-w-0 space-y-2">
-                      <label className="text-sm font-medium leading-none">
+                      <label htmlFor="settings-font-family-input" className="text-sm font-medium leading-none">
                         {tr('settings.fontFamily')}
                       </label>
                       <div className="flex flex-col gap-2 sm:flex-row">
@@ -1293,6 +1295,7 @@ export function SettingsModal() {
                           }}
                         >
                           <input
+                            id="settings-font-family-input"
                             className={controlClassName}
                             value={fontPickerInput}
                             onChange={(e) => {
@@ -1452,11 +1455,12 @@ export function SettingsModal() {
                     </div>
 
                     <div className="min-w-0 space-y-2">
-                      <label className="text-sm font-medium leading-none">
+                      <label htmlFor="settings-font-size-input" className="text-sm font-medium leading-none">
                         {tr('settings.fontSize')}
                       </label>
                       <div className="relative">
                         <input
+                          id="settings-font-size-input"
                           type="number"
                           className={cn(controlClassName, 'pr-10')}
                           value={settings.fontSize}
@@ -1471,11 +1475,12 @@ export function SettingsModal() {
                     </div>
 
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium leading-none">
+                      <label htmlFor="settings-tab-width-input" className="text-sm font-medium leading-none">
                         {tr('settings.tabWidth')}
                       </label>
                       <div className="relative max-w-[220px]">
                         <input
+                          id="settings-tab-width-input"
                           type="number"
                           className={cn(controlClassName, 'pr-10')}
                           value={settings.tabWidth}

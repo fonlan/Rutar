@@ -345,6 +345,18 @@ describe("SettingsModal", () => {
     });
   });
 
+  it("associates appearance labels with theme and typography controls", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
+
+    expect(await screen.findByRole("combobox", { name: "Theme" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Font Family")).toBeInTheDocument();
+    expect(screen.getByLabelText("Font Size")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tab Width")).toBeInTheDocument();
+  });
+
   it("renders shortcut table in shortcuts tab", async () => {
     useStore.getState().toggleSettings(true);
     render(<SettingsModal />);
