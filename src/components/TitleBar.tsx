@@ -1030,7 +1030,7 @@ export function TitleBar() {
                                         e.stopPropagation();
                                         void handleCloseTab(tab as FileTab);
                                     }}
-                                    className="ml-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-none p-0.5"
+                                    className="ml-2 rounded-none p-0.5 opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-destructive/10 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 >
                                     <X className="w-3 h-3" />
                                 </button>

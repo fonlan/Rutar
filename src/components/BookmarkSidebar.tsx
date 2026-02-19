@@ -148,7 +148,7 @@ export function BookmarkSidebar() {
           sortedBookmarks.map((line) => (
             <div key={line} className="px-2 py-1">
               <div
-                className="group flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
+                className="group flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 title={`${tr('bookmark.sidebar.line')} ${line}`}
                 onClick={() => dispatchNavigateToLineFromBookmark(activeTabId, line)}
                 onKeyDown={(event) => {
@@ -179,7 +179,7 @@ export function BookmarkSidebar() {
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   title={tr('bookmark.remove')}
                   aria-label={tr('bookmark.remove')}
                   onClick={(event) => {

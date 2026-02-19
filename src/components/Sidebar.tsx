@@ -40,7 +40,7 @@ export function Sidebar() {
                 <span className="truncate">{folderPath.split(/[\\/]/).pop()}</span>
                 <button
                     type="button"
-                    className="ml-auto inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+                    className="ml-auto inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     title={tr('sidebar.close')}
                     aria-label={tr('sidebar.close')}
                     onClick={() => toggleSidebar(false)}
@@ -110,7 +110,7 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
         <div>
             <div 
                 className={cn(
-                    "flex items-center gap-1.5 px-2 py-1 cursor-pointer hover:bg-accent hover:text-accent-foreground text-xs transition-colors group",
+                    "group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                     isActiveFile && "bg-accent/50 text-accent-foreground border-l-2 border-primary pl-[calc(level*12px+6px)]"
                 )}
                 style={{ paddingLeft: `${level * 12 + 8}px` }}

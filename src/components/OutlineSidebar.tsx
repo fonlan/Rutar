@@ -133,7 +133,7 @@ export function OutlineSidebar({
         </span>
         <button
           type="button"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           title={tr('sidebar.close')}
           aria-label={tr('sidebar.close')}
           onClick={() => toggleOutline(false)}
@@ -150,6 +150,8 @@ export function OutlineSidebar({
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
+            name="outline-search"
+            autoComplete="off"
             className="h-7 w-full rounded-md border border-input bg-background px-2 pr-7 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
           />
           {searchValue ? (
@@ -157,7 +159,7 @@ export function OutlineSidebar({
               type="button"
               title={searchClearLabel}
               aria-label={searchClearLabel}
-              className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => setSearchValue('')}
             >
               <X className="h-3.5 w-3.5" />
@@ -169,7 +171,7 @@ export function OutlineSidebar({
           title={expandAllLabel}
           aria-label={expandAllLabel}
           disabled={treeActionDisabled}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => setTreeExpanded(true)}
         >
           <ChevronsDown className="h-3.5 w-3.5" />
@@ -179,7 +181,7 @@ export function OutlineSidebar({
           title={collapseAllLabel}
           aria-label={collapseAllLabel}
           disabled={treeActionDisabled}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => setTreeExpanded(false)}
         >
           <ChevronsUp className="h-3.5 w-3.5" />
@@ -259,7 +261,7 @@ function TreeNodeItem({
     <div>
       <div
         className={cn(
-          'flex items-center gap-1.5 px-2 py-1 text-xs transition-colors cursor-pointer hover:bg-accent hover:text-accent-foreground'
+          'flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleSelectNode}
