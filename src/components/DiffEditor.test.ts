@@ -223,9 +223,9 @@ describe('diffEditorTestUtils clamp helpers', () => {
 });
 
 describe('diffEditorTestUtils.shouldOffloadDiffMetadataComputation', () => {
-  it('switches to backend offload only when aligned rows exceed threshold', () => {
-    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1200)).toBe(false);
-    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1201)).toBe(true);
+  it('always offloads metadata recomputation to backend for aligned rows', () => {
+    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1)).toBe(true);
+    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1200)).toBe(true);
   });
 });
 
@@ -1370,6 +1370,18 @@ describe('DiffEditor component', () => {
 
     await waitFor(() => {
       expect(targetTextarea.value).toContain('\t');
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'preview_aligned_diff_state',
+        expect.objectContaining({
+          alignedSourceLines: expect.any(Array),
+          alignedTargetLines: expect.any(Array),
+          alignedSourcePresent: expect.any(Array),
+          alignedTargetPresent: expect.any(Array),
+        })
+      );
     });
   });
 
