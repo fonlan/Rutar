@@ -10,6 +10,7 @@ import {
 import type { FileTab } from '@/store/useStore';
 import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import type { CaretSnapshot } from './diffEditor.utils';
+import { getLineIndexFromTextOffset } from './diffEditor.utils';
 
 interface ApplyAlignedDiffPanelCopyResult {
   lineDiff: LineDiffComparisonResult;
@@ -39,7 +40,6 @@ interface UseDiffEditorEditActionsParams {
   invalidatePreviewMetadataComputation: () => void;
   normalizeTextToLines: (text: string) => string[];
   reconcilePresenceAfterTextEdit: (oldLines: string[], oldPresent: boolean[], newLines: string[]) => boolean[];
-  getLineIndexFromTextOffset: (text: string, offset: number) => number;
   shouldOffloadDiffMetadataComputation: (alignedLineCount: number) => boolean;
   buildAlignedDiffMetadata: (
     alignedSourceLines: string[],
@@ -90,7 +90,6 @@ export function useDiffEditorEditActions({
   invalidatePreviewMetadataComputation,
   normalizeTextToLines,
   reconcilePresenceAfterTextEdit,
-  getLineIndexFromTextOffset,
   shouldOffloadDiffMetadataComputation,
   buildAlignedDiffMetadata,
   buildCopyTextWithoutVirtualRows,

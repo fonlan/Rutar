@@ -1,8 +1,6 @@
 import {
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { cn } from '@/lib/utils';
@@ -22,13 +20,11 @@ import {
   buildAlignedDiffMetadata,
   buildCopyTextWithoutVirtualRows,
   buildInitialDiff,
-  buildLineNumberByAlignedRow,
   clampRatio,
   dispatchDocumentUpdated,
   extractActualLines,
   findAlignedRowIndexByLineNumber,
   getDiffKindStyle,
-  getLineIndexFromTextOffset,
   getSelectedLineRangeByOffset,
   inferTrailingNewlineFromLines,
   normalizeLineDiffResult,
@@ -36,10 +32,9 @@ import {
   reconcilePresenceAfterTextEdit,
   serializeLines,
   shouldOffloadDiffMetadataComputation,
-  type CaretSnapshot,
-  type PanelScrollSnapshot,
 } from './diffEditor.utils';
 import { useDiffEditorPanelActions } from './useDiffEditorPanelActions';
+import { useDiffEditorSnapshotState } from './useDiffEditorSnapshotState';
 import { useDiffEditorPanelScrollSync } from './useDiffEditorPanelScrollSync';
 import { useDiffEditorSplitter } from './useDiffEditorSplitter';
 import { useDiffEditorSync } from './useDiffEditorSync';
@@ -64,14 +59,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     persistedActivePanel === 'target' ? 'target' : 'source'
   );
   const [lineDiff, setLineDiff] = useState<LineDiffComparisonResult>(() => buildInitialDiff(tab.diffPayload));
-
-  const lineDiffRef = useRef(lineDiff);
-  const pendingScrollRestoreRef = useRef<PanelScrollSnapshot | null>(null);
-  const pendingCaretRestoreRef = useRef<CaretSnapshot | null>(null);
-  const lastEditAtRef = useRef(0);
-  const copyLinesRequestSequenceRef = useRef(0);
-  const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const targetTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const sourceTab = useMemo(
     () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
@@ -117,55 +104,21 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     bindScrollerViewport,
   });
 
-  const capturePanelScrollSnapshot = useCallback(() => {
-    if (!sourceScroller || !targetScroller) {
-      pendingScrollRestoreRef.current = null;
-      return;
-    }
-
-    pendingScrollRestoreRef.current = {
-      sourceTop: sourceScroller.scrollTop,
-      sourceLeft: sourceScroller.scrollLeft,
-      targetTop: targetScroller.scrollTop,
-      targetLeft: targetScroller.scrollLeft,
-    };
-  }, [sourceScroller, targetScroller]);
-
-  const captureFocusedCaretSnapshot = useCallback((): CaretSnapshot | null => {
-    const activeElement = document.activeElement;
-    if (!(activeElement instanceof HTMLTextAreaElement)) {
-      return null;
-    }
-
-    const panel = activeElement.dataset.diffPanel;
-    if (panel !== 'source' && panel !== 'target') {
-      return null;
-    }
-
-    const snapshotState = lineDiffRef.current;
-    const present = panel === 'source'
-      ? snapshotState.alignedSourcePresent
-      : snapshotState.alignedTargetPresent;
-    const lineNumbers = panel === 'source'
-      ? snapshotState.sourceLineNumbersByAlignedRow
-      : snapshotState.targetLineNumbersByAlignedRow;
-    const resolvedLineNumbers = Array.isArray(lineNumbers) && lineNumbers.length === present.length
-      ? lineNumbers
-      : buildLineNumberByAlignedRow(present);
-    const elementText = activeElement.value ?? '';
-    const selectionStart = activeElement.selectionStart ?? elementText.length;
-    const selectionEnd = activeElement.selectionEnd ?? elementText.length;
-    const effectiveRowIndex = getLineIndexFromTextOffset(elementText, selectionStart);
-    const lineNumber = resolvedLineNumbers[effectiveRowIndex] ?? 0;
-
-    return {
-      side: panel,
-      rowIndex: effectiveRowIndex,
-      lineNumber,
-      selectionStart,
-      selectionEnd,
-    };
-  }, []);
+  const {
+    lineDiffRef,
+    pendingScrollRestoreRef,
+    pendingCaretRestoreRef,
+    lastEditAtRef,
+    copyLinesRequestSequenceRef,
+    sourceTextareaRef,
+    targetTextareaRef,
+    capturePanelScrollSnapshot,
+    captureFocusedCaretSnapshot,
+  } = useDiffEditorSnapshotState({
+    lineDiff,
+    sourceScroller,
+    targetScroller,
+  });
 
   const {
     schedulePreviewMetadataComputation,
@@ -241,7 +194,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     invalidatePreviewMetadataComputation,
     normalizeTextToLines,
     reconcilePresenceAfterTextEdit,
-    getLineIndexFromTextOffset,
     shouldOffloadDiffMetadataComputation,
     buildAlignedDiffMetadata,
     buildCopyTextWithoutVirtualRows,
