@@ -78,24 +78,37 @@ fn normalize_rope_line_text(mut value: String) -> String {
     value
 }
 
-fn load_document_lines(state: &State<'_, AppState>, id: &str) -> Result<Vec<String>, String> {
-    let doc = state
-        .documents
-        .get(id)
-        .ok_or_else(|| "Document not found".to_string())?;
-
-    let line_count = doc.rope.len_lines();
+fn collect_rope_lines(rope: &Rope) -> Vec<String> {
+    let line_count = rope.len_lines();
     let mut lines = Vec::with_capacity(line_count);
 
     for index in 0..line_count {
-        lines.push(normalize_rope_line_text(doc.rope.line(index).to_string()));
+        lines.push(normalize_rope_line_text(rope.line(index).to_string()));
     }
 
     if lines.is_empty() {
         lines.push(String::new());
     }
 
-    Ok(lines)
+    lines
+}
+
+fn load_document_lines(state: &State<'_, AppState>, id: &str) -> Result<Vec<String>, String> {
+    let doc = state
+        .documents
+        .get(id)
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    Ok(collect_rope_lines(&doc.rope))
+}
+
+fn load_saved_document_lines(state: &State<'_, AppState>, id: &str) -> Result<Vec<String>, String> {
+    let doc = state
+        .documents
+        .get(id)
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    Ok(collect_rope_lines(&doc.saved_rope))
 }
 
 fn load_document_is_dirty(state: &State<'_, AppState>, id: &str) -> Result<bool, String> {
@@ -668,6 +681,10 @@ fn build_line_diff_result(source_lines: Vec<String>, target_lines: Vec<String>) 
     }
 }
 
+fn build_target_changed_line_numbers(source_lines: Vec<String>, target_lines: Vec<String>) -> Vec<usize> {
+    build_line_diff_result(source_lines, target_lines).target_diff_line_numbers
+}
+
 pub(super) async fn compare_documents_by_line_impl(
     state: State<'_, AppState>,
     source_id: String,
@@ -679,6 +696,32 @@ pub(super) async fn compare_documents_by_line_impl(
     tauri::async_runtime::spawn_blocking(move || build_line_diff_result(source_lines, target_lines))
         .await
         .map_err(|error| error.to_string())
+}
+
+pub(super) async fn get_unsaved_change_line_numbers_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<usize>, String> {
+    let has_unsaved_text_changes = {
+        let doc = state
+            .documents
+            .get(&id)
+            .ok_or_else(|| "Document not found".to_string())?;
+        doc.has_unsaved_text_changes()
+    };
+
+    if !has_unsaved_text_changes {
+        return Ok(Vec::new());
+    }
+
+    let source_lines = load_saved_document_lines(&state, &id)?;
+    let target_lines = load_document_lines(&state, &id)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        build_target_changed_line_numbers(source_lines, target_lines)
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 pub(super) async fn search_diff_panel_aligned_row_matches_impl(
@@ -813,10 +856,10 @@ pub(super) async fn apply_aligned_diff_edit_impl(
 mod tests {
     use super::{
         apply_aligned_diff_panel_copy, apply_serialized_text_to_document, build_line_diff_result,
-        build_line_diff_result_from_aligned, compute_text_patch, extract_actual_lines_from_aligned,
+        build_line_diff_result_from_aligned, build_target_changed_line_numbers, compute_text_patch,
+        extract_actual_lines_from_aligned,
         find_line_numbers_by_keyword, map_matched_line_numbers_to_aligned_rows,
-        normalize_rope_line_text, serialize_actual_lines, AlignedDiffKind,
-        DiffEditSide,
+        normalize_rope_line_text, serialize_actual_lines, AlignedDiffKind, DiffEditSide,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -825,7 +868,8 @@ mod tests {
     fn make_document(text: &str) -> Document {
         let rope = Rope::from_str(text);
         Document {
-            rope,
+            rope: rope.clone(),
+            saved_rope: rope,
             encoding: UTF_8,
             saved_encoding: UTF_8.name().to_string(),
             line_ending: default_line_ending(),
@@ -961,6 +1005,30 @@ mod tests {
         assert_eq!(result.source_line_numbers_by_aligned_row, vec![1]);
         assert_eq!(result.target_line_numbers_by_aligned_row, vec![1]);
         assert!(result.diff_row_indexes.is_empty());
+    }
+
+    #[test]
+    fn build_target_changed_line_numbers_should_return_empty_when_same_as_saved_snapshot() {
+        let changed = build_target_changed_line_numbers(
+            vec!["a".to_string(), "b".to_string()],
+            vec!["a".to_string(), "b".to_string()],
+        );
+
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn build_target_changed_line_numbers_should_map_insert_delete_and_modify_to_current_lines() {
+        let changed = build_target_changed_line_numbers(
+            vec!["alpha".to_string(), "beta".to_string(), "delta".to_string()],
+            vec![
+                "alpha".to_string(),
+                "BETA".to_string(),
+                "gamma".to_string(),
+            ],
+        );
+
+        assert_eq!(changed, vec![2, 3]);
     }
 
     #[test]

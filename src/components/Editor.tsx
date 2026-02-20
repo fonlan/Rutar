@@ -1,5 +1,6 @@
 // @ts-nocheck
-import { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { useEffect, useMemo, useState } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
@@ -79,6 +80,7 @@ const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
 const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
 const EMPTY_BOOKMARKS: number[] = [];
+const EMPTY_UNSAVED_CHANGE_LINES: number[] = [];
 const HYPERLINK_UNDERLINE_CLASS =
   'underline decoration-sky-500/80 underline-offset-2 text-sky-600 dark:text-sky-300';
 
@@ -295,6 +297,10 @@ export function Editor({
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
   const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
   const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
+  const [unsavedChangeLines, setUnsavedChangeLines] = useState<number[]>(EMPTY_UNSAVED_CHANGE_LINES);
+  const unsavedChangeLineSet = useMemo(() => {
+    return new Set(unsavedChangeLines);
+  }, [unsavedChangeLines]);
   const largeFetchBuffer = isHugeEditableMode
     ? HUGE_EDITABLE_FETCH_BUFFER_LINES
     : tab.largeFileMode
@@ -971,6 +977,74 @@ export function Editor({
     setCaretToCodeUnitOffset,
   });
 
+  useEffect(() => {
+    let disposed = false;
+    let latestRequestId = 0;
+
+    const applyUnsavedChangeLines = (result: unknown) => {
+      const normalized = Array.isArray(result)
+        ? Array.from(
+            new Set(
+              result
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value > 0)
+                .map((value) => Math.floor(value))
+            )
+          ).sort((left, right) => left - right)
+        : EMPTY_UNSAVED_CHANGE_LINES;
+
+      setUnsavedChangeLines((previous) => {
+        if (previous.length === normalized.length && previous.every((value, index) => value === normalized[index])) {
+          return previous;
+        }
+
+        return normalized;
+      });
+    };
+
+    const refreshUnsavedChangeLines = async () => {
+      const requestId = ++latestRequestId;
+
+      if (tab.tabType === 'diff' || tab.largeFileMode || !tab.isDirty) {
+        if (!disposed && requestId === latestRequestId) {
+          applyUnsavedChangeLines([]);
+        }
+        return;
+      }
+
+      try {
+        const result = await invoke<number[]>('get_unsaved_change_line_numbers', { id: tab.id });
+        if (disposed || requestId !== latestRequestId) {
+          return;
+        }
+        applyUnsavedChangeLines(result);
+      } catch (error) {
+        if (disposed || requestId !== latestRequestId) {
+          return;
+        }
+        console.error('Failed to load unsaved change line markers:', error);
+        applyUnsavedChangeLines([]);
+      }
+    };
+
+    const handleDocumentUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ tabId?: string }>).detail;
+      if (detail?.tabId !== tab.id) {
+        return;
+      }
+
+      void refreshUnsavedChangeLines();
+    };
+
+    void refreshUnsavedChangeLines();
+    window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+    };
+  }, [tab.id, tab.isDirty, tab.largeFileMode, tab.tabType]);
+
   return (
     <EditorView
       containerRef={containerRef}
@@ -1019,6 +1093,7 @@ export function Editor({
       plainLines={plainLines}
       measureRenderedLineHeight={measureRenderedLineHeight}
       diffHighlightLineSet={diffHighlightLineSet}
+      unsavedChangeLineSet={unsavedChangeLineSet}
       outlineFlashLine={outlineFlashLine}
       lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
       highlightCurrentLine={highlightCurrentLine}

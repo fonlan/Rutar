@@ -230,6 +230,7 @@ pub fn run() {
             commands::search_commands::search_in_document,
             commands::get_document_version,
             commands::compare_documents_by_line,
+            commands::get_unsaved_change_line_numbers,
             commands::search_diff_panel_aligned_row_matches,
             commands::preview_aligned_diff_state,
             commands::apply_aligned_diff_panel_copy,

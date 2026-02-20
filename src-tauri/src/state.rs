@@ -68,6 +68,7 @@ impl EditOperation {
 
 pub struct Document {
     pub rope: Rope,
+    pub saved_rope: Rope,
     pub encoding: &'static Encoding,
     pub saved_encoding: String,
     pub line_ending: LineEnding,
@@ -138,6 +139,7 @@ mod tests {
     fn make_document() -> Document {
         Document {
             rope: Rope::new(),
+            saved_rope: Rope::new(),
             encoding: UTF_8,
             saved_encoding: UTF_8.name().to_string(),
             line_ending: default_line_ending(),

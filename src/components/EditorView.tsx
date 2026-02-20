@@ -52,6 +52,7 @@ export function EditorView({
   plainLines,
   measureRenderedLineHeight,
   diffHighlightLineSet,
+  unsavedChangeLineSet,
   outlineFlashLine,
   lineNumberMultiSelectionSet,
   highlightCurrentLine,
@@ -203,6 +204,7 @@ export function EditorView({
         fontFamily={settings.fontFamily}
         lineNumberListRef={lineNumberListRef}
         diffHighlightLineSet={diffHighlightLineSet}
+        unsavedChangeLineSet={unsavedChangeLineSet}
         bookmarks={bookmarks}
         lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
         getLineNumberListItemSize={getLineNumberListItemSize}

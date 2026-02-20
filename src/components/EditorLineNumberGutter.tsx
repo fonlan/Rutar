@@ -14,6 +14,7 @@ interface EditorLineNumberGutterProps {
   fontFamily: string;
   lineNumberListRef: MutableRefObject<any>;
   diffHighlightLineSet: Set<number>;
+  unsavedChangeLineSet: Set<number>;
   bookmarks: number[];
   lineNumberMultiSelectionSet: Set<number>;
   getLineNumberListItemSize: (index: number) => number;
@@ -37,6 +38,7 @@ export function EditorLineNumberGutter({
   fontFamily,
   lineNumberListRef,
   diffHighlightLineSet,
+  unsavedChangeLineSet,
   bookmarks,
   lineNumberMultiSelectionSet,
   getLineNumberListItemSize,
@@ -89,7 +91,7 @@ export function EditorLineNumberGutter({
                 fontSize: `${lineNumberFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
               }}
-              className={`flex h-full items-start justify-end px-2 text-right transition-colors ${
+              className={`relative flex h-full items-start justify-end px-2 pr-3 text-right transition-colors ${
                 diffHighlightLineSet.has(index + 1)
                   ? 'text-red-600 dark:text-red-300 font-semibold'
                   : bookmarks.includes(index + 1)
@@ -119,6 +121,13 @@ export function EditorLineNumberGutter({
                 onLineNumberContextMenu(event, lineNumber);
               }}
             >
+              {unsavedChangeLineSet.has(index + 1) ? (
+                <span
+                  data-testid={`line-number-unsaved-marker-${index + 1}`}
+                  aria-hidden
+                  className="pointer-events-none absolute right-1 top-0 bottom-0 w-[3px] bg-orange-500/95"
+                />
+              ) : null}
               {index + 1}
             </div>
           );

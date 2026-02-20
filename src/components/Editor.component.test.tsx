@@ -195,6 +195,9 @@ describe('Editor component', () => {
       if (command === 'get_rectangular_selection_text') {
         return '';
       }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
 
       return undefined;
     });
@@ -380,6 +383,101 @@ describe('Editor component', () => {
       expect(lineRows[1]?.className.includes('bg-red-500/10')).toBe(true);
       expect(lineRows[0]?.className.includes('bg-red-500/10')).toBe(false);
     });
+  });
+
+  it('renders unsaved change marker in line-number gutter padding for modified lines', async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [2];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+
+      return undefined;
+    });
+
+    const tab = createTab({ id: 'tab-line-number-unsaved-marker', lineCount: 12, isDirty: true });
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('get_unsaved_change_line_numbers', { id: tab.id });
+      const marker = screen.getByTestId('line-number-unsaved-marker-2');
+      expect(marker).toBeTruthy();
+      expect(marker.className).toContain('top-0');
+      expect(marker.className).toContain('bottom-0');
+      expect(marker.className).toContain('w-[3px]');
+    });
+
+    expect(screen.queryByTestId('line-number-unsaved-marker-1')).toBeNull();
+  });
+
+  it('skips unsaved change marker diff lookup for large files', async () => {
+    const tab = createTab({
+      id: 'tab-line-number-unsaved-marker-large-file',
+      lineCount: 5000,
+      largeFileMode: true,
+      isDirty: true,
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'get_visible_lines_chunk',
+        expect.objectContaining({
+          id: tab.id,
+        })
+      );
+    });
+
+    expect(
+      invokeMock.mock.calls.some(
+        ([command, payload]) =>
+          command === 'get_unsaved_change_line_numbers'
+          && typeof payload === 'object'
+          && payload !== null
+          && (payload as { id?: string }).id === tab.id
+      )
+    ).toBe(false);
+    expect(screen.queryByTestId('line-number-unsaved-marker-1')).toBeNull();
   });
 
   it('renders wrapped line layout when wordWrap is enabled', async () => {

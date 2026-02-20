@@ -265,6 +265,14 @@ pub async fn compare_documents_by_line(
 }
 
 #[tauri::command]
+pub async fn get_unsaved_change_line_numbers(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<usize>, String> {
+    diff::get_unsaved_change_line_numbers_impl(state, id).await
+}
+
+#[tauri::command]
 pub async fn search_diff_panel_aligned_row_matches(
     state: State<'_, AppState>,
     id: String,

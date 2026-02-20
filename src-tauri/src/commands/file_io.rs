@@ -280,7 +280,8 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
     let id = Uuid::new_v4().to_string();
 
     let mut doc = Document {
-        rope: snapshot.rope,
+        rope: snapshot.rope.clone(),
+        saved_rope: snapshot.rope,
         encoding: snapshot.encoding,
         saved_encoding: snapshot.encoding.name().to_string(),
         line_ending: snapshot.line_ending,
@@ -477,6 +478,7 @@ fn save_file_by_id(state: &State<'_, AppState>, id: &str) -> Result<(), String> 
 
             use std::io::Write;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
+            doc.saved_rope = doc.rope.clone();
             doc.saved_document_version = doc.document_version;
             doc.saved_encoding = doc.encoding.name().to_string();
             doc.saved_line_ending = doc.line_ending;
@@ -534,6 +536,7 @@ pub(super) async fn save_file_as_impl(
         file.write_all(&bytes).map_err(|e| e.to_string())?;
 
         doc.path = Some(path_buf);
+        doc.saved_rope = doc.rope.clone();
         doc.saved_document_version = doc.document_version;
         doc.saved_encoding = doc.encoding.name().to_string();
         doc.saved_line_ending = doc.line_ending;
@@ -629,6 +632,7 @@ pub(super) fn new_file_impl(
 
     let mut doc = Document {
         rope: Rope::new(),
+        saved_rope: Rope::new(),
         encoding,
         saved_encoding: encoding.name().to_string(),
         line_ending,
@@ -718,7 +722,8 @@ pub(super) fn reload_file_from_disk_impl(
     let snapshot = read_disk_file_snapshot(&path)?;
 
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        doc.rope = snapshot.rope;
+        doc.rope = snapshot.rope.clone();
+        doc.saved_rope = snapshot.rope;
         doc.encoding = snapshot.encoding;
         doc.saved_encoding = snapshot.encoding.name().to_string();
         doc.line_ending = snapshot.line_ending;
