@@ -11,6 +11,32 @@ type EncodingOption = {
     value: string;
     label: string;
 };
+type LineEndingOption = {
+    value: LineEnding;
+    label: string;
+};
+
+const encodingOptions: EncodingOption[] = [
+    { value: 'UTF-8', label: 'UTF-8' },
+    { value: 'GBK', label: 'GBK' },
+    { value: 'ANSI', label: 'ANSI' },
+    { value: 'GB2312', label: 'GB2312' },
+    { value: 'Big5', label: 'Big5' },
+    { value: 'Shift_JIS', label: 'Shift_JIS' },
+    { value: 'Windows-1252', label: 'Windows-1252' },
+    { value: 'ISO-8859-1', label: 'ISO-8859-1' },
+].sort((a, b) => a.label.localeCompare(b.label, 'en', { numeric: true, sensitivity: 'base' }));
+
+const lineEndingOptions: LineEndingOption[] = [
+    { value: 'CRLF', label: 'Win (CRLF)' },
+    { value: 'LF', label: 'Linux (LF)' },
+    { value: 'CR', label: 'Mac (CR)' },
+];
+lineEndingOptions.sort((a, b) => a.value.localeCompare(b.value, 'en', { numeric: true, sensitivity: 'base' }));
+
+const syntaxOptions = [...SYNTAX_OPTIONS].sort((a, b) =>
+    a.label.localeCompare(b.label, 'en', { numeric: true, sensitivity: 'base' })
+);
 
 function dispatchDocumentUpdated(tabId: string) {
     window.dispatchEvent(
@@ -56,23 +82,6 @@ export function StatusBar() {
             {tr('status.ready')}
         </div>
     );
-
-    const encodings: EncodingOption[] = [
-        { value: 'UTF-8', label: 'UTF-8' },
-        { value: 'GBK', label: 'GBK' },
-        { value: 'ANSI', label: 'ANSI' },
-        { value: 'GB2312', label: 'GB2312' },
-        { value: 'Big5', label: 'Big5' },
-        { value: 'Shift_JIS', label: 'Shift_JIS' },
-        { value: 'Windows-1252', label: 'Windows-1252' },
-        { value: 'ISO-8859-1', label: 'ISO-8859-1' },
-    ];
-
-    const lineEndingOptions: Array<{ value: LineEnding; label: string }> = [
-        { value: 'CRLF', label: 'Win (CRLF)' },
-        { value: 'LF', label: 'Linux (LF)' },
-        { value: 'CR', label: 'Mac (CR)' },
-    ];
 
     const handleEncodingChange = async (newEnc: string) => {
         try {
@@ -129,7 +138,7 @@ export function StatusBar() {
         'statusbar-select border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring';
     const statusOptionClassName = 'statusbar-option';
     const activeEncodingValue =
-        encodings.find((option) => option.value.toLowerCase() === activeTab.encoding.toLowerCase())?.value ??
+        encodingOptions.find((option) => option.value.toLowerCase() === activeTab.encoding.toLowerCase())?.value ??
         activeTab.encoding;
 
     return (
@@ -185,7 +194,7 @@ export function StatusBar() {
                         aria-label={encodingSelectLabel}
                         name="status-encoding"
                     >
-                        {encodings.map((option) => (
+                        {encodingOptions.map((option) => (
                             <option key={option.value} value={option.value} className={statusOptionClassName}>
                                 {option.label}
                             </option>
@@ -205,7 +214,7 @@ export function StatusBar() {
                         <option value="auto" className={statusOptionClassName}>
                             {autoSyntaxLabel}
                         </option>
-                        {SYNTAX_OPTIONS.map((option) => (
+                        {syntaxOptions.map((option) => (
                             <option key={option.value} value={option.value} className={statusOptionClassName}>
                                 {option.label}
                             </option>

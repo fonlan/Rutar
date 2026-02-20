@@ -118,7 +118,16 @@ describe("StatusBar", () => {
       (option) => option.text
     );
 
-    expect(encodingOptions).toEqual(expect.arrayContaining(["ANSI", "GB2312", "Big5"]));
+    expect(encodingOptions).toEqual([
+      "ANSI",
+      "Big5",
+      "GB2312",
+      "GBK",
+      "ISO-8859-1",
+      "Shift_JIS",
+      "UTF-8",
+      "Windows-1252",
+    ]);
 
     fireEvent.change(encodingSelect, { target: { value: "ANSI" } });
 
@@ -131,6 +140,41 @@ describe("StatusBar", () => {
 
     const currentTab = useStore.getState().tabs.find((item) => item.id === "tab-encoding-options");
     expect(currentTab?.encoding).toBe("ANSI");
+  });
+
+  it("shows line ending options in ascending order", () => {
+    const tab = createTab({ id: "tab-line-ending-options", path: "C:\\repo\\line-ending-options.ts" });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    const lineEndingSelect = screen.getByRole("combobox", { name: "Line ending" });
+    const lineEndingOptions = Array.from((lineEndingSelect as HTMLSelectElement).options).map(
+      (option) => option.text
+    );
+
+    expect(lineEndingOptions).toEqual(["Mac (CR)", "Win (CRLF)", "Linux (LF)"]);
+  });
+
+  it("shows syntax options in ascending order after auto option", () => {
+    const tab = createTab({ id: "tab-syntax-options", path: "C:\\repo\\syntax-options.ts" });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    const syntaxSelect = screen.getByRole("combobox", { name: "Syntax" });
+    const syntaxOptions = Array.from((syntaxSelect as HTMLSelectElement).options).map(
+      (option) => option.text
+    );
+    const syntaxOptionsWithoutAuto = syntaxOptions.slice(1);
+    const sortedSyntaxOptions = [...syntaxOptionsWithoutAuto].sort((a, b) =>
+      a.localeCompare(b, "en", { numeric: true, sensitivity: "base" })
+    );
+
+    expect(syntaxOptionsWithoutAuto).toEqual(sortedSyntaxOptions);
+    expect(syntaxOptionsWithoutAuto.indexOf("Markdown")).toBeLessThan(
+      syntaxOptionsWithoutAuto.indexOf("Python")
+    );
   });
 
   it("prevents native context menu when active tab exists", () => {
