@@ -68,6 +68,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
   const sourceTabId = sourceTab?.id ?? null;
   const targetTabId = targetTab?.id ?? null;
+  const sourcePairHighlightEnabled = sourceTab ? !sourceTab.largeFileMode : false;
+  const targetPairHighlightEnabled = targetTab ? !targetTab.largeFileMode : false;
   const sourcePath = sourceTab?.path || tab.diffPayload.sourcePath || '';
   const targetPath = targetTab?.path || tab.diffPayload.targetPath || '';
   const sourceDisplayName = sourceTab?.name || tab.diffPayload.sourceName;
@@ -272,6 +274,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     targetTabId,
     sourceTabExists: Boolean(sourceTab),
     targetTabExists: Boolean(targetTab),
+    sourcePairHighlightEnabled,
+    targetPairHighlightEnabled,
     sourceTextareaRef,
     targetTextareaRef,
     sourceScroller,

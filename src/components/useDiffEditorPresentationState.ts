@@ -24,6 +24,8 @@ interface UseDiffEditorPresentationStateParams {
   targetTabId: string | null;
   sourceTabExists: boolean;
   targetTabExists: boolean;
+  sourcePairHighlightEnabled: boolean;
+  targetPairHighlightEnabled: boolean;
   sourceTextareaRef: MutableRefObject<HTMLTextAreaElement | null>;
   targetTextareaRef: MutableRefObject<HTMLTextAreaElement | null>;
   sourceScroller: HTMLElement | null;
@@ -44,6 +46,8 @@ export function useDiffEditorPresentationState({
   targetTabId,
   sourceTabExists,
   targetTabExists,
+  sourcePairHighlightEnabled,
+  targetPairHighlightEnabled,
   sourceTextareaRef,
   targetTextareaRef,
   sourceScroller,
@@ -184,6 +188,8 @@ export function useDiffEditorPresentationState({
     schedulePairHighlightSyncForSide,
   } = useDiffEditorPairHighlight({
     lineDiff,
+    sourcePairHighlightEnabled,
+    targetPairHighlightEnabled,
   });
 
   const jumpToPanelAlignedRow = useCallback(

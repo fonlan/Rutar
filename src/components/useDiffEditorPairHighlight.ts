@@ -19,6 +19,8 @@ interface PairOffsetsResultPayload {
 
 interface UseDiffEditorPairHighlightParams {
   lineDiff: LineDiffComparisonResult;
+  sourcePairHighlightEnabled: boolean;
+  targetPairHighlightEnabled: boolean;
 }
 
 const { codeUnitOffsetToLineColumn, arePairHighlightPositionsEqual } = editorTestUtils;
@@ -27,7 +29,11 @@ function isPairCandidateCharacter(char: string) {
   return char === '(' || char === ')' || char === '[' || char === ']' || char === '{' || char === '}' || char === '"' || char === "'";
 }
 
-export function useDiffEditorPairHighlight({ lineDiff }: UseDiffEditorPairHighlightParams) {
+export function useDiffEditorPairHighlight({
+  lineDiff,
+  sourcePairHighlightEnabled,
+  targetPairHighlightEnabled,
+}: UseDiffEditorPairHighlightParams) {
   const [sourcePairHighlights, setSourcePairHighlights] = useState<PairHighlightPosition[]>([]);
   const [targetPairHighlights, setTargetPairHighlights] = useState<PairHighlightPosition[]>([]);
   const pairHighlightRequestIdRef = useRef<{ source: number; target: number }>({
@@ -58,11 +64,22 @@ export function useDiffEditorPairHighlight({ lineDiff }: UseDiffEditorPairHighli
     },
     [setPairHighlightsForSide]
   );
+  const isPairHighlightEnabledForSide = useCallback(
+    (side: ActivePanel) => {
+      return side === 'source' ? sourcePairHighlightEnabled : targetPairHighlightEnabled;
+    },
+    [sourcePairHighlightEnabled, targetPairHighlightEnabled]
+  );
 
   const updatePairHighlightsForSide = useCallback(
     async (side: ActivePanel, text: string, selectionStart: number, selectionEnd: number) => {
       const requestId = pairHighlightRequestIdRef.current[side] + 1;
       pairHighlightRequestIdRef.current[side] = requestId;
+
+      if (!isPairHighlightEnabledForSide(side)) {
+        setPairHighlightsForSide(side, []);
+        return;
+      }
 
       if (selectionStart !== selectionEnd) {
         setPairHighlightsForSide(side, []);
@@ -154,8 +171,17 @@ export function useDiffEditorPairHighlight({ lineDiff }: UseDiffEditorPairHighli
         });
       setPairHighlightsForSide(side, nextHighlights);
     },
-    [setPairHighlightsForSide]
+    [isPairHighlightEnabledForSide, setPairHighlightsForSide]
   );
+
+  useEffect(() => {
+    if (!sourcePairHighlightEnabled) {
+      clearPairHighlightsForSide('source');
+    }
+    if (!targetPairHighlightEnabled) {
+      clearPairHighlightsForSide('target');
+    }
+  }, [clearPairHighlightsForSide, sourcePairHighlightEnabled, targetPairHighlightEnabled]);
 
   useEffect(() => {
     const activeElement = document.activeElement;

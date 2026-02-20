@@ -2541,6 +2541,123 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('disables pair highlight lookup for large-file diff panel', async () => {
+    const sourceTab = createFileTab({
+      id: 'source-tab',
+      name: 'source.ts',
+      path: 'C:\\repo\\source.ts',
+      largeFileMode: true,
+    });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ['("x")'],
+        alignedTargetLines: ['{"k":1}'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      const params = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      if (command === 'compare_documents_by_line') {
+        return buildLineDiffResponse(['("x")'], ['{"k":1}'], [true], [true]);
+      }
+      if (command === 'search_diff_panel_aligned_row_matches') {
+        return [];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        const text = String(params.text ?? '');
+        if (text === '{"k":1}') {
+          return {
+            leftOffset: 0,
+            rightOffset: 6,
+          };
+        }
+        if (text === '("x")') {
+          return {
+            leftOffset: 0,
+            rightOffset: 4,
+          };
+        }
+        return null;
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: buildLineDiffResponse(['("x")'], ['{"k":1}'], [true], [true]),
+          sourceIsDirty: true,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'get_edit_history_state') {
+        return { isDirty: true };
+      }
+      return undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    const targetTextarea = container.querySelector(
+      'textarea[data-diff-panel="target"]'
+    ) as HTMLTextAreaElement;
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(0, 0);
+    });
+    fireEvent.select(sourceTextarea);
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(invoke).mock.calls.some(
+          ([command, payload]) =>
+            command === 'find_matching_pair_offsets' &&
+            typeof payload === 'object' &&
+            payload !== null &&
+            'text' in payload &&
+            (payload as { text?: string }).text === '("x")'
+        )
+      ).toBe(false);
+      expect(container.querySelectorAll('mark[data-diff-pair-highlight="source"]').length).toBe(0);
+    });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(0, 0);
+    });
+    fireEvent.select(targetTextarea);
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
+        text: '{"k":1}',
+        offset: 0,
+      });
+      expect(container.querySelectorAll('mark[data-diff-pair-highlight="target"]').length).toBe(2);
+    });
+  });
+
   it('highlights target panel matching pair from backend offsets', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
