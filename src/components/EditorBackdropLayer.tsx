@@ -105,6 +105,7 @@ export function EditorBackdropLayer({
         }}
       >
         {({ index, style }) => {
+          const isCurrentLineHighlighted = highlightCurrentLine && activeLineNumber === index + 1;
           const relativeIndex = isHugeEditableMode
             ? index - editableSegmentStartLine
             : usePlainLineRendering
@@ -137,6 +138,11 @@ export function EditorBackdropLayer({
                 fontFamily,
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,
+                ...(isCurrentLineHighlighted
+                  ? {
+                      backgroundClip: 'content-box',
+                    }
+                  : null),
               }}
               className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
                 diffHighlightLineSet.has(index + 1) ? 'bg-red-500/10 dark:bg-red-500/14' : ''
@@ -145,7 +151,7 @@ export function EditorBackdropLayer({
                   ? 'bg-primary/15 dark:bg-primary/20'
                   : lineNumberMultiSelectionSet.has(index + 1)
                   ? 'bg-blue-500/25 dark:bg-blue-500/20'
-                  : highlightCurrentLine && activeLineNumber === index + 1
+                  : isCurrentLineHighlighted
                   ? 'bg-violet-300/35 dark:bg-violet-500/25'
                   : ''
               }`}

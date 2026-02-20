@@ -348,6 +348,23 @@ describe('Editor component', () => {
     });
   });
 
+  it('clips current line highlight to content box so left text padding stays unhighlighted', async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: true,
+    });
+    const tab = createTab({ id: 'tab-current-line-highlight-content-box', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      const highlightedLine = Array.from(container.querySelectorAll<HTMLElement>('.editor-line')).find((line) =>
+        line.className.includes('bg-violet-300/35')
+      );
+      expect(highlightedLine).toBeTruthy();
+      expect(highlightedLine?.style.backgroundClip).toBe('content-box');
+    });
+  });
+
   it('highlights only finite positive diff lines after normalization', async () => {
     const tab = createTab({
       id: 'tab-diff-highlight-normalize',
