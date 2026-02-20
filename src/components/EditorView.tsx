@@ -116,7 +116,7 @@ export function EditorView({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 w-full h-full overflow-hidden bg-background relative focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/40 editor-syntax-${activeSyntaxKey}`}
+      className={`flex-1 w-full h-full overflow-hidden bg-background relative editor-syntax-${activeSyntaxKey}`}
       tabIndex={-1}
     >
       <EditorInputLayer

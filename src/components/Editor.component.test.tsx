@@ -206,6 +206,10 @@ describe('Editor component', () => {
     const { container } = render(<Editor tab={tab} />);
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea.editor-input-layer');
     expect(textarea).toBeTruthy();
+    const editorRoot = textarea?.closest('div[class*="editor-syntax-"]');
+    expect(editorRoot?.className).not.toContain('focus-within:ring-1');
+    expect(editorRoot?.className).not.toContain('focus-within:ring-inset');
+    expect(editorRoot?.className).not.toContain('focus-within:ring-ring/40');
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('get_visible_lines', {
