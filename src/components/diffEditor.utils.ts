@@ -31,7 +31,6 @@ export const MAX_RATIO = 0.8;
 export const DEFAULT_RATIO = 0.5;
 export const MIN_PANEL_WIDTH_PX = 220;
 export const SPLITTER_WIDTH_PX = 16;
-export const OFFLOAD_METADATA_MIN_LINES = 0;
 export const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
 export const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
@@ -129,10 +128,6 @@ export function clampRatio(value: number) {
 
 export function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
-}
-
-export function shouldOffloadDiffMetadataComputation(alignedLineCount: number) {
-  return alignedLineCount > OFFLOAD_METADATA_MIN_LINES;
 }
 
 export function normalizeTextToLines(text: string) {
@@ -357,73 +352,6 @@ export function extractActualLines(alignedLines: string[], present: boolean[]) {
   }
 
   return actualLines.length > 0 ? actualLines : [''];
-}
-
-export function buildAlignedDiffMetadata(
-  alignedSourceLines: string[],
-  alignedTargetLines: string[],
-  alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
-) {
-  const alignedLineCount = Math.max(
-    alignedSourceLines.length,
-    alignedTargetLines.length,
-    alignedSourcePresent.length,
-    alignedTargetPresent.length
-  );
-  const diffLineNumbers: number[] = [];
-  const sourceDiffLineNumbers: number[] = [];
-  const targetDiffLineNumbers: number[] = [];
-  const alignedDiffKinds: Array<DiffLineKind | null> = [];
-
-  for (let index = 0; index < alignedLineCount; index += 1) {
-    const kind = resolveAlignedDiffKind(
-      index,
-      alignedSourceLines,
-      alignedTargetLines,
-      alignedSourcePresent,
-      alignedTargetPresent
-    );
-    alignedDiffKinds.push(kind);
-    if (!kind) {
-      continue;
-    }
-
-    const alignedLine = index + 1;
-    diffLineNumbers.push(alignedLine);
-
-    if (alignedSourcePresent[index] === true) {
-      sourceDiffLineNumbers.push(alignedLine);
-    }
-
-    if (alignedTargetPresent[index] === true) {
-      targetDiffLineNumbers.push(alignedLine);
-    }
-  }
-
-  const sourceLineCount = alignedSourcePresent.reduce(
-    (count, isPresent) => (isPresent ? count + 1 : count),
-    0
-  );
-  const targetLineCount = alignedTargetPresent.reduce(
-    (count, isPresent) => (isPresent ? count + 1 : count),
-    0
-  );
-  const sourceLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedSourcePresent);
-  const targetLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedTargetPresent);
-
-  return {
-    diffLineNumbers,
-    sourceDiffLineNumbers,
-    targetDiffLineNumbers,
-    alignedDiffKinds,
-    sourceLineNumbersByAlignedRow,
-    targetLineNumbersByAlignedRow,
-    diffRowIndexes: diffLineNumbers.map((lineNumber) => lineNumber - 1),
-    sourceLineCount: Math.max(1, sourceLineCount),
-    targetLineCount: Math.max(1, targetLineCount),
-    alignedLineCount: Math.max(1, alignedLineCount),
-  };
 }
 
 export function findAlignedRowIndexByLineNumber(present: boolean[], lineNumber: number) {
@@ -788,7 +716,6 @@ export const diffEditorTestUtils = {
   getDiffKindStyle,
   clampRatio,
   clampPercent,
-  shouldOffloadDiffMetadataComputation,
   normalizeTextToLines,
   buildFallbackDiffLineNumbers,
   ensureBooleanArray,
@@ -798,7 +725,6 @@ export const diffEditorTestUtils = {
   buildInitialDiff,
   buildLineNumberByAlignedRow,
   extractActualLines,
-  buildAlignedDiffMetadata,
   findAlignedRowIndexByLineNumber,
   getLineIndexFromTextOffset,
   getSelectedLineRangeByOffset,

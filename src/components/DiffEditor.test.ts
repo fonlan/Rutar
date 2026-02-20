@@ -89,6 +89,77 @@ function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: '
   } as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 }
 
+function buildLineDiffMetadataForTest(
+  alignedSourceLines: string[],
+  alignedTargetLines: string[],
+  alignedSourcePresent: boolean[],
+  alignedTargetPresent: boolean[]
+) {
+  const alignedLineCount = Math.max(
+    1,
+    alignedSourceLines.length,
+    alignedTargetLines.length,
+    alignedSourcePresent.length,
+    alignedTargetPresent.length
+  );
+  const sourceLines = [...alignedSourceLines];
+  const targetLines = [...alignedTargetLines];
+  const sourcePresent = [...alignedSourcePresent];
+  const targetPresent = [...alignedTargetPresent];
+  while (sourceLines.length < alignedLineCount) {
+    sourceLines.push('');
+  }
+  while (targetLines.length < alignedLineCount) {
+    targetLines.push('');
+  }
+  while (sourcePresent.length < alignedLineCount) {
+    sourcePresent.push(false);
+  }
+  while (targetPresent.length < alignedLineCount) {
+    targetPresent.push(false);
+  }
+
+  const diffLineNumbers: number[] = [];
+  const sourceDiffLineNumbers: number[] = [];
+  const targetDiffLineNumbers: number[] = [];
+  const alignedDiffKinds: Array<'insert' | 'delete' | 'modify' | null> = [];
+  for (let rowIndex = 0; rowIndex < alignedLineCount; rowIndex += 1) {
+    const kind = diffEditorTestUtils.resolveAlignedDiffKind(
+      rowIndex,
+      sourceLines,
+      targetLines,
+      sourcePresent,
+      targetPresent
+    );
+    alignedDiffKinds.push(kind);
+    if (!kind) {
+      continue;
+    }
+
+    const lineNumber = rowIndex + 1;
+    diffLineNumbers.push(lineNumber);
+    if (sourcePresent[rowIndex]) {
+      sourceDiffLineNumbers.push(lineNumber);
+    }
+    if (targetPresent[rowIndex]) {
+      targetDiffLineNumbers.push(lineNumber);
+    }
+  }
+
+  return {
+    diffLineNumbers,
+    sourceDiffLineNumbers,
+    targetDiffLineNumbers,
+    alignedDiffKinds,
+    sourceLineNumbersByAlignedRow: diffEditorTestUtils.buildLineNumberByAlignedRow(sourcePresent),
+    targetLineNumbersByAlignedRow: diffEditorTestUtils.buildLineNumberByAlignedRow(targetPresent),
+    diffRowIndexes: diffLineNumbers.map((lineNumber) => lineNumber - 1),
+    sourceLineCount: Math.max(1, sourcePresent.filter((item) => item).length),
+    targetLineCount: Math.max(1, targetPresent.filter((item) => item).length),
+    alignedLineCount,
+  };
+}
+
 function buildLineDiffResponse(
   alignedSourceLines: string[],
   alignedTargetLines: string[],
@@ -124,7 +195,7 @@ function buildLineDiffResponse(
     alignedTargetLines: targetLines,
     alignedSourcePresent: sourcePresent,
     alignedTargetPresent: targetPresent,
-    ...diffEditorTestUtils.buildAlignedDiffMetadata(
+    ...buildLineDiffMetadataForTest(
       sourceLines,
       targetLines,
       sourcePresent,
@@ -294,13 +365,6 @@ describe('diffEditorTestUtils clamp helpers', () => {
   });
 });
 
-describe('diffEditorTestUtils.shouldOffloadDiffMetadataComputation', () => {
-  it('always offloads metadata recomputation to backend for aligned rows', () => {
-    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1)).toBe(true);
-    expect(diffEditorTestUtils.shouldOffloadDiffMetadataComputation(1200)).toBe(true);
-  });
-});
-
 describe('diffEditorTestUtils.normalizeTextToLines', () => {
   it('normalizes CRLF and CR to LF', () => {
     expect(diffEditorTestUtils.normalizeTextToLines('a\r\nb\rc')).toEqual(['a', 'b', 'c']);
@@ -450,55 +514,6 @@ describe('diffEditorTestUtils.extractActualLines', () => {
       'b',
     ]);
     expect(diffEditorTestUtils.extractActualLines(['', ''], [false, false])).toEqual(['']);
-  });
-});
-
-describe('diffEditorTestUtils.buildAlignedDiffMetadata', () => {
-  it('builds per-side diff line metadata and concrete counts', () => {
-    const result = diffEditorTestUtils.buildAlignedDiffMetadata(
-      ['', 'same'],
-      ['target-only', 'same'],
-      [false, true],
-      [true, true]
-    );
-
-    expect(result.diffLineNumbers).toEqual([1]);
-    expect(result.sourceDiffLineNumbers).toEqual([]);
-    expect(result.targetDiffLineNumbers).toEqual([1]);
-    expect(result.sourceLineNumbersByAlignedRow).toEqual([0, 1]);
-    expect(result.targetLineNumbersByAlignedRow).toEqual([1, 2]);
-    expect(result.diffRowIndexes).toEqual([0]);
-    expect(result.sourceLineCount).toBe(1);
-    expect(result.targetLineCount).toBe(2);
-    expect(result.alignedLineCount).toBe(2);
-  });
-
-  it('includes source-side diff lines when source row is concrete and target row is virtual', () => {
-    const result = diffEditorTestUtils.buildAlignedDiffMetadata(
-      ['source-only'],
-      [''],
-      [true],
-      [false]
-    );
-
-    expect(result.diffLineNumbers).toEqual([1]);
-    expect(result.sourceDiffLineNumbers).toEqual([1]);
-    expect(result.targetDiffLineNumbers).toEqual([]);
-    expect(result.alignedDiffKinds).toEqual(['delete']);
-  });
-
-  it('treats empty-line insertion as diff when row presence differs', () => {
-    const result = diffEditorTestUtils.buildAlignedDiffMetadata(
-      ['a', '', 'b'],
-      ['a', '', 'b'],
-      [true, false, true],
-      [true, true, true]
-    );
-
-    expect(result.diffLineNumbers).toEqual([2]);
-    expect(result.sourceDiffLineNumbers).toEqual([]);
-    expect(result.targetDiffLineNumbers).toEqual([2]);
-    expect(result.alignedDiffKinds).toEqual([null, 'insert', null]);
   });
 });
 

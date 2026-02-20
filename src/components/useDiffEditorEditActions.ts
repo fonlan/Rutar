@@ -40,24 +40,6 @@ interface UseDiffEditorEditActionsParams {
   invalidatePreviewMetadataComputation: () => void;
   normalizeTextToLines: (text: string) => string[];
   reconcilePresenceAfterTextEdit: (oldLines: string[], oldPresent: boolean[], newLines: string[]) => boolean[];
-  shouldOffloadDiffMetadataComputation: (alignedLineCount: number) => boolean;
-  buildAlignedDiffMetadata: (
-    alignedSourceLines: string[],
-    alignedTargetLines: string[],
-    alignedSourcePresent: boolean[],
-    alignedTargetPresent: boolean[]
-  ) => {
-    diffLineNumbers: number[];
-    sourceDiffLineNumbers: number[];
-    targetDiffLineNumbers: number[];
-    alignedDiffKinds: Array<'insert' | 'delete' | 'modify' | null>;
-    sourceLineNumbersByAlignedRow: number[];
-    targetLineNumbersByAlignedRow: number[];
-    diffRowIndexes: number[];
-    sourceLineCount: number;
-    targetLineCount: number;
-    alignedLineCount: number;
-  };
   buildCopyTextWithoutVirtualRows: (
     text: string,
     selectionStart: number,
@@ -90,8 +72,6 @@ export function useDiffEditorEditActions({
   invalidatePreviewMetadataComputation,
   normalizeTextToLines,
   reconcilePresenceAfterTextEdit,
-  shouldOffloadDiffMetadataComputation,
-  buildAlignedDiffMetadata,
   buildCopyTextWithoutVirtualRows,
   getSelectedLineRangeByOffset,
   normalizeLineDiffResult,
@@ -156,48 +136,10 @@ export function useDiffEditorEditActions({
         const nextTargetLines = isSourceSide ? nextOppositeLines : nextActiveLines;
         const nextTargetPresent = isSourceSide ? nextOppositePresent : nextActivePresent;
         const caretRowIndex = getLineIndexFromTextOffset(nextText, selectionStart);
-        const shouldOffloadMetadata = shouldOffloadDiffMetadataComputation(nextAlignedCount);
-
-        if (shouldOffloadMetadata) {
-          pendingCaretRestoreRef.current = {
-            side,
-            rowIndex: Math.max(0, Math.min(caretRowIndex, nextAlignedCount - 1)),
-            lineNumber: 0,
-            selectionStart,
-            selectionEnd,
-          };
-
-          const nextState = {
-            ...previous,
-            alignedSourceLines: nextSourceLines,
-            alignedTargetLines: nextTargetLines,
-            alignedSourcePresent: nextSourcePresent,
-            alignedTargetPresent: nextTargetPresent,
-            alignedLineCount: nextAlignedCount,
-          };
-          lineDiffRef.current = nextState;
-          schedulePreviewMetadataComputation(
-            nextSourceLines,
-            nextTargetLines,
-            nextSourcePresent,
-            nextTargetPresent
-          );
-          return nextState;
-        }
-
-        const metadata = buildAlignedDiffMetadata(
-          nextSourceLines,
-          nextTargetLines,
-          nextSourcePresent,
-          nextTargetPresent
-        );
-        const lineNumbers = isSourceSide
-          ? metadata.sourceLineNumbersByAlignedRow
-          : metadata.targetLineNumbersByAlignedRow;
         pendingCaretRestoreRef.current = {
           side,
-          rowIndex: Math.max(0, Math.min(caretRowIndex, metadata.alignedLineCount - 1)),
-          lineNumber: lineNumbers[caretRowIndex] ?? 0,
+          rowIndex: Math.max(0, Math.min(caretRowIndex, nextAlignedCount - 1)),
+          lineNumber: 0,
           selectionStart,
           selectionEnd,
         };
@@ -208,16 +150,21 @@ export function useDiffEditorEditActions({
           alignedTargetLines: nextTargetLines,
           alignedSourcePresent: nextSourcePresent,
           alignedTargetPresent: nextTargetPresent,
-          ...metadata,
+          alignedLineCount: nextAlignedCount,
         };
         lineDiffRef.current = nextState;
+        schedulePreviewMetadataComputation(
+          nextSourceLines,
+          nextTargetLines,
+          nextSourcePresent,
+          nextTargetPresent
+        );
         return nextState;
       });
 
       scheduleSideCommit(side);
     },
     [
-      buildAlignedDiffMetadata,
       capturePanelScrollSnapshot,
       getLineIndexFromTextOffset,
       lastEditAtRef,
@@ -228,7 +175,6 @@ export function useDiffEditorEditActions({
       schedulePreviewMetadataComputation,
       scheduleSideCommit,
       setLineDiff,
-      shouldOffloadDiffMetadataComputation,
     ]
   );
 

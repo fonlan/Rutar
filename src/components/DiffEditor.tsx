@@ -17,7 +17,6 @@ import {
   PAIR_HIGHLIGHT_CLASS,
   SPLITTER_WIDTH_PX,
   bindScrollerViewport,
-  buildAlignedDiffMetadata,
   buildCopyTextWithoutVirtualRows,
   buildInitialDiff,
   clampRatio,
@@ -30,7 +29,6 @@ import {
   normalizeTextToLines,
   reconcilePresenceAfterTextEdit,
   serializeLines,
-  shouldOffloadDiffMetadataComputation,
 } from './diffEditor.utils';
 import { useDiffEditorPanelActions } from './useDiffEditorPanelActions';
 import { useDiffEditorSnapshotState } from './useDiffEditorSnapshotState';
@@ -194,8 +192,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     invalidatePreviewMetadataComputation,
     normalizeTextToLines,
     reconcilePresenceAfterTextEdit,
-    shouldOffloadDiffMetadataComputation,
-    buildAlignedDiffMetadata,
     buildCopyTextWithoutVirtualRows,
     getSelectedLineRangeByOffset,
     normalizeLineDiffResult,
