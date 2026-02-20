@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
-import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import { DiffEditorContextMenus } from './DiffEditorContextMenus';
 import { DiffEditorHeader } from './DiffEditorHeader';
@@ -30,27 +30,22 @@ import {
   getDiffKindStyle,
   getLineIndexFromTextOffset,
   getSelectedLineRangeByOffset,
-  getLineSelectionRange,
-  getParentDirectoryPath,
   inferTrailingNewlineFromLines,
   normalizeLineDiffResult,
   normalizeTextToLines,
-  pathBaseName,
   reconcilePresenceAfterTextEdit,
   serializeLines,
   shouldOffloadDiffMetadataComputation,
   type CaretSnapshot,
   type PanelScrollSnapshot,
 } from './diffEditor.utils';
-import { useDiffEditorLineNumberSelection } from './useDiffEditorLineNumberSelection';
-import { useDiffEditorMenusAndClipboard } from './useDiffEditorMenusAndClipboard';
 import { useDiffEditorPanelActions } from './useDiffEditorPanelActions';
 import { useDiffEditorPanelScrollSync } from './useDiffEditorPanelScrollSync';
 import { useDiffEditorSplitter } from './useDiffEditorSplitter';
 import { useDiffEditorSync } from './useDiffEditorSync';
 import { useDiffEditorEditActions } from './useDiffEditorEditActions';
+import { useDiffEditorPanelInteractions } from './useDiffEditorPanelInteractions';
 import { useDiffEditorPresentationState } from './useDiffEditorPresentationState';
-import { useExternalPasteEvent } from './useExternalPasteEvent';
 
 export { diffEditorTestUtils } from './diffEditor.utils';
 
@@ -97,15 +92,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     setActiveDiffPanel(tab.id, activePanel);
   }, [activePanel, setActiveDiffPanel, tab.id]);
 
-  const resolvePanelPath = useCallback(
-    (side: ActivePanel) => (side === 'source' ? sourcePath : targetPath),
-    [sourcePath, targetPath]
-  );
-
-  const resolvePanelDisplayName = useCallback(
-    (side: ActivePanel) => (side === 'source' ? sourceDisplayName : targetDisplayName),
-    [sourceDisplayName, targetDisplayName]
-  );
   const {
     leftWidthPx,
     rightWidthPx,
@@ -278,46 +264,20 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     diffHeaderMenuPath,
     diffHeaderMenuFileName,
     diffHeaderMenuDirectory,
-  } = useDiffEditorMenusAndClipboard({
-    sourceTextareaRef,
-    targetTextareaRef,
-    setActivePanel,
-    handlePanelPasteText,
-    resolvePanelPath,
-    resolvePanelDisplayName,
-    pathBaseName,
-    getParentDirectoryPath,
-  });
-
-  const shouldHandleExternalDiffPaste = useCallback(
-    (detail: { diffTabId?: string }) => detail.diffTabId === tab.id,
-    [tab.id]
-  );
-
-  const handleExternalDiffPaste = useCallback(
-    (text: string, detail: { panel?: DiffPanelSide }) => {
-      const targetPanel = detail.panel === 'target'
-        ? 'target'
-        : detail.panel === 'source'
-          ? 'source'
-          : activePanel;
-      handlePanelPasteText(targetPanel, text);
-    },
-    [activePanel, handlePanelPasteText]
-  );
-
-  useExternalPasteEvent<{ diffTabId?: string; panel?: DiffPanelSide; text?: string }>({
-    eventName: 'rutar:diff-paste-text',
-    shouldHandle: shouldHandleExternalDiffPaste,
-    onPasteText: handleExternalDiffPaste,
-  });
-
-  const { handleLineNumberPointerDown, handleLineNumberKeyDown } = useDiffEditorLineNumberSelection({
+    handleLineNumberPointerDown,
+    handleLineNumberKeyDown,
+  } = useDiffEditorPanelInteractions({
+    tabId: tab.id,
+    activePanel,
+    sourcePath,
+    targetPath,
+    sourceDisplayName,
+    targetDisplayName,
     sourceTextareaRef,
     targetTextareaRef,
     lineDiffRef,
     setActivePanel,
-    getLineSelectionRange,
+    handlePanelPasteText,
   });
 
   const {
