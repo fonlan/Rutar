@@ -175,8 +175,6 @@ export function useDiffEditorPresentationState({
     alignedLineCount,
     sourceAlignedPresent: lineDiff.alignedSourcePresent,
     targetAlignedPresent: lineDiff.alignedTargetPresent,
-    sourceLineNumbers,
-    targetLineNumbers,
   });
   const {
     sourcePairHighlights,

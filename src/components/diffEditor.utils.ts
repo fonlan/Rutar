@@ -271,56 +271,29 @@ export function normalizeLineDiffResult(input: LineDiffComparisonResult): LineDi
 }
 
 export function buildInitialDiff(payload: DiffTabPayload): LineDiffComparisonResult {
-  if (
-    Array.isArray(payload.alignedSourceLines)
-    && Array.isArray(payload.alignedTargetLines)
-    && Array.isArray(payload.diffLineNumbers)
-    && payload.alignedSourceLines.length > 0
-    && payload.alignedTargetLines.length > 0
-  ) {
-    return normalizeLineDiffResult({
-      alignedSourceLines: payload.alignedSourceLines,
-      alignedTargetLines: payload.alignedTargetLines,
-      alignedSourcePresent: payload.alignedSourcePresent,
-      alignedTargetPresent: payload.alignedTargetPresent,
-      diffLineNumbers: payload.diffLineNumbers,
-      sourceDiffLineNumbers: Array.isArray(payload.sourceDiffLineNumbers)
-        ? payload.sourceDiffLineNumbers
-        : [],
-      targetDiffLineNumbers: Array.isArray(payload.targetDiffLineNumbers)
-        ? payload.targetDiffLineNumbers
-        : [],
-      alignedDiffKinds: Array.isArray(payload.alignedDiffKinds)
-        ? payload.alignedDiffKinds
-        : undefined,
-      sourceLineCount: Math.max(1, payload.sourceLineCount || payload.alignedSourceLines.length),
-      targetLineCount: Math.max(1, payload.targetLineCount || payload.alignedTargetLines.length),
-      alignedLineCount: Math.max(
-        1,
-        payload.alignedLineCount || 0,
-        payload.alignedSourceLines.length,
-        payload.alignedTargetLines.length
-      ),
-    });
-  }
-
-  const sourceLines = normalizeTextToLines(payload.sourceContent ?? '');
-  const targetLines = normalizeTextToLines(payload.targetContent ?? '');
-  const alignedLineCount = Math.max(1, sourceLines.length, targetLines.length);
-
   return normalizeLineDiffResult({
-    alignedSourceLines: sourceLines,
-    alignedTargetLines: targetLines,
-    alignedSourcePresent: Array.from({ length: sourceLines.length }, () => true),
-    alignedTargetPresent: Array.from({ length: targetLines.length }, () => true),
-    diffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines),
-    sourceDiffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines)
-      .filter((line) => line <= sourceLines.length),
-    targetDiffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines)
-      .filter((line) => line <= targetLines.length),
-    sourceLineCount: Math.max(1, payload.sourceLineCount || sourceLines.length),
-    targetLineCount: Math.max(1, payload.targetLineCount || targetLines.length),
-    alignedLineCount,
+    alignedSourceLines: payload.alignedSourceLines,
+    alignedTargetLines: payload.alignedTargetLines,
+    alignedSourcePresent: payload.alignedSourcePresent,
+    alignedTargetPresent: payload.alignedTargetPresent,
+    diffLineNumbers: payload.diffLineNumbers,
+    sourceDiffLineNumbers: Array.isArray(payload.sourceDiffLineNumbers)
+      ? payload.sourceDiffLineNumbers
+      : [],
+    targetDiffLineNumbers: Array.isArray(payload.targetDiffLineNumbers)
+      ? payload.targetDiffLineNumbers
+      : [],
+    alignedDiffKinds: Array.isArray(payload.alignedDiffKinds)
+      ? payload.alignedDiffKinds
+      : undefined,
+    sourceLineCount: Math.max(1, payload.sourceLineCount || payload.alignedSourceLines.length),
+    targetLineCount: Math.max(1, payload.targetLineCount || payload.alignedTargetLines.length),
+    alignedLineCount: Math.max(
+      1,
+      payload.alignedLineCount || 0,
+      payload.alignedSourceLines.length,
+      payload.alignedTargetLines.length
+    ),
   });
 }
 

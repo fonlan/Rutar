@@ -681,25 +681,6 @@ pub(super) async fn compare_documents_by_line_impl(
         .map_err(|error| error.to_string())
 }
 
-pub(super) async fn search_diff_panel_line_matches_impl(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-) -> Result<Vec<usize>, String> {
-    let normalized_keyword = keyword.trim().to_lowercase();
-    if normalized_keyword.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let lines = load_document_lines(&state, &id)?;
-
-    tauri::async_runtime::spawn_blocking(move || {
-        find_line_numbers_by_keyword(lines.as_slice(), normalized_keyword.as_str())
-    })
-    .await
-    .map_err(|error| error.to_string())
-}
-
 pub(super) async fn search_diff_panel_aligned_row_matches_impl(
     state: State<'_, AppState>,
     id: String,

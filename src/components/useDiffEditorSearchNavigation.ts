@@ -7,8 +7,6 @@ interface UseDiffEditorSearchNavigationParams {
   alignedLineCount: number;
   sourceAlignedPresent: boolean[];
   targetAlignedPresent: boolean[];
-  sourceLineNumbers: number[];
-  targetLineNumbers: number[];
 }
 
 export function useDiffEditorSearchNavigation({
@@ -17,8 +15,6 @@ export function useDiffEditorSearchNavigation({
   alignedLineCount,
   sourceAlignedPresent,
   targetAlignedPresent,
-  sourceLineNumbers,
-  targetLineNumbers,
 }: UseDiffEditorSearchNavigationParams) {
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [targetSearchQuery, setTargetSearchQuery] = useState('');
@@ -43,46 +39,21 @@ export function useDiffEditorSearchNavigation({
       .filter((value) => value >= 0 && value < alignedLineCountValue);
   }, []);
 
-  const mapMatchedLineNumbersToRows = useCallback((matchedLineNumbers: unknown, lineNumbers: number[]) => {
-    const matchedLineNumberSet = new Set<number>(
-      Array.isArray(matchedLineNumbers) ? matchedLineNumbers : []
-    );
-    const matchedRows: number[] = [];
-    for (let rowIndex = 0; rowIndex < lineNumbers.length; rowIndex += 1) {
-      const lineNumber = lineNumbers[rowIndex] ?? 0;
-      if (lineNumber > 0 && matchedLineNumberSet.has(lineNumber)) {
-        matchedRows.push(rowIndex);
-      }
-    }
-    return matchedRows;
-  }, []);
-
   const queryPanelSearchMatchedRows = useCallback(
     async (
       id: string,
       keyword: string,
       alignedPresent: boolean[],
-      lineNumbers: number[],
       alignedLineCountValue: number
     ) => {
-      try {
-        const matchedRows = await invoke<number[]>('search_diff_panel_aligned_row_matches', {
-          id,
-          keyword,
-          alignedPresent,
-        });
-        return normalizeMatchedRows(matchedRows, alignedLineCountValue);
-      } catch {
-        // keep fallback path for older backend runtime
-      }
-
-      const matchedLineNumbers = await invoke<number[]>('search_diff_panel_line_matches', {
+      const matchedRows = await invoke<number[]>('search_diff_panel_aligned_row_matches', {
         id,
         keyword,
+        alignedPresent,
       });
-      return mapMatchedLineNumbersToRows(matchedLineNumbers, lineNumbers);
+      return normalizeMatchedRows(matchedRows, alignedLineCountValue);
     },
-    [mapMatchedLineNumbersToRows, normalizeMatchedRows]
+    [normalizeMatchedRows]
   );
 
   useEffect(() => {
@@ -99,7 +70,6 @@ export function useDiffEditorSearchNavigation({
       sourceTabId,
       trimmedSourceSearchQuery,
       sourceAlignedPresent,
-      sourceLineNumbers,
       alignedLineCount
     )
       .then((matchedRows) => {
@@ -121,7 +91,6 @@ export function useDiffEditorSearchNavigation({
     alignedLineCount,
     queryPanelSearchMatchedRows,
     sourceAlignedPresent,
-    sourceLineNumbers,
     sourceTabId,
     trimmedSourceSearchQuery,
   ]);
@@ -140,7 +109,6 @@ export function useDiffEditorSearchNavigation({
       targetTabId,
       trimmedTargetSearchQuery,
       targetAlignedPresent,
-      targetLineNumbers,
       alignedLineCount
     )
       .then((matchedRows) => {
@@ -162,7 +130,6 @@ export function useDiffEditorSearchNavigation({
     alignedLineCount,
     queryPanelSearchMatchedRows,
     targetAlignedPresent,
-    targetLineNumbers,
     targetTabId,
     trimmedTargetSearchQuery,
   ]);

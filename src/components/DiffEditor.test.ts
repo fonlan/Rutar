@@ -483,21 +483,27 @@ describe('diffEditorTestUtils.buildInitialDiff', () => {
     expect(result.diffLineNumbers).toEqual([1]);
   });
 
-  it('falls back to source/target content for old payload shape', () => {
+  it('normalizes empty aligned payload to a safe single-line diff', () => {
     const payload = createDiffPayload({
-      sourceContent: 'line1\r\nline2',
-      targetContent: 'line1\nlineX\nline3',
       alignedSourceLines: [],
       alignedTargetLines: [],
+      alignedSourcePresent: [],
+      alignedTargetPresent: [],
       diffLineNumbers: [],
+      sourceDiffLineNumbers: [],
+      targetDiffLineNumbers: [],
+      sourceLineCount: 0,
+      targetLineCount: 0,
+      alignedLineCount: 0,
     });
 
     const result = diffEditorTestUtils.buildInitialDiff(payload);
-    expect(result.alignedSourceLines).toEqual(['line1', 'line2', '']);
-    expect(result.alignedTargetLines).toEqual(['line1', 'lineX', 'line3']);
-    expect(result.diffLineNumbers).toEqual([2, 3]);
-    expect(result.sourceDiffLineNumbers).toEqual([2]);
-    expect(result.targetDiffLineNumbers).toEqual([2, 3]);
+    expect(result.alignedSourceLines).toEqual(['']);
+    expect(result.alignedTargetLines).toEqual(['']);
+    expect(result.diffLineNumbers).toEqual([]);
+    expect(result.sourceDiffLineNumbers).toEqual([]);
+    expect(result.targetDiffLineNumbers).toEqual([]);
+    expect(result.alignedLineCount).toBe(1);
   });
 });
 
@@ -753,26 +759,6 @@ describe('DiffEditor component', () => {
             ? ['right-1', 'right-2']
             : [];
         return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
-      }
-      if (command === 'search_diff_panel_line_matches') {
-        const keyword = String(params.keyword ?? '').trim().toLowerCase();
-        const id = String(params.id ?? '');
-        if (!keyword) {
-          return [];
-        }
-
-        const lines = id === 'source-tab'
-          ? ['left-1', 'left-2']
-          : id === 'target-tab'
-            ? ['right-1', 'right-2']
-            : [];
-        const matchedLineNumbers: number[] = [];
-        for (let index = 0; index < lines.length; index += 1) {
-          if (lines[index].toLowerCase().includes(keyword)) {
-            matchedLineNumbers.push(index + 1);
-          }
-        }
-        return matchedLineNumbers;
       }
       if (command === 'preview_aligned_diff_state') {
         const alignedSourceLines = Array.isArray(params.alignedSourceLines)
@@ -1168,26 +1154,6 @@ describe('DiffEditor component', () => {
             ? ['right-1', 'right-2']
             : [];
         return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
-      }
-      if (command === 'search_diff_panel_line_matches') {
-        const keyword = String(params.keyword ?? '').trim().toLowerCase();
-        const id = String(params.id ?? '');
-        if (!keyword) {
-          return [];
-        }
-
-        const lines = id === 'source-tab'
-          ? ['left-1', 'left-2']
-          : id === 'target-tab'
-            ? ['right-1', 'right-2']
-            : [];
-        const matchedLineNumbers: number[] = [];
-        for (let index = 0; index < lines.length; index += 1) {
-          if (lines[index].toLowerCase().includes(keyword)) {
-            matchedLineNumbers.push(index + 1);
-          }
-        }
-        return matchedLineNumbers;
       }
       if (command === 'open_in_file_manager') {
         throw new Error('open-folder-failed');
@@ -1742,9 +1708,6 @@ describe('DiffEditor component', () => {
       if (command === 'search_diff_panel_aligned_row_matches') {
         return [];
       }
-      if (command === 'search_diff_panel_line_matches') {
-        return [];
-      }
       return 0;
     });
 
@@ -1830,9 +1793,6 @@ describe('DiffEditor component', () => {
         );
       }
       if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'search_diff_panel_line_matches') {
         return [];
       }
       return 0;
@@ -2537,9 +2497,6 @@ describe('DiffEditor component', () => {
       if (command === 'search_diff_panel_aligned_row_matches') {
         return [];
       }
-      if (command === 'search_diff_panel_line_matches') {
-        return [];
-      }
       if (command === 'find_matching_pair_offsets') {
         if (String(params.text ?? '') === '("x")') {
           return {
@@ -2622,9 +2579,6 @@ describe('DiffEditor component', () => {
       if (command === 'search_diff_panel_aligned_row_matches') {
         return [];
       }
-      if (command === 'search_diff_panel_line_matches') {
-        return [];
-      }
       if (command === 'find_matching_pair_offsets') {
         if (String(params.text ?? '') === '{"k":1}') {
           return {
@@ -2705,9 +2659,6 @@ describe('DiffEditor component', () => {
         return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
       }
       if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'search_diff_panel_line_matches') {
         return [];
       }
       if (command === 'find_matching_pair_offsets') {
@@ -2808,9 +2759,6 @@ describe('DiffEditor component', () => {
         return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
       }
       if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'search_diff_panel_line_matches') {
         return [];
       }
       if (command === 'find_matching_pair_offsets') {

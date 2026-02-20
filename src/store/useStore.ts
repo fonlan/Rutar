@@ -35,9 +35,6 @@ export interface DiffTabPayload {
   sourceLineCount: number;
   targetLineCount: number;
   alignedLineCount: number;
-  // Backward compatibility for old in-memory diff payloads.
-  sourceContent?: string;
-  targetContent?: string;
 }
 
 export function isDiffTab(
