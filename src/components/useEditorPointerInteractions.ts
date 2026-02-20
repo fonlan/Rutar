@@ -62,6 +62,19 @@ export function useEditorPointerInteractions({
         return;
       }
 
+      if (
+        (pointerSelectionActiveRef.current || (event.buttons & 1) === 1 || rectangularSelectionPointerActiveRef.current)
+        && !textDragMoveStateRef.current?.dragging
+      ) {
+        if (currentElement.style.cursor) {
+          currentElement.style.cursor = '';
+        }
+        if (currentElement.title) {
+          currentElement.title = '';
+        }
+        return;
+      }
+
       if (isPointerOnScrollbar(currentElement, event.clientX, event.clientY)) {
         if (currentElement.style.cursor) {
           currentElement.style.cursor = '';
@@ -89,7 +102,10 @@ export function useEditorPointerInteractions({
       hyperlinkHoverHint,
       isPointerOnScrollbar,
       isTextareaInputElement,
+      pointerSelectionActiveRef,
+      rectangularSelectionPointerActiveRef,
       resolveDropOffsetFromPointer,
+      textDragMoveStateRef,
     ]
   );
 
@@ -116,6 +132,19 @@ export function useEditorPointerInteractions({
         currentElement
         && isTextareaInputElement(currentElement)
         && isPointerOnScrollbar(currentElement, event.clientX, event.clientY);
+      const isPrimaryPlainPointerSelectionStart = !!(
+        currentElement
+        && isTextareaInputElement(currentElement)
+        && event.button === 0
+        && !pointerOnEditorScrollbar
+        && !event.altKey
+        && !event.shiftKey
+        && !event.metaKey
+        && !event.ctrlKey
+      );
+
+      pointerSelectionActiveRef.current = isPrimaryPlainPointerSelectionStart;
+      setPointerSelectionNativeHighlightMode(isPrimaryPlainPointerSelectionStart);
 
       if (
         currentElement
@@ -188,8 +217,6 @@ export function useEditorPointerInteractions({
         textDragMoveStateRef.current = null;
       }
 
-      pointerSelectionActiveRef.current = false;
-      setPointerSelectionNativeHighlightMode(false);
       verticalSelectionRef.current = null;
 
       if (

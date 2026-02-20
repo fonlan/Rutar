@@ -362,6 +362,7 @@ export function Editor({
 
   const {
     setPointerSelectionNativeHighlightMode,
+    clearPointerSelectionNativeHighlightMode,
     endScrollbarDragSelectionGuard,
     finalizePointerSelectionInteraction,
   } = useEditorPointerSelectionGuards({
@@ -864,6 +865,9 @@ export function Editor({
   useEditorPointerFinalizeEffects({
     endScrollbarDragSelectionGuard,
     finalizePointerSelectionInteraction,
+    clearPointerSelectionNativeHighlightMode,
+    syncSelectionAfterInteraction,
+    syncTextSelectionHighlight,
   });
 
   useEditorGlobalPointerEffects({
@@ -901,6 +905,7 @@ export function Editor({
 
   useEditorUiInteractionEffects({
     selectionChangeRafRef,
+    pointerSelectionActiveRef,
     verticalSelectionRef,
     hasSelectionInsideEditor,
     clearVerticalSelectionState,

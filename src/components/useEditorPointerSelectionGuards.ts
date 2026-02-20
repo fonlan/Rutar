@@ -39,13 +39,19 @@ export function useEditorPointerSelectionGuards({
     }
   }, [contentRef, isScrollbarDragRef]);
 
-  const finalizePointerSelectionInteraction = useCallback(() => {
-    pointerSelectionActiveRef.current = false;
+  const clearPointerSelectionNativeHighlightMode = useCallback(() => {
     setPointerSelectionNativeHighlightMode(false);
-  }, [pointerSelectionActiveRef, setPointerSelectionNativeHighlightMode]);
+  }, [setPointerSelectionNativeHighlightMode]);
+
+  const finalizePointerSelectionInteraction = useCallback(() => {
+    const wasPointerSelectionActive = pointerSelectionActiveRef.current;
+    pointerSelectionActiveRef.current = false;
+    return wasPointerSelectionActive;
+  }, [pointerSelectionActiveRef]);
 
   return {
     setPointerSelectionNativeHighlightMode,
+    clearPointerSelectionNativeHighlightMode,
     endScrollbarDragSelectionGuard,
     finalizePointerSelectionInteraction,
   };

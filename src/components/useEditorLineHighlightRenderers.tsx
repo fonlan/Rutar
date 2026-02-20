@@ -21,6 +21,11 @@ interface HighlightRange {
   end: number;
 }
 
+interface TextSelectionHighlightInfo {
+  range: HighlightRange | null;
+  includeLineBreakHighlight: boolean;
+}
+
 interface HighlightClassNames {
   search: string;
   pair: string;
@@ -146,10 +151,13 @@ export function useEditorLineHighlightRenderers({
     [normalizedRectangularSelection]
   );
 
-  const getTextSelectionHighlightRangeForLine = useCallback(
-    (lineNumber: number, lineTextLength: number) => {
+  const getTextSelectionHighlightInfoForLine = useCallback(
+    (lineNumber: number, lineTextLength: number): TextSelectionHighlightInfo => {
       if (!textSelectionHighlight || textSelectionHighlight.end <= textSelectionHighlight.start) {
-        return null;
+        return {
+          range: null,
+          includeLineBreakHighlight: false,
+        };
       }
 
       let sourceText = '';
@@ -158,7 +166,10 @@ export function useEditorLineHighlightRenderers({
       if (isHugeEditableMode) {
         const segment = editableSegmentRef.current;
         if (lineNumber < segment.startLine + 1 || lineNumber > segment.endLine) {
-          return null;
+          return {
+            range: null,
+            includeLineBreakHighlight: false,
+          };
         }
 
         sourceText = segment.text;
@@ -166,7 +177,10 @@ export function useEditorLineHighlightRenderers({
       } else {
         const element = contentRef.current;
         if (!element) {
-          return null;
+          return {
+            range: null,
+            includeLineBreakHighlight: false,
+          };
         }
 
         sourceText = normalizeSegmentText(getEditableText(element));
@@ -179,13 +193,21 @@ export function useEditorLineHighlightRenderers({
 
       const start = Math.max(lineStart, selectionStart);
       const end = Math.min(lineEnd, selectionEnd);
-      if (end <= start) {
-        return null;
-      }
+      const hasRange = end > start;
+      const includeLineBreakHighlight =
+        lineEnd < sourceText.length
+        && sourceText.charAt(lineEnd) === '\n'
+        && selectionStart <= lineEnd
+        && selectionEnd > lineEnd;
 
       return {
-        start: start - lineStart,
-        end: end - lineStart,
+        range: hasRange
+          ? {
+              start: start - lineStart,
+              end: end - lineStart,
+            }
+          : null,
+        includeLineBreakHighlight,
       };
     },
     [
@@ -302,10 +324,18 @@ export function useEditorLineHighlightRenderers({
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
-      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, safeText.length);
+      const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, safeText.length);
+      const textSelectionRange = textSelectionInfo.range;
       const hyperlinkRanges = getHttpUrlRangesInLine(safeText);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange && hyperlinkRanges.length === 0) {
+      if (
+        !range
+        && pairColumns.length === 0
+        && !rectangularRange
+        && !textSelectionRange
+        && !textSelectionInfo.includeLineBreakHighlight
+        && hyperlinkRanges.length === 0
+      ) {
         return renderPlainLine(safeText);
       }
 
@@ -340,6 +370,11 @@ export function useEditorLineHighlightRenderers({
               </mark>
             );
           })}
+          {textSelectionInfo.includeLineBreakHighlight && (
+            <mark key={`linebreak-highlight-${lineNumber}`} className={classNames.textSelection}>
+              <span className="editor-selection-linebreak-marker inline-block w-[1ch]">{'\u00A0'}</span>
+            </mark>
+          )}
         </span>
       );
     },
@@ -350,7 +385,7 @@ export function useEditorLineHighlightRenderers({
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
-      getTextSelectionHighlightRangeForLine,
+      getTextSelectionHighlightInfoForLine,
       renderPlainLine,
     ]
   );
@@ -363,10 +398,18 @@ export function useEditorLineHighlightRenderers({
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
-      const textSelectionRange = getTextSelectionHighlightRangeForLine(lineNumber, lineText.length);
+      const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, lineText.length);
+      const textSelectionRange = textSelectionInfo.range;
       const hyperlinkRanges = getHttpUrlRangesInLine(lineText);
 
-      if (!range && pairColumns.length === 0 && !rectangularRange && !textSelectionRange && hyperlinkRanges.length === 0) {
+      if (
+        !range
+        && pairColumns.length === 0
+        && !rectangularRange
+        && !textSelectionRange
+        && !textSelectionInfo.includeLineBreakHighlight
+        && hyperlinkRanges.length === 0
+      ) {
         return renderTokens(tokensArr);
       }
 
@@ -466,6 +509,14 @@ export function useEditorLineHighlightRenderers({
         cursor = tokenEnd;
       });
 
+      if (textSelectionInfo.includeLineBreakHighlight) {
+        rendered.push(
+          <mark key={`linebreak-highlight-${lineNumber}`} className={classNames.textSelection}>
+            <span className="editor-selection-linebreak-marker inline-block w-[1ch]">{'\u00A0'}</span>
+          </mark>
+        );
+      }
+
       return rendered;
     },
     [
@@ -476,7 +527,7 @@ export function useEditorLineHighlightRenderers({
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
-      getTextSelectionHighlightRangeForLine,
+      getTextSelectionHighlightInfoForLine,
       renderTokens,
       resolveTokenTypeClass,
     ]

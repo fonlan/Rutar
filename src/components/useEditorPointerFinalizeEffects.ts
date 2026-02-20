@@ -2,12 +2,18 @@ import { useEffect } from 'react';
 
 interface UseEditorPointerFinalizeEffectsParams {
   endScrollbarDragSelectionGuard: () => void;
-  finalizePointerSelectionInteraction: () => void;
+  finalizePointerSelectionInteraction: () => boolean;
+  clearPointerSelectionNativeHighlightMode: () => void;
+  syncSelectionAfterInteraction: () => void;
+  syncTextSelectionHighlight: () => void;
 }
 
 export function useEditorPointerFinalizeEffects({
   endScrollbarDragSelectionGuard,
   finalizePointerSelectionInteraction,
+  clearPointerSelectionNativeHighlightMode,
+  syncSelectionAfterInteraction,
+  syncTextSelectionHighlight,
 }: UseEditorPointerFinalizeEffectsParams) {
   useEffect(() => {
     window.addEventListener('pointerup', endScrollbarDragSelectionGuard);
@@ -22,14 +28,34 @@ export function useEditorPointerFinalizeEffects({
   }, [endScrollbarDragSelectionGuard]);
 
   useEffect(() => {
-    window.addEventListener('pointerup', finalizePointerSelectionInteraction);
-    window.addEventListener('pointercancel', finalizePointerSelectionInteraction);
-    window.addEventListener('blur', finalizePointerSelectionInteraction);
+    const handleFinalizePointerSelection = () => {
+      const hadPointerSelection = finalizePointerSelectionInteraction();
+      if (!hadPointerSelection) {
+        clearPointerSelectionNativeHighlightMode();
+        return;
+      }
+      syncSelectionAfterInteraction();
+      window.requestAnimationFrame(() => {
+        syncTextSelectionHighlight();
+        window.requestAnimationFrame(() => {
+          clearPointerSelectionNativeHighlightMode();
+        });
+      });
+    };
+
+    window.addEventListener('pointerup', handleFinalizePointerSelection);
+    window.addEventListener('pointercancel', handleFinalizePointerSelection);
+    window.addEventListener('blur', handleFinalizePointerSelection);
 
     return () => {
-      window.removeEventListener('pointerup', finalizePointerSelectionInteraction);
-      window.removeEventListener('pointercancel', finalizePointerSelectionInteraction);
-      window.removeEventListener('blur', finalizePointerSelectionInteraction);
+      window.removeEventListener('pointerup', handleFinalizePointerSelection);
+      window.removeEventListener('pointercancel', handleFinalizePointerSelection);
+      window.removeEventListener('blur', handleFinalizePointerSelection);
     };
-  }, [finalizePointerSelectionInteraction]);
+  }, [
+    clearPointerSelectionNativeHighlightMode,
+    finalizePointerSelectionInteraction,
+    syncSelectionAfterInteraction,
+    syncTextSelectionHighlight,
+  ]);
 }

@@ -3214,6 +3214,132 @@ describe('Editor component', () => {
     expect(textarea.title).toBe('');
   });
 
+  it('uses native selection paint during primary drag selection and suppresses link hover affordance', async () => {
+    const tab = createTab({ id: 'tab-link-hover-suppressed-while-dragging' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.value = 'https://example.com/docs\nbeta\n';
+
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      buttons: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+
+    expect(textarea.style.getPropertyValue('--editor-native-selection-bg')).toBe(
+      'hsl(217 91% 60% / 0.28)'
+    );
+
+    fireEvent.pointerMove(textarea, {
+      buttons: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('');
+    expect(textarea.title).toBe('');
+
+    fireEvent.pointerUp(window);
+    await waitFor(() => {
+      expect(textarea.style.getPropertyValue('--editor-native-selection-bg')).toBe('');
+    });
+
+    fireEvent.pointerMove(textarea, {
+      clientX: 0,
+      clientY: 0,
+    });
+    expect(textarea.style.cursor).toBe('pointer');
+    expect(textarea.title).toBe('Ctrl+Left Click to open');
+  });
+
+  it('keeps text selection highlight after pointerup when drag selection ends', async () => {
+    const tab = createTab({ id: 'tab-drag-selection-highlight-after-pointerup' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      buttons: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      const hasTextSelectionHighlight = Array.from(
+        container.querySelectorAll('.editor-line mark')
+      ).some((element) => element.className.includes('bg-blue-400/35'));
+      expect(hasTextSelectionHighlight).toBe(true);
+    });
+  });
+
+  it('does not clear native drag highlight in the same frame as pointerup', async () => {
+    const tab = createTab({ id: 'tab-drag-selection-no-release-flicker' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      buttons: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    fireEvent.pointerUp(window);
+    expect(textarea.style.getPropertyValue('--editor-native-selection-bg')).toBe(
+      'hsl(217 91% 60% / 0.28)'
+    );
+
+    await waitFor(() => {
+      expect(textarea.style.getPropertyValue('--editor-native-selection-bg')).toBe('');
+    });
+
+    await waitFor(() => {
+      const hasTextSelectionHighlight = Array.from(
+        container.querySelectorAll('.editor-line mark')
+      ).some((element) => element.className.includes('bg-blue-400/35'));
+      expect(hasTextSelectionHighlight).toBe(true);
+    });
+  });
+
+  it('renders trailing text-selection highlight when newline is selected', async () => {
+    const tab = createTab({
+      id: 'tab-selection-highlights-selected-newline',
+      lineCount: 5000,
+      largeFileMode: true,
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(0, 6);
+    });
+    document.dispatchEvent(new Event('selectionchange'));
+
+    await waitFor(() => {
+      const firstLine = container.querySelector('.editor-line');
+      expect(firstLine).toBeTruthy();
+
+      const lineBreakMarker = firstLine?.querySelector('.editor-selection-linebreak-marker');
+      expect(lineBreakMarker).toBeTruthy();
+    });
+  });
+
   it('localizes hyperlink hover hint based on app language', async () => {
     useStore.getState().updateSettings({
       language: 'zh-CN',

@@ -5,6 +5,7 @@ import type { VerticalSelectionState } from './Editor.types';
 
 interface UseEditorUiInteractionEffectsParams {
   selectionChangeRafRef: MutableRefObject<number | null>;
+  pointerSelectionActiveRef: MutableRefObject<boolean>;
   verticalSelectionRef: MutableRefObject<VerticalSelectionState | null>;
   hasSelectionInsideEditor: () => boolean;
   clearVerticalSelectionState: () => void;
@@ -18,6 +19,7 @@ interface UseEditorUiInteractionEffectsParams {
 
 export function useEditorUiInteractionEffects({
   selectionChangeRafRef,
+  pointerSelectionActiveRef,
   verticalSelectionRef,
   hasSelectionInsideEditor,
   clearVerticalSelectionState,
@@ -34,6 +36,10 @@ export function useEditorUiInteractionEffects({
 
       if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
         clearVerticalSelectionState();
+      }
+
+      if (pointerSelectionActiveRef.current) {
+        return;
       }
 
       handleScroll();
@@ -65,6 +71,7 @@ export function useEditorUiInteractionEffects({
     selectionChangeRafRef,
     syncSelectionState,
     syncTextSelectionHighlight,
+    pointerSelectionActiveRef,
     verticalSelectionRef,
   ]);
 
