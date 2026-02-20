@@ -106,6 +106,33 @@ describe("StatusBar", () => {
     });
   });
 
+  it("shows newly added encoding options and supports selecting ANSI", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const tab = createTab({ id: "tab-encoding-options", path: "C:\\repo\\encoding-options.ts" });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    const encodingSelect = screen.getByRole("combobox", { name: "Encoding" });
+    const encodingOptions = Array.from((encodingSelect as HTMLSelectElement).options).map(
+      (option) => option.text
+    );
+
+    expect(encodingOptions).toEqual(expect.arrayContaining(["ANSI", "GB2312", "Big5"]));
+
+    fireEvent.change(encodingSelect, { target: { value: "ANSI" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("convert_encoding", {
+        id: "tab-encoding-options",
+        newEncoding: "ANSI",
+      });
+    });
+
+    const currentTab = useStore.getState().tabs.find((item) => item.id === "tab-encoding-options");
+    expect(currentTab?.encoding).toBe("ANSI");
+  });
+
   it("prevents native context menu when active tab exists", () => {
     const tab = createTab({ id: "tab-status-context-active" });
     useStore.getState().addTab(tab);

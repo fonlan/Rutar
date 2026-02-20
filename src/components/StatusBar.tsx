@@ -7,6 +7,10 @@ import { detectSyntaxKeyFromTab, getSyntaxLabel, SYNTAX_OPTIONS } from '@/lib/sy
 import { SyntaxKey } from '@/store/useStore';
 
 type LineEnding = 'CRLF' | 'LF' | 'CR';
+type EncodingOption = {
+    value: string;
+    label: string;
+};
 
 function dispatchDocumentUpdated(tabId: string) {
     window.dispatchEvent(
@@ -53,12 +57,15 @@ export function StatusBar() {
         </div>
     );
 
-    const encodings = [
-        'UTF-8',
-        'GBK',
-        'Shift_JIS',
-        'Windows-1252',
-        'ISO-8859-1'
+    const encodings: EncodingOption[] = [
+        { value: 'UTF-8', label: 'UTF-8' },
+        { value: 'GBK', label: 'GBK' },
+        { value: 'ANSI', label: 'ANSI' },
+        { value: 'GB2312', label: 'GB2312' },
+        { value: 'Big5', label: 'Big5' },
+        { value: 'Shift_JIS', label: 'Shift_JIS' },
+        { value: 'Windows-1252', label: 'Windows-1252' },
+        { value: 'ISO-8859-1', label: 'ISO-8859-1' },
     ];
 
     const lineEndingOptions: Array<{ value: LineEnding; label: string }> = [
@@ -121,6 +128,9 @@ export function StatusBar() {
     const statusSelectClassName =
         'statusbar-select border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring';
     const statusOptionClassName = 'statusbar-option';
+    const activeEncodingValue =
+        encodings.find((option) => option.value.toLowerCase() === activeTab.encoding.toLowerCase())?.value ??
+        activeTab.encoding;
 
     return (
         <div
@@ -170,13 +180,15 @@ export function StatusBar() {
                     <Globe className="w-3 h-3" />
                     <select 
                         className={statusSelectClassName}
-                        value={activeTab.encoding}
+                        value={activeEncodingValue}
                         onChange={(e) => handleEncodingChange(e.target.value)}
                         aria-label={encodingSelectLabel}
                         name="status-encoding"
                     >
-                        {encodings.map(enc => (
-                            <option key={enc} value={enc} className={statusOptionClassName}>{enc}</option>
+                        {encodings.map((option) => (
+                            <option key={option.value} value={option.value} className={statusOptionClassName}>
+                                {option.label}
+                            </option>
                         ))}
                     </select>
                 </div>

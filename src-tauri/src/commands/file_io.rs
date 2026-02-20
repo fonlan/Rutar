@@ -551,13 +551,22 @@ pub(super) async fn save_file_as_impl(
     }
 }
 
+fn normalize_encoding_label(label: &str) -> &str {
+    if label.eq_ignore_ascii_case("ansi") {
+        return "windows-1252";
+    }
+
+    label
+}
+
 pub(super) fn convert_encoding_impl(
     state: State<'_, AppState>,
     id: String,
     new_encoding: String,
 ) -> Result<(), String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        let label = new_encoding.as_bytes();
+        let normalized_label = normalize_encoding_label(new_encoding.trim());
+        let label = normalized_label.as_bytes();
         let encoding = Encoding::for_label(label)
             .ok_or_else(|| format!("Unsupported encoding: {}", new_encoding))?;
 
@@ -851,7 +860,8 @@ pub(super) async fn get_word_count_info_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::count_word_stats;
+    use super::{count_word_stats, normalize_encoding_label};
+    use encoding_rs::Encoding;
     use ropey::Rope;
 
     #[test]
@@ -874,5 +884,32 @@ mod tests {
         assert_eq!(result.word_count, 4);
         assert_eq!(result.line_count, 4);
         assert_eq!(result.paragraph_count, 2);
+    }
+
+    #[test]
+    fn normalize_encoding_label_should_map_ansi_alias() {
+        assert_eq!(normalize_encoding_label("ANSI"), "windows-1252");
+        assert_eq!(normalize_encoding_label("ansi"), "windows-1252");
+    }
+
+    #[test]
+    fn normalize_encoding_label_should_keep_non_alias_labels() {
+        assert_eq!(normalize_encoding_label("GB2312"), "GB2312");
+        assert_eq!(normalize_encoding_label("Big5"), "Big5");
+    }
+
+    #[test]
+    fn encoding_for_label_should_support_gb2312_big5_and_ansi_alias() {
+        let gb2312 = Encoding::for_label(normalize_encoding_label("GB2312").as_bytes())
+            .expect("GB2312 should be supported");
+        assert_eq!(gb2312.name(), "GBK");
+
+        let big5 =
+            Encoding::for_label(normalize_encoding_label("Big5").as_bytes()).expect("Big5 should be supported");
+        assert_eq!(big5.name(), "Big5");
+
+        let ansi = Encoding::for_label(normalize_encoding_label("ANSI").as_bytes())
+            .expect("ANSI alias should map to windows-1252");
+        assert_eq!(ansi.name(), "windows-1252");
     }
 }
