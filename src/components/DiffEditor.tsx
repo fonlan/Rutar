@@ -3,13 +3,12 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import { DiffEditorContextMenus } from './DiffEditorContextMenus';
 import { DiffEditorHeader } from './DiffEditorHeader';
-import { DiffPanelView } from './DiffPanelView';
+import { DiffEditorPanels } from './DiffEditorPanels';
 import {
   DEFAULT_RATIO,
   DEFAULT_VIEWPORT,
@@ -24,7 +23,6 @@ import {
   dispatchDocumentUpdated,
   extractActualLines,
   findAlignedRowIndexByLineNumber,
-  getDiffKindStyle,
   getSelectedLineRangeByOffset,
   inferTrailingNewlineFromLines,
   normalizeLineDiffResult,
@@ -353,138 +351,65 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         noMatchLabel={noMatchLabel}
       />
 
-      <div ref={viewportRef} className="relative h-[calc(100%-2.5rem)] w-full overflow-hidden">
-        <div className="absolute inset-0 flex">
-          <DiffPanelView
-            side="source"
-            panelWidthPx={leftWidthPx}
-            isActive={activePanel === 'source'}
-            hasTab={Boolean(sourceTab)}
-            unavailableText={sourceUnavailableLabel}
-            scrollerRef={handleSourceScrollerRef}
-            onScrollerContextMenu={handleScrollerContextMenu}
-            contentWidthPx={sourceContentWidthPx}
-            panelHeightPx={sourcePanelHeightPx}
-            lineNumberColumnWidth={lineNumberColumnWidth}
-            alignedLineCount={alignedLineCount}
-            alignedDiffKindByLine={alignedDiffKindByLine}
-            getDiffKindStyle={getDiffKindStyle}
-            lines={lineDiff.alignedSourceLines}
-            present={lineDiff.alignedSourcePresent}
-            lineNumbers={sourceLineNumbers}
-            searchCurrentRow={sourceSearchCurrentRow}
-            titlePrefix={sourceTitlePrefix}
-            rowHeightPx={rowHeightPx}
-            fontFamily={settings.fontFamily}
-            fontSize={settings.fontSize}
-            onLineNumberPointerDown={handleLineNumberPointerDown}
-            onLineNumberKeyDown={handleLineNumberKeyDown}
-            textareaRef={sourceTextareaRef}
-            panelText={sourcePanelText}
-            onTextareaChange={handlePanelTextareaChange}
-            onTextareaKeyDown={handlePanelTextareaKeyDown}
-            onTextareaCopy={handlePanelTextareaCopy}
-            onPanelContextMenu={handlePanelContextMenu}
-            setActivePanel={setActivePanel}
-            schedulePairHighlightSyncForSide={schedulePairHighlightSyncForSide}
-            onPanelInputBlur={handlePanelInputBlur}
-            clearPairHighlightsForSide={clearPairHighlightsForSide}
-            updatePairHighlightsForSide={updatePairHighlightsForSide}
-            pairHighlightRows={sourcePairHighlightRows}
-            buildPairHighlightSegments={buildPairHighlightSegments}
-            pairHighlightClass={PAIR_HIGHLIGHT_CLASS}
-            onLineNumberContextMenu={handleLineNumberContextMenu}
-          />
-
-          <div
-            className="border-x border-border/70 bg-muted/30"
-            style={{ width: SPLITTER_WIDTH_PX }}
-            aria-hidden="true"
-          />
-
-          <DiffPanelView
-            side="target"
-            panelWidthPx={rightWidthPx}
-            isActive={activePanel === 'target'}
-            hasTab={Boolean(targetTab)}
-            unavailableText={targetUnavailableLabel}
-            scrollerRef={handleTargetScrollerRef}
-            onScrollerContextMenu={handleScrollerContextMenu}
-            contentWidthPx={targetContentWidthPx}
-            panelHeightPx={targetPanelHeightPx}
-            lineNumberColumnWidth={lineNumberColumnWidth}
-            alignedLineCount={alignedLineCount}
-            alignedDiffKindByLine={alignedDiffKindByLine}
-            getDiffKindStyle={getDiffKindStyle}
-            lines={lineDiff.alignedTargetLines}
-            present={lineDiff.alignedTargetPresent}
-            lineNumbers={targetLineNumbers}
-            searchCurrentRow={targetSearchCurrentRow}
-            titlePrefix={targetTitlePrefix}
-            rowHeightPx={rowHeightPx}
-            fontFamily={settings.fontFamily}
-            fontSize={settings.fontSize}
-            onLineNumberPointerDown={handleLineNumberPointerDown}
-            onLineNumberKeyDown={handleLineNumberKeyDown}
-            textareaRef={targetTextareaRef}
-            panelText={targetPanelText}
-            onTextareaChange={handlePanelTextareaChange}
-            onTextareaKeyDown={handlePanelTextareaKeyDown}
-            onTextareaCopy={handlePanelTextareaCopy}
-            onPanelContextMenu={handlePanelContextMenu}
-            setActivePanel={setActivePanel}
-            schedulePairHighlightSyncForSide={schedulePairHighlightSyncForSide}
-            onPanelInputBlur={handlePanelInputBlur}
-            clearPairHighlightsForSide={clearPairHighlightsForSide}
-            updatePairHighlightsForSide={updatePairHighlightsForSide}
-            pairHighlightRows={targetPairHighlightRows}
-            buildPairHighlightSegments={buildPairHighlightSegments}
-            pairHighlightClass={PAIR_HIGHLIGHT_CLASS}
-            onLineNumberContextMenu={handleLineNumberContextMenu}
-          />
-        </div>
-
-        <div
-          className="pointer-events-none absolute top-0 bottom-0"
-          style={{ left: separatorLeftPx, width: SPLITTER_WIDTH_PX }}
-          aria-hidden="true"
-        >
-          <div
-            className="absolute left-0 right-0 bg-sky-400/20 dark:bg-sky-300/20"
-            style={{
-              top: `${shadowTopPercent}%`,
-              height: `${Math.max(1, shadowBottomPercent - shadowTopPercent)}%`,
-              zIndex: 10,
-            }}
-          />
-
-          {Array.from(alignedDiffKindByLine.entries()).map(([lineNumber, kind]) => {
-            const diffStyle = getDiffKindStyle(kind);
-            return (
-              <div
-                key={`diff-marker-${lineNumber}`}
-                className={cn('absolute left-0 right-0 h-[2px]', diffStyle.markerClass)}
-                style={{
-                  top: `${(lineNumber / alignedLineCount) * 100}%`,
-                  zIndex: 20,
-                }}
-              />
-            );
-          })}
-        </div>
-
-        <div
-          className="absolute top-0 bottom-0 z-30 cursor-col-resize"
-          style={{ left: separatorLeftPx, width: SPLITTER_WIDTH_PX }}
-          onPointerDown={handleSplitterPointerDown}
-          onContextMenu={handleSplitterContextMenu}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize diff panels"
-        >
-          <div className="mx-auto h-full w-px bg-border/90 shadow-[0_0_8px_rgba(0,0,0,0.18)]" />
-        </div>
-      </div>
+      <DiffEditorPanels
+        viewportRef={viewportRef}
+        leftWidthPx={leftWidthPx}
+        rightWidthPx={rightWidthPx}
+        separatorLeftPx={separatorLeftPx}
+        splitterWidthPx={SPLITTER_WIDTH_PX}
+        activePanel={activePanel}
+        sourceTabExists={Boolean(sourceTab)}
+        targetTabExists={Boolean(targetTab)}
+        sourceUnavailableLabel={sourceUnavailableLabel}
+        targetUnavailableLabel={targetUnavailableLabel}
+        handleSourceScrollerRef={handleSourceScrollerRef}
+        handleTargetScrollerRef={handleTargetScrollerRef}
+        handleScrollerContextMenu={handleScrollerContextMenu}
+        sourceContentWidthPx={sourceContentWidthPx}
+        targetContentWidthPx={targetContentWidthPx}
+        sourcePanelHeightPx={sourcePanelHeightPx}
+        targetPanelHeightPx={targetPanelHeightPx}
+        lineNumberColumnWidth={lineNumberColumnWidth}
+        alignedLineCount={alignedLineCount}
+        alignedDiffKindByLine={alignedDiffKindByLine}
+        sourceLines={lineDiff.alignedSourceLines}
+        targetLines={lineDiff.alignedTargetLines}
+        sourcePresent={lineDiff.alignedSourcePresent}
+        targetPresent={lineDiff.alignedTargetPresent}
+        sourceLineNumbers={sourceLineNumbers}
+        targetLineNumbers={targetLineNumbers}
+        sourceSearchCurrentRow={sourceSearchCurrentRow}
+        targetSearchCurrentRow={targetSearchCurrentRow}
+        sourceTitlePrefix={sourceTitlePrefix}
+        targetTitlePrefix={targetTitlePrefix}
+        rowHeightPx={rowHeightPx}
+        fontFamily={settings.fontFamily}
+        fontSize={settings.fontSize}
+        handleLineNumberPointerDown={handleLineNumberPointerDown}
+        handleLineNumberKeyDown={handleLineNumberKeyDown}
+        sourceTextareaRef={sourceTextareaRef}
+        targetTextareaRef={targetTextareaRef}
+        sourcePanelText={sourcePanelText}
+        targetPanelText={targetPanelText}
+        handlePanelTextareaChange={handlePanelTextareaChange}
+        handlePanelTextareaKeyDown={handlePanelTextareaKeyDown}
+        handlePanelTextareaCopy={handlePanelTextareaCopy}
+        handlePanelContextMenu={handlePanelContextMenu}
+        setActivePanel={setActivePanel}
+        schedulePairHighlightSyncForSide={schedulePairHighlightSyncForSide}
+        handlePanelInputBlur={handlePanelInputBlur}
+        clearPairHighlightsForSide={clearPairHighlightsForSide}
+        updatePairHighlightsForSide={updatePairHighlightsForSide}
+        sourcePairHighlightRows={sourcePairHighlightRows}
+        targetPairHighlightRows={targetPairHighlightRows}
+        buildPairHighlightSegments={buildPairHighlightSegments}
+        pairHighlightClass={PAIR_HIGHLIGHT_CLASS}
+        handleLineNumberContextMenu={handleLineNumberContextMenu}
+        shadowTopPercent={shadowTopPercent}
+        shadowBottomPercent={shadowBottomPercent}
+        handleSplitterPointerDown={handleSplitterPointerDown}
+        handleSplitterContextMenu={handleSplitterContextMenu}
+      />
 
       <DiffEditorContextMenus
         diffHeaderContextMenu={diffHeaderContextMenu}
