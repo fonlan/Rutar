@@ -1,5 +1,4 @@
-﻿import { invoke } from '@tauri-apps/api/core';
-import { ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   useCallback,
   useEffect,
@@ -13,8 +12,46 @@ import { cn } from '@/lib/utils';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
+import { DiffEditorContextMenus } from './DiffEditorContextMenus';
+import { DiffEditorHeader } from './DiffEditorHeader';
 import { DiffPanelView } from './DiffPanelView';
-import { editorTestUtils } from './editorUtils';
+import {
+  DEFAULT_RATIO,
+  DEFAULT_VIEWPORT,
+  MIN_PANEL_WIDTH_PX,
+  PAIR_HIGHLIGHT_CLASS,
+  SPLITTER_WIDTH_PX,
+  bindScrollerViewport,
+  buildAlignedDiffMetadata,
+  buildCopyTextWithoutVirtualRows,
+  buildInitialDiff,
+  buildLineNumberByAlignedRow,
+  buildPairHighlightRows,
+  buildPairHighlightSegments,
+  clampPercent,
+  clampRatio,
+  dispatchDocumentUpdated,
+  ensureDiffKindArray,
+  extractActualLines,
+  findAlignedRowIndexByLineNumber,
+  getDiffKindStyle,
+  getLineIndexFromTextOffset,
+  getSelectedLineRangeByOffset,
+  getLineSelectionRange,
+  getNextMatchedRow,
+  getNextMatchedRowFromAnchor,
+  getParentDirectoryPath,
+  inferTrailingNewlineFromLines,
+  normalizeLineDiffResult,
+  normalizeTextToLines,
+  pathBaseName,
+  reconcilePresenceAfterTextEdit,
+  resolveAlignedDiffKind,
+  serializeLines,
+  shouldOffloadDiffMetadataComputation,
+  type CaretSnapshot,
+  type PanelScrollSnapshot,
+} from './diffEditor.utils';
 import { useDiffEditorLineNumberSelection } from './useDiffEditorLineNumberSelection';
 import { useDiffEditorMenusAndClipboard } from './useDiffEditorMenusAndClipboard';
 import { useDiffEditorPanelActions } from './useDiffEditorPanelActions';
@@ -25,6 +62,8 @@ import { useDiffEditorSplitter } from './useDiffEditorSplitter';
 import { useDiffEditorSync } from './useDiffEditorSync';
 import { useExternalPasteEvent } from './useExternalPasteEvent';
 
+export { diffEditorTestUtils } from './diffEditor.utils';
+
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 }
@@ -34,815 +73,6 @@ interface ApplyAlignedDiffPanelCopyResult {
   changed: boolean;
 }
 
-interface ViewportMetrics {
-  topPercent: number;
-  heightPercent: number;
-}
-
-interface PanelScrollSnapshot {
-  sourceTop: number;
-  sourceLeft: number;
-  targetTop: number;
-  targetLeft: number;
-}
-
-interface CaretSnapshot {
-  side: ActivePanel;
-  rowIndex: number;
-  lineNumber: number;
-  selectionStart: number;
-  selectionEnd: number;
-}
-
-interface PairHighlightPosition {
-  line: number;
-  column: number;
-}
-
-const MIN_RATIO = 0.2;
-const MAX_RATIO = 0.8;
-const DEFAULT_RATIO = 0.5;
-const MIN_PANEL_WIDTH_PX = 220;
-const SPLITTER_WIDTH_PX = 16;
-const OFFLOAD_METADATA_MIN_LINES = 0;
-const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
-const PAIR_HIGHLIGHT_CLASS =
-  'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
-const {
-  normalizeLineText,
-  dispatchDocumentUpdated,
-} = editorTestUtils;
-
-function getParentDirectoryPath(filePath: string): string | null {
-  const normalizedPath = filePath.trim();
-
-  if (!normalizedPath) {
-    return null;
-  }
-
-  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-
-  if (separatorIndex < 0) {
-    return null;
-  }
-
-  if (separatorIndex === 0) {
-    return normalizedPath[0];
-  }
-
-  if (separatorIndex === 2 && /^[a-zA-Z]:[\\/]/.test(normalizedPath)) {
-    return normalizedPath.slice(0, 3);
-  }
-
-  return normalizedPath.slice(0, separatorIndex);
-}
-
-function pathBaseName(path: string) {
-  const normalizedPath = path.trim().replace(/[\\/]+$/, '');
-  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-  return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
-}
-
-function resolveAlignedDiffKind(
-  index: number,
-  alignedSourceLines: string[],
-  alignedTargetLines: string[],
-  alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
-): DiffLineKind | null {
-  const sourcePresent = alignedSourcePresent[index] === true;
-  const targetPresent = alignedTargetPresent[index] === true;
-
-  if (!sourcePresent && targetPresent) {
-    return 'insert';
-  }
-
-  if (sourcePresent && !targetPresent) {
-    return 'delete';
-  }
-
-  const sourceLine = alignedSourceLines[index] ?? '';
-  const targetLine = alignedTargetLines[index] ?? '';
-  if (sourceLine !== targetLine) {
-    return 'modify';
-  }
-
-  return null;
-}
-
-function getDiffKindStyle(kind: DiffLineKind) {
-  switch (kind) {
-    case 'insert':
-      return {
-        lineNumberClass: 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/14 dark:text-emerald-300',
-        rowBackgroundClass: 'bg-emerald-500/10 dark:bg-emerald-500/12',
-        markerClass: 'bg-emerald-500 dark:bg-emerald-400',
-      };
-    case 'delete':
-      return {
-        lineNumberClass: 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300',
-        rowBackgroundClass: 'bg-red-500/10 dark:bg-red-500/12',
-        markerClass: 'bg-red-500 dark:bg-red-400',
-      };
-    case 'modify':
-    default:
-      return {
-        lineNumberClass: 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-300',
-        rowBackgroundClass: 'bg-amber-500/10 dark:bg-amber-500/12',
-        markerClass: 'bg-amber-500 dark:bg-amber-400',
-      };
-  }
-}
-
-function clampRatio(value: number) {
-  return Math.max(MIN_RATIO, Math.min(MAX_RATIO, value));
-}
-
-function clampPercent(value: number) {
-  return Math.max(0, Math.min(100, value));
-}
-
-function shouldOffloadDiffMetadataComputation(alignedLineCount: number) {
-  return alignedLineCount > OFFLOAD_METADATA_MIN_LINES;
-}
-
-function normalizeTextToLines(text: string) {
-  const normalized = normalizeLineText(text || '');
-  const lines = normalized.split('\n');
-  return lines.length > 0 ? lines : [''];
-}
-
-function buildFallbackDiffLineNumbers(sourceLines: string[], targetLines: string[]) {
-  const lineCount = Math.max(1, sourceLines.length, targetLines.length);
-  const result: number[] = [];
-
-  for (let line = 1; line <= lineCount; line += 1) {
-    const index = line - 1;
-    if ((sourceLines[index] ?? '') !== (targetLines[index] ?? '')) {
-      result.push(line);
-    }
-  }
-
-  return result;
-}
-
-function ensureBooleanArray(values: unknown, length: number, fallbackValue: boolean) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => fallbackValue);
-  }
-
-  const result = Array.from({ length }, (_, index) => values[index] === true);
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(fallbackValue);
-    }
-  }
-  return result;
-}
-
-function ensureLineNumberArray(values: unknown, length: number) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => 0);
-  }
-
-  const result = Array.from({ length }, (_, index) => {
-    const value = values[index];
-    return typeof value === 'number' && Number.isFinite(value) && value > 0
-      ? Math.floor(value)
-      : 0;
-  });
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(0);
-    }
-  }
-  return result;
-}
-
-function ensureDiffKindArray(values: unknown, length: number) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => null as DiffLineKind | null);
-  }
-
-  const result = Array.from({ length }, (_, index) => {
-    const value = values[index];
-    if (value === 'insert' || value === 'delete' || value === 'modify') {
-      return value;
-    }
-    return null;
-  });
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(null);
-    }
-  }
-  return result;
-}
-
-function normalizeLineDiffResult(input: LineDiffComparisonResult): LineDiffComparisonResult {
-  const alignedSourceLines = Array.isArray(input.alignedSourceLines) && input.alignedSourceLines.length > 0
-    ? input.alignedSourceLines
-    : [''];
-  const alignedTargetLines = Array.isArray(input.alignedTargetLines) && input.alignedTargetLines.length > 0
-    ? input.alignedTargetLines
-    : [''];
-  const alignedLineCount = Math.max(
-    1,
-    input.alignedLineCount || 0,
-    alignedSourceLines.length,
-    alignedTargetLines.length
-  );
-
-  const sourceLines = alignedSourceLines.length === alignedLineCount
-    ? alignedSourceLines
-    : [...alignedSourceLines, ...Array.from({ length: alignedLineCount - alignedSourceLines.length }, () => '')];
-  const targetLines = alignedTargetLines.length === alignedLineCount
-    ? alignedTargetLines
-    : [...alignedTargetLines, ...Array.from({ length: alignedLineCount - alignedTargetLines.length }, () => '')];
-
-  const normalizedDiffLineNumbers = Array.isArray(input.diffLineNumbers)
-    ? input.diffLineNumbers
-    : [];
-  const sourcePresent = ensureBooleanArray(input.alignedSourcePresent, alignedLineCount, true);
-  const targetPresent = ensureBooleanArray(input.alignedTargetPresent, alignedLineCount, true);
-  const sourceLineNumbersByAlignedRow = Array.isArray(input.sourceLineNumbersByAlignedRow)
-    ? ensureLineNumberArray(input.sourceLineNumbersByAlignedRow, alignedLineCount)
-    : buildLineNumberByAlignedRow(sourcePresent);
-  const targetLineNumbersByAlignedRow = Array.isArray(input.targetLineNumbersByAlignedRow)
-    ? ensureLineNumberArray(input.targetLineNumbersByAlignedRow, alignedLineCount)
-    : buildLineNumberByAlignedRow(targetPresent);
-  const alignedDiffKinds = Array.isArray(input.alignedDiffKinds)
-    ? ensureDiffKindArray(input.alignedDiffKinds, alignedLineCount)
-    : Array.from({ length: alignedLineCount }, (_, index) => resolveAlignedDiffKind(
-      index,
-      sourceLines,
-      targetLines,
-      sourcePresent,
-      targetPresent
-    ));
-  const diffRowIndexes = Array.isArray(input.diffRowIndexes)
-    ? input.diffRowIndexes
-      .map((value) => (Number.isFinite(value) ? Math.floor(value) : -1))
-      .filter((value) => value >= 0 && value < alignedLineCount)
-    : normalizedDiffLineNumbers
-      .map((lineNumber) => Math.floor(lineNumber) - 1)
-      .filter((value) => Number.isFinite(value) && value >= 0 && value < alignedLineCount);
-
-  return {
-    alignedSourceLines: sourceLines,
-    alignedTargetLines: targetLines,
-    alignedSourcePresent: sourcePresent,
-    alignedTargetPresent: targetPresent,
-    diffLineNumbers: normalizedDiffLineNumbers,
-    sourceDiffLineNumbers: Array.isArray(input.sourceDiffLineNumbers) ? input.sourceDiffLineNumbers : [],
-    targetDiffLineNumbers: Array.isArray(input.targetDiffLineNumbers) ? input.targetDiffLineNumbers : [],
-    alignedDiffKinds,
-    sourceLineNumbersByAlignedRow,
-    targetLineNumbersByAlignedRow,
-    diffRowIndexes,
-    sourceLineCount: Math.max(1, input.sourceLineCount || 1),
-    targetLineCount: Math.max(1, input.targetLineCount || 1),
-    alignedLineCount,
-  };
-}
-
-function buildInitialDiff(payload: DiffTabPayload): LineDiffComparisonResult {
-  if (
-    Array.isArray(payload.alignedSourceLines)
-    && Array.isArray(payload.alignedTargetLines)
-    && Array.isArray(payload.diffLineNumbers)
-    && payload.alignedSourceLines.length > 0
-    && payload.alignedTargetLines.length > 0
-  ) {
-    return normalizeLineDiffResult({
-      alignedSourceLines: payload.alignedSourceLines,
-      alignedTargetLines: payload.alignedTargetLines,
-      alignedSourcePresent: payload.alignedSourcePresent,
-      alignedTargetPresent: payload.alignedTargetPresent,
-      diffLineNumbers: payload.diffLineNumbers,
-      sourceDiffLineNumbers: Array.isArray(payload.sourceDiffLineNumbers)
-        ? payload.sourceDiffLineNumbers
-        : [],
-      targetDiffLineNumbers: Array.isArray(payload.targetDiffLineNumbers)
-        ? payload.targetDiffLineNumbers
-        : [],
-      alignedDiffKinds: Array.isArray(payload.alignedDiffKinds)
-        ? payload.alignedDiffKinds
-        : undefined,
-      sourceLineCount: Math.max(1, payload.sourceLineCount || payload.alignedSourceLines.length),
-      targetLineCount: Math.max(1, payload.targetLineCount || payload.alignedTargetLines.length),
-      alignedLineCount: Math.max(
-        1,
-        payload.alignedLineCount || 0,
-        payload.alignedSourceLines.length,
-        payload.alignedTargetLines.length
-      ),
-    });
-  }
-
-  const sourceLines = normalizeTextToLines(payload.sourceContent ?? '');
-  const targetLines = normalizeTextToLines(payload.targetContent ?? '');
-  const alignedLineCount = Math.max(1, sourceLines.length, targetLines.length);
-
-  return normalizeLineDiffResult({
-    alignedSourceLines: sourceLines,
-    alignedTargetLines: targetLines,
-    alignedSourcePresent: Array.from({ length: sourceLines.length }, () => true),
-    alignedTargetPresent: Array.from({ length: targetLines.length }, () => true),
-    diffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines),
-    sourceDiffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines)
-      .filter((line) => line <= sourceLines.length),
-    targetDiffLineNumbers: buildFallbackDiffLineNumbers(sourceLines, targetLines)
-      .filter((line) => line <= targetLines.length),
-    sourceLineCount: Math.max(1, payload.sourceLineCount || sourceLines.length),
-    targetLineCount: Math.max(1, payload.targetLineCount || targetLines.length),
-    alignedLineCount,
-  });
-}
-
-function buildLineNumberByAlignedRow(present: boolean[]) {
-  let lineNumber = 0;
-  return present.map((isPresent) => {
-    if (!isPresent) {
-      return 0;
-    }
-
-    lineNumber += 1;
-    return lineNumber;
-  });
-}
-
-function extractActualLines(alignedLines: string[], present: boolean[]) {
-  const actualLines: string[] = [];
-
-  for (let index = 0; index < alignedLines.length; index += 1) {
-    const lineText = alignedLines[index] ?? '';
-    if (present[index]) {
-      actualLines.push(lineText);
-      continue;
-    }
-
-    if (lineText.length > 0) {
-      actualLines.push(lineText);
-    }
-  }
-
-  return actualLines.length > 0 ? actualLines : [''];
-}
-
-function buildAlignedDiffMetadata(
-  alignedSourceLines: string[],
-  alignedTargetLines: string[],
-  alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
-) {
-  const alignedLineCount = Math.max(
-    alignedSourceLines.length,
-    alignedTargetLines.length,
-    alignedSourcePresent.length,
-    alignedTargetPresent.length
-  );
-  const diffLineNumbers: number[] = [];
-  const sourceDiffLineNumbers: number[] = [];
-  const targetDiffLineNumbers: number[] = [];
-  const alignedDiffKinds: Array<DiffLineKind | null> = [];
-
-  for (let index = 0; index < alignedLineCount; index += 1) {
-    const kind = resolveAlignedDiffKind(
-      index,
-      alignedSourceLines,
-      alignedTargetLines,
-      alignedSourcePresent,
-      alignedTargetPresent
-    );
-    alignedDiffKinds.push(kind);
-    if (!kind) {
-      continue;
-    }
-
-    const alignedLine = index + 1;
-    diffLineNumbers.push(alignedLine);
-
-    if (alignedSourcePresent[index] === true) {
-      sourceDiffLineNumbers.push(alignedLine);
-    }
-
-    if (alignedTargetPresent[index] === true) {
-      targetDiffLineNumbers.push(alignedLine);
-    }
-  }
-
-  const sourceLineCount = alignedSourcePresent.reduce(
-    (count, isPresent) => (isPresent ? count + 1 : count),
-    0
-  );
-  const targetLineCount = alignedTargetPresent.reduce(
-    (count, isPresent) => (isPresent ? count + 1 : count),
-    0
-  );
-  const sourceLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedSourcePresent);
-  const targetLineNumbersByAlignedRow = buildLineNumberByAlignedRow(alignedTargetPresent);
-
-  return {
-    diffLineNumbers,
-    sourceDiffLineNumbers,
-    targetDiffLineNumbers,
-    alignedDiffKinds,
-    sourceLineNumbersByAlignedRow,
-    targetLineNumbersByAlignedRow,
-    diffRowIndexes: diffLineNumbers.map((lineNumber) => lineNumber - 1),
-    sourceLineCount: Math.max(1, sourceLineCount),
-    targetLineCount: Math.max(1, targetLineCount),
-    alignedLineCount: Math.max(1, alignedLineCount),
-  };
-}
-
-function findAlignedRowIndexByLineNumber(present: boolean[], lineNumber: number) {
-  if (lineNumber <= 0) {
-    return -1;
-  }
-
-  let currentLine = 0;
-  for (let index = 0; index < present.length; index += 1) {
-    if (!present[index]) {
-      continue;
-    }
-
-    currentLine += 1;
-    if (currentLine === lineNumber) {
-      return index;
-    }
-  }
-
-  return -1;
-}
-
-function getLineIndexFromTextOffset(text: string, offset: number) {
-  const safeOffset = Math.max(0, Math.min(offset, text.length));
-  let lineIndex = 0;
-  for (let index = 0; index < safeOffset; index += 1) {
-    if (text[index] === '\n') {
-      lineIndex += 1;
-    }
-  }
-  return lineIndex;
-}
-
-function buildPairHighlightRows(pairHighlights: PairHighlightPosition[], lines: string[]) {
-  const rows = new Map<number, number[]>();
-
-  for (const position of pairHighlights) {
-    const rowIndex = position.line - 1;
-    if (rowIndex < 0 || rowIndex >= lines.length) {
-      continue;
-    }
-
-    const lineText = lines[rowIndex] ?? '';
-    const columnIndex = position.column - 1;
-    if (columnIndex < 0 || columnIndex >= lineText.length) {
-      continue;
-    }
-
-    const existing = rows.get(rowIndex);
-    if (existing) {
-      if (!existing.includes(columnIndex)) {
-        existing.push(columnIndex);
-      }
-      continue;
-    }
-
-    rows.set(rowIndex, [columnIndex]);
-  }
-
-  for (const columns of rows.values()) {
-    columns.sort((left, right) => left - right);
-  }
-
-  return rows;
-}
-
-function buildPairHighlightSegments(lineTextLength: number, pairColumns: number[]) {
-  const boundaries = new Set<number>([0, lineTextLength]);
-  pairColumns.forEach((column) => {
-    boundaries.add(column);
-    boundaries.add(Math.min(lineTextLength, column + 1));
-  });
-
-  const sorted = Array.from(boundaries).sort((left, right) => left - right);
-  const segments: Array<{ start: number; end: number; isPair: boolean }> = [];
-  for (let index = 0; index < sorted.length - 1; index += 1) {
-    const start = sorted[index];
-    const end = sorted[index + 1];
-    if (end <= start) {
-      continue;
-    }
-
-    const isPair = pairColumns.some((column) => start >= column && end <= column + 1);
-    segments.push({
-      start,
-      end,
-      isPair,
-    });
-  }
-
-  return segments;
-}
-
-function getSelectedLineRangeByOffset(text: string, selectionStart: number, selectionEnd: number) {
-  const safeStart = Math.max(0, Math.min(selectionStart, text.length));
-  const safeEnd = Math.max(0, Math.min(selectionEnd, text.length));
-
-  if (safeStart === safeEnd) {
-    const lineIndex = getLineIndexFromTextOffset(text, safeStart);
-    return {
-      startLine: lineIndex,
-      endLine: lineIndex,
-    };
-  }
-
-  const rangeStart = Math.min(safeStart, safeEnd);
-  const rangeEnd = Math.max(safeStart, safeEnd);
-  const inclusiveEndOffset = Math.max(rangeStart, rangeEnd - 1);
-  const startLine = getLineIndexFromTextOffset(text, rangeStart);
-  const endLine = getLineIndexFromTextOffset(text, inclusiveEndOffset);
-
-  return {
-    startLine,
-    endLine,
-  };
-}
-
-function buildCopyTextWithoutVirtualRows(
-  text: string,
-  selectionStart: number,
-  selectionEnd: number,
-  present: boolean[]
-) {
-  const safeStart = Math.max(0, Math.min(selectionStart, text.length));
-  const safeEnd = Math.max(0, Math.min(selectionEnd, text.length));
-  if (safeStart === safeEnd) {
-    return null;
-  }
-
-  const rangeStart = Math.min(safeStart, safeEnd);
-  const rangeEnd = Math.max(safeStart, safeEnd);
-  const lines = text.split('\n');
-  if (lines.length === 0) {
-    return '';
-  }
-
-  const startLineIndex = Math.min(
-    lines.length - 1,
-    getLineIndexFromTextOffset(text, rangeStart)
-  );
-  const endLineIndex = Math.min(
-    lines.length - 1,
-    getLineIndexFromTextOffset(text, rangeEnd)
-  );
-
-  const lineStartOffsets = new Array(lines.length).fill(0);
-  let offset = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    lineStartOffsets[index] = offset;
-    offset += lines[index].length + 1;
-  }
-
-  const copiedParts: string[] = [];
-  for (let lineIndex = startLineIndex; lineIndex <= endLineIndex; lineIndex += 1) {
-    if (present[lineIndex] === false) {
-      continue;
-    }
-
-    const line = lines[lineIndex] ?? '';
-    const lineStart = lineStartOffsets[lineIndex] ?? 0;
-    const partStart = lineIndex === startLineIndex
-      ? Math.max(0, rangeStart - lineStart)
-      : 0;
-    const rawPartEnd = lineIndex === endLineIndex
-      ? Math.max(0, rangeEnd - lineStart)
-      : line.length;
-    const partEnd = Math.max(partStart, Math.min(rawPartEnd, line.length));
-
-    copiedParts.push(line.slice(partStart, partEnd));
-  }
-
-  return copiedParts.join('\n');
-}
-
-function getLineSelectionRange(lines: string[], rowIndex: number) {
-  const safeRowIndex = Math.max(0, Math.min(rowIndex, Math.max(0, lines.length - 1)));
-  let start = 0;
-  for (let index = 0; index < safeRowIndex; index += 1) {
-    start += (lines[index] ?? '').length + 1;
-  }
-
-  const lineLength = (lines[safeRowIndex] ?? '').length;
-  return {
-    start,
-    end: start + lineLength,
-  };
-}
-
-function getNextMatchedRow(
-  matchedRows: number[],
-  currentRow: number | null,
-  direction: 'next' | 'prev'
-) {
-  if (matchedRows.length === 0) {
-    return null;
-  }
-
-  if (currentRow === null) {
-    return direction === 'next'
-      ? matchedRows[0]
-      : matchedRows[matchedRows.length - 1];
-  }
-
-  const currentIndex = matchedRows.indexOf(currentRow);
-  if (currentIndex < 0) {
-    return direction === 'next'
-      ? matchedRows[0]
-      : matchedRows[matchedRows.length - 1];
-  }
-
-  if (direction === 'next') {
-    return matchedRows[(currentIndex + 1) % matchedRows.length];
-  }
-
-  return matchedRows[(currentIndex - 1 + matchedRows.length) % matchedRows.length];
-}
-
-function getNextMatchedRowFromAnchor(
-  matchedRows: number[],
-  anchorRow: number | null,
-  direction: 'next' | 'prev'
-) {
-  if (matchedRows.length === 0) {
-    return null;
-  }
-
-  if (anchorRow === null) {
-    return direction === 'next'
-      ? matchedRows[0]
-      : matchedRows[matchedRows.length - 1];
-  }
-
-  if (direction === 'next') {
-    for (let index = 0; index < matchedRows.length; index += 1) {
-      const row = matchedRows[index];
-      if (row > anchorRow) {
-        return row;
-      }
-    }
-    return matchedRows[0];
-  }
-
-  for (let index = matchedRows.length - 1; index >= 0; index -= 1) {
-    const row = matchedRows[index];
-    if (row < anchorRow) {
-      return row;
-    }
-  }
-
-  return matchedRows[matchedRows.length - 1];
-}
-
-function reconcilePresenceAfterTextEdit(
-  oldLines: string[],
-  oldPresent: boolean[],
-  newLines: string[]
-) {
-  const newPresent = new Array(newLines.length).fill(true);
-
-  let prefix = 0;
-  while (
-    prefix < oldLines.length
-    && prefix < newLines.length
-    && oldLines[prefix] === newLines[prefix]
-  ) {
-    newPresent[prefix] = oldPresent[prefix] === true;
-    prefix += 1;
-  }
-
-  let oldSuffix = oldLines.length - 1;
-  let newSuffix = newLines.length - 1;
-  while (
-    oldSuffix >= prefix
-    && newSuffix >= prefix
-    && oldLines[oldSuffix] === newLines[newSuffix]
-  ) {
-    newPresent[newSuffix] = oldPresent[oldSuffix] === true;
-    oldSuffix -= 1;
-    newSuffix -= 1;
-  }
-
-  for (let index = prefix; index <= newSuffix; index += 1) {
-    if (index < 0 || index >= newPresent.length) {
-      continue;
-    }
-
-    // Any line inside the edited span is considered concrete content for this side.
-    newPresent[index] = true;
-  }
-
-  return newPresent;
-}
-
-function inferTrailingNewlineFromLines(lineCount: number, actualLines: string[]) {
-  if (lineCount <= 1) {
-    return false;
-  }
-
-  if (actualLines.length === 0) {
-    return false;
-  }
-
-  return actualLines[actualLines.length - 1] === '';
-}
-
-function serializeLines(actualLines: string[], trailingNewline: boolean) {
-  const safeLines = actualLines.length > 0 ? actualLines : [''];
-  let text = safeLines.join('\n');
-  if (trailingNewline) {
-    text += '\n';
-  }
-  return text;
-}
-
-function bindScrollerViewport(
-  scroller: HTMLElement | null,
-  setViewport: (value: ViewportMetrics) => void
-) {
-  if (!scroller) {
-    setViewport(DEFAULT_VIEWPORT);
-    return () => undefined;
-  }
-
-  const update = () => {
-    const scrollHeight = Math.max(1, scroller.scrollHeight);
-    const clientHeight = Math.max(1, scroller.clientHeight);
-    const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
-    const visiblePercent = clampPercent((clientHeight / scrollHeight) * 100);
-    const topPercent =
-      maxScrollTop <= 0
-        ? 0
-        : clampPercent((scroller.scrollTop / maxScrollTop) * Math.max(0, 100 - visiblePercent));
-
-    setViewport({
-      topPercent,
-      heightPercent: Math.max(1, visiblePercent),
-    });
-  };
-
-  const handleScroll = () => {
-    update();
-  };
-
-  const observer = new ResizeObserver(() => {
-    update();
-  });
-
-  observer.observe(scroller);
-  scroller.addEventListener('scroll', handleScroll, { passive: true });
-  update();
-
-  return () => {
-    scroller.removeEventListener('scroll', handleScroll);
-    observer.disconnect();
-  };
-}
-
-export const diffEditorTestUtils = {
-  getParentDirectoryPath,
-  pathBaseName,
-  resolveAlignedDiffKind,
-  getDiffKindStyle,
-  clampRatio,
-  clampPercent,
-  shouldOffloadDiffMetadataComputation,
-  normalizeTextToLines,
-  buildFallbackDiffLineNumbers,
-  ensureBooleanArray,
-  ensureLineNumberArray,
-  ensureDiffKindArray,
-  normalizeLineDiffResult,
-  buildInitialDiff,
-  buildLineNumberByAlignedRow,
-  extractActualLines,
-  buildAlignedDiffMetadata,
-  findAlignedRowIndexByLineNumber,
-  getLineIndexFromTextOffset,
-  getSelectedLineRangeByOffset,
-  buildCopyTextWithoutVirtualRows,
-  getLineSelectionRange,
-  getNextMatchedRow,
-  getNextMatchedRowFromAnchor,
-  reconcilePresenceAfterTextEdit,
-  inferTrailingNewlineFromLines,
-  serializeLines,
-  bindScrollerViewport,
-  dispatchDocumentUpdated,
-};
 
 export function DiffEditor({ tab }: DiffEditorProps) {
   const tabs = useStore((state) => state.tabs);
@@ -1673,245 +903,45 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
   return (
     <div className="h-full w-full overflow-hidden bg-background">
-      <div className="flex h-10 items-center border-b border-border/60 bg-muted/35 text-xs">
-        <div className="flex min-w-0 items-center justify-between gap-2 px-2" style={{ width: leftWidthPx }}>
-          <span
-            className="min-w-0 truncate font-medium text-foreground"
-            title={sourcePath}
-            onContextMenu={(event) => {
-              handleHeaderContextMenu('source', event);
-            }}
-          >
-            {sourceTitlePrefix}: {sourceDisplayName}
-          </span>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <div className="relative w-44">
-              <input
-                type="text"
-                value={sourceSearchQuery}
-                onChange={(event) => {
-                  setSourceSearchQuery(event.currentTarget.value);
-                  setSourceSearchMatchedRow(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    jumpSourceSearchMatch('next');
-                  }
-                }}
-                placeholder={searchPlaceholderLabel}
-                aria-label={`${sourceTitlePrefix} ${searchPlaceholderLabel}`}
-                name="diff-source-search"
-                autoComplete="off"
-                className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
-              />
-              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    jumpSourceSearchMatch('prev');
-                  }}
-                  disabled={sourceSearchDisabled}
-                  title={sourceSearchDisabled ? noMatchLabel : previousMatchLabel}
-                  aria-label={previousMatchLabel}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    jumpSourceSearchMatch('next');
-                  }}
-                  disabled={sourceSearchDisabled}
-                  title={sourceSearchDisabled ? noMatchLabel : nextMatchLabel}
-                  aria-label={nextMatchLabel}
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                onClick={() => {
-                  jumpSourceDiffRow('prev');
-                }}
-                disabled={sourceDiffJumpDisabled}
-                title={sourceDiffJumpDisabled ? noDiffLineLabel : previousDiffLineLabel}
-                aria-label={`${sourceTitlePrefix} ${previousDiffLineLabel}`}
-              >
-                <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                onClick={() => {
-                  jumpSourceDiffRow('next');
-                }}
-                disabled={sourceDiffJumpDisabled}
-                title={sourceDiffJumpDisabled ? noDiffLineLabel : nextDiffLineLabel}
-                aria-label={`${sourceTitlePrefix} ${nextDiffLineLabel}`}
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <button
-              type="button"
-              className={cn(
-                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                sourceTab?.isDirty
-                  ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
-                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
-              )}
-              onClick={() => {
-                void handleSavePanel('source');
-              }}
-              disabled={!sourceTab}
-              title={`${saveLabel} (Ctrl+S)`}
-              aria-label={`${saveLabel} source panel`}
-            >
-              <Save className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="border-x border-border/70 bg-muted/30"
-          style={{ width: SPLITTER_WIDTH_PX }}
-          aria-hidden="true"
-        />
-
-        <div className="flex min-w-0 items-center justify-between gap-2 px-2" style={{ width: rightWidthPx }}>
-          <span
-            className="min-w-0 truncate font-medium text-foreground"
-            title={targetPath}
-            onContextMenu={(event) => {
-              handleHeaderContextMenu('target', event);
-            }}
-          >
-            {targetTitlePrefix}: {targetDisplayName}
-          </span>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <div className="relative w-44">
-              <input
-                type="text"
-                value={targetSearchQuery}
-                onChange={(event) => {
-                  setTargetSearchQuery(event.currentTarget.value);
-                  setTargetSearchMatchedRow(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    jumpTargetSearchMatch('next');
-                  }
-                }}
-                placeholder={searchPlaceholderLabel}
-                aria-label={`${targetTitlePrefix} ${searchPlaceholderLabel}`}
-                name="diff-target-search"
-                autoComplete="off"
-                className="h-6 w-full rounded-md border border-border bg-background pl-2 pr-12 text-xs text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-blue-500/40"
-              />
-              <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    jumpTargetSearchMatch('prev');
-                  }}
-                  disabled={targetSearchDisabled}
-                  title={targetSearchDisabled ? noMatchLabel : previousMatchLabel}
-                  aria-label={previousMatchLabel}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    jumpTargetSearchMatch('next');
-                  }}
-                  disabled={targetSearchDisabled}
-                  title={targetSearchDisabled ? noMatchLabel : nextMatchLabel}
-                  aria-label={nextMatchLabel}
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                onClick={() => {
-                  jumpTargetDiffRow('prev');
-                }}
-                disabled={targetDiffJumpDisabled}
-                title={targetDiffJumpDisabled ? noDiffLineLabel : previousDiffLineLabel}
-                aria-label={`${targetTitlePrefix} ${previousDiffLineLabel}`}
-              >
-                <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                onClick={() => {
-                  jumpTargetDiffRow('next');
-                }}
-                disabled={targetDiffJumpDisabled}
-                title={targetDiffJumpDisabled ? noDiffLineLabel : nextDiffLineLabel}
-                aria-label={`${targetTitlePrefix} ${nextDiffLineLabel}`}
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <button
-              type="button"
-              className={cn(
-                'inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                targetTab?.isDirty
-                  ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300'
-                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
-              )}
-              onClick={() => {
-                void handleSavePanel('target');
-              }}
-              disabled={!targetTab}
-              title={`${saveLabel} (Ctrl+S)`}
-              aria-label={`${saveLabel} target panel`}
-            >
-              <Save className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <DiffEditorHeader
+        leftWidthPx={leftWidthPx}
+        rightWidthPx={rightWidthPx}
+        splitterWidthPx={SPLITTER_WIDTH_PX}
+        sourcePath={sourcePath}
+        targetPath={targetPath}
+        sourceDisplayName={sourceDisplayName}
+        targetDisplayName={targetDisplayName}
+        sourceTabExists={Boolean(sourceTab)}
+        targetTabExists={Boolean(targetTab)}
+        sourceTabIsDirty={Boolean(sourceTab?.isDirty)}
+        targetTabIsDirty={Boolean(targetTab?.isDirty)}
+        sourceSearchQuery={sourceSearchQuery}
+        targetSearchQuery={targetSearchQuery}
+        setSourceSearchQuery={setSourceSearchQuery}
+        setTargetSearchQuery={setTargetSearchQuery}
+        setSourceSearchMatchedRow={setSourceSearchMatchedRow}
+        setTargetSearchMatchedRow={setTargetSearchMatchedRow}
+        jumpSourceSearchMatch={jumpSourceSearchMatch}
+        jumpTargetSearchMatch={jumpTargetSearchMatch}
+        sourceSearchDisabled={sourceSearchDisabled}
+        targetSearchDisabled={targetSearchDisabled}
+        jumpSourceDiffRow={jumpSourceDiffRow}
+        jumpTargetDiffRow={jumpTargetDiffRow}
+        sourceDiffJumpDisabled={sourceDiffJumpDisabled}
+        targetDiffJumpDisabled={targetDiffJumpDisabled}
+        handleSavePanel={handleSavePanel}
+        handleHeaderContextMenu={handleHeaderContextMenu}
+        saveLabel={saveLabel}
+        sourceTitlePrefix={sourceTitlePrefix}
+        targetTitlePrefix={targetTitlePrefix}
+        searchPlaceholderLabel={searchPlaceholderLabel}
+        previousMatchLabel={previousMatchLabel}
+        nextMatchLabel={nextMatchLabel}
+        previousDiffLineLabel={previousDiffLineLabel}
+        nextDiffLineLabel={nextDiffLineLabel}
+        noDiffLineLabel={noDiffLineLabel}
+        noMatchLabel={noMatchLabel}
+      />
 
       <div ref={viewportRef} className="relative h-[calc(100%-2.5rem)] w-full overflow-hidden">
         <div className="absolute inset-0 flex">
@@ -2046,117 +1076,29 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         </div>
       </div>
 
-      {diffHeaderContextMenu && (
-        <div
-          ref={diffHeaderContextMenuRef}
-          className="fixed z-[96] w-52 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
-          style={{ left: diffHeaderContextMenu.x, top: diffHeaderContextMenu.y }}
-        >
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => {
-              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-file-name');
-            }}
-          >
-            {copyFileNameLabel}
-          </button>
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-directory');
-            }}
-            disabled={!diffHeaderMenuDirectory}
-          >
-            {copyDirectoryPathLabel}
-          </button>
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'copy-path');
-            }}
-            disabled={!diffHeaderMenuPath}
-          >
-            {copyFullPathLabel}
-          </button>
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              void handleDiffHeaderContextMenuAction(diffHeaderContextMenu.side, 'open-containing-folder');
-            }}
-            disabled={!diffHeaderMenuPath}
-            title={diffHeaderMenuFileName}
-          >
-            {openContainingFolderLabel}
-          </button>
-        </div>
-      )}
-
-      {diffContextMenu && (
-        <div
-          ref={diffContextMenuRef}
-          className="fixed z-[95] w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
-          style={{ left: diffContextMenu.x, top: diffContextMenu.y }}
-        >
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => {
-              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'copy');
-            }}
-          >
-            {copyLabel}
-          </button>
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => {
-              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'cut');
-            }}
-          >
-            {cutLabel}
-          </button>
-          <button
-            type="button"
-            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => {
-              void handleDiffContextMenuClipboardAction(diffContextMenu.side, 'paste');
-            }}
-          >
-            {pasteLabel}
-          </button>
-          <div className="my-1 h-px bg-border" />
-          {diffContextMenu.side === 'target' && (
-            <button
-              type="button"
-              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'source')}
-              onClick={() => {
-                void handleCopyLinesToPanel(diffContextMenu.side, 'source');
-                closeDiffContextMenu();
-              }}
-            >
-              {copyToLeftLabel}
-            </button>
-          )}
-          {diffContextMenu.side === 'source' && (
-            <button
-              type="button"
-              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isCopyLinesToPanelDisabled(diffContextMenu.side, 'target')}
-              onClick={() => {
-                void handleCopyLinesToPanel(diffContextMenu.side, 'target');
-                closeDiffContextMenu();
-              }}
-            >
-              {copyToRightLabel}
-            </button>
-          )}
-        </div>
-      )}
+      <DiffEditorContextMenus
+        diffHeaderContextMenu={diffHeaderContextMenu}
+        diffContextMenu={diffContextMenu}
+        diffHeaderContextMenuRef={diffHeaderContextMenuRef}
+        diffContextMenuRef={diffContextMenuRef}
+        handleDiffHeaderContextMenuAction={handleDiffHeaderContextMenuAction}
+        handleDiffContextMenuClipboardAction={handleDiffContextMenuClipboardAction}
+        isCopyLinesToPanelDisabled={isCopyLinesToPanelDisabled}
+        handleCopyLinesToPanel={handleCopyLinesToPanel}
+        closeDiffContextMenu={closeDiffContextMenu}
+        diffHeaderMenuPath={diffHeaderMenuPath}
+        diffHeaderMenuFileName={diffHeaderMenuFileName}
+        diffHeaderMenuDirectory={diffHeaderMenuDirectory}
+        copyLabel={copyLabel}
+        cutLabel={cutLabel}
+        pasteLabel={pasteLabel}
+        copyToLeftLabel={copyToLeftLabel}
+        copyToRightLabel={copyToRightLabel}
+        copyFileNameLabel={copyFileNameLabel}
+        copyDirectoryPathLabel={copyDirectoryPathLabel}
+        copyFullPathLabel={copyFullPathLabel}
+        openContainingFolderLabel={openContainingFolderLabel}
+      />
     </div>
   );
 }
