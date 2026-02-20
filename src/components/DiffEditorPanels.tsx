@@ -89,6 +89,7 @@ interface DiffEditorPanelsProps {
   shadowBottomPercent: number;
   handleSplitterPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   handleSplitterContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  resizePanelsAriaLabel: string;
 }
 
 export function DiffEditorPanels({
@@ -149,6 +150,7 @@ export function DiffEditorPanels({
   shadowBottomPercent,
   handleSplitterPointerDown,
   handleSplitterContextMenu,
+  resizePanelsAriaLabel,
 }: DiffEditorPanelsProps) {
   return (
     <div ref={viewportRef} className="relative h-[calc(100%-2.5rem)] w-full overflow-hidden">
@@ -278,7 +280,7 @@ export function DiffEditorPanels({
         onContextMenu={handleSplitterContextMenu}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize diff panels"
+        aria-label={resizePanelsAriaLabel}
       >
         <div className="mx-auto h-full w-px bg-border/90 shadow-[0_0_8px_rgba(0,0,0,0.18)]" />
       </div>

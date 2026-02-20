@@ -4,6 +4,7 @@ import {
   useState,
 } from 'react';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
+import { t } from '@/i18n';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import { DiffEditorContextMenus } from './DiffEditorContextMenus';
@@ -51,6 +52,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
   const setActiveDiffPanel = useStore((state) => state.setActiveDiffPanel);
+  const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const persistedActivePanel = useStore((state) => state.activeDiffPanelByTab[tab.id]);
   const { ref: viewportRef, width } = useResizeObserver<HTMLDivElement>();
   const [activePanel, setActivePanel] = useState<ActivePanel>(
@@ -287,28 +289,28 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     fontSize: settings.fontSize,
   });
 
-  const saveLabel = 'Save';
-  const sourceTitlePrefix = 'Source';
-  const targetTitlePrefix = 'Target';
-  const sourceUnavailableLabel = 'Source tab closed';
-  const targetUnavailableLabel = 'Target tab closed';
-  const isZhCN = settings.language === 'zh-CN';
-  const copyLabel = isZhCN ? '复制' : 'Copy';
-  const cutLabel = isZhCN ? '剪切' : 'Cut';
-  const pasteLabel = isZhCN ? '粘贴' : 'Paste';
-  const copyToLeftLabel = isZhCN ? '复制到左侧' : 'Copy to Left';
-  const copyToRightLabel = isZhCN ? '复制到右侧' : 'Copy to Right';
-  const copyFileNameLabel = isZhCN ? '复制文件名' : 'Copy File Name';
-  const copyDirectoryPathLabel = isZhCN ? '复制文件夹路径' : 'Copy Folder Path';
-  const copyFullPathLabel = isZhCN ? '复制完整路径' : 'Copy Full Path';
-  const openContainingFolderLabel = isZhCN ? '打开所在目录' : 'Open Containing Folder';
-  const searchPlaceholderLabel = isZhCN ? '搜索关键字' : 'Search keyword';
-  const previousMatchLabel = isZhCN ? '上一个匹配' : 'Previous Match';
-  const nextMatchLabel = isZhCN ? '下一个匹配' : 'Next Match';
-  const previousDiffLineLabel = isZhCN ? '上一个不同行' : 'Previous Diff Line';
-  const nextDiffLineLabel = isZhCN ? '下一个不同行' : 'Next Diff Line';
-  const noDiffLineLabel = isZhCN ? '未找到不同行' : 'No diff lines';
-  const noMatchLabel = isZhCN ? '未找到匹配' : 'No matches';
+  const saveLabel = tr('diffEditor.save');
+  const sourceTitlePrefix = tr('diffEditor.sourceTitle');
+  const targetTitlePrefix = tr('diffEditor.targetTitle');
+  const sourceUnavailableLabel = tr('diffEditor.sourceUnavailable');
+  const targetUnavailableLabel = tr('diffEditor.targetUnavailable');
+  const copyLabel = tr('diffEditor.copy');
+  const cutLabel = tr('diffEditor.cut');
+  const pasteLabel = tr('diffEditor.paste');
+  const copyToLeftLabel = tr('diffEditor.copyToLeft');
+  const copyToRightLabel = tr('diffEditor.copyToRight');
+  const copyFileNameLabel = tr('diffEditor.copyFileName');
+  const copyDirectoryPathLabel = tr('diffEditor.copyDirectoryPath');
+  const copyFullPathLabel = tr('diffEditor.copyFullPath');
+  const openContainingFolderLabel = tr('diffEditor.openContainingFolder');
+  const searchPlaceholderLabel = tr('diffEditor.searchPlaceholder');
+  const previousMatchLabel = tr('diffEditor.previousMatch');
+  const nextMatchLabel = tr('diffEditor.nextMatch');
+  const previousDiffLineLabel = tr('diffEditor.previousDiffLine');
+  const nextDiffLineLabel = tr('diffEditor.nextDiffLine');
+  const noDiffLineLabel = tr('diffEditor.noDiffLine');
+  const noMatchLabel = tr('diffEditor.noMatch');
+  const resizePanelsAriaLabel = tr('diffEditor.resizePanelsAriaLabel');
   return (
     <div className="h-full w-full overflow-hidden bg-background">
       <DiffEditorHeader
@@ -409,6 +411,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         shadowBottomPercent={shadowBottomPercent}
         handleSplitterPointerDown={handleSplitterPointerDown}
         handleSplitterContextMenu={handleSplitterContextMenu}
+        resizePanelsAriaLabel={resizePanelsAriaLabel}
       />
 
       <DiffEditorContextMenus

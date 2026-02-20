@@ -206,7 +206,29 @@ export type I18nKey =
   | 'editor.gotoLine.title'
   | 'editor.gotoLine.description'
   | 'editor.gotoLine.inputLabel'
-  | 'editor.gotoLine.confirm';
+  | 'editor.gotoLine.confirm'
+  | 'diffEditor.save'
+  | 'diffEditor.sourceTitle'
+  | 'diffEditor.targetTitle'
+  | 'diffEditor.sourceUnavailable'
+  | 'diffEditor.targetUnavailable'
+  | 'diffEditor.copy'
+  | 'diffEditor.cut'
+  | 'diffEditor.paste'
+  | 'diffEditor.copyToLeft'
+  | 'diffEditor.copyToRight'
+  | 'diffEditor.copyFileName'
+  | 'diffEditor.copyDirectoryPath'
+  | 'diffEditor.copyFullPath'
+  | 'diffEditor.openContainingFolder'
+  | 'diffEditor.searchPlaceholder'
+  | 'diffEditor.previousMatch'
+  | 'diffEditor.nextMatch'
+  | 'diffEditor.previousDiffLine'
+  | 'diffEditor.nextDiffLine'
+  | 'diffEditor.noDiffLine'
+  | 'diffEditor.noMatch'
+  | 'diffEditor.resizePanelsAriaLabel';
 
 type Messages = Record<I18nKey, string>;
 
@@ -417,6 +439,28 @@ const zhCN: Messages = {
   'editor.gotoLine.description': '请输入目标行号（1-{maxLineNumber}）。',
   'editor.gotoLine.inputLabel': '行号',
   'editor.gotoLine.confirm': '跳转',
+  'diffEditor.save': '保存',
+  'diffEditor.sourceTitle': '源文件',
+  'diffEditor.targetTitle': '目标文件',
+  'diffEditor.sourceUnavailable': '源标签页已关闭',
+  'diffEditor.targetUnavailable': '目标标签页已关闭',
+  'diffEditor.copy': '复制',
+  'diffEditor.cut': '剪切',
+  'diffEditor.paste': '粘贴',
+  'diffEditor.copyToLeft': '复制到左侧',
+  'diffEditor.copyToRight': '复制到右侧',
+  'diffEditor.copyFileName': '复制文件名',
+  'diffEditor.copyDirectoryPath': '复制文件夹路径',
+  'diffEditor.copyFullPath': '复制完整路径',
+  'diffEditor.openContainingFolder': '打开所在目录',
+  'diffEditor.searchPlaceholder': '搜索关键字',
+  'diffEditor.previousMatch': '上一个匹配',
+  'diffEditor.nextMatch': '下一个匹配',
+  'diffEditor.previousDiffLine': '上一个不同行',
+  'diffEditor.nextDiffLine': '下一个不同行',
+  'diffEditor.noDiffLine': '未找到不同行',
+  'diffEditor.noMatch': '未找到匹配',
+  'diffEditor.resizePanelsAriaLabel': '调整差异面板宽度',
 };
 
 const enUS: Messages = {
@@ -626,6 +670,28 @@ const enUS: Messages = {
   'editor.gotoLine.description': 'Enter the target line number (1-{maxLineNumber}).',
   'editor.gotoLine.inputLabel': 'Line Number',
   'editor.gotoLine.confirm': 'Go',
+  'diffEditor.save': 'Save',
+  'diffEditor.sourceTitle': 'Source',
+  'diffEditor.targetTitle': 'Target',
+  'diffEditor.sourceUnavailable': 'Source tab closed',
+  'diffEditor.targetUnavailable': 'Target tab closed',
+  'diffEditor.copy': 'Copy',
+  'diffEditor.cut': 'Cut',
+  'diffEditor.paste': 'Paste',
+  'diffEditor.copyToLeft': 'Copy to Left',
+  'diffEditor.copyToRight': 'Copy to Right',
+  'diffEditor.copyFileName': 'Copy File Name',
+  'diffEditor.copyDirectoryPath': 'Copy Folder Path',
+  'diffEditor.copyFullPath': 'Copy Full Path',
+  'diffEditor.openContainingFolder': 'Open Containing Folder',
+  'diffEditor.searchPlaceholder': 'Search keyword',
+  'diffEditor.previousMatch': 'Previous Match',
+  'diffEditor.nextMatch': 'Next Match',
+  'diffEditor.previousDiffLine': 'Previous Diff Line',
+  'diffEditor.nextDiffLine': 'Next Diff Line',
+  'diffEditor.noDiffLine': 'No diff lines',
+  'diffEditor.noMatch': 'No matches',
+  'diffEditor.resizePanelsAriaLabel': 'Resize diff panels',
 };
 
 const dictionaries: Record<AppLanguage, Messages> = {
