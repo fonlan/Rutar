@@ -869,6 +869,23 @@ export function SearchReplacePanel() {
   const inputContextPasteLabel = useMemo(() => t(language, 'toolbar.paste'), [language]);
   const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
   const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
+  const hasAnyConfiguredFilterRule = useMemo(
+    () =>
+      filterRules.length > 1
+      || filterRules.some((rule) => {
+        const keyword = rule.keyword.trim();
+        return (
+          keyword.length > 0
+          || rule.matchMode !== 'contains'
+          || rule.backgroundColor !== DEFAULT_FILTER_RULE_BACKGROUND
+          || rule.textColor !== DEFAULT_FILTER_RULE_TEXT
+          || rule.bold
+          || rule.italic
+          || rule.applyTo !== 'line'
+        );
+      }),
+    [filterRules]
+  );
   const normalizedFilterRuleGroups = useMemo(
     () => normalizeFilterRuleGroups(filterRuleGroups),
     [filterRuleGroups]
@@ -2908,6 +2925,13 @@ export function SearchReplacePanel() {
     setErrorMessage(null);
   }, []);
 
+  const clearFilterRules = useCallback(() => {
+    setFilterRules([createDefaultFilterRule(0)]);
+    setFeedbackMessage(null);
+    setErrorMessage(null);
+    resetFilterState();
+  }, [resetFilterState]);
+
   const removeFilterRule = useCallback((id: string) => {
     setFilterRules((previousRules) => {
       const nextRules = previousRules.filter((rule) => rule.id !== id);
@@ -4698,14 +4722,25 @@ export function SearchReplacePanel() {
           ) : (
             <div className="mt-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  onClick={addFilterRule}
-                >
-                  <CirclePlus className="h-3.5 w-3.5" />
-                  {messages.filterAddRule}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onClick={addFilterRule}
+                  >
+                    <CirclePlus className="h-3.5 w-3.5" />
+                    {messages.filterAddRule}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+                    onClick={clearFilterRules}
+                    disabled={!hasAnyConfiguredFilterRule}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {messages.filterClearRules}
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"

@@ -4792,6 +4792,53 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("clears filter rules from filter action bar clear button", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Rule" })).toBeInTheDocument();
+    });
+
+    const clearRulesButton = screen.getByRole("button", { name: "Clear Rules" });
+    expect(clearRulesButton).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("Filter keyword"), {
+      target: { value: "todo" },
+    });
+    expect(clearRulesButton).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Rule" }));
+    const filterInputsBeforeClear = screen.getAllByPlaceholderText("Filter keyword") as HTMLInputElement[];
+    expect(filterInputsBeforeClear).toHaveLength(2);
+
+    fireEvent.change(filterInputsBeforeClear[1], {
+      target: { value: "done" },
+    });
+
+    fireEvent.click(clearRulesButton);
+
+    const filterInputsAfterClear = screen.getAllByPlaceholderText("Filter keyword") as HTMLInputElement[];
+    expect(filterInputsAfterClear).toHaveLength(1);
+    expect(filterInputsAfterClear[0]).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Clear Rules" })).toBeDisabled();
+  });
+
   it("re-runs filter query from results panel refresh action", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {

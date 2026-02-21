@@ -33,6 +33,7 @@ describe('i18n.getSearchPanelMessages', () => {
     expect(messages.minimizedSummary('10', '6', 2)).toContain('Loaded 2');
     expect(messages.filterMinimizedSummary('3', 1)).toContain('Loaded 1');
     expect(messages.clearInput).toBe('Clear input');
+    expect(messages.filterClearRules).toBe('Clear Rules');
   });
 
   it('returns zh-CN messages object with same formatter behavior shape', () => {
@@ -55,5 +56,6 @@ describe('i18n.getSearchPanelMessages', () => {
     expect(messages.minimizedSummary('4', '2', 1)).toContain('4');
     expect(messages.filterMinimizedSummary('2', 1)).toContain('2');
     expect(messages.clearInput).toBe('清空输入');
+    expect(messages.filterClearRules).toBe('清空规则');
   });
 });
