@@ -10,6 +10,11 @@ import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 
+const mockEditorLifecycle = {
+  mounts: 0,
+  unmounts: 0,
+};
+
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
@@ -72,8 +77,17 @@ vi.mock('@/components/Toolbar', () => ({
 }));
 
 vi.mock('@/components/Editor', () => ({
-  Editor: ({ tab }: { tab: FileTab }) =>
-    React.createElement('div', { 'data-testid': 'mock-editor', 'data-tab-id': tab.id }),
+  Editor: ({ tab }: { tab: FileTab }) => {
+    React.useEffect(() => {
+      mockEditorLifecycle.mounts += 1;
+
+      return () => {
+        mockEditorLifecycle.unmounts += 1;
+      };
+    }, []);
+
+    return React.createElement('div', { 'data-testid': 'mock-editor', 'data-tab-id': tab.id });
+  },
 }));
 
 vi.mock('@/components/DiffEditor', () => ({
@@ -253,6 +267,8 @@ describe('App component', () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     document.documentElement.classList.remove('dark');
+    mockEditorLifecycle.mounts = 0;
+    mockEditorLifecycle.unmounts = 0;
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
@@ -333,6 +349,33 @@ describe('App component', () => {
 
     expect(screen.queryByTestId('mock-diff-editor')).not.toBeInTheDocument();
     expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', fileTab.id);
+  });
+
+  it('reuses file editor instance when switching active file tabs', async () => {
+    const firstTab = createFileTab({ id: 'tab-file-switch-a', path: 'C:\\repo\\switch-a.ts' });
+    const secondTab = createFileTab({ id: 'tab-file-switch-b', path: 'C:\\repo\\switch-b.ts' });
+    useStore.setState({
+      tabs: [firstTab, secondTab],
+      activeTabId: firstTab.id,
+    });
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toHaveAttribute('data-tab-id', firstTab.id);
+    });
+    expect(mockEditorLifecycle.mounts).toBe(1);
+    expect(mockEditorLifecycle.unmounts).toBe(0);
+
+    act(() => {
+      useStore.getState().setActiveTab(secondTab.id);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-editor')).toHaveAttribute('data-tab-id', secondTab.id);
+    });
+    expect(mockEditorLifecycle.mounts).toBe(1);
+    expect(mockEditorLifecycle.unmounts).toBe(0);
   });
 
   it('renders fallback editor region when there is no active tab', async () => {

@@ -1,12 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, SyntaxToken } from './Editor.types';
+
+interface EditorDocumentLoadSnapshot {
+  text: string;
+  lineTokens: SyntaxToken[][];
+  startLine: number;
+  plainLines: string[];
+  plainStartLine: number;
+  editableSegment: EditorSegmentState;
+}
 
 interface UseEditorDocumentLoadEffectsParams {
   tabId: string;
   tabLineCount: number;
   usePlainLineRendering: boolean;
   isHugeEditableMode: boolean;
+  lineTokens: SyntaxToken[][];
+  startLine: number;
+  plainLines: string[];
+  plainStartLine: number;
+  editableSegmentState: EditorSegmentState;
   initializedRef: MutableRefObject<boolean>;
   suppressExternalReloadRef: MutableRefObject<boolean>;
   syncInFlightRef: MutableRefObject<boolean>;
@@ -18,10 +32,14 @@ interface UseEditorDocumentLoadEffectsParams {
   requestTimeoutRef: MutableRefObject<any>;
   editTimeoutRef: MutableRefObject<any>;
   editableSegmentRef: MutableRefObject<EditorSegmentState>;
+  contentRef: MutableRefObject<HTMLTextAreaElement | null>;
   setLineTokens: (updater: SyntaxToken[][] | ((prev: SyntaxToken[][]) => SyntaxToken[][])) => void;
+  setStartLine: (updater: number | ((prev: number) => number)) => void;
   setEditableSegment: (updater: EditorSegmentState | ((prev: EditorSegmentState) => EditorSegmentState)) => void;
   setPlainLines: (updater: string[] | ((prev: string[]) => string[])) => void;
   setPlainStartLine: (updater: number | ((prev: number) => number)) => void;
+  setInputLayerText: (element: HTMLTextAreaElement, text: string) => void;
+  getEditableText: (element: HTMLTextAreaElement) => string;
   loadTextFromBackend: () => Promise<void>;
   syncVisibleTokens: (lineCount: number, visibleRange?: { start: number; stop: number }) => Promise<void>;
 }
@@ -31,6 +49,11 @@ export function useEditorDocumentLoadEffects({
   tabLineCount,
   usePlainLineRendering,
   isHugeEditableMode,
+  lineTokens,
+  startLine,
+  plainLines,
+  plainStartLine,
+  editableSegmentState,
   initializedRef,
   suppressExternalReloadRef,
   syncInFlightRef,
@@ -42,15 +65,57 @@ export function useEditorDocumentLoadEffects({
   requestTimeoutRef,
   editTimeoutRef,
   editableSegmentRef,
+  contentRef,
   setLineTokens,
+  setStartLine,
   setEditableSegment,
   setPlainLines,
   setPlainStartLine,
+  setInputLayerText,
+  getEditableText,
   loadTextFromBackend,
   syncVisibleTokens,
 }: UseEditorDocumentLoadEffectsParams) {
+  const previousTabIdRef = useRef<string | null>(null);
+  const tabSnapshotRef = useRef<Record<string, EditorDocumentLoadSnapshot>>({});
+
   useEffect(() => {
     let cancelled = false;
+    const previousTabId = previousTabIdRef.current;
+    if (previousTabId && previousTabId !== tabId) {
+      const currentElement = contentRef.current;
+      const currentText = currentElement
+        ? getEditableText(currentElement)
+        : syncedTextRef.current;
+
+      tabSnapshotRef.current[previousTabId] = {
+        text: currentText,
+        lineTokens: lineTokens.map((line) => line.map((token) => ({ ...token }))),
+        startLine,
+        plainLines: [...plainLines],
+        plainStartLine,
+        editableSegment: {
+          startLine: editableSegmentState.startLine,
+          endLine: editableSegmentState.endLine,
+          text: editableSegmentState.text,
+        },
+      };
+    }
+
+    previousTabIdRef.current = tabId;
+    const restoredSnapshot = tabSnapshotRef.current[tabId];
+    if (restoredSnapshot) {
+      setLineTokens(restoredSnapshot.lineTokens);
+      setStartLine(restoredSnapshot.startLine);
+      setPlainLines(restoredSnapshot.plainLines);
+      setPlainStartLine(restoredSnapshot.plainStartLine);
+      editableSegmentRef.current = restoredSnapshot.editableSegment;
+      setEditableSegment(restoredSnapshot.editableSegment);
+      if (contentRef.current) {
+        setInputLayerText(contentRef.current, restoredSnapshot.text);
+      }
+      syncedTextRef.current = restoredSnapshot.text;
+    }
 
     initializedRef.current = false;
     suppressExternalReloadRef.current = false;
@@ -62,10 +127,6 @@ export function useEditorDocumentLoadEffects({
       clearTimeout(hugeWindowUnlockTimerRef.current);
       hugeWindowUnlockTimerRef.current = null;
     }
-    syncedTextRef.current = '';
-    setLineTokens([]);
-    editableSegmentRef.current = { startLine: 0, endLine: 0, text: '' };
-    setEditableSegment({ startLine: 0, endLine: 0, text: '' });
 
     const bootstrap = async () => {
       try {
@@ -101,6 +162,7 @@ export function useEditorDocumentLoadEffects({
   }, [
     editableSegmentRef,
     editTimeoutRef,
+    getEditableText,
     hugeWindowFollowScrollOnUnlockRef,
     hugeWindowLockedRef,
     hugeWindowUnlockTimerRef,
@@ -108,14 +170,19 @@ export function useEditorDocumentLoadEffects({
     loadTextFromBackend,
     pendingSyncRequestedRef,
     requestTimeoutRef,
+    setInputLayerText,
     setEditableSegment,
     setLineTokens,
+    setPlainLines,
+    setPlainStartLine,
+    setStartLine,
     suppressExternalReloadRef,
     syncInFlightRef,
     syncedTextRef,
     syncVisibleTokens,
     tabId,
     tabLineCount,
+    contentRef,
   ]);
 
   useEffect(() => {

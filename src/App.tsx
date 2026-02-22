@@ -1466,7 +1466,7 @@ function App() {
                   {isDiffTab(activeTab) ? (
                     <DiffEditor key={activeTab.id} tab={activeTab} />
                   ) : (
-                    <Editor key={activeTab.id} tab={activeTab} />
+                    <Editor tab={activeTab} />
                   )}
                 </Suspense>
               ) : (
