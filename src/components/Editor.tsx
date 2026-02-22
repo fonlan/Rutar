@@ -137,6 +137,7 @@ export function Editor({
   const settings = useStore((state) => state.settings);
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
+  const savedCursorPosition = useStore((state) => state.cursorPositionByTab[tab.id]);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
   const {
@@ -437,7 +438,7 @@ export function Editor({
       contentRef,
     });
 
-  const { syncSelectionState } = useEditorSelectionStateSync({
+  const { syncActiveLineStateNow, syncSelectionState } = useEditorSelectionStateSync({
     isHugeEditableMode,
     isPairHighlightEnabled,
     tabId: tab.id,
@@ -449,7 +450,6 @@ export function Editor({
     setPairHighlights,
     normalizeSegmentText,
     getEditableText,
-    getSelectionAnchorFocusOffsetsInElement,
     getSelectionOffsetsInElement,
     codeUnitOffsetToLineColumn,
     arePairHighlightPositionsEqual,
@@ -468,6 +468,7 @@ export function Editor({
     rectangularSelectionAutoScrollRafRef,
     setRectangularSelection,
     handleScroll,
+    syncActiveLineStateNow,
     syncSelectionState,
   });
   const {
@@ -919,12 +920,14 @@ export function Editor({
   });
 
   useEditorUiInteractionEffects({
+    contentRef,
     selectionChangeRafRef,
     pointerSelectionActiveRef,
     verticalSelectionRef,
     hasSelectionInsideEditor,
     clearVerticalSelectionState,
     handleScroll,
+    syncActiveLineStateNow,
     syncSelectionState,
     syncTextSelectionHighlight,
     editorContextMenu,
@@ -943,6 +946,8 @@ export function Editor({
     contentRef,
     textDragMoveStateRef,
     tabId: tab.id,
+    savedCursorLine: savedCursorPosition?.line ?? 1,
+    savedCursorColumn: savedCursorPosition?.column ?? 1,
     highlightCurrentLine,
     syncSelectionState,
     tryPasteTextIntoEditor,

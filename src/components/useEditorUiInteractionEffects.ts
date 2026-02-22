@@ -4,12 +4,14 @@ import type { EditorContextMenuState } from './EditorContextMenu';
 import type { VerticalSelectionState } from './Editor.types';
 
 interface UseEditorUiInteractionEffectsParams {
+  contentRef: MutableRefObject<HTMLTextAreaElement | null>;
   selectionChangeRafRef: MutableRefObject<number | null>;
   pointerSelectionActiveRef: MutableRefObject<boolean>;
   verticalSelectionRef: MutableRefObject<VerticalSelectionState | null>;
   hasSelectionInsideEditor: () => boolean;
   clearVerticalSelectionState: () => void;
   handleScroll: () => void;
+  syncActiveLineStateNow: () => void;
   syncSelectionState: () => void;
   syncTextSelectionHighlight: () => void;
   editorContextMenu: EditorContextMenuState | null;
@@ -18,12 +20,14 @@ interface UseEditorUiInteractionEffectsParams {
 }
 
 export function useEditorUiInteractionEffects({
+  contentRef,
   selectionChangeRafRef,
   pointerSelectionActiveRef,
   verticalSelectionRef,
   hasSelectionInsideEditor,
   clearVerticalSelectionState,
   handleScroll,
+  syncActiveLineStateNow,
   syncSelectionState,
   syncTextSelectionHighlight,
   editorContextMenu,
@@ -42,13 +46,21 @@ export function useEditorUiInteractionEffects({
         return;
       }
 
-      handleScroll();
-
       syncSelectionState();
+      handleScroll();
       syncTextSelectionHighlight();
     };
 
     const handleSelectionChange = () => {
+      const selectionCollapsed = !!(
+        contentRef.current
+        && contentRef.current.selectionStart === contentRef.current.selectionEnd
+      );
+
+      if (!pointerSelectionActiveRef.current || selectionCollapsed) {
+        syncActiveLineStateNow();
+      }
+
       if (selectionChangeRafRef.current !== null) {
         return;
       }
@@ -66,8 +78,10 @@ export function useEditorUiInteractionEffects({
     };
   }, [
     clearVerticalSelectionState,
+    contentRef,
     handleScroll,
     hasSelectionInsideEditor,
+    syncActiveLineStateNow,
     selectionChangeRafRef,
     syncSelectionState,
     syncTextSelectionHighlight,

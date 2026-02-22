@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { flushSync } from 'react-dom';
 import { useCallback, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, PairHighlightPosition, PairOffsetsResultPayload } from './Editor.types';
@@ -15,7 +16,6 @@ interface UseEditorSelectionStateSyncParams {
   setPairHighlights: (updater: PairHighlightPosition[] | ((prev: PairHighlightPosition[]) => PairHighlightPosition[])) => void;
   normalizeSegmentText: (text: string) => string;
   getEditableText: (element: HTMLTextAreaElement) => string;
-  getSelectionAnchorFocusOffsetsInElement: (element: HTMLTextAreaElement) => { anchor: number; focus: number } | null;
   getSelectionOffsetsInElement: (element: HTMLTextAreaElement) => { start: number; end: number; isCollapsed: boolean } | null;
   codeUnitOffsetToLineColumn: (text: string, offset: number) => { line: number; column: number };
   arePairHighlightPositionsEqual: (left: PairHighlightPosition[], right: PairHighlightPosition[]) => boolean;
@@ -33,48 +33,91 @@ export function useEditorSelectionStateSync({
   setPairHighlights,
   normalizeSegmentText,
   getEditableText,
-  getSelectionAnchorFocusOffsetsInElement,
   getSelectionOffsetsInElement,
   codeUnitOffsetToLineColumn,
   arePairHighlightPositionsEqual,
 }: UseEditorSelectionStateSyncParams) {
   const pairHighlightRequestIdRef = useRef(0);
 
-  const updateCursorPositionFromSelection = useCallback(() => {
+  const resolveTextareaFocusLineColumn = useCallback((element: HTMLTextAreaElement) => {
+    const text = element.value || '';
+    const maxOffset = text.length;
+    const rawStart = Math.max(0, Math.min(element.selectionStart ?? 0, maxOffset));
+    const rawEnd = Math.max(0, Math.min(element.selectionEnd ?? rawStart, maxOffset));
+    const isBackward = element.selectionDirection === 'backward';
+    const focusOffset = isBackward ? rawStart : rawEnd;
+
+    let line = 1;
+    let lineStartOffset = 0;
+    for (let index = 0; index < focusOffset; index += 1) {
+      if (text.charCodeAt(index) === 10) {
+        line += 1;
+        lineStartOffset = index + 1;
+      }
+    }
+
+    return {
+      line,
+      column: focusOffset - lineStartOffset,
+    };
+  }, []);
+
+  const resolveSelectionPosition = useCallback(() => {
     if (!contentRef.current) {
-      return;
+      return null;
     }
 
-    const text = normalizeSegmentText(getEditableText(contentRef.current));
-    const anchorFocusOffsets = getSelectionAnchorFocusOffsetsInElement(contentRef.current);
-    const focusOffset = anchorFocusOffsets?.focus ?? getSelectionOffsetsInElement(contentRef.current)?.end;
-
-    if (focusOffset === null || focusOffset === undefined) {
-      return;
-    }
-
-    const localPosition = codeUnitOffsetToLineColumn(text, focusOffset);
+    const localPosition = resolveTextareaFocusLineColumn(contentRef.current);
     const absoluteLine = isHugeEditableMode
       ? editableSegmentRef.current.startLine + localPosition.line
       : localPosition.line;
     const safeLine = Math.max(1, Math.min(Math.max(1, tabLineCount), Math.floor(absoluteLine)));
     const safeColumn = Math.max(1, Math.floor(localPosition.column + 1));
 
-    setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
-    setCursorPosition(tabId, safeLine, safeColumn);
+    return {
+      safeLine,
+      safeColumn,
+    };
   }, [
-    codeUnitOffsetToLineColumn,
     contentRef,
     editableSegmentRef,
-    getEditableText,
-    getSelectionAnchorFocusOffsetsInElement,
-    getSelectionOffsetsInElement,
     isHugeEditableMode,
-    normalizeSegmentText,
-    setActiveLineNumber,
+    tabLineCount,
+    resolveTextareaFocusLineColumn,
+  ]);
+
+  const applyActiveLineNumber = useCallback(
+    (safeLine: number, immediate: boolean) => {
+      const apply = () => {
+        setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
+      };
+
+      if (immediate) {
+        flushSync(apply);
+        return;
+      }
+
+      apply();
+    },
+    [setActiveLineNumber]
+  );
+
+  const updateCursorPositionFromSelection = useCallback((options?: { immediateLine?: boolean; skipStore?: boolean }) => {
+    const position = resolveSelectionPosition();
+    if (!position) {
+      return;
+    }
+
+    applyActiveLineNumber(position.safeLine, options?.immediateLine === true);
+
+    if (!options?.skipStore) {
+      setCursorPosition(tabId, position.safeLine, position.safeColumn);
+    }
+  }, [
+    applyActiveLineNumber,
+    resolveSelectionPosition,
     setCursorPosition,
     tabId,
-    tabLineCount,
   ]);
 
   const updatePairHighlightsFromSelection = useCallback(async () => {
@@ -170,12 +213,25 @@ export function useEditorSelectionStateSync({
     setPairHighlights,
   ]);
 
-  const syncSelectionState = useCallback(() => {
+  const syncActiveLineStateNow = useCallback(() => {
+    updateCursorPositionFromSelection({
+      immediateLine: true,
+      skipStore: true,
+    });
+  }, [updateCursorPositionFromSelection]);
+
+  const syncCursorPositionState = useCallback(() => {
     updateCursorPositionFromSelection();
+  }, [updateCursorPositionFromSelection]);
+
+  const syncSelectionState = useCallback(() => {
+    syncCursorPositionState();
     void updatePairHighlightsFromSelection();
-  }, [updateCursorPositionFromSelection, updatePairHighlightsFromSelection]);
+  }, [syncCursorPositionState, updatePairHighlightsFromSelection]);
 
   return {
+    syncActiveLineStateNow,
+    syncCursorPositionState,
     syncSelectionState,
   };
 }

@@ -11,6 +11,7 @@ interface UseEditorSelectionInteractionActionsParams {
   rectangularSelectionAutoScrollRafRef: MutableRefObject<number | null>;
   setRectangularSelection: (selection: RectangularSelectionState | null) => void;
   handleScroll: () => void;
+  syncActiveLineStateNow: () => void;
   syncSelectionState: () => void;
 }
 
@@ -23,6 +24,7 @@ export function useEditorSelectionInteractionActions({
   rectangularSelectionAutoScrollRafRef,
   setRectangularSelection,
   handleScroll,
+  syncActiveLineStateNow,
   syncSelectionState,
 }: UseEditorSelectionInteractionActionsParams) {
   const clearVerticalSelectionState = useCallback(() => {
@@ -49,15 +51,17 @@ export function useEditorSelectionInteractionActions({
   ]);
 
   const syncSelectionAfterInteraction = useCallback(() => {
+    syncActiveLineStateNow();
+
     window.requestAnimationFrame(() => {
-      handleScroll();
       syncSelectionState();
+      handleScroll();
 
       window.requestAnimationFrame(() => {
         handleScroll();
       });
     });
-  }, [handleScroll, syncSelectionState]);
+  }, [handleScroll, syncActiveLineStateNow, syncSelectionState]);
 
   return {
     clearVerticalSelectionState,

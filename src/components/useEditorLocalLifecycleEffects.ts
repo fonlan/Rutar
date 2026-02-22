@@ -15,6 +15,8 @@ interface UseEditorLocalLifecycleEffectsParams {
   contentRef: MutableRefObject<HTMLTextAreaElement | null>;
   textDragMoveStateRef: MutableRefObject<any>;
   tabId: string;
+  savedCursorLine: number;
+  savedCursorColumn: number;
   highlightCurrentLine: boolean;
   syncSelectionState: () => void;
   tryPasteTextIntoEditor: (text: string) => boolean;
@@ -39,6 +41,8 @@ export function useEditorLocalLifecycleEffects({
   contentRef,
   textDragMoveStateRef,
   tabId,
+  savedCursorLine,
+  savedCursorColumn,
   highlightCurrentLine,
   syncSelectionState,
   tryPasteTextIntoEditor,
@@ -128,10 +132,12 @@ export function useEditorLocalLifecycleEffects({
   }, [contentRef, textDragCursorAppliedRef, textDragMoveStateRef]);
 
   useEffect(() => {
-    setActiveLineNumber(1);
+    const targetLine = Math.max(1, Math.floor(savedCursorLine || 1));
+    const targetColumn = Math.max(1, Math.floor(savedCursorColumn || 1));
+    setActiveLineNumber(targetLine);
     lineNumberSelectionAnchorLineRef.current = null;
     setLineNumberMultiSelection([]);
-    setCursorPosition(tabId, 1, 1);
+    setCursorPosition(tabId, targetLine, targetColumn);
     setSearchHighlight(null);
     setTextSelectionHighlight(null);
     setPairHighlights([]);
@@ -152,6 +158,8 @@ export function useEditorLocalLifecycleEffects({
     setPairHighlights,
     setSearchHighlight,
     setTextSelectionHighlight,
+    savedCursorColumn,
+    savedCursorLine,
     tabId,
   ]);
 }

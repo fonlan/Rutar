@@ -144,7 +144,7 @@ export function EditorBackdropLayer({
                     }
                   : null),
               }}
-              className={`hover:bg-muted/5 text-foreground group editor-line flex items-start transition-colors duration-1000 ${
+              className={`hover:bg-muted/5 text-foreground group editor-line flex items-start ${
                 diffHighlightLineSet.has(index + 1) ? 'bg-red-500/10 dark:bg-red-500/14' : ''
               } ${
                 outlineFlashLine === index + 1

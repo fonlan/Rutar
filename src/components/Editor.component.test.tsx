@@ -476,6 +476,75 @@ describe('Editor component', () => {
     });
   });
 
+  it('keeps current line highlight free of long color transitions', async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: true,
+    });
+    const tab = createTab({ id: 'tab-current-line-highlight-no-delay-transition', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      const highlightedLine = Array.from(container.querySelectorAll<HTMLElement>('.editor-line')).find((line) =>
+        line.className.includes('bg-violet-300/35')
+      );
+      expect(highlightedLine).toBeTruthy();
+      expect(highlightedLine?.className.includes('duration-1000')).toBe(false);
+    });
+  });
+
+  it('updates current line highlight on selectionchange without waiting for raf flush even during pointer-active click', async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: true,
+    });
+    const tab = createTab({ id: 'tab-current-line-highlight-selectionchange-immediate', lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    let nextRafId = 0;
+    const pendingRafCallbacks = new Map<number, FrameRequestCallback>();
+
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextRafId;
+      pendingRafCallbacks.set(id, callback);
+      return id;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      pendingRafCallbacks.delete(id);
+    }) as typeof window.cancelAnimationFrame;
+
+    try {
+      await act(async () => {
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+        fireEvent.pointerDown(textarea, {
+          button: 0,
+          clientX: 24,
+          clientY: 24,
+        });
+        textarea.setSelectionRange(6, 6);
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+
+      const highlightedLine = Array.from(container.querySelectorAll<HTMLElement>('.editor-line')).find((line) =>
+        line.className.includes('bg-violet-300/35')
+      );
+      expect(highlightedLine?.textContent).toContain('line-2');
+      expect(pendingRafCallbacks.size).toBeGreaterThan(0);
+    } finally {
+      fireEvent.pointerUp(textarea, {
+        button: 0,
+        clientX: 24,
+        clientY: 24,
+      });
+      window.requestAnimationFrame = originalRequestAnimationFrame;
+      window.cancelAnimationFrame = originalCancelAnimationFrame;
+    }
+  });
+
   it('highlights only finite positive diff lines after normalization', async () => {
     const tab = createTab({
       id: 'tab-diff-highlight-normalize',
@@ -1500,6 +1569,23 @@ describe('Editor component', () => {
     } finally {
       clearTimeoutSpy.mockRestore();
     }
+  });
+
+  it('keeps saved cursor position when switching to another tab', async () => {
+    const firstTab = createTab({ id: 'tab-switch-cursor-keep-a', lineCount: 12 });
+    const secondTab = createTab({ id: 'tab-switch-cursor-keep-b', lineCount: 12 });
+    useStore.getState().setCursorPosition(secondTab.id, 4, 3);
+
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    await waitForEditorTextarea(container);
+
+    rerender(<Editor tab={secondTab} />);
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[secondTab.id];
+      expect(cursor?.line).toBe(4);
+      expect(cursor?.column).toBe(3);
+    });
   });
 
   it('handles navigate-to-line event in huge-editable mode and updates scroll container', async () => {
