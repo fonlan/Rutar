@@ -353,6 +353,7 @@ export function Editor({
     normalizeEditableLineText,
     normalizeEditorText,
     setInputLayerText,
+    getEditableText,
   });
 
   const { handleScroll } = useEditorScrollSyncEffects({

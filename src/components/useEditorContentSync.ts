@@ -31,6 +31,7 @@ interface UseEditorContentSyncParams {
   normalizeEditableLineText: (text: string) => string;
   normalizeEditorText: (text: string) => string;
   setInputLayerText: (element: HTMLTextAreaElement, text: string) => void;
+  getEditableText: (element: HTMLTextAreaElement) => string;
 }
 
 export function useEditorContentSync({
@@ -61,6 +62,7 @@ export function useEditorContentSync({
   normalizeEditableLineText,
   normalizeEditorText,
   setInputLayerText,
+  getEditableText,
 }: UseEditorContentSyncParams) {
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -247,7 +249,10 @@ export function useEditorContentSync({
 
     const normalized = normalizeEditorText(raw || '');
     if (contentRef.current) {
-      setInputLayerText(contentRef.current, normalized);
+      const currentText = normalizeEditorText(getEditableText(contentRef.current));
+      if (currentText !== normalized) {
+        setInputLayerText(contentRef.current, normalized);
+      }
     }
 
     syncedTextRef.current = normalized;
@@ -261,6 +266,7 @@ export function useEditorContentSync({
     largeFetchBuffer,
     pendingRestoreScrollTopRef,
     normalizeEditorText,
+    getEditableText,
     maxLineRange,
     pendingSyncRequestedRef,
     scrollContainerRef,

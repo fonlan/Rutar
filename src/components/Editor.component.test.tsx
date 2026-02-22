@@ -333,6 +333,99 @@ describe('Editor component', () => {
     });
   });
 
+  it('restores visited normal-tab snapshot immediately when switching back from huge mode', async () => {
+    const normalTab = createTab({
+      id: 'tab-switch-huge-to-normal-restore',
+      lineCount: 6,
+    });
+    const hugeTab = createTab({
+      id: 'tab-switch-huge-to-normal-huge',
+      lineCount: 22000,
+      name: 'huge-file.ts',
+      path: 'C:\\repo\\huge-file.ts',
+    });
+    const normalSecondLoadDeferred = createDeferred<string>();
+    let normalLoadCount = 0;
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        const id = String(payload?.id ?? '');
+        if (id === normalTab.id) {
+          normalLoadCount += 1;
+          if (normalLoadCount >= 2) {
+            return normalSecondLoadDeferred.promise;
+          }
+          return 'normal-tab-line\n';
+        }
+
+        return 'fallback\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        if (id === hugeTab.id) {
+          return ['huge-line-1', 'huge-line-2'];
+        }
+        return ['normal-tab-line'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 2;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={normalTab} />);
+    let textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'normal-tab-line\n');
+
+    rerender(<Editor tab={hugeTab} />);
+    textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, 'huge-line-1\nhuge-line-2');
+
+    rerender(<Editor tab={normalTab} />);
+    textarea = await waitForEditorTextarea(container);
+    await waitFor(() => {
+      expect(textarea.value).toBe('normal-tab-line\n');
+    });
+
+    await act(async () => {
+      normalSecondLoadDeferred.resolve('normal-tab-line\n');
+      await Promise.resolve();
+    });
+  });
+
   it('uses plain-line fetching path when largeFileMode is enabled', async () => {
     const tab = createTab({
       id: 'tab-large-file-mode',
@@ -1260,6 +1353,8 @@ describe('Editor component', () => {
     const { container } = render(<Editor tab={tab} />);
     const textarea = await waitForEditorTextarea(container);
     await waitForEditorText(textarea);
+    textarea.blur();
+    expect(document.activeElement).not.toBe(textarea);
 
     const focusDescriptor = Object.getOwnPropertyDescriptor(textarea, 'focus');
     const focusMock = vi.fn();

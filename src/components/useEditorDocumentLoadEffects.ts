@@ -166,9 +166,12 @@ export function useEditorDocumentLoadEffects({
     const previousTabId = previousTabIdRef.current;
     if (previousTabId && previousTabId !== tabId) {
       const currentElement = contentRef.current;
-      const currentText = currentElement
+      const elementText = currentElement
         ? getEditableText(currentElement)
-        : syncedTextRef.current;
+        : '';
+      const currentText = elementText.length === 0 && syncedTextRef.current.length > 0
+        ? syncedTextRef.current
+        : (elementText || syncedTextRef.current);
       const contentScrollTop = Math.abs(lastKnownContentScrollTopRef.current) > 0.001
         ? lastKnownContentScrollTopRef.current
         : currentElement?.scrollTop ?? 0;
