@@ -125,6 +125,23 @@ function isTextareaInputElement(element: EditorInputElement | null): element is 
   return !!element && element.tagName === 'TEXTAREA';
 }
 
+function getTextareaSelectionBounds(element: HTMLTextAreaElement) {
+  const textLength = element.value?.length ?? 0;
+  const rawStart = Math.max(0, Math.min(element.selectionStart ?? 0, textLength));
+  const rawEnd = Math.max(0, Math.min(element.selectionEnd ?? rawStart, textLength));
+  const start = Math.min(rawStart, rawEnd);
+  const end = Math.max(rawStart, rawEnd);
+  const isBackward = element.selectionDirection === 'backward';
+
+  return {
+    rawStart,
+    rawEnd,
+    start,
+    end,
+    isBackward,
+  };
+}
+
 function setInputLayerText(element: EditorInputElement, text: string) {
   if (isTextareaInputElement(element)) {
     element.value = normalizeEditorText((text || '').replaceAll(EMPTY_LINE_PLACEHOLDER, ''));
@@ -231,10 +248,15 @@ function setCaretToLineColumn(element: EditorInputElement, line: number, column:
 
 function getCaretLineInElement(element: EditorInputElement) {
   if (isTextareaInputElement(element)) {
-    const text = getEditableText(element);
+    const text = element.value || '';
     const safeOffset = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
-    const textBeforeCaret = normalizeLineText(text.slice(0, safeOffset));
-    return textBeforeCaret.split('\n').length;
+    let line = 1;
+    for (let index = 0; index < safeOffset; index += 1) {
+      if (text.charCodeAt(index) === 10) {
+        line += 1;
+      }
+    }
+    return line;
   }
 
   const selection = window.getSelection();
@@ -257,11 +279,7 @@ function getCaretLineInElement(element: EditorInputElement) {
 
 function getSelectionOffsetsInElement(element: EditorInputElement) {
   if (isTextareaInputElement(element)) {
-    const text = getEditableText(element);
-    const rawStart = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
-    const rawEnd = Math.max(0, Math.min(element.selectionEnd ?? rawStart, text.length));
-    const start = Math.min(rawStart, rawEnd);
-    const end = Math.max(rawStart, rawEnd);
+    const { start, end } = getTextareaSelectionBounds(element);
 
     return {
       start,
@@ -297,10 +315,7 @@ function getSelectionOffsetsInElement(element: EditorInputElement) {
 
 function getSelectionAnchorFocusOffsetsInElement(element: EditorInputElement) {
   if (isTextareaInputElement(element)) {
-    const text = getEditableText(element);
-    const start = Math.max(0, Math.min(element.selectionStart ?? 0, text.length));
-    const end = Math.max(0, Math.min(element.selectionEnd ?? start, text.length));
-    const isBackward = element.selectionDirection === 'backward';
+    const { start, end, isBackward } = getTextareaSelectionBounds(element);
 
     return isBackward
       ? {

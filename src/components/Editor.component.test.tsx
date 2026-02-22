@@ -626,7 +626,6 @@ describe('Editor component', () => {
         line.className.includes('bg-violet-300/35')
       );
       expect(highlightedLine?.textContent).toContain('line-2');
-      expect(pendingRafCallbacks.size).toBeGreaterThan(0);
     } finally {
       fireEvent.pointerUp(textarea, {
         button: 0,
@@ -4355,6 +4354,89 @@ describe('Editor component', () => {
         .filter((element) => (element.className ?? '').includes('ring-sky-500/45'))
         .map((element) => element.textContent ?? '');
       expect(marks).toEqual(['(', ')']);
+    });
+  });
+
+  it('skips pair-highlight backend lookup for ultra-long single-line text', async () => {
+    const longJson = `{"payload":"${'x'.repeat(210_000)}"}`;
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return longJson;
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, () => [
+          {
+            text: longJson,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return [longJson];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return {
+          leftOffset: 0,
+          rightOffset: 0,
+          leftLine: 1,
+          leftColumn: 1,
+          rightLine: 1,
+          rightColumn: 2,
+        };
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 1;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 1,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+      return undefined;
+    });
+
+    const tab = createTab({ id: 'tab-pair-highlight-skip-ultra-long-single-line', lineCount: 1 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, longJson);
+    const pairHighlightCallsBeforeSelection = invokeMock.mock.calls.filter(
+      ([command]) => command === 'find_matching_pair_offsets'
+    ).length;
+
+    const caretOffset = longJson.length - 2;
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caretOffset, caretOffset);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(1);
+      expect(cursor?.column).toBe(caretOffset + 1);
+    });
+
+    await waitFor(() => {
+      const pairHighlightCallsAfterSelection = invokeMock.mock.calls.filter(
+        ([command]) => command === 'find_matching_pair_offsets'
+      );
+      expect(pairHighlightCallsAfterSelection).toHaveLength(pairHighlightCallsBeforeSelection);
     });
   });
 

@@ -4,6 +4,8 @@ import { useCallback, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, PairHighlightPosition, PairOffsetsResultPayload } from './Editor.types';
 
+const MAX_PAIR_HIGHLIGHT_TEXT_LENGTH = 200_000;
+
 interface UseEditorSelectionStateSyncParams {
   isHugeEditableMode: boolean;
   isPairHighlightEnabled: boolean;
@@ -49,6 +51,13 @@ export function useEditorSelectionStateSync({
     const isBackward = element.selectionDirection === 'backward';
     const focusOffset = isBackward ? rawStart : rawEnd;
 
+    if (tabLineCount <= 1) {
+      return {
+        line: 1,
+        column: focusOffset,
+      };
+    }
+
     let line = 1;
     let lineStartOffset = 0;
     for (let index = 0; index < focusOffset; index += 1) {
@@ -62,7 +71,7 @@ export function useEditorSelectionStateSync({
       line,
       column: focusOffset - lineStartOffset,
     };
-  }, []);
+  }, [tabLineCount]);
 
   const resolveSelectionPosition = useCallback(() => {
     if (!contentRef.current) {
@@ -136,14 +145,20 @@ export function useEditorSelectionStateSync({
       return;
     }
 
-    const selectionOffsets = getSelectionOffsetsInElement(contentRef.current);
+    const element = contentRef.current;
+    const selectionOffsets = getSelectionOffsetsInElement(element);
 
     if (!selectionOffsets || !selectionOffsets.isCollapsed) {
       setPairHighlights((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
-    const text = normalizeSegmentText(getEditableText(contentRef.current));
+    if ((element.value || '').length > MAX_PAIR_HIGHLIGHT_TEXT_LENGTH) {
+      setPairHighlights((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    const text = normalizeSegmentText(getEditableText(element));
 
     let matched: PairOffsetsResultPayload | null = null;
     try {
