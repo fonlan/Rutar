@@ -17,6 +17,7 @@ interface UseEditorLayoutConfigParams {
   editableSegmentStartLine: number;
   editableSegmentEndLine: number;
   largeFilePlainRenderLineThreshold: number;
+  isPlainTextMode: boolean;
 }
 
 export function useEditorLayoutConfig({
@@ -27,6 +28,7 @@ export function useEditorLayoutConfig({
   editableSegmentStartLine,
   editableSegmentEndLine,
   largeFilePlainRenderLineThreshold,
+  isPlainTextMode,
 }: UseEditorLayoutConfigParams) {
   const fontSize = settings.fontSize || 14;
   const tabWidth = settings.tabWidth;
@@ -56,7 +58,7 @@ export function useEditorLayoutConfig({
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const usePlainLineRendering = tabLargeFileMode || tabLineCount >= largeFilePlainRenderLineThreshold;
   const isHugeEditableMode = tabLineCount >= largeFilePlainRenderLineThreshold;
-  const isPairHighlightEnabled = !usePlainLineRendering;
+  const isPairHighlightEnabled = !usePlainLineRendering && !isPlainTextMode;
   const hugeEditablePaddingTop = `${alignScrollOffset(Math.max(0, editableSegmentStartLine) * itemSize)}px`;
   const hugeEditableSegmentHeightPx = `${alignScrollOffset(
     Math.max(1, editableSegmentEndLine - editableSegmentStartLine) * itemSize

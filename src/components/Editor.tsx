@@ -259,6 +259,7 @@ export function Editor({
     editableSegmentStartLine: editableSegment.startLine,
     editableSegmentEndLine: editableSegment.endLine,
     largeFilePlainRenderLineThreshold: LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD,
+    isPlainTextMode: activeSyntaxKey === 'plain_text',
   });
   const {
     deleteLabel,

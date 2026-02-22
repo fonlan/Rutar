@@ -4357,6 +4357,92 @@ describe('Editor component', () => {
     });
   });
 
+  it('skips pair-highlight backend lookup for plain-text syntax mode', async () => {
+    const plainText = 'a()';
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return plainText;
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, () => [
+          {
+            text: plainText,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return [plainText];
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return {
+          leftOffset: 0,
+          rightOffset: 2,
+          leftLine: 1,
+          leftColumn: 1,
+          rightLine: 1,
+          rightColumn: 3,
+        };
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 1;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 1,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+      return undefined;
+    });
+
+    const tab = createTab({
+      id: 'tab-pair-highlight-skip-plain-text',
+      lineCount: 1,
+      syntaxOverride: 'plain_text',
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, plainText);
+    const pairHighlightCallsBeforeSelection = invokeMock.mock.calls.filter(
+      ([command]) => command === 'find_matching_pair_offsets'
+    ).length;
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(1, 1);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(1);
+      expect(cursor?.column).toBe(2);
+    });
+
+    await waitFor(() => {
+      const pairHighlightCallsAfterSelection = invokeMock.mock.calls.filter(
+        ([command]) => command === 'find_matching_pair_offsets'
+      );
+      expect(pairHighlightCallsAfterSelection).toHaveLength(pairHighlightCallsBeforeSelection);
+    });
+  });
+
   it('skips pair-highlight backend lookup for ultra-long single-line text', async () => {
     const longJson = `{"payload":"${'x'.repeat(210_000)}"}`;
     invokeMock.mockImplementation(async (command: string, payload?: any) => {
