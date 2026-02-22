@@ -2217,6 +2217,31 @@ describe("Toolbar", () => {
     });
   });
 
+  it("opens recent file when clicking split menu row padding area", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-row-padding.ts"],
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    const recentItemButton = await screen.findByTitle("C:\\repo\\recent-row-padding.ts");
+    const recentItemRow = recentItemButton.closest("div.group");
+    expect(recentItemRow).not.toBeNull();
+
+    fireEvent.click(recentItemRow as HTMLDivElement);
+
+    await waitFor(() => {
+      expect(openFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-row-padding.ts");
+    });
+    expect(openFilePathMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not open recent file context menu on right click", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({

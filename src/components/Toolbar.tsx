@@ -1309,17 +1309,17 @@ function ToolbarSplitMenu({
                             {items.map((item) => (
                                 <div
                                     key={item.path}
-                                    className="group flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground group-focus-within:bg-accent group-focus-within:text-accent-foreground"
+                                    className="group flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground group-focus-within:bg-accent group-focus-within:text-accent-foreground"
+                                    onClick={() => {
+                                        setItemContextMenu(null);
+                                        void onItemClick(item.path);
+                                    }}
                                 >
                                     <button
                                         type="button"
-                                        className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         title={item.path}
                                         aria-label={item.path}
-                                        onClick={() => {
-                                            setItemContextMenu(null);
-                                            void onItemClick(item.path);
-                                        }}
                                         onContextMenu={(event) => {
                                             if (!onItemContextAction || !itemContextActionText) {
                                                 return;
@@ -1347,7 +1347,7 @@ function ToolbarSplitMenu({
                                             });
                                         }}
                                     >
-                                        <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                                        <span className="flex min-w-0 flex-1 items-center gap-2 text-left leading-5">
                                             <span className="max-w-40 truncate text-foreground">{item.name}</span>
                                             <span className="flex-1 truncate text-muted-foreground">{item.path}</span>
                                         </span>
