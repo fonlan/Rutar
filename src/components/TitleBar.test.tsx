@@ -104,6 +104,23 @@ describe("TitleBar", () => {
     });
   });
 
+  it("shows unsaved indicator for dirty file tabs", () => {
+    const dirtyTab = createTab({ id: "tab-dirty", name: "dirty.ts", path: "C:\\repo\\dirty.ts", isDirty: true });
+    const cleanTab = createTab({ id: "tab-clean", name: "clean.ts", path: "C:\\repo\\clean.ts", isDirty: false });
+
+    useStore.setState({
+      tabs: [dirtyTab, cleanTab],
+      activeTabId: dirtyTab.id,
+    });
+
+    render(<TitleBar />);
+
+    const dirtyIndicator = screen.getByTestId("tab-dirty-indicator-tab-dirty");
+    expect(dirtyIndicator).toBeInTheDocument();
+    expect(dirtyIndicator).toHaveAttribute("title", "Unsaved changes");
+    expect(screen.queryByTestId("tab-dirty-indicator-tab-clean")).toBeNull();
+  });
+
   it("places locked tabs first by lock order and shows lock icon", () => {
     const tabA = createTab({ id: "tab-locked-a", name: "a.ts", path: "C:\\repo\\a.ts" });
     const tabB = createTab({ id: "tab-locked-b", name: "b.ts", path: "C:\\repo\\b.ts" });

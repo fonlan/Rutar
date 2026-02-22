@@ -13,6 +13,7 @@ export type I18nKey =
   | 'titleBar.openContainingFolder'
   | 'titleBar.enableAlwaysOnTop'
   | 'titleBar.disableAlwaysOnTop'
+  | 'titleBar.unsavedChanges'
   | 'tabCloseConfirm.title'
   | 'tabCloseConfirm.message'
   | 'tabCloseConfirm.save'
@@ -245,6 +246,7 @@ const zhCN: Messages = {
   'titleBar.openContainingFolder': '打开文件所在文件夹',
   'titleBar.enableAlwaysOnTop': '置顶窗口',
   'titleBar.disableAlwaysOnTop': '取消置顶窗口',
+  'titleBar.unsavedChanges': '未保存更改',
   'tabCloseConfirm.title': '未保存更改',
   'tabCloseConfirm.message': '标签页“{tabName}”有未保存修改，是否保存后关闭？',
   'tabCloseConfirm.save': '是',
@@ -476,6 +478,7 @@ const enUS: Messages = {
   'titleBar.openContainingFolder': 'Open Containing Folder',
   'titleBar.enableAlwaysOnTop': 'Enable Always on Top',
   'titleBar.disableAlwaysOnTop': 'Disable Always on Top',
+  'titleBar.unsavedChanges': 'Unsaved changes',
   'tabCloseConfirm.title': 'Unsaved Changes',
   'tabCloseConfirm.message': 'Tab "{tabName}" has unsaved changes. Close with saving?',
   'tabCloseConfirm.save': 'Yes',

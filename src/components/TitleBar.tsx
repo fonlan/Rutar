@@ -216,6 +216,7 @@ export function TitleBar() {
         ? tr('titleBar.disableAlwaysOnTop')
         : tr('titleBar.enableAlwaysOnTop');
     const closeTabLabel = settings.language === 'zh-CN' ? '关闭标签页' : 'Close tab';
+    const dirtyTabIndicatorLabel = tr('titleBar.unsavedChanges');
     const minimizeWindowLabel = settings.language === 'zh-CN' ? '最小化窗口' : 'Minimize window';
     const maximizeWindowLabel = settings.language === 'zh-CN' ? '切换最大化' : 'Toggle maximize window';
     const closeWindowLabel = settings.language === 'zh-CN' ? '关闭窗口' : 'Close window';
@@ -945,6 +946,10 @@ export function TitleBar() {
                     const TabFileIcon = tabFileIconConfig.Icon;
                     const isPendingTab = tab.id.startsWith('pending:');
                     const isLockedTab = getLockedTabOrder(tab, pinnedTabPathOrder) !== null;
+                    const isDirtyTab = !isPendingTab
+                        && 'isDirty' in tab
+                        && tab.isDirty === true
+                        && (!('tabType' in tab) || tab.tabType !== 'diff');
 
                     return (
                         <div
@@ -1003,10 +1008,15 @@ export function TitleBar() {
                                     className={cn('mr-1.5 h-3.5 w-3.5 shrink-0', tabFileIconConfig.className)}
                                 />
                             )}
-                            <span className="truncate flex-1 text-[11px] font-medium">
-                                {tab.name}
-                                {'isDirty' in tab && tab.isDirty ? '*' : ''}
-                            </span>
+                            <span className="truncate flex-1 text-[11px] font-medium">{tab.name}</span>
+                            {isDirtyTab && (
+                                <span
+                                    aria-label={dirtyTabIndicatorLabel}
+                                    title={dirtyTabIndicatorLabel}
+                                    data-testid={`tab-dirty-indicator-${tab.id}`}
+                                    className="ml-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500"
+                                />
+                            )}
                             {!isPendingTab && (
                                 <button
                                     type="button"
