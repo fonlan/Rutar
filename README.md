@@ -1,127 +1,67 @@
 # Rutar
 
-Rutar is a high-performance, lightweight code editor built with **Tauri**, **React 19**, and **Rust**. It leverages the power of **Tree-sitter** for accurate, IDE-grade syntax highlighting and **Ropey** for efficient large-scale text manipulation.
+[简体中文文档](./README_CN.md)
 
-## 🚀 Key Features
+Rutar is a lightweight, high-performance code editor built with Tauri, React 19, and Rust.
 
-- **Top-Grade Highlighting**: Syntax tokens are generated in the Rust backend using Tree-sitter, providing accurate and fast highlighting for JS, TS, Rust, Python, JSON, INI, and more.
-- **Outline Sidebar**: Supports structured file outlines for JSON / YAML / XML / TOML / INI and symbol outlines for Python / JavaScript / TypeScript / C / C++ / Go / Java / Rust / C# / PHP / Kotlin / Swift. Includes a lightweight search box at the top for quickly filtering outline items.
-- **Virtualized Rendering**: Handles massive files with ease using `react-window` to ensure smooth scrolling regardless of file size.
-- **Native Performance**: Built on Tauri for a small footprint and native-speed operations.
-- **Modern Tech Stack**: React 19, Tailwind CSS 4, and Zustand on the frontend; Rust with `ropey` and `tree-sitter` on the backend.
-- **Optimized for Windows**: Custom icons and window controls tailored for a native Windows experience.
-- **Multi-language UI**: Supports Simplified Chinese / English and can switch in Settings.
-- **Tab Path Tooltip**: Hovering a file tab shows the full file path, and the tooltip flips upward automatically when there is not enough space below.
-- **Recent Quick Access**: The toolbar `Open File` and `Open Folder` actions include dropdown arrows for opening recently used files and folders.
-- **Cursor Position in Status Bar**: The status bar shows the active caret location as `line:column` and updates in real time while navigating or selecting in the editor.
-- **Markdown Syntax in Status Bar**: The status bar syntax selector includes `Markdown`; manual override to Markdown is accepted and can be used to drive preview behavior.
-- **Word Count (Word-style)**: The toolbar includes a word-count action that shows words, characters (with/without spaces), lines, and paragraphs; counting runs in Rust async blocking pool to avoid freezing the UI on large files.
-- **Sessionized Search/Filter Navigation**: Search and filter use backend session commands (`start/next/step/restore`) so tab switching can restore incremental navigation state with less frontend state burden.
-- **External File Change Reminder**: When the app window regains focus, open files are checked for external modifications; if a file changed on disk, Rutar asks whether to reload it.
-- **Text Drag Move in Editor**: You can drag selected text to a new caret position in the editor to move/insert it; file drag-and-drop opening remains supported.
-- **Ctrl/Cmd Click Hyperlinks**: In editor text, `Ctrl` (Windows/Linux) or `Cmd` (macOS) + left click on `http/https` links opens the URL in your system browser. Detected links are rendered in blue with underline, show a hand cursor on hover, and display hint text `Ctrl+左键打开`.
-- **Markdown Live Preview Panel**: The toolbar includes a preview toggle that opens a right-side Markdown preview panel with draggable width (default 50%); preview updates in real time, has no header, supports Mermaid code-block diagram rendering, and shares editor vertical/horizontal scrolling behavior.
-- **Tab Diff Compare View**: Tab context menu supports two-step compare (set source tab, then compare target tab) and opens a dedicated diff tab with resizable left/right panels, line-level difference highlight, divider difference markers, and visible-range shadow. Missing lines are rendered as true placeholder rows so both sides stay strictly row-aligned. Both panels are editable, support per-panel save in header and `Ctrl+S` save for focused panel, and changes are written back to real documents via backend commands. Diff aligned edits are committed through backend `apply_aligned_diff_edit`, which returns the refreshed aligned diff snapshot in one round-trip. The header of each side also includes an independent inline search box with previous/next match buttons, and pressing Enter in the search input jumps to next match for that side; matched line numbers are resolved by backend command `search_diff_panel_line_matches` to reduce frontend scan pressure on large files. Each header also has `Previous Diff Line` / `Next Diff Line` quick-jump buttons that wrap through aligned diff rows around the current caret line. Header file-name right click supports `Copy File Name`, `Copy Folder Path`, `Copy Full Path`, and `Open Containing Folder`. Diff tabs also support toolbar `Copy/Cut/Paste` and `Undo/Redo`; actions are routed by focused panel, and source/target history stays independent. The panel context menu keeps `Copy/Cut/Paste` and adds `Copy to Left` / `Copy to Right`, which copies the current caret line or selected line range to the opposite panel by aligned row; copying a real empty line clears the opposite line, while copying a virtual placeholder line deletes the opposite aligned line. The line alignment/diff calculation runs in Rust backend to keep large-file compare responsive.
-- **Locked Tabs**: File tabs can be locked from tab context menu. Locked tab paths are persisted in config, auto-opened on next startup, displayed at the far left by lock order, and show a lock icon instead of the normal file icon.
+## Highlights
+
+- Tree-sitter syntax highlighting powered by Rust backend tokens.
+- Virtualized editor rendering for smooth large-file editing.
+- Outline sidebar for structured files and programming languages.
+- Markdown live preview panel with Mermaid support and scroll sync.
+- Editable side-by-side diff tabs with backend-aligned line comparison.
+- Rust-side search/filter sessions and word count to keep UI responsive.
+- Locked tabs, recent files/folders, and persisted user settings.
+- Bilingual UI (English and Simplified Chinese).
+
+## Tech Stack
+
+- Frontend: React 19, TypeScript, Vite, Zustand, Tailwind CSS 4.
+- Backend: Rust, Tauri v2, tree-sitter, ropey, dashmap.
+
+## Requirements
+
+- Node.js (LTS)
+- Rust (stable)
+
+## Quick Start
+
+```bash
+npm install --legacy-peer-deps
+npm run tauri dev
+```
+
+## Common Commands
+
+```bash
+# frontend
+npm run dev
+npm run build
+npx tsc
+npm run test
+npm run test:watch
+
+# tauri / rust
+npm run tauri dev
+npm run tauri build
+cd src-tauri && cargo check
+cd src-tauri && cargo test
+```
 
 ## Configuration
 
-- User configuration is saved to `%AppData%\Rutar\config.json`.
-- Current fields include `language`, `fontFamily`, `fontSize`, `tabWidth`, `newFileLineEnding`, `wordWrap`, `showLineNumbers`, `recentFiles`, `recentFolders`, `pinnedTabPaths`, `rememberWindowState`, `mouseGesturesEnabled`, `mouseGestures`, and `windowState`.
-- `newFileLineEnding` controls the default line ending (`CRLF` / `LF` / `CR`) used when creating new empty files.
-- `fontFamily` supports comma-separated fallback priority (for example `JetBrains Mono, Cascadia Code, Consolas, monospace`), and Settings provides preset dropdown selection plus priority reordering controls.
-- `rememberWindowState` is enabled by default and controls whether window state persistence is active.
-- `mouseGesturesEnabled` controls whether right-button drag mouse gestures are active in the editor area.
-- `mouseGestures` stores gesture-action bindings, where `pattern` uses `L/R/U/D` sequence (for example `L`, `RD`, `UL`) and `action` maps to editor actions including tab switching, jump to top/bottom, close current/all/other tabs, quit app, and sidebar toggles.
-- `windowState` persists main window state across launches: if the window was maximized, only `maximized: true` is stored; when not maximized, `width` and `height` are stored and restored on next startup.
-- Main window startup uses hidden-first initialization (`visible: false` in `src-tauri/tauri.conf.json`), restores persisted window state first, and then lets frontend call `show_main_window_when_ready` after app shell render to reduce startup white-screen time and avoid visible size jump from default `800x600` to saved dimensions.
-- Main window keeps `dragDropEnabled: true` in `src-tauri/tauri.conf.json` so Tauri native file drag-open remains stable on Windows; editor text drag-move is handled by frontend pointer-driven logic to avoid WebView HTML5 drag-drop inconsistencies.
-- `src-tauri/tauri.conf.json` currently sets `app.security.freezePrototype` to `false` to avoid Mermaid runtime conflicts with `dayjs` in the WebView environment.
-- Frontend injects a lightweight startup splash (`boot-splash`) before React mount and removes it right after the main window reveal signal is sent, so users see loading feedback instead of a blank frame.
+- User config file: `%AppData%\Rutar\config.json`.
+- Common options: language, font family/size, tab width, line ending, word wrap, recent items, pinned tabs, window state, mouse gestures.
+- Markdown preview currently requires `app.security.freezePrototype = false` in `src-tauri/tauri.conf.json` because of Mermaid runtime compatibility.
+- Locked tabs are persisted by path in `pinnedTabPaths` and restored on startup.
 
-### Windows 11 Context Menu Integration
+## Project Structure
 
-- **Classic context menu (Show more options)**: managed by registry keys under `HKCU\Software\Classes` and can be toggled directly in Settings.
-- **File associations**: when enabled in Settings, Rutar writes per-user registry associations, registers itself in Windows `RegisteredApplications` for visibility in Default apps, and opens `ms-settings:defaultapps` so you can confirm/adjust defaults on Windows 11.
-- **Single-instance file open behavior**: when single-instance mode is enabled, double-clicking an associated file (or using "Open with Rutar") reuses the existing window, opens a new tab, and wakes/restores the window to foreground.
+- `src/`: React frontend.
+- `src-tauri/`: Rust backend and Tauri commands.
+- `AGENTS.md`: repository engineering and agent guidelines.
 
-## 🛠 Tech Stack
-
-- **Backend**: Rust, Tauri v2, Tree-sitter, Ropey, DashMap, memmap2.
-- **Frontend**: React 19, Vite, TypeScript, Zustand, Tailwind CSS 4, Lucide React.
-
-## 📦 Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (Latest LTS)
-- [Rust](https://www.rust-lang.org/) (Latest stable)
-
-### Development
-
-1.  **Install Dependencies**:
-    ```bash
-    npm install --legacy-peer-deps
-    ```
-
-2.  **Start Dev Server**:
-    ```bash
-    npm run tauri dev
-    ```
-
-3.  **Run Frontend Unit Tests**:
-    ```bash
-    npm run test
-    ```
-
-4.  **Run Frontend Unit Tests (Watch Mode)**:
-    ```bash
-    npm run test:watch
-    ```
-
-### Build
-
-To create a production build:
-```bash
-npm run tauri build
-```
-
-## 📂 Project Structure
-
-- `src/`: Frontend React application.
-- `src/components/MarkdownPreviewPanel.tsx`: Right-side live Markdown preview panel and scroll-follow behavior.
-- `src/components/DiffEditor.tsx`: Side-by-side diff tab renderer with draggable split layout, aligned placeholder rows, editable compare layer, and divider markers.
-- `src/lib/markdown.ts`: Markdown file detection helper used by preview features.
-- `src-tauri/`: Rust backend, IPC commands, and state management.
-- `src-tauri/src/commands/config.rs`: App config persistence, filter-group config, and Windows integration submodule.
-- `src-tauri/src/commands/document.rs`: Document version and syntax-token generation submodule.
-- `src-tauri/src/commands/diff.rs`: Backend line-based diff, aligned side-by-side compare payload generation, and aligned-edit apply command.
-- `src-tauri/src/commands/file_io.rs`: File open/save/new operations and filesystem utility submodule.
-- `src-tauri/src/commands/editing.rs`: Edit/undo-redo, document cleanup, and structured format commands submodule.
-- `src-tauri/src/commands/formatting.rs`: Structured data formatting/minify helpers for JSON/YAML/XML/HTML/TOML.
-- `src-tauri/src/commands/syntax.rs`: File extension and syntax-override language resolution plus parser creation.
-- `src-tauri/src/commands/settings.rs`: App config types/defaults and normalization helpers (language/theme/tab width).
-- `src-tauri/src/commands/types.rs`: Shared command data structures (`FileInfo`, `DirEntry`, `SyntaxToken`, etc.).
-- `src-tauri/src/commands/text_utils.rs`: Shared text normalization helpers (for example line-ending normalization).
-- `src-tauri/src/commands/constants.rs`: Shared backend constants for editor defaults and runtime limits.
-- `src-tauri/src/commands/search_commands.rs`: Tauri command wrappers for search/filter operations.
-- `src-tauri/src/commands/file_io_commands.rs`: Tauri command wrappers for document/file I/O operations.
-- `src-tauri/src/commands/file_io.rs`: Includes async word-count computation (`get_word_count_info`) with chunk iteration over `Rope` to keep large-file interactions responsive.
-- `src-tauri/src/commands/editing_commands.rs`: Tauri command wrappers for edit/undo/history/cleanup/format operations.
-- `src-tauri/src/commands/search.rs`: Search / filter matching and step-navigation submodule.
-- `src-tauri/src/commands/outline.rs`: Outline parsing and symbol extraction submodule.
-- `AGENTS.md`: Detailed guidelines for AI coding agents working on this repository.
-
-## Toolbar Button Availability
-
-- Toolbar action states are dynamically derived from current editor context.
-- `Save` is enabled only when the active document has unsaved changes.
-- `Save All` is enabled only when at least one tab has unsaved changes.
-- `Cut` and `Copy` are enabled only when text is selected in the active editor.
-- `Undo` / `Redo` are enabled only when corresponding history entries exist.
-- In diff compare tabs, `Cut` / `Copy` / `Paste` and `Undo` / `Redo` are bound to the focused side panel and that panel's backing document history; panel context menu also supports `Copy to Left` / `Copy to Right` for aligned line-range transfer (empty line => clear opposite line, virtual placeholder line => delete opposite line).
-- Unsaved-change state is anchored to the saved undo checkpoint (undo depth + top operation id), so undoing back to the saved snapshot automatically clears the dirty indicator.
-
-## 📄 License
+## License
 
 MIT
