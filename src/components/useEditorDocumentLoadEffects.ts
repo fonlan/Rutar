@@ -9,11 +9,18 @@ interface EditorDocumentLoadSnapshot {
   plainLines: string[];
   plainStartLine: number;
   editableSegment: EditorSegmentState;
+  contentScrollTop: number;
+  contentScrollLeft: number;
+  containerScrollTop: number;
+  containerScrollLeft: number;
 }
 
 interface UseEditorDocumentLoadEffectsParams {
   tabId: string;
   tabLineCount: number;
+  itemSize: number;
+  savedCursorLine: number;
+  savedCursorColumn: number;
   usePlainLineRendering: boolean;
   isHugeEditableMode: boolean;
   lineTokens: SyntaxToken[][];
@@ -33,6 +40,12 @@ interface UseEditorDocumentLoadEffectsParams {
   editTimeoutRef: MutableRefObject<any>;
   editableSegmentRef: MutableRefObject<EditorSegmentState>;
   contentRef: MutableRefObject<HTMLTextAreaElement | null>;
+  scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
+  pendingRestoreScrollTopRef: MutableRefObject<number | null>;
+  lastKnownContentScrollTopRef: MutableRefObject<number>;
+  lastKnownContentScrollLeftRef: MutableRefObject<number>;
+  lastKnownContainerScrollTopRef: MutableRefObject<number>;
+  lastKnownContainerScrollLeftRef: MutableRefObject<number>;
   setLineTokens: (updater: SyntaxToken[][] | ((prev: SyntaxToken[][]) => SyntaxToken[][])) => void;
   setStartLine: (updater: number | ((prev: number) => number)) => void;
   setEditableSegment: (updater: EditorSegmentState | ((prev: EditorSegmentState) => EditorSegmentState)) => void;
@@ -40,6 +53,7 @@ interface UseEditorDocumentLoadEffectsParams {
   setPlainStartLine: (updater: number | ((prev: number) => number)) => void;
   setInputLayerText: (element: HTMLTextAreaElement, text: string) => void;
   getEditableText: (element: HTMLTextAreaElement) => string;
+  setCaretToLineColumn: (element: HTMLTextAreaElement, line: number, column: number) => void;
   loadTextFromBackend: () => Promise<void>;
   syncVisibleTokens: (lineCount: number, visibleRange?: { start: number; stop: number }) => Promise<void>;
 }
@@ -47,6 +61,9 @@ interface UseEditorDocumentLoadEffectsParams {
 export function useEditorDocumentLoadEffects({
   tabId,
   tabLineCount,
+  itemSize,
+  savedCursorLine,
+  savedCursorColumn,
   usePlainLineRendering,
   isHugeEditableMode,
   lineTokens,
@@ -66,6 +83,12 @@ export function useEditorDocumentLoadEffects({
   editTimeoutRef,
   editableSegmentRef,
   contentRef,
+  scrollContainerRef,
+  pendingRestoreScrollTopRef,
+  lastKnownContentScrollTopRef,
+  lastKnownContentScrollLeftRef,
+  lastKnownContainerScrollTopRef,
+  lastKnownContainerScrollLeftRef,
   setLineTokens,
   setStartLine,
   setEditableSegment,
@@ -73,6 +96,7 @@ export function useEditorDocumentLoadEffects({
   setPlainStartLine,
   setInputLayerText,
   getEditableText,
+  setCaretToLineColumn,
   loadTextFromBackend,
   syncVisibleTokens,
 }: UseEditorDocumentLoadEffectsParams) {
@@ -81,12 +105,82 @@ export function useEditorDocumentLoadEffects({
 
   useEffect(() => {
     let cancelled = false;
+    const setLastKnownScrollOffsets = (
+      contentScrollTop: number,
+      contentScrollLeft: number,
+      containerScrollTop: number,
+      containerScrollLeft: number
+    ) => {
+      lastKnownContentScrollTopRef.current = contentScrollTop;
+      lastKnownContentScrollLeftRef.current = contentScrollLeft;
+      lastKnownContainerScrollTopRef.current = containerScrollTop;
+      lastKnownContainerScrollLeftRef.current = containerScrollLeft;
+    };
+
+    const restoreCaretToSavedPosition = () => {
+      if (!contentRef.current) {
+        return;
+      }
+
+      const targetLine = Math.max(1, Math.floor(savedCursorLine || 1));
+      const targetColumn = Math.max(1, Math.floor(savedCursorColumn || 1));
+      const lineForCaret = isHugeEditableMode
+        ? Math.max(1, targetLine - editableSegmentRef.current.startLine)
+        : targetLine;
+      setCaretToLineColumn(contentRef.current, lineForCaret, targetColumn);
+    };
+
+    const restoreScrollFromSnapshot = (snapshot: EditorDocumentLoadSnapshot) => {
+      if (contentRef.current) {
+        if (Math.abs(contentRef.current.scrollTop - snapshot.contentScrollTop) > 0.001) {
+          contentRef.current.scrollTop = snapshot.contentScrollTop;
+        }
+
+        if (Math.abs(contentRef.current.scrollLeft - snapshot.contentScrollLeft) > 0.001) {
+          contentRef.current.scrollLeft = snapshot.contentScrollLeft;
+        }
+      }
+
+      if (scrollContainerRef.current) {
+        if (Math.abs(scrollContainerRef.current.scrollTop - snapshot.containerScrollTop) > 0.001) {
+          scrollContainerRef.current.scrollTop = snapshot.containerScrollTop;
+        }
+
+        if (Math.abs(scrollContainerRef.current.scrollLeft - snapshot.containerScrollLeft) > 0.001) {
+          scrollContainerRef.current.scrollLeft = snapshot.containerScrollLeft;
+        }
+      }
+
+      if (isHugeEditableMode) {
+        pendingRestoreScrollTopRef.current = snapshot.containerScrollTop;
+      }
+
+      setLastKnownScrollOffsets(
+        snapshot.contentScrollTop,
+        snapshot.contentScrollLeft,
+        snapshot.containerScrollTop,
+        snapshot.containerScrollLeft
+      );
+    };
+
     const previousTabId = previousTabIdRef.current;
     if (previousTabId && previousTabId !== tabId) {
       const currentElement = contentRef.current;
       const currentText = currentElement
         ? getEditableText(currentElement)
         : syncedTextRef.current;
+      const contentScrollTop = Math.abs(lastKnownContentScrollTopRef.current) > 0.001
+        ? lastKnownContentScrollTopRef.current
+        : currentElement?.scrollTop ?? 0;
+      const contentScrollLeft = Math.abs(lastKnownContentScrollLeftRef.current) > 0.001
+        ? lastKnownContentScrollLeftRef.current
+        : currentElement?.scrollLeft ?? 0;
+      const containerScrollTop = Math.abs(lastKnownContainerScrollTopRef.current) > 0.001
+        ? lastKnownContainerScrollTopRef.current
+        : scrollContainerRef.current?.scrollTop ?? 0;
+      const containerScrollLeft = Math.abs(lastKnownContainerScrollLeftRef.current) > 0.001
+        ? lastKnownContainerScrollLeftRef.current
+        : scrollContainerRef.current?.scrollLeft ?? 0;
 
       tabSnapshotRef.current[previousTabId] = {
         text: currentText,
@@ -99,11 +193,34 @@ export function useEditorDocumentLoadEffects({
           endLine: editableSegmentState.endLine,
           text: editableSegmentState.text,
         },
+        contentScrollTop,
+        contentScrollLeft,
+        containerScrollTop,
+        containerScrollLeft,
       };
     }
 
     previousTabIdRef.current = tabId;
     const restoredSnapshot = tabSnapshotRef.current[tabId];
+    const safeSavedCursorLine = Math.max(1, Math.min(Math.max(1, tabLineCount), Math.floor(savedCursorLine || 1)));
+    const savedCursorTargetIndex = Math.max(0, safeSavedCursorLine - 1);
+    const snapshotContainsSavedCursor = !!(
+      restoredSnapshot
+      && savedCursorTargetIndex >= Math.max(0, Math.floor(restoredSnapshot.editableSegment.startLine))
+      && savedCursorTargetIndex < Math.max(0, Math.floor(restoredSnapshot.editableSegment.endLine))
+    );
+    const restoredSnapshotTargetIndex = restoredSnapshot
+      ? Math.max(0, Math.floor(restoredSnapshot.containerScrollTop / Math.max(1, itemSize)))
+      : null;
+    const shouldPreferSavedCursorAnchor = isHugeEditableMode
+      && safeSavedCursorLine > 1
+      && !snapshotContainsSavedCursor;
+    const hugeSyncTargetIndex = isHugeEditableMode
+      ? (shouldPreferSavedCursorAnchor
+        ? savedCursorTargetIndex
+        : restoredSnapshotTargetIndex ?? savedCursorTargetIndex)
+      : 0;
+    const hugeSyncTargetScrollTop = Math.max(0, hugeSyncTargetIndex * itemSize);
     if (restoredSnapshot) {
       setLineTokens(restoredSnapshot.lineTokens);
       setStartLine(restoredSnapshot.startLine);
@@ -115,6 +232,48 @@ export function useEditorDocumentLoadEffects({
         setInputLayerText(contentRef.current, restoredSnapshot.text);
       }
       syncedTextRef.current = restoredSnapshot.text;
+      restoreScrollFromSnapshot(restoredSnapshot);
+      if (shouldPreferSavedCursorAnchor) {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = hugeSyncTargetScrollTop;
+        }
+        pendingRestoreScrollTopRef.current = hugeSyncTargetScrollTop;
+        setLastKnownScrollOffsets(
+          contentRef.current?.scrollTop ?? 0,
+          contentRef.current?.scrollLeft ?? 0,
+          hugeSyncTargetScrollTop,
+          scrollContainerRef.current?.scrollLeft ?? 0
+        );
+      }
+      restoreCaretToSavedPosition();
+    } else {
+      const targetContentScrollTop = 0;
+      const targetContentScrollLeft = 0;
+      const targetContainerScrollTop = isHugeEditableMode
+        ? hugeSyncTargetScrollTop
+        : 0;
+      const targetContainerScrollLeft = 0;
+
+      if (contentRef.current) {
+        contentRef.current.scrollTop = targetContentScrollTop;
+        contentRef.current.scrollLeft = targetContentScrollLeft;
+      }
+
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = targetContainerScrollTop;
+        scrollContainerRef.current.scrollLeft = targetContainerScrollLeft;
+      }
+
+      pendingRestoreScrollTopRef.current = isHugeEditableMode
+        ? targetContainerScrollTop
+        : null;
+
+      setLastKnownScrollOffsets(
+        targetContentScrollTop,
+        targetContentScrollLeft,
+        targetContainerScrollTop,
+        targetContainerScrollLeft
+      );
     }
 
     initializedRef.current = false;
@@ -134,9 +293,45 @@ export function useEditorDocumentLoadEffects({
         if (cancelled) {
           return;
         }
+        if (restoredSnapshot) {
+          if (shouldPreferSavedCursorAnchor) {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = hugeSyncTargetScrollTop;
+            }
+            pendingRestoreScrollTopRef.current = hugeSyncTargetScrollTop;
+            setLastKnownScrollOffsets(
+              contentRef.current?.scrollTop ?? 0,
+              contentRef.current?.scrollLeft ?? 0,
+              hugeSyncTargetScrollTop,
+              scrollContainerRef.current?.scrollLeft ?? 0
+            );
+          } else {
+            restoreScrollFromSnapshot(restoredSnapshot);
+          }
+        }
+        restoreCaretToSavedPosition();
 
-        await syncVisibleTokens(Math.max(1, tabLineCount));
+        if (!isHugeEditableMode) {
+          await syncVisibleTokens(Math.max(1, tabLineCount));
+        }
         if (!cancelled) {
+          if (restoredSnapshot) {
+            if (shouldPreferSavedCursorAnchor) {
+              if (scrollContainerRef.current) {
+                scrollContainerRef.current.scrollTop = hugeSyncTargetScrollTop;
+              }
+              pendingRestoreScrollTopRef.current = hugeSyncTargetScrollTop;
+              setLastKnownScrollOffsets(
+                contentRef.current?.scrollTop ?? 0,
+                contentRef.current?.scrollLeft ?? 0,
+                hugeSyncTargetScrollTop,
+                scrollContainerRef.current?.scrollLeft ?? 0
+              );
+            } else {
+              restoreScrollFromSnapshot(restoredSnapshot);
+            }
+          }
+          restoreCaretToSavedPosition();
           initializedRef.current = true;
         }
       } catch (error) {
@@ -167,10 +362,17 @@ export function useEditorDocumentLoadEffects({
     hugeWindowLockedRef,
     hugeWindowUnlockTimerRef,
     initializedRef,
+    isHugeEditableMode,
+    lastKnownContainerScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContentScrollTopRef,
     loadTextFromBackend,
+    pendingRestoreScrollTopRef,
     pendingSyncRequestedRef,
     requestTimeoutRef,
     setInputLayerText,
+    setCaretToLineColumn,
     setEditableSegment,
     setLineTokens,
     setPlainLines,
@@ -182,7 +384,9 @@ export function useEditorDocumentLoadEffects({
     syncVisibleTokens,
     tabId,
     tabLineCount,
+    itemSize,
     contentRef,
+    scrollContainerRef,
   ]);
 
   useEffect(() => {

@@ -227,9 +227,14 @@ export function useEditorContentSync({
 
   const loadTextFromBackend = useCallback(async () => {
     if (isHugeEditableMode) {
+      const anchorScrollTop = pendingRestoreScrollTopRef.current
+        ?? scrollContainerRef.current?.scrollTop
+        ?? contentRef.current?.scrollTop
+        ?? 0;
       const viewportLines = Math.max(1, Math.ceil((height || 0) / itemSize));
-      const start = 0;
-      const end = Math.max(start + 1, viewportLines + largeFetchBuffer);
+      const anchorLine = Math.max(0, Math.floor(anchorScrollTop / itemSize));
+      const start = Math.max(0, anchorLine - largeFetchBuffer);
+      const end = Math.max(start + 1, anchorLine + viewportLines + largeFetchBuffer);
       await fetchEditableSegment(start, end);
       return;
     }
@@ -254,9 +259,11 @@ export function useEditorContentSync({
     isHugeEditableMode,
     itemSize,
     largeFetchBuffer,
+    pendingRestoreScrollTopRef,
     normalizeEditorText,
     maxLineRange,
     pendingSyncRequestedRef,
+    scrollContainerRef,
     setInputLayerText,
     syncedTextRef,
     tabId,

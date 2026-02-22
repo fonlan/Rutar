@@ -37,6 +37,10 @@ export function useEditorUiInteractionEffects({
   useEffect(() => {
     const flushSelectionChange = () => {
       selectionChangeRafRef.current = null;
+      const isEditorFocused = !!contentRef.current && document.activeElement === contentRef.current;
+      if (!isEditorFocused && !pointerSelectionActiveRef.current) {
+        return;
+      }
 
       if (verticalSelectionRef.current && !hasSelectionInsideEditor()) {
         clearVerticalSelectionState();
@@ -52,6 +56,11 @@ export function useEditorUiInteractionEffects({
     };
 
     const handleSelectionChange = () => {
+      const isEditorFocused = !!contentRef.current && document.activeElement === contentRef.current;
+      if (!isEditorFocused && !pointerSelectionActiveRef.current) {
+        return;
+      }
+
       const selectionCollapsed = !!(
         contentRef.current
         && contentRef.current.selectionStart === contentRef.current.selectionEnd

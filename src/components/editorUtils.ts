@@ -180,6 +180,8 @@ function setCaretToLineColumn(element: EditorInputElement, line: number, column:
   const targetOffset = getCodeUnitOffsetFromLineColumn(content, line, column);
 
   if (isTextareaInputElement(element)) {
+    const previousScrollTop = element.scrollTop;
+    const previousScrollLeft = element.scrollLeft;
     if (element.value !== content) {
       element.value = content;
     }
@@ -188,6 +190,12 @@ function setCaretToLineColumn(element: EditorInputElement, line: number, column:
     const safeOffset = Math.min(layerOffset, content.length);
     focusEditorInputWithoutScroll(element);
     element.setSelectionRange(safeOffset, safeOffset);
+    if (Math.abs(element.scrollTop - previousScrollTop) > 0.001) {
+      element.scrollTop = previousScrollTop;
+    }
+    if (Math.abs(element.scrollLeft - previousScrollLeft) > 0.001) {
+      element.scrollLeft = previousScrollLeft;
+    }
     return;
   }
 

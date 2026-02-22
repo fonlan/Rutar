@@ -15,6 +15,10 @@ interface UseEditorScrollSyncEffectsParams {
   listRef: MutableRefObject<any>;
   lineNumberListRef: MutableRefObject<any>;
   isScrollbarDragRef: MutableRefObject<boolean>;
+  lastKnownContentScrollTopRef: MutableRefObject<number>;
+  lastKnownContentScrollLeftRef: MutableRefObject<number>;
+  lastKnownContainerScrollTopRef: MutableRefObject<number>;
+  lastKnownContainerScrollLeftRef: MutableRefObject<number>;
 }
 
 export function useEditorScrollSyncEffects({
@@ -31,9 +35,31 @@ export function useEditorScrollSyncEffects({
   listRef,
   lineNumberListRef,
   isScrollbarDragRef,
+  lastKnownContentScrollTopRef,
+  lastKnownContentScrollLeftRef,
+  lastKnownContainerScrollTopRef,
+  lastKnownContainerScrollLeftRef,
 }: UseEditorScrollSyncEffectsParams) {
+  const updateLastKnownScrollOffsets = useCallback(() => {
+    lastKnownContentScrollTopRef.current = contentRef.current?.scrollTop ?? 0;
+    lastKnownContentScrollLeftRef.current = contentRef.current?.scrollLeft ?? 0;
+    lastKnownContainerScrollTopRef.current = scrollContainerRef.current?.scrollTop ?? 0;
+    lastKnownContainerScrollLeftRef.current = scrollContainerRef.current?.scrollLeft ?? 0;
+  }, [
+    contentRef,
+    lastKnownContainerScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContentScrollTopRef,
+    scrollContainerRef,
+  ]);
+
   const handleScroll = useCallback(() => {
     const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+    if (!scrollElement) {
+      updateLastKnownScrollOffsets();
+      return;
+    }
 
     const lineNumberOuter = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
     const currentScrollTop = scrollElement?.scrollTop ?? 0;
@@ -48,8 +74,10 @@ export function useEditorScrollSyncEffects({
         const scrollLeft = scrollElement.scrollLeft;
         const listMaxTop = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
         const listMaxLeft = Math.max(0, listEl.scrollWidth - listEl.clientWidth);
-        const targetTop = Math.min(scrollTop, listMaxTop);
-        const targetLeft = Math.min(scrollLeft, listMaxLeft);
+        const canClampVertical = listEl.scrollHeight > 0 && listEl.clientHeight > 0;
+        const canClampHorizontal = listEl.scrollWidth > 0 && listEl.clientWidth > 0;
+        const targetTop = canClampVertical ? Math.min(scrollTop, listMaxTop) : scrollTop;
+        const targetLeft = canClampHorizontal ? Math.min(scrollLeft, listMaxLeft) : scrollLeft;
 
         if (isScrollbarDragRef.current) {
           if (Math.abs(listEl.scrollTop - targetTop) > 0.001) {
@@ -60,6 +88,7 @@ export function useEditorScrollSyncEffects({
             listEl.scrollLeft = targetLeft;
           }
 
+          updateLastKnownScrollOffsets();
           return;
         }
 
@@ -75,7 +104,7 @@ export function useEditorScrollSyncEffects({
           listEl.scrollLeft = targetLeft;
         }
 
-        if (Math.abs(scrollElement.scrollTop - targetTop) > 0.001) {
+        if (canClampVertical && Math.abs(scrollElement.scrollTop - targetTop) > 0.001) {
           scrollElement.scrollTop = targetTop;
         }
 
@@ -83,7 +112,16 @@ export function useEditorScrollSyncEffects({
         // Avoid snapping it back based on backdrop width.
       }
     }
-  }, [contentRef, isHugeEditableMode, isScrollbarDragRef, lineNumberListRef, listRef, scrollContainerRef]);
+    updateLastKnownScrollOffsets();
+  }, [
+    contentRef,
+    isHugeEditableMode,
+    isScrollbarDragRef,
+    lineNumberListRef,
+    listRef,
+    scrollContainerRef,
+    updateLastKnownScrollOffsets,
+  ]);
 
   useEffect(() => {
     if (!isHugeEditableMode) {

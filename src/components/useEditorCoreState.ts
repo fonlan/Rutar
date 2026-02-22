@@ -90,6 +90,10 @@ export function useEditorCoreState({
     text: '',
   });
   const syncedTextRef = useRef('');
+  const lastKnownContentScrollTopRef = useRef(0);
+  const lastKnownContentScrollLeftRef = useRef(0);
+  const lastKnownContainerScrollTopRef = useRef(0);
+  const lastKnownContainerScrollLeftRef = useRef(0);
 
   return {
     lineTokens,
@@ -159,5 +163,9 @@ export function useEditorCoreState({
     selectionChangeRafRef,
     editableSegmentRef,
     syncedTextRef,
+    lastKnownContentScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContainerScrollLeftRef,
   };
 }

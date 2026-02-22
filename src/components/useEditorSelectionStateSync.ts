@@ -9,6 +9,7 @@ interface UseEditorSelectionStateSyncParams {
   isPairHighlightEnabled: boolean;
   tabId: string;
   tabLineCount: number;
+  initializedRef: MutableRefObject<boolean>;
   contentRef: MutableRefObject<HTMLTextAreaElement | null>;
   editableSegmentRef: MutableRefObject<EditorSegmentState>;
   setActiveLineNumber: (updater: number | ((prev: number) => number)) => void;
@@ -26,6 +27,7 @@ export function useEditorSelectionStateSync({
   isPairHighlightEnabled,
   tabId,
   tabLineCount,
+  initializedRef,
   contentRef,
   editableSegmentRef,
   setActiveLineNumber,
@@ -103,6 +105,10 @@ export function useEditorSelectionStateSync({
   );
 
   const updateCursorPositionFromSelection = useCallback((options?: { immediateLine?: boolean; skipStore?: boolean }) => {
+    if (!initializedRef.current) {
+      return;
+    }
+
     const position = resolveSelectionPosition();
     if (!position) {
       return;
@@ -115,6 +121,7 @@ export function useEditorSelectionStateSync({
     }
   }, [
     applyActiveLineNumber,
+    initializedRef,
     resolveSelectionPosition,
     setCursorPosition,
     tabId,

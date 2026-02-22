@@ -208,6 +208,10 @@ export function Editor({
     selectionChangeRafRef,
     editableSegmentRef,
     syncedTextRef,
+    lastKnownContentScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContainerScrollLeftRef,
   } = useEditorCoreState({
     defaultSubmenuVerticalAlignments: DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
     defaultSubmenuMaxHeights: DEFAULT_SUBMENU_MAX_HEIGHTS,
@@ -365,6 +369,10 @@ export function Editor({
     listRef,
     lineNumberListRef,
     isScrollbarDragRef,
+    lastKnownContentScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContainerScrollLeftRef,
   });
 
   const {
@@ -443,6 +451,7 @@ export function Editor({
     isPairHighlightEnabled,
     tabId: tab.id,
     tabLineCount: tab.lineCount,
+    initializedRef,
     contentRef,
     editableSegmentRef,
     setActiveLineNumber,
@@ -847,6 +856,9 @@ export function Editor({
   useEditorDocumentLoadEffects({
     tabId: tab.id,
     tabLineCount: tab.lineCount,
+    itemSize,
+    savedCursorLine: savedCursorPosition?.line ?? 1,
+    savedCursorColumn: savedCursorPosition?.column ?? 1,
     usePlainLineRendering,
     isHugeEditableMode,
     lineTokens,
@@ -866,6 +878,12 @@ export function Editor({
     editTimeoutRef: editTimeout,
     editableSegmentRef,
     contentRef,
+    scrollContainerRef,
+    pendingRestoreScrollTopRef,
+    lastKnownContentScrollTopRef,
+    lastKnownContentScrollLeftRef,
+    lastKnownContainerScrollTopRef,
+    lastKnownContainerScrollLeftRef,
     setLineTokens,
     setStartLine,
     setEditableSegment,
@@ -873,6 +891,7 @@ export function Editor({
     setPlainStartLine,
     setInputLayerText,
     getEditableText,
+    setCaretToLineColumn,
     loadTextFromBackend,
     syncVisibleTokens,
   });

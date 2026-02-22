@@ -1588,6 +1588,839 @@ describe('Editor component', () => {
     });
   });
 
+  it('restores textarea caret to saved tab cursor after switching tabs', async () => {
+    const firstTab = createTab({ id: 'tab-switch-caret-restore-a', lineCount: 12 });
+    const secondTab = createTab({ id: 'tab-switch-caret-restore-b', lineCount: 12 });
+    useStore.getState().setCursorPosition(secondTab.id, 2, 3);
+
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={secondTab} />);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      // "alpha\nbeta\n": line 2, column 3 maps to code-unit offset 8.
+      expect(textarea.selectionStart).toBe(8);
+      expect(textarea.selectionEnd).toBe(8);
+    });
+  });
+
+  it('keeps scroll position isolated per tab when switching', async () => {
+    const firstTab = createTab({ id: 'tab-switch-scroll-a', lineCount: 12 });
+    const secondTab = createTab({
+      id: 'tab-switch-scroll-b',
+      lineCount: 12,
+      name: 'second-scroll.ts',
+      path: 'C:\\repo\\second-scroll.ts',
+    });
+
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.scrollTop = 80;
+    });
+    expect(textarea.scrollTop).toBe(80);
+
+    rerender(<Editor tab={secondTab} />);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.scrollTop = 12;
+    });
+    expect(textarea.scrollTop).toBe(12);
+
+    rerender(<Editor tab={firstTab} />);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      expect(textarea.scrollTop).toBe(80);
+      expect(textarea.scrollTop).not.toBe(12);
+    });
+  });
+
+  it('does not reload document on selectionchange in the same tab', async () => {
+    const tab = createTab({ id: 'tab-click-after-scroll-no-top-reset', lineCount: 400 });
+    const longLines = Array.from({ length: 400 }, (_, index) => `line-${index + 1}`);
+    const longText = `${longLines.join('\n')}\n`;
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return longText;
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        return longLines.slice(startLine, endLine);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 400;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 400,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, longText);
+
+    const lineThirtyOffset = longText.indexOf('line-30');
+    expect(lineThirtyOffset).toBeGreaterThanOrEqual(0);
+    const beforeSelectionGetVisibleLinesCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === 'get_visible_lines'
+        && typeof payload === 'object'
+        && payload !== null
+        && 'id' in payload
+        && (payload as { id?: string }).id === tab.id
+    ).length;
+
+    await act(async () => {
+      textarea.focus();
+      textarea.setSelectionRange(lineThirtyOffset, lineThirtyOffset);
+      document.dispatchEvent(new Event('selectionchange'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(30);
+    });
+    const afterSelectionGetVisibleLinesCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === 'get_visible_lines'
+        && typeof payload === 'object'
+        && payload !== null
+        && 'id' in payload
+        && (payload as { id?: string }).id === tab.id
+    ).length;
+    expect(afterSelectionGetVisibleLinesCalls).toBe(beforeSelectionGetVisibleLinesCalls);
+  });
+
+  it('restores huge-tab viewport and cursor anchor from saved cursor when no snapshot exists yet', async () => {
+    const firstTab = createTab({ id: 'tab-before-huge-restore', lineCount: 12 });
+    const hugeTab = createTab({
+      id: 'tab-huge-restore-no-snapshot',
+      lineCount: 22000,
+      name: 'huge-restore.ts',
+      path: 'C:\\repo\\huge-restore.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    useStore.getState().setCursorPosition(hugeTab.id, 200, 2);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+        return hugeLines.slice(safeStart, safeEnd);
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    await waitForEditorTextarea(container);
+
+    rerender(<Editor tab={hugeTab} />);
+
+    await waitFor(() => {
+      const scrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+      expect(scrollContainer).toBeTruthy();
+      expect(scrollContainer.scrollTop).toBeGreaterThan(0);
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(200);
+      expect(cursor?.column).toBe(2);
+    });
+  });
+
+  it('loads huge-tab bootstrap segment around saved cursor instead of always from top', async () => {
+    const normalTab = createTab({
+      id: 'tab-normal-before-huge-bootstrap-anchor',
+      lineCount: 12,
+      name: 'normal-bootstrap-anchor.ts',
+      path: 'C:\\repo\\normal-bootstrap-anchor.ts',
+    });
+    const hugeTab = createTab({
+      id: 'tab-huge-bootstrap-anchor',
+      lineCount: 22000,
+      name: 'huge-bootstrap-anchor.ts',
+      path: 'C:\\repo\\huge-bootstrap-anchor.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 1);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+
+        if (id === hugeTab.id) {
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={normalTab} />);
+    await waitForEditorTextarea(container);
+
+    const beforeHugeCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === 'get_visible_lines_chunk'
+        && typeof payload === 'object'
+        && payload !== null
+        && (payload as { id?: string }).id === hugeTab.id
+    ).length;
+
+    rerender(<Editor tab={hugeTab} />);
+    await waitFor(() => {
+      const afterHugeCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === 'get_visible_lines_chunk'
+          && typeof payload === 'object'
+          && payload !== null
+          && (payload as { id?: string }).id === hugeTab.id
+      );
+      expect(afterHugeCalls.length).toBeGreaterThan(beforeHugeCalls);
+    });
+
+    const hugeCalls = invokeMock.mock.calls.filter(
+      ([command, payload]) =>
+        command === 'get_visible_lines_chunk'
+        && typeof payload === 'object'
+        && payload !== null
+        && (payload as { id?: string }).id === hugeTab.id
+    );
+    const firstNewHugeCall = hugeCalls[beforeHugeCalls]?.[1] as { startLine?: number } | undefined;
+    expect(firstNewHugeCall).toBeTruthy();
+    expect(Number(firstNewHugeCall?.startLine ?? 0)).toBeGreaterThan(0);
+  });
+
+  it('keeps huge-tab cursor state when switching through a normal tab', async () => {
+    const hugeTab = createTab({
+      id: 'tab-huge-switch-preserve-scroll',
+      lineCount: 22000,
+      name: 'huge-switch.ts',
+      path: 'C:\\repo\\huge-switch.ts',
+    });
+    const normalTab = createTab({
+      id: 'tab-normal-between-huge-switch',
+      lineCount: 12,
+      name: 'normal-between.ts',
+      path: 'C:\\repo\\normal-between.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 1);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        if (id === hugeTab.id) {
+          const startLine = Number(payload?.startLine ?? 0);
+          const endLine = Number(payload?.endLine ?? startLine + 1);
+          const safeStart = Math.max(0, startLine);
+          const safeEnd = Math.max(safeStart + 1, endLine);
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={normalTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={hugeTab} />);
+    await waitFor(() => {
+      const scrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+      expect(scrollContainer).toBeTruthy();
+    });
+
+    rerender(<Editor tab={normalTab} />);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={hugeTab} />);
+
+    await waitFor(() => {
+      const restoredScrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+      expect(restoredScrollContainer).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(1);
+      expect(cursor?.line).not.toBe(1);
+    });
+  });
+
+  it('does not overwrite saved huge-tab cursor during bootstrap selectionchange on tab switch', async () => {
+    const normalTab = createTab({
+      id: 'tab-normal-before-huge-bootstrap-selectionchange',
+      lineCount: 12,
+      name: 'normal-bootstrap.ts',
+      path: 'C:\\repo\\normal-bootstrap.ts',
+    });
+    const hugeTab = createTab({
+      id: 'tab-huge-bootstrap-selectionchange',
+      lineCount: 22000,
+      name: 'huge-bootstrap.ts',
+      path: 'C:\\repo\\huge-bootstrap.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    const deferredHugeChunk = createDeferred<string[]>();
+    let deferredChunkUsed = false;
+
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 2);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+
+        if (id === hugeTab.id && !deferredChunkUsed) {
+          deferredChunkUsed = true;
+          return deferredHugeChunk.promise;
+        }
+        if (id === hugeTab.id) {
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={normalTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={hugeTab} />);
+
+    await act(async () => {
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+      document.dispatchEvent(new Event('selectionchange'));
+      await Promise.resolve();
+    });
+
+    expect(useStore.getState().cursorPositionByTab[hugeTab.id]?.line).toBe(320);
+    expect(useStore.getState().cursorPositionByTab[hugeTab.id]?.column).toBe(2);
+
+    await act(async () => {
+      deferredHugeChunk.resolve(hugeLines.slice(0, 600));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(2);
+    });
+  });
+
+  it('prefers saved huge cursor anchor when restored snapshot scroll is zero', async () => {
+    const normalTab = createTab({
+      id: 'tab-normal-before-huge-snapshot-zero',
+      lineCount: 12,
+      name: 'normal-snapshot-zero.ts',
+      path: 'C:\\repo\\normal-snapshot-zero.ts',
+    });
+    const hugeTab = createTab({
+      id: 'tab-huge-snapshot-zero',
+      lineCount: 22000,
+      name: 'huge-snapshot-zero.ts',
+      path: 'C:\\repo\\huge-snapshot-zero.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 1);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+
+        if (id === hugeTab.id) {
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={normalTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={hugeTab} />);
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(1);
+    });
+
+    const firstHugeScrollContainer = container.querySelector('.editor-scroll-stable') as HTMLDivElement;
+    act(() => {
+      firstHugeScrollContainer.scrollTop = 0;
+    });
+    fireEvent.scroll(firstHugeScrollContainer);
+
+    rerender(<Editor tab={normalTab} />);
+    await waitForEditorText(textarea);
+
+    rerender(<Editor tab={hugeTab} />);
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(1);
+      expect(cursor?.line).not.toBe(1);
+    });
+  });
+
+  it('ignores selectionchange from outside editor focus so huge-tab saved cursor is not clobbered', async () => {
+    const normalTab = createTab({
+      id: 'tab-normal-before-huge-outside-selectionchange',
+      lineCount: 12,
+      name: 'normal-outside-selectionchange.ts',
+      path: 'C:\\repo\\normal-outside-selectionchange.ts',
+    });
+    const hugeTab = createTab({
+      id: 'tab-huge-outside-selectionchange',
+      lineCount: 22000,
+      name: 'huge-outside-selectionchange.ts',
+      path: 'C:\\repo\\huge-outside-selectionchange.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 1);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+
+        if (id === hugeTab.id) {
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const externalInput = document.createElement('input');
+    document.body.appendChild(externalInput);
+
+    try {
+      const { container, rerender } = render(<Editor tab={normalTab} />);
+      const textarea = await waitForEditorTextarea(container);
+      await waitForEditorText(textarea);
+
+      rerender(<Editor tab={hugeTab} />);
+
+      await waitFor(() => {
+        const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+        expect(cursor?.line).toBe(320);
+        expect(cursor?.column).toBe(1);
+      });
+
+      await act(async () => {
+        externalInput.focus();
+        textarea.setSelectionRange(0, 0);
+        document.dispatchEvent(new Event('selectionchange'));
+        await Promise.resolve();
+      });
+
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(1);
+    } finally {
+      externalInput.remove();
+    }
+  });
+
+  it('prefers saved huge cursor anchor when snapshot segment does not contain saved cursor line', async () => {
+    const normalTab = createTab({
+      id: 'tab-normal-before-huge-snapshot-miss',
+      lineCount: 12,
+      name: 'normal-snapshot-miss.ts',
+      path: 'C:\\repo\\normal-snapshot-miss.ts',
+    });
+    const hugeTab = createTab({
+      id: 'tab-huge-snapshot-miss',
+      lineCount: 22000,
+      name: 'huge-snapshot-miss.ts',
+      path: 'C:\\repo\\huge-snapshot-miss.ts',
+    });
+    const hugeLines = Array.from({ length: 22000 }, (_, index) => `line-${index + 1}`);
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return 'alpha\nbeta\n';
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const id = String(payload?.id ?? '');
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+
+        if (id === hugeTab.id) {
+          return hugeLines.slice(safeStart, safeEnd);
+        }
+
+        return ['alpha', 'beta'];
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 22000;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 22000,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container, rerender } = render(<Editor tab={hugeTab} />);
+    const hugeTextarea = await waitForEditorTextarea(container);
+    await waitFor(() => {
+      expect(container.querySelector('.editor-scroll-stable')).toBeTruthy();
+      expect(hugeTextarea.value.length).toBeGreaterThan(0);
+    });
+
+    rerender(<Editor tab={normalTab} />);
+    const normalTextarea = await waitForEditorTextarea(container);
+    await waitForEditorText(normalTextarea);
+
+    useStore.getState().setCursorPosition(hugeTab.id, 320, 1);
+
+    rerender(<Editor tab={hugeTab} />);
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[hugeTab.id];
+      expect(cursor?.line).toBe(320);
+      expect(cursor?.column).toBe(1);
+      expect(cursor?.line).not.toBe(1);
+    });
+  });
+
   it('handles navigate-to-line event in huge-editable mode and updates scroll container', async () => {
     const tab = createTab({ id: 'tab-navigate-huge-mode', lineCount: 22000 });
     const { container } = render(<Editor tab={tab} />);

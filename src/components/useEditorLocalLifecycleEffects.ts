@@ -158,8 +158,6 @@ export function useEditorLocalLifecycleEffects({
     setPairHighlights,
     setSearchHighlight,
     setTextSelectionHighlight,
-    savedCursorColumn,
-    savedCursorLine,
     tabId,
   ]);
 }
