@@ -122,17 +122,34 @@ fn setup_main_window_state_tracking(app: &AppHandle) {
     });
 }
 
+fn should_track_external_file_changes(window: &WebviewWindow) -> bool {
+    match window.is_focused() {
+        Ok(is_focused) => is_focused,
+        Err(error) => {
+            eprintln!("failed to query main window focus state: {error}");
+            false
+        }
+    }
+}
+
 fn setup_external_file_change_tracking(app: &AppHandle) {
     let app_handle = app.clone();
 
     let _ = std::thread::Builder::new()
         .name("rutar-external-change-tracker".to_string())
         .spawn(move || loop {
-            let changed_ids =
-                commands::collect_external_file_change_document_ids(app_handle.state::<AppState>());
+            let main_window = app_handle.get_webview_window("main");
+            let tracking_enabled = main_window
+                .as_ref()
+                .map(should_track_external_file_changes)
+                .unwrap_or(false);
+            let changed_ids = commands::collect_external_file_change_document_ids_with_tracking(
+                app_handle.state::<AppState>(),
+                tracking_enabled,
+            );
 
             if !changed_ids.is_empty() {
-                if let Some(window) = app_handle.get_webview_window("main") {
+                if let Some(window) = main_window {
                     for id in changed_ids {
                         let payload = ExternalFileChangeEventPayload { id };
                         if let Err(error) = window.emit("rutar://external-file-changed", payload) {

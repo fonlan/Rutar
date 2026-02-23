@@ -50,8 +50,17 @@ fn external_change_notified_ids() -> &'static DashMap<String, ()> {
     EXTERNAL_CHANGE_NOTIFIED_IDS.get_or_init(DashMap::new)
 }
 
-pub fn collect_external_file_change_document_ids(state: State<'_, AppState>) -> Vec<String> {
+fn collect_external_file_change_document_ids_impl(
+    state: &AppState,
+    tracking_enabled: bool,
+) -> Vec<String> {
     let cache = external_change_notified_ids();
+
+    if !tracking_enabled {
+        cache.clear();
+        return Vec::new();
+    }
+
     let mut active_ids = HashSet::new();
     let mut changed_ids = Vec::new();
 
@@ -87,6 +96,13 @@ pub fn collect_external_file_change_document_ids(state: State<'_, AppState>) -> 
     }
 
     changed_ids
+}
+
+pub fn collect_external_file_change_document_ids_with_tracking(
+    state: State<'_, AppState>,
+    tracking_enabled: bool,
+) -> Vec<String> {
+    collect_external_file_change_document_ids_impl(&state, tracking_enabled)
 }
 
 #[tauri::command]
@@ -352,7 +368,49 @@ pub async fn apply_aligned_diff_edit(
 
 #[cfg(test)]
 mod tests {
-    use super::external_change_notified_ids;
+    use super::{
+        collect_external_file_change_document_ids_impl, external_change_notified_ids,
+    };
+    use crate::state::{default_line_ending, AppState, Document, FileFingerprint};
+    use encoding_rs::UTF_8;
+    use ropey::Rope;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    fn make_external_tracking_document(
+        path: PathBuf,
+        saved_file_fingerprint: Option<FileFingerprint>,
+    ) -> Document {
+        Document {
+            rope: Rope::new(),
+            saved_rope: Rope::new(),
+            encoding: UTF_8,
+            saved_encoding: UTF_8.name().to_string(),
+            line_ending: default_line_ending(),
+            saved_line_ending: default_line_ending(),
+            path: Some(path),
+            syntax_override: None,
+            document_version: 0,
+            saved_document_version: 0,
+            next_edit_operation_id: 1,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_undo_depth: 0,
+            saved_undo_operation_id: None,
+            parser: None,
+            tree: None,
+            language: None,
+            syntax_dirty: false,
+            saved_file_fingerprint,
+        }
+    }
+
+    fn make_missing_test_path() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "rutar-external-change-test-{}.txt",
+            Uuid::new_v4()
+        ))
+    }
 
     #[test]
     fn external_change_notified_ids_should_return_singleton_instance() {
@@ -365,5 +423,34 @@ mod tests {
         first.insert("doc-1".to_string(), ());
         assert!(second.contains_key("doc-1"));
         second.clear();
+    }
+
+    #[test]
+    fn collect_external_change_ids_should_clear_cache_when_tracking_is_disabled() {
+        let cache = external_change_notified_ids();
+        cache.clear();
+
+        let state = AppState::new(Vec::new());
+        state.documents.insert(
+            "doc-1".to_string(),
+            make_external_tracking_document(
+                make_missing_test_path(),
+                Some(FileFingerprint {
+                    size_bytes: 1,
+                    modified_unix_millis: Some(1),
+                }),
+            ),
+        );
+
+        let changed_ids = collect_external_file_change_document_ids_impl(&state, true);
+        assert_eq!(changed_ids, vec!["doc-1".to_string()]);
+        assert!(cache.contains_key("doc-1"));
+
+        let changed_ids_when_disabled =
+            collect_external_file_change_document_ids_impl(&state, false);
+        assert!(changed_ids_when_disabled.is_empty());
+        assert!(!cache.contains_key("doc-1"));
+
+        cache.clear();
     }
 }

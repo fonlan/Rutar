@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -258,6 +258,7 @@ function createDeferred<T>() {
 
 describe('App component', () => {
   let initialState: ReturnType<typeof useStore.getState>;
+  let hasFocusSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeAll(() => {
     initialState = useStore.getState();
@@ -280,6 +281,14 @@ describe('App component', () => {
     vi.mocked(detectOutlineType).mockReturnValue(null);
     vi.mocked(loadOutline).mockResolvedValue([]);
     vi.mocked(invoke).mockImplementation(createInvokeHandler());
+    hasFocusSpy = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    if (hasFocusSpy) {
+      hasFocusSpy.mockRestore();
+      hasFocusSpy = null;
+    }
   });
 
   it('closes late startup file when another tab is already present and logs close failure', async () => {
@@ -1071,6 +1080,69 @@ describe('App component', () => {
         .mocked(invoke)
         .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
       expect(hasExternalCheckCountAfter).toBe(hasExternalCheckCountBefore + 1);
+    });
+  });
+
+  it('skips external checks while app is not foreground and retries when focus returns', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-listener-background-skip' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+      return () => undefined;
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => false,
+      })
+    );
+
+    if (!hasFocusSpy) {
+      throw new Error('document.hasFocus spy is not initialized');
+    }
+
+    hasFocusSpy.mockReturnValue(false);
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(externalChangedHandler).toBeTruthy();
+    });
+
+    const checkCountAfterMount = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+    expect(checkCountAfterMount).toBe(0);
+
+    act(() => {
+      externalChangedHandler?.({ payload: { id: fileTab.id } });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const checkCountWhileBackground = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+    expect(checkCountWhileBackground).toBe(0);
+
+    hasFocusSpy.mockReturnValue(true);
+    act(() => {
+      fireEvent.focus(window);
+    });
+
+    await waitFor(() => {
+      const checkCountAfterFocus = vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+      expect(checkCountAfterFocus).toBe(1);
     });
   });
 

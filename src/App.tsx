@@ -176,6 +176,22 @@ function dispatchGesturePreview(sequence: string) {
   );
 }
 
+function isAppInForeground() {
+  if (typeof document === 'undefined') {
+    return true;
+  }
+
+  if (document.visibilityState === 'hidden') {
+    return false;
+  }
+
+  if (typeof document.hasFocus !== 'function') {
+    return true;
+  }
+
+  return document.hasFocus();
+}
+
 export const appTestUtils = {
   detectWindowsPlatform,
   areStringArraysEqual,
@@ -209,6 +225,7 @@ function App() {
   const previousActiveTabIdRef = useRef<string | null>(null);
   const hasOpenedPinnedTabsRef = useRef(false);
   const externalChangeCheckingTabIdsRef = useRef<Set<string>>(new Set());
+  const appForegroundRef = useRef(isAppInForeground());
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
 
@@ -415,6 +432,10 @@ function App() {
       return;
     }
 
+    if (!appForegroundRef.current) {
+      return;
+    }
+
     const snapshotTab = useStore
       .getState()
       .tabs
@@ -500,6 +521,30 @@ function App() {
       externalChangeCheckingTabIdsRef.current.delete(snapshotTab.id);
     }
   }, []);
+
+  useEffect(() => {
+    const syncForegroundState = () => {
+      const wasForeground = appForegroundRef.current;
+      const isForeground = isAppInForeground();
+      appForegroundRef.current = isForeground;
+
+      if (!wasForeground && isForeground) {
+        void checkTabForExternalChange(useStore.getState().activeTabId);
+      }
+    };
+
+    syncForegroundState();
+
+    window.addEventListener('focus', syncForegroundState);
+    window.addEventListener('blur', syncForegroundState);
+    document.addEventListener('visibilitychange', syncForegroundState);
+
+    return () => {
+      window.removeEventListener('focus', syncForegroundState);
+      window.removeEventListener('blur', syncForegroundState);
+      document.removeEventListener('visibilitychange', syncForegroundState);
+    };
+  }, [checkTabForExternalChange]);
 
   useEffect(() => {
     let cancelled = false;
