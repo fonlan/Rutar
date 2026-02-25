@@ -3175,6 +3175,16 @@ describe('Editor component', () => {
 
     textarea.focus();
     textarea.setSelectionRange(2, 2);
+    textarea.scrollTop = 84;
+    textarea.scrollLeft = 16;
+    const nativeSetSelectionRange = textarea.setSelectionRange.bind(textarea);
+    const selectionRangeSpy = vi.spyOn(textarea, 'setSelectionRange').mockImplementation((start, end, direction) => {
+      nativeSetSelectionRange(start, end, direction);
+      // Simulate native caret sync pulling viewport to top so preserveScroll must restore it.
+      textarea.scrollTop = 0;
+      textarea.scrollLeft = 0;
+    });
+
     act(() => {
       window.dispatchEvent(
         new CustomEvent('rutar:force-refresh', {
@@ -3182,6 +3192,7 @@ describe('Editor component', () => {
             tabId: tab.id,
             lineCount: 9,
             preserveCaret: true,
+            preserveScroll: true,
           },
         })
       );
@@ -3192,7 +3203,10 @@ describe('Editor component', () => {
       expect(currentTab?.lineCount).toBe(9);
       expect(textarea.selectionStart).toBe(2);
       expect(textarea.selectionEnd).toBe(2);
+      expect(textarea.scrollTop).toBe(84);
+      expect(textarea.scrollLeft).toBe(16);
     });
+    selectionRangeSpy.mockRestore();
   });
 
   it('ignores force-refresh event when tab id does not match', async () => {

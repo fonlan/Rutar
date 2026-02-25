@@ -277,6 +277,7 @@ export function useEditorNavigationAndRefreshEffects({
         tabId: string;
         lineCount?: number;
         preserveCaret?: boolean;
+        preserveScroll?: boolean;
       }>;
       const detail = customEvent.detail;
 
@@ -285,12 +286,45 @@ export function useEditorNavigationAndRefreshEffects({
       }
 
       const preserveCaret = detail.preserveCaret === true;
+      const preserveScroll = detail.preserveScroll === true || preserveCaret;
       const caretOffsets = preserveCaret && contentRef.current
         ? getSelectionOffsetsInElement(contentRef.current)
         : null;
       const caretLogicalOffset = caretOffsets
         ? Math.max(0, caretOffsets.isCollapsed ? caretOffsets.end : caretOffsets.start)
         : null;
+      const scrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+      const preservedScrollTop = preserveScroll && scrollElement
+        ? Math.max(0, scrollElement.scrollTop)
+        : null;
+      const preservedScrollLeft = preserveScroll && scrollElement
+        ? Math.max(0, scrollElement.scrollLeft)
+        : null;
+
+      const restorePreservedScrollPosition = () => {
+        if (preservedScrollTop === null && preservedScrollLeft === null) {
+          return;
+        }
+
+        const currentScrollElement = isHugeEditableMode ? scrollContainerRef.current : contentRef.current;
+        if (!currentScrollElement) {
+          return;
+        }
+
+        if (
+          preservedScrollTop !== null
+          && Math.abs(currentScrollElement.scrollTop - preservedScrollTop) > 0.001
+        ) {
+          currentScrollElement.scrollTop = preservedScrollTop;
+        }
+
+        if (
+          preservedScrollLeft !== null
+          && Math.abs(currentScrollElement.scrollLeft - preservedScrollLeft) > 0.001
+        ) {
+          currentScrollElement.scrollLeft = preservedScrollLeft;
+        }
+      };
 
       if (typeof detail.lineCount === 'number' && Number.isFinite(detail.lineCount)) {
         updateTab(tabId, { lineCount: Math.max(1, detail.lineCount) });
@@ -298,15 +332,18 @@ export function useEditorNavigationAndRefreshEffects({
 
       void (async () => {
         await loadTextFromBackend();
+        restorePreservedScrollPosition();
 
         if (preserveCaret && caretLogicalOffset !== null && contentRef.current) {
           const editorText = getEditableText(contentRef.current);
           const safeLogicalOffset = Math.min(caretLogicalOffset, editorText.length);
           const layerOffset = mapLogicalOffsetToInputLayerOffset(editorText, safeLogicalOffset);
           setCaretToCodeUnitOffset(contentRef.current, layerOffset);
+          restorePreservedScrollPosition();
         }
 
         await syncVisibleTokens(Math.max(1, detail.lineCount ?? tabLineCount));
+        restorePreservedScrollPosition();
       })();
     };
 
@@ -321,6 +358,8 @@ export function useEditorNavigationAndRefreshEffects({
     loadTextFromBackend,
     mapLogicalOffsetToInputLayerOffset,
     setCaretToCodeUnitOffset,
+    isHugeEditableMode,
+    scrollContainerRef,
     syncVisibleTokens,
     tabId,
     tabLineCount,

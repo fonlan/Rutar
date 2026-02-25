@@ -134,13 +134,18 @@ const GoToLineModal = lazy(async () => ({
   default: (await import('@/components/GoToLineModal')).GoToLineModal,
 }));
 
-function dispatchEditorForceRefresh(tabId: string, lineCount: number) {
+function dispatchEditorForceRefresh(
+  tabId: string,
+  lineCount: number,
+  options?: { preserveCaret?: boolean; preserveScroll?: boolean }
+) {
   window.dispatchEvent(
     new CustomEvent('rutar:force-refresh', {
       detail: {
         tabId,
         lineCount,
-        preserveCaret: false,
+        preserveCaret: options?.preserveCaret ?? false,
+        preserveScroll: options?.preserveScroll ?? false,
       },
     })
   );
@@ -501,7 +506,10 @@ function App() {
           });
 
           if (useStore.getState().activeTabId === latestTab.id) {
-            dispatchEditorForceRefresh(latestTab.id, Math.max(1, fileInfo.lineCount));
+            dispatchEditorForceRefresh(latestTab.id, Math.max(1, fileInfo.lineCount), {
+              preserveCaret: true,
+              preserveScroll: true,
+            });
           }
 
           dispatchDocumentUpdated(latestTab.id);

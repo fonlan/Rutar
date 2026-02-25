@@ -1499,11 +1499,21 @@ describe('App component', () => {
     );
     vi.mocked(ask).mockResolvedValue(true);
 
-    const forceRefreshEvents: Array<{ tabId: string; lineCount: number; preserveCaret: boolean }> = [];
+    const forceRefreshEvents: Array<{
+      tabId: string;
+      lineCount: number;
+      preserveCaret: boolean;
+      preserveScroll?: boolean;
+    }> = [];
     const documentUpdatedEvents: Array<{ tabId: string }> = [];
     const forceRefreshListener = (event: Event) => {
       forceRefreshEvents.push(
-        (event as CustomEvent<{ tabId: string; lineCount: number; preserveCaret: boolean }>).detail
+        (event as CustomEvent<{
+          tabId: string;
+          lineCount: number;
+          preserveCaret: boolean;
+          preserveScroll?: boolean;
+        }>).detail
       );
     };
     const documentUpdatedListener = (event: Event) => {
@@ -1529,7 +1539,8 @@ describe('App component', () => {
       expect(forceRefreshEvents).toContainEqual({
         tabId: fileTab.id,
         lineCount: 9,
-        preserveCaret: false,
+        preserveCaret: true,
+        preserveScroll: true,
       });
       expect(documentUpdatedEvents).toContainEqual({ tabId: fileTab.id });
     } finally {
@@ -4254,7 +4265,7 @@ describe('appTestUtils.normalizeLineEnding', () => {
 describe('appTestUtils event dispatchers', () => {
   it('dispatches rutar:force-refresh with expected detail', () => {
     let detail:
-      | { tabId: string; lineCount: number; preserveCaret: boolean }
+      | { tabId: string; lineCount: number; preserveCaret: boolean; preserveScroll?: boolean }
       | undefined;
 
     const listener = (event: Event) => {
@@ -4262,6 +4273,7 @@ describe('appTestUtils event dispatchers', () => {
         tabId: string;
         lineCount: number;
         preserveCaret: boolean;
+        preserveScroll?: boolean;
       };
     };
 
@@ -4273,6 +4285,7 @@ describe('appTestUtils event dispatchers', () => {
       tabId: 'tab-1',
       lineCount: 42,
       preserveCaret: false,
+      preserveScroll: false,
     });
   });
 
