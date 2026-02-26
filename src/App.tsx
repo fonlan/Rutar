@@ -7,7 +7,12 @@ import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
 import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
-import { type MouseGestureAction, type MouseGestureBinding, sanitizeMouseGestures } from '@/lib/mouseGestures';
+import {
+  type MouseGestureAction,
+  type MouseGestureBinding,
+  normalizeMouseGesturePattern,
+  sanitizeMouseGestures,
+} from '@/lib/mouseGestures';
 import {
   confirmTabClose,
   saveTab,
@@ -1041,11 +1046,12 @@ function App() {
     const gestureByPattern = new Map<string, MouseGestureAction>();
 
     for (const binding of settings.mouseGestures) {
-      if (!binding.pattern) {
+      const normalizedPattern = normalizeMouseGesturePattern(binding.pattern);
+      if (!normalizedPattern) {
         continue;
       }
 
-      gestureByPattern.set(binding.pattern, binding.action);
+      gestureByPattern.set(normalizedPattern, binding.action);
     }
 
     if (gestureByPattern.size === 0) {
@@ -1055,6 +1061,7 @@ function App() {
     const state = {
       active: false,
       pointerId: -1,
+      pointerCaptureTarget: null as Element | null,
       startX: 0,
       startY: 0,
       lastX: 0,
@@ -1164,7 +1171,28 @@ function App() {
     syncTrailCanvasSize();
     document.body.appendChild(trailCanvas);
 
+    const releasePointerCaptureIfNeeded = () => {
+      const captureTarget = state.pointerCaptureTarget;
+      const pointerId = state.pointerId;
+      state.pointerCaptureTarget = null;
+
+      if (!captureTarget || pointerId < 0) {
+        return;
+      }
+
+      if (typeof captureTarget.hasPointerCapture === 'function' && !captureTarget.hasPointerCapture(pointerId)) {
+        return;
+      }
+
+      try {
+        captureTarget.releasePointerCapture(pointerId);
+      } catch {
+        // Ignore release failures from unsupported or stale pointer capture state.
+      }
+    };
+
     const reset = () => {
+      releasePointerCaptureIfNeeded();
       state.active = false;
       state.pointerId = -1;
       state.startX = 0;
@@ -1211,8 +1239,10 @@ function App() {
         return;
       }
 
+      releasePointerCaptureIfNeeded();
       state.active = true;
       state.pointerId = event.pointerId;
+      state.pointerCaptureTarget = target;
       state.startX = event.clientX;
       state.startY = event.clientY;
       state.lastX = event.clientX;
@@ -1234,6 +1264,12 @@ function App() {
       }
 
       clearTrail();
+
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch {
+        state.pointerCaptureTarget = null;
+      }
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -1305,14 +1341,30 @@ function App() {
       }
     };
 
+    const handleMouseUp = (event: MouseEvent) => {
+      if (!state.active) {
+        return;
+      }
+
+      if (event.button !== 2 && (event.buttons & 2) === 2) {
+        return;
+      }
+
+      const { actionMatched, wasGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
+      if (actionMatched || wasGestureAttempt) {
+        event.preventDefault();
+      }
+    };
+
     const handlePointerCancel = (event: PointerEvent) => {
       if (!state.active || event.pointerId !== state.pointerId) {
         return;
       }
 
-      scheduleTrailClear();
-      clearGesturePreview();
-      reset();
+      const { actionMatched, wasGestureAttempt } = finalizeGesture(state.trailLastX, state.trailLastY);
+      if (actionMatched || wasGestureAttempt) {
+        event.preventDefault();
+      }
     };
 
     const handleContextMenu = (event: MouseEvent) => {
@@ -1336,6 +1388,7 @@ function App() {
     document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('pointermove', handlePointerMove, true);
     document.addEventListener('pointerup', handlePointerUp, true);
+    document.addEventListener('mouseup', handleMouseUp, true);
     document.addEventListener('pointercancel', handlePointerCancel, true);
     document.addEventListener('contextmenu', handleContextMenu, true);
     window.addEventListener('resize', syncTrailCanvasSize);
@@ -1344,6 +1397,7 @@ function App() {
       document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('pointermove', handlePointerMove, true);
       document.removeEventListener('pointerup', handlePointerUp, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
       document.removeEventListener('pointercancel', handlePointerCancel, true);
       document.removeEventListener('contextmenu', handleContextMenu, true);
       window.removeEventListener('resize', syncTrailCanvasSize);
@@ -1358,6 +1412,7 @@ function App() {
 
       clearGesturePreview();
 
+      releasePointerCaptureIfNeeded();
       trailCanvas.remove();
     };
   }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
