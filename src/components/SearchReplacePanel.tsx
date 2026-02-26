@@ -266,6 +266,7 @@ interface TabSearchPanelSnapshot {
   replaceValue: string;
   searchMode: SearchMode;
   caseSensitive: boolean;
+  parseEscapeSequences: boolean;
   reverseSearch: boolean;
   resultFilterKeyword: string;
   appliedResultFilterKeyword: string;
@@ -633,6 +634,53 @@ function cssColor(value: string | undefined, fallback: string) {
 function getSearchModeValue(mode: SearchMode) {
   return mode;
 }
+
+function decodeSearchReplaceEscapeSequences(value: string) {
+  let decoded = '';
+
+  for (let index = 0; index < value.length; index += 1) {
+    const ch = value[index];
+    if (ch !== '\\') {
+      decoded += ch;
+      continue;
+    }
+
+    const next = value[index + 1];
+    if (next === 'n') {
+      decoded += '\n';
+      index += 1;
+      continue;
+    }
+    if (next === 'r') {
+      decoded += '\r';
+      index += 1;
+      continue;
+    }
+    if (next === 't') {
+      decoded += '\t';
+      index += 1;
+      continue;
+    }
+    if (next === '\\') {
+      decoded += '\\';
+      index += 1;
+      continue;
+    }
+
+    decoded += ch;
+  }
+
+  return decoded;
+}
+
+function resolveSearchKeyword(value: string, parseEscapeSequences: boolean) {
+  if (!parseEscapeSequences) {
+    return value;
+  }
+
+  return decodeSearchReplaceEscapeSequences(value);
+}
+
 function renderMatchPreview(match: SearchMatch) {
   const lineText = match.lineText || '';
   const previewSegments = match.previewSegments ?? [];
@@ -832,6 +880,7 @@ export function SearchReplacePanel() {
   const [replaceValue, setReplaceValue] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('literal');
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const [parseEscapeSequences, setParseEscapeSequences] = useState(false);
   const [reverseSearch, setReverseSearch] = useState(false);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [filterRules, setFilterRules] = useState<FilterRule[]>([createDefaultFilterRule(0)]);
@@ -939,6 +988,7 @@ export function SearchReplacePanel() {
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    parseEscapeSequences: boolean;
     resultFilterKeyword: string;
     documentVersion: number;
     matches: SearchMatch[];
@@ -959,6 +1009,7 @@ export function SearchReplacePanel() {
     keyword: string;
     searchMode: SearchMode;
     caseSensitive: boolean;
+    parseEscapeSequences: boolean;
     resultFilterKeyword: string;
     documentVersion: number;
     totalMatches: number;
@@ -1260,6 +1311,10 @@ export function SearchReplacePanel() {
 
     return caseSensitive ? appliedResultFilterKeyword.trim() : normalizedResultFilterKeyword;
   }, [appliedResultFilterKeyword, caseSensitive, isResultFilterActive, normalizedResultFilterKeyword]);
+  const effectiveSearchKeyword = useMemo(
+    () => resolveSearchKeyword(keyword, parseEscapeSequences),
+    [keyword, parseEscapeSequences]
+  );
 
   const visibleFilterMatches = useMemo(() => filterMatches, [filterMatches]);
 
@@ -1295,9 +1350,10 @@ export function SearchReplacePanel() {
       if (
         cached &&
         cached.tabId === activeTab.id &&
-        cached.keyword === keyword &&
+        cached.keyword === effectiveSearchKeyword &&
         cached.searchMode === searchMode &&
         cached.caseSensitive === caseSensitive &&
+        cached.parseEscapeSequences === parseEscapeSequences &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
@@ -1322,7 +1378,7 @@ export function SearchReplacePanel() {
     try {
       const result = await invoke<SearchCountBackendResult>('search_count_in_document', {
         id: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
         resultFilterKeyword: effectiveResultFilterKeyword,
@@ -1337,9 +1393,10 @@ export function SearchReplacePanel() {
 
       countCacheRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion: result.documentVersion ?? 0,
         totalMatches: result.totalMatches ?? 0,
@@ -1354,7 +1411,16 @@ export function SearchReplacePanel() {
       setTotalMatchCount(null);
       setTotalMatchedLineCount(null);
     }
-  }, [activeTab, backendResultFilterKeyword, caseSensitive, isFilterMode, keyword, searchMode]);
+  }, [
+    activeTab,
+    backendResultFilterKeyword,
+    caseSensitive,
+    effectiveSearchKeyword,
+    isFilterMode,
+    keyword,
+    parseEscapeSequences,
+    searchMode,
+  ]);
 
   const executeFilterCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
     const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
@@ -1458,9 +1524,10 @@ export function SearchReplacePanel() {
       if (
         cached &&
         cached.tabId === activeTab.id &&
-        cached.keyword === keyword &&
+        cached.keyword === effectiveSearchKeyword &&
         cached.searchMode === searchMode &&
         cached.caseSensitive === caseSensitive &&
+        cached.parseEscapeSequences === parseEscapeSequences &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
@@ -1518,7 +1585,7 @@ export function SearchReplacePanel() {
         try {
           sessionStartResult = await invoke<unknown>('search_session_start_in_document', {
             id: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             mode: getSearchModeValue(searchMode),
             caseSensitive,
             resultFilterKeyword: effectiveResultFilterKeyword,
@@ -1545,7 +1612,7 @@ export function SearchReplacePanel() {
       } else {
         const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
           id: activeTab.id,
-          keyword,
+          keyword: effectiveSearchKeyword,
           mode: getSearchModeValue(searchMode),
           caseSensitive,
           resultFilterKeyword: effectiveResultFilterKeyword,
@@ -1582,9 +1649,10 @@ export function SearchReplacePanel() {
 
       cachedSearchRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: effectiveResultFilterKeyword,
         documentVersion,
         matches: nextMatches,
@@ -1599,9 +1667,10 @@ export function SearchReplacePanel() {
       } else if (totalMatches !== null && totalMatchedLines !== null) {
         countCacheRef.current = {
           tabId: activeTab.id,
-          keyword,
+          keyword: effectiveSearchKeyword,
           searchMode,
           caseSensitive,
+          parseEscapeSequences,
           resultFilterKeyword: effectiveResultFilterKeyword,
           documentVersion,
           totalMatches,
@@ -1640,10 +1709,12 @@ export function SearchReplacePanel() {
     backendResultFilterKeyword,
     cancelPendingBatchLoad,
     caseSensitive,
+    effectiveSearchKeyword,
     executeCountSearch,
     isFilterMode,
     keyword,
     messages.searchFailed,
+    parseEscapeSequences,
     resetSearchState,
     setSearchSessionId,
     searchMode,
@@ -1911,9 +1982,10 @@ export function SearchReplacePanel() {
         if (
           !params ||
           params.tabId !== activeTab.id ||
-          params.keyword !== keyword ||
+          params.keyword !== effectiveSearchKeyword ||
           params.searchMode !== searchMode ||
           params.caseSensitive !== caseSensitive ||
+          params.parseEscapeSequences !== parseEscapeSequences ||
           params.resultFilterKeyword !== backendResultFilterKeyword
         ) {
           return null;
@@ -1921,7 +1993,7 @@ export function SearchReplacePanel() {
 
         const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
           id: activeTab.id,
-          keyword,
+          keyword: effectiveSearchKeyword,
           mode: getSearchModeValue(searchMode),
           caseSensitive,
           resultFilterKeyword: backendResultFilterKeyword,
@@ -1961,9 +2033,10 @@ export function SearchReplacePanel() {
 
           cachedSearchRef.current = {
             tabId: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             searchMode,
             caseSensitive,
+            parseEscapeSequences,
             resultFilterKeyword: backendResultFilterKeyword,
             documentVersion,
             matches: mergedMatches,
@@ -1993,9 +2066,10 @@ export function SearchReplacePanel() {
     activeTab,
     backendResultFilterKeyword,
     caseSensitive,
+    effectiveSearchKeyword,
     isFilterMode,
-    keyword,
     messages.searchFailed,
+    parseEscapeSequences,
     searchMode,
     setSearchSessionId,
   ]);
@@ -2156,7 +2230,7 @@ export function SearchReplacePanel() {
     try {
       const firstResult = await invoke<SearchFirstBackendResult>('search_first_in_document', {
         id: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
         reverse,
@@ -2175,9 +2249,10 @@ export function SearchReplacePanel() {
 
         cachedSearchRef.current = {
           tabId: activeTab.id,
-          keyword,
+          keyword: effectiveSearchKeyword,
           searchMode,
           caseSensitive,
+          parseEscapeSequences,
           resultFilterKeyword: backendResultFilterKeyword,
           documentVersion,
           matches: [],
@@ -2205,9 +2280,10 @@ export function SearchReplacePanel() {
 
       cachedSearchRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         matches: immediateMatches,
@@ -2252,10 +2328,12 @@ export function SearchReplacePanel() {
     backendResultFilterKeyword,
     cancelPendingBatchLoad,
     caseSensitive,
+    effectiveSearchKeyword,
     executeSearch,
     isFilterMode,
     keyword,
     messages.searchFailed,
+    parseEscapeSequences,
     resetSearchState,
     searchMode,
   ]);
@@ -2497,7 +2575,7 @@ export function SearchReplacePanel() {
           const anchorColumn = activeCursorPosition?.column ?? currentSearchMatch?.column ?? null;
           const stepResultValue = await invoke<unknown>('search_step_from_cursor_in_document', {
             id: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             mode: getSearchModeValue(searchMode),
             caseSensitive,
             resultFilterKeyword: backendResultFilterKeyword,
@@ -2535,9 +2613,10 @@ export function SearchReplacePanel() {
             chunkCursorRef.current = null;
             cachedSearchRef.current = {
               tabId: activeTab.id,
-              keyword,
+              keyword: effectiveSearchKeyword,
               searchMode,
               caseSensitive,
+              parseEscapeSequences,
               resultFilterKeyword: backendResultFilterKeyword,
               documentVersion,
               matches: nextMatches,
@@ -2617,6 +2696,7 @@ export function SearchReplacePanel() {
       activeCursorPosition,
       backendResultFilterKeyword,
       caseSensitive,
+      effectiveSearchKeyword,
       executeFilter,
       executeFirstMatchSearch,
       filterMatches,
@@ -2634,6 +2714,7 @@ export function SearchReplacePanel() {
       messages.searchFailed,
       navigateToFilterMatch,
       navigateToMatch,
+      parseEscapeSequences,
       searchMode,
       setFilterSessionId,
       setSearchSessionId,
@@ -2657,10 +2738,11 @@ export function SearchReplacePanel() {
     try {
       const result = await invoke<ReplaceCurrentAndSearchChunkBackendResult>('replace_current_and_search_chunk_in_document', {
         id: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
         replaceValue,
+        parseEscapeSequences,
         targetStart: targetMatch.start,
         targetEnd: targetMatch.end,
         resultFilterKeyword: backendResultFilterKeyword,
@@ -2706,9 +2788,10 @@ export function SearchReplacePanel() {
       chunkCursorRef.current = nextOffset;
       cachedSearchRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         matches: nextMatches,
@@ -2718,9 +2801,10 @@ export function SearchReplacePanel() {
       setSearchSessionId(null);
       countCacheRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         totalMatches,
@@ -2738,12 +2822,13 @@ export function SearchReplacePanel() {
     activeTab,
     backendResultFilterKeyword,
     caseSensitive,
+    effectiveSearchKeyword,
     executeSearch,
-    keyword,
     messages.noReplaceMatches,
     messages.replaceFailed,
     messages.replacedCurrent,
     navigateToMatch,
+    parseEscapeSequences,
     replaceValue,
     searchMode,
     updateTab,
@@ -2763,10 +2848,11 @@ export function SearchReplacePanel() {
     try {
       const result = await invoke<ReplaceAllAndSearchChunkBackendResult>('replace_all_and_search_chunk_in_document', {
         id: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         mode: getSearchModeValue(searchMode),
         caseSensitive,
         replaceValue,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         resultFilterCaseSensitive: caseSensitive,
         maxResults: SEARCH_CHUNK_SIZE,
@@ -2804,9 +2890,10 @@ export function SearchReplacePanel() {
       chunkCursorRef.current = nextOffset;
       cachedSearchRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         matches: nextMatches,
@@ -2816,9 +2903,10 @@ export function SearchReplacePanel() {
       setSearchSessionId(null);
       countCacheRef.current = {
         tabId: activeTab.id,
-        keyword,
+        keyword: effectiveSearchKeyword,
         searchMode,
         caseSensitive,
+        parseEscapeSequences,
         resultFilterKeyword: backendResultFilterKeyword,
         documentVersion,
         totalMatches,
@@ -2836,12 +2924,13 @@ export function SearchReplacePanel() {
     activeTab,
     backendResultFilterKeyword,
     caseSensitive,
+    effectiveSearchKeyword,
     executeSearch,
-    keyword,
     messages.noReplaceMatches,
     messages.replaceAllFailed,
     messages.replacedAll,
     navigateToMatch,
+    parseEscapeSequences,
     replaceValue,
     searchMode,
     updateTab,
@@ -3246,6 +3335,7 @@ export function SearchReplacePanel() {
       setReplaceValue('');
       setSearchMode('literal');
       setCaseSensitive(false);
+      setParseEscapeSequences(false);
       setReverseSearch(false);
       setResultFilterKeyword('');
       setAppliedResultFilterKeyword('');
@@ -3281,6 +3371,7 @@ export function SearchReplacePanel() {
       setReplaceValue(nextSnapshot.replaceValue);
       setSearchMode(nextSnapshot.searchMode);
       setCaseSensitive(nextSnapshot.caseSensitive);
+      setParseEscapeSequences(nextSnapshot.parseEscapeSequences ?? false);
       setReverseSearch(nextSnapshot.reverseSearch);
       setResultFilterKeyword(nextSnapshot.resultFilterKeyword);
       setAppliedResultFilterKeyword(nextSnapshot.appliedResultFilterKeyword);
@@ -3322,11 +3413,17 @@ export function SearchReplacePanel() {
         : '';
 
       if (nextSnapshot.searchDocumentVersion !== null && nextSnapshot.keyword) {
+        const snapshotParseEscapeSequences = nextSnapshot.parseEscapeSequences ?? false;
+        const snapshotEffectiveKeyword = resolveSearchKeyword(
+          nextSnapshot.keyword,
+          snapshotParseEscapeSequences
+        );
         cachedSearchRef.current = {
           tabId: activeTab.id,
-          keyword: nextSnapshot.keyword,
+          keyword: snapshotEffectiveKeyword,
           searchMode: nextSnapshot.searchMode,
           caseSensitive: nextSnapshot.caseSensitive,
+          parseEscapeSequences: snapshotParseEscapeSequences,
           resultFilterKeyword: restoredResultFilterKeyword,
           documentVersion: nextSnapshot.searchDocumentVersion,
           matches: restoredMatches,
@@ -3337,9 +3434,10 @@ export function SearchReplacePanel() {
         if (nextSnapshot.totalMatchCount !== null && nextSnapshot.totalMatchedLineCount !== null) {
           countCacheRef.current = {
             tabId: activeTab.id,
-            keyword: nextSnapshot.keyword,
+            keyword: snapshotEffectiveKeyword,
             searchMode: nextSnapshot.searchMode,
             caseSensitive: nextSnapshot.caseSensitive,
+            parseEscapeSequences: snapshotParseEscapeSequences,
             resultFilterKeyword: restoredResultFilterKeyword,
             documentVersion: nextSnapshot.searchDocumentVersion,
             totalMatches: nextSnapshot.totalMatchCount,
@@ -3388,6 +3486,11 @@ export function SearchReplacePanel() {
         !searchSessionRestoreCommandUnsupportedRef.current
       ) {
         const snapshotKeyword = nextSnapshot.keyword;
+        const snapshotParseEscapeSequences = nextSnapshot.parseEscapeSequences ?? false;
+        const snapshotEffectiveKeyword = resolveSearchKeyword(
+          snapshotKeyword,
+          snapshotParseEscapeSequences
+        );
         const snapshotSearchMode = nextSnapshot.searchMode;
         const snapshotCaseSensitive = nextSnapshot.caseSensitive;
         const snapshotDocumentVersion = nextSnapshot.searchDocumentVersion;
@@ -3395,7 +3498,7 @@ export function SearchReplacePanel() {
 
         void invoke<unknown>('search_session_restore_in_document', {
           id: activeTab.id,
-          keyword: snapshotKeyword,
+          keyword: snapshotEffectiveKeyword,
           mode: getSearchModeValue(snapshotSearchMode),
           caseSensitive: snapshotCaseSensitive,
           resultFilterKeyword: restoredResultFilterKeyword,
@@ -3420,9 +3523,10 @@ export function SearchReplacePanel() {
             setTotalMatchedLineCount(restoreResultValue.totalMatchedLines ?? 0);
             countCacheRef.current = {
               tabId: activeTab.id,
-              keyword: snapshotKeyword,
+              keyword: snapshotEffectiveKeyword,
               searchMode: snapshotSearchMode,
               caseSensitive: snapshotCaseSensitive,
+              parseEscapeSequences: snapshotParseEscapeSequences,
               resultFilterKeyword: restoredResultFilterKeyword,
               documentVersion: restoreResultValue.documentVersion ?? snapshotDocumentVersion,
               totalMatches: restoreResultValue.totalMatches ?? 0,
@@ -3524,6 +3628,7 @@ export function SearchReplacePanel() {
       setReplaceValue('');
       setSearchMode('literal');
       setCaseSensitive(false);
+      setParseEscapeSequences(false);
       setReverseSearch(false);
       setResultFilterKeyword('');
       setAppliedResultFilterKeyword('');
@@ -3566,6 +3671,7 @@ export function SearchReplacePanel() {
       replaceValue,
       searchMode,
       caseSensitive,
+      parseEscapeSequences,
       reverseSearch,
       resultFilterKeyword,
       appliedResultFilterKeyword,
@@ -3588,6 +3694,7 @@ export function SearchReplacePanel() {
     activeTabId,
     appliedResultFilterKeyword,
     caseSensitive,
+    parseEscapeSequences,
     currentFilterMatchIndex,
     currentMatchIndex,
     filterMatches,
@@ -4093,7 +4200,7 @@ export function SearchReplacePanel() {
           'step_result_filter_search_in_document',
           {
             id: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             mode: getSearchModeValue(searchMode),
             caseSensitive,
             resultFilterKeyword: keywordForJump,
@@ -4137,9 +4244,10 @@ export function SearchReplacePanel() {
           setSearchSessionId(null);
           cachedSearchRef.current = {
             tabId: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             searchMode,
             caseSensitive,
+            parseEscapeSequences,
             resultFilterKeyword: effectiveResultFilterKeyword,
             documentVersion,
             matches: nextMatches,
@@ -4148,9 +4256,10 @@ export function SearchReplacePanel() {
           };
           countCacheRef.current = {
             tabId: activeTab.id,
-            keyword,
+            keyword: effectiveSearchKeyword,
             searchMode,
             caseSensitive,
+            parseEscapeSequences,
             resultFilterKeyword: effectiveResultFilterKeyword,
             documentVersion,
             totalMatches,
@@ -4191,6 +4300,7 @@ export function SearchReplacePanel() {
       filterMatches,
       filterRulesKey,
       filterRulesPayload,
+      effectiveSearchKeyword,
       isFilterMode,
       isResultFilterSearching,
       isSearching,
@@ -4198,6 +4308,7 @@ export function SearchReplacePanel() {
       matches,
       messages.searchFailed,
       messages.resultFilterStepNoMatch,
+      parseEscapeSequences,
       resultFilterKeyword,
       scrollResultItemIntoView,
       setFilterSessionId,
@@ -5157,6 +5268,21 @@ export function SearchReplacePanel() {
                   />
                   {messages.caseSensitive}
                 </label>
+
+                {isReplaceMode && (
+                  <label
+                    className="flex items-center gap-1 text-xs text-muted-foreground"
+                    title={messages.parseEscapeSequencesHint}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={parseEscapeSequences}
+                      onChange={(event) => setParseEscapeSequences(event.target.checked)}
+                      title={messages.parseEscapeSequencesHint}
+                    />
+                    {messages.parseEscapeSequences}
+                  </label>
+                )}
 
                 <label className="flex items-center gap-1 text-xs text-muted-foreground">
                   <input

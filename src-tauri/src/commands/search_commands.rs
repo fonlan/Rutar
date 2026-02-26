@@ -151,6 +151,7 @@ pub fn replace_all_in_document(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     result_filter_keyword: Option<String>,
     result_filter_case_sensitive: Option<bool>,
 ) -> Result<ReplaceAllResultPayload, String> {
@@ -161,6 +162,7 @@ pub fn replace_all_in_document(
         mode,
         case_sensitive,
         replace_value,
+        parse_escape_sequences,
         result_filter_keyword,
         result_filter_case_sensitive,
     )
@@ -174,6 +176,7 @@ pub fn replace_all_and_search_chunk_in_document(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     result_filter_keyword: Option<String>,
     result_filter_case_sensitive: Option<bool>,
     max_results: usize,
@@ -185,6 +188,7 @@ pub fn replace_all_and_search_chunk_in_document(
         mode,
         case_sensitive,
         replace_value,
+        parse_escape_sequences,
         result_filter_keyword,
         result_filter_case_sensitive,
         max_results,
@@ -199,6 +203,7 @@ pub fn replace_current_in_document(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     target_start: usize,
     target_end: usize,
 ) -> Result<ReplaceCurrentResultPayload, String> {
@@ -209,6 +214,7 @@ pub fn replace_current_in_document(
         mode,
         case_sensitive,
         replace_value,
+        parse_escape_sequences,
         target_start,
         target_end,
     )
@@ -222,6 +228,7 @@ pub fn replace_current_and_search_chunk_in_document(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     target_start: usize,
     target_end: usize,
     result_filter_keyword: Option<String>,
@@ -235,6 +242,7 @@ pub fn replace_current_and_search_chunk_in_document(
         mode,
         case_sensitive,
         replace_value,
+        parse_escape_sequences,
         target_start,
         target_end,
         result_filter_keyword,

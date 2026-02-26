@@ -702,6 +702,40 @@ pub(super) fn escape_regex_literal(keyword: &str) -> String {
         .collect()
 }
 
+fn decode_replace_escape_sequences(value: &str) -> String {
+    let mut decoded = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            decoded.push(ch);
+            continue;
+        }
+
+        match chars.next() {
+            Some('n') => decoded.push('\n'),
+            Some('r') => decoded.push('\r'),
+            Some('t') => decoded.push('\t'),
+            Some('\\') => decoded.push('\\'),
+            Some(other) => {
+                decoded.push('\\');
+                decoded.push(other);
+            }
+            None => decoded.push('\\'),
+        }
+    }
+
+    decoded
+}
+
+fn resolve_replace_value(value: &str, parse_escape_sequences: bool) -> String {
+    if parse_escape_sequences {
+        decode_replace_escape_sequences(value)
+    } else {
+        value.to_string()
+    }
+}
+
 pub(super) fn wildcard_to_regex_source(keyword: &str) -> String {
     let mut source = String::new();
 
@@ -3433,6 +3467,7 @@ pub(super) fn replace_all_in_document_impl(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     result_filter_keyword: Option<String>,
     result_filter_case_sensitive: Option<bool>,
 ) -> Result<ReplaceAllResultPayload, String> {
@@ -3445,6 +3480,8 @@ pub(super) fn replace_all_in_document_impl(
             });
         }
 
+        let effective_replace_value =
+            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
         let normalized_result_filter_keyword =
             normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
@@ -3468,7 +3505,8 @@ pub(super) fn replace_all_in_document_impl(
         }
 
         let source_text = doc.rope.to_string();
-        let next_text = replace_matches_by_char_ranges(&source_text, &matches, &replace_value);
+        let next_text =
+            replace_matches_by_char_ranges(&source_text, &matches, &effective_replace_value);
         let replaced_count = matches.len();
 
         if source_text != next_text {
@@ -3498,6 +3536,7 @@ pub(super) fn replace_current_in_document_impl(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     target_start: usize,
     target_end: usize,
 ) -> Result<ReplaceCurrentResultPayload, String> {
@@ -3510,6 +3549,8 @@ pub(super) fn replace_current_in_document_impl(
             });
         }
 
+        let effective_replace_value =
+            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
         let matches = build_search_step_filtered_matches(
             &doc,
             &keyword,
@@ -3539,10 +3580,10 @@ pub(super) fn replace_current_in_document_impl(
                 .map_err(|e| e.to_string())?;
 
             regex
-                .replace(&target_match.text, replace_value.as_str())
+                .replace(&target_match.text, effective_replace_value.as_str())
                 .to_string()
         } else {
-            replace_value
+            effective_replace_value
         };
 
         if replacement_text == target_match.text {
@@ -3583,6 +3624,7 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     target_start: usize,
     target_end: usize,
     result_filter_keyword: Option<String>,
@@ -3603,6 +3645,8 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
             });
         }
 
+        let effective_replace_value =
+            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
         let normalized_result_filter_keyword =
             normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
@@ -3645,10 +3689,10 @@ pub(super) fn replace_current_and_search_chunk_in_document_impl(
                 .map_err(|e| e.to_string())?;
 
             regex
-                .replace(&target_match.text, replace_value.as_str())
+                .replace(&target_match.text, effective_replace_value.as_str())
                 .to_string()
         } else {
-            replace_value
+            effective_replace_value
         };
 
         if replacement_text == target_match.text {
@@ -3741,6 +3785,7 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
     mode: String,
     case_sensitive: bool,
     replace_value: String,
+    parse_escape_sequences: Option<bool>,
     result_filter_keyword: Option<String>,
     result_filter_case_sensitive: Option<bool>,
     max_results: usize,
@@ -3758,6 +3803,8 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
             });
         }
 
+        let effective_replace_value =
+            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
         let normalized_result_filter_keyword =
             normalize_result_filter_keyword(result_filter_keyword);
         let effective_result_filter_case_sensitive =
@@ -3787,8 +3834,11 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
         }
 
         let source_text = doc.rope.to_string();
-        let next_text =
-            replace_matches_by_char_ranges(&source_text, &matches_before_replace, &replace_value);
+        let next_text = replace_matches_by_char_ranges(
+            &source_text,
+            &matches_before_replace,
+            &effective_replace_value,
+        );
         if source_text != next_text {
             let operation = create_edit_operation(&mut doc, 0, source_text, next_text);
             apply_operation(&mut doc, &operation)?;
@@ -4038,6 +4088,30 @@ mod tests {
     fn escape_regex_literal_should_escape_regex_metacharacters() {
         let escaped = escape_regex_literal(r".*+?^${}()|[]\");
         assert_eq!(escaped, r"\.\*\+\?\^\$\{\}\(\)\|\[\]\\");
+    }
+
+    #[test]
+    fn decode_replace_escape_sequences_should_convert_supported_escape_sequences() {
+        let decoded = decode_replace_escape_sequences(r"line1\nline2\r\t\\");
+        assert_eq!(decoded, "line1\nline2\r\t\\");
+    }
+
+    #[test]
+    fn decode_replace_escape_sequences_should_keep_unknown_escape_sequences_literal() {
+        let decoded = decode_replace_escape_sequences(r"keep\q\z");
+        assert_eq!(decoded, r"keep\q\z");
+    }
+
+    #[test]
+    fn resolve_replace_value_should_keep_literal_when_escape_parsing_disabled() {
+        let resolved = resolve_replace_value(r"\n", false);
+        assert_eq!(resolved, r"\n");
+    }
+
+    #[test]
+    fn resolve_replace_value_should_decode_when_escape_parsing_enabled() {
+        let resolved = resolve_replace_value(r"\n", true);
+        assert_eq!(resolved, "\n");
     }
 
     #[test]

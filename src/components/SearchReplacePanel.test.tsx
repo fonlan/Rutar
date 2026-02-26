@@ -3384,6 +3384,7 @@ describe("SearchReplacePanel", () => {
           id: "tab-search",
           keyword: "todo",
           replaceValue: "done",
+          parseEscapeSequences: false,
           targetStart: 0,
           targetEnd: 4,
         })
@@ -3468,9 +3469,218 @@ describe("SearchReplacePanel", () => {
           id: "tab-search",
           keyword: "todo",
           replaceValue: "done",
+          parseEscapeSequences: false,
         })
       );
     });
+  });
+
+  it("keeps escaped keyword literal when parse-escapes switch is disabled", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "replace_all_and_search_chunk_in_document") {
+        return {
+          replacedCount: 1,
+          lineCount: 11,
+          documentVersion: 2,
+          matches: [],
+          nextOffset: null,
+          totalMatches: 0,
+          totalMatchedLines: 0,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "\\n" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "\\n" },
+    });
+    fireEvent.click(screen.getByTitle("Replace all matches"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "replace_all_and_search_chunk_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "\\n",
+          replaceValue: "\\n",
+          parseEscapeSequences: false,
+        })
+      );
+    });
+  });
+
+  it("decodes escaped keyword when parse-escapes switch is enabled", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "replace_all_and_search_chunk_in_document") {
+        return {
+          replacedCount: 1,
+          lineCount: 11,
+          documentVersion: 2,
+          matches: [],
+          nextOffset: null,
+          totalMatches: 0,
+          totalMatchedLines: 0,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    const parseEscapesCheckbox = screen.getByLabelText("Parse Escapes") as HTMLInputElement;
+    expect(parseEscapesCheckbox.checked).toBe(false);
+    fireEvent.click(parseEscapesCheckbox);
+    expect(parseEscapesCheckbox.checked).toBe(true);
+
+    fireEvent.change(screen.getByPlaceholderText("Find text"), {
+      target: { value: "\\n" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Replace with"), {
+      target: { value: "\\n" },
+    });
+    fireEvent.click(screen.getByTitle("Replace all matches"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "replace_all_and_search_chunk_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "\n",
+          replaceValue: "\\n",
+          parseEscapeSequences: true,
+        })
+      );
+    });
+    expect(
+      invokeMock.mock.calls.some(
+        ([command, payload]) =>
+          command === "search_count_in_document" &&
+          (payload as Record<string, unknown>)?.keyword === "\n"
+      )
+    ).toBe(true);
+    expect(
+      invokeMock.mock.calls.some(
+        ([command, payload]) =>
+          command === "search_in_document_chunk" &&
+          (payload as Record<string, unknown>)?.keyword === "\n"
+      )
+    ).toBe(true);
+  });
+
+  it("shows tooltip text on parse-escapes checkbox", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+    });
+
+    const parseEscapesCheckbox = screen.getByLabelText("Parse Escapes");
+    expect(parseEscapesCheckbox).toHaveAttribute(
+      "title",
+      "When enabled, \\n \\r \\t \\\\ in both Find and Replace inputs are parsed as control characters"
+    );
   });
 
   it("shows no-match feedback when replace current backend returns replaced=false", async () => {
