@@ -368,9 +368,7 @@ pub async fn apply_aligned_diff_edit(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        collect_external_file_change_document_ids_impl, external_change_notified_ids,
-    };
+    use super::{collect_external_file_change_document_ids_impl, external_change_notified_ids};
     use crate::state::{default_line_ending, AppState, Document, FileFingerprint};
     use encoding_rs::UTF_8;
     use ropey::Rope;
@@ -406,10 +404,7 @@ mod tests {
     }
 
     fn make_missing_test_path() -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "rutar-external-change-test-{}.txt",
-            Uuid::new_v4()
-        ))
+        std::env::temp_dir().join(format!("rutar-external-change-test-{}.txt", Uuid::new_v4()))
     }
 
     #[test]

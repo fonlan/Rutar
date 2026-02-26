@@ -388,14 +388,15 @@ mod tests {
         parser
             .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
             .expect("set typescript parser");
-        let tree = parser
-            .parse(source, None)
-            .expect("parse typescript source");
+        let tree = parser.parse(source, None).expect("parse typescript source");
         let root = tree.root_node();
 
         let mut nodes = Vec::new();
         collect_named_descendants_by_kind(root, "interface_declaration", &mut nodes);
-        let interface_node = nodes.into_iter().next().expect("interface node should exist");
+        let interface_node = nodes
+            .into_iter()
+            .next()
+            .expect("interface node should exist");
 
         let outlined =
             build_typescript_outline_node(interface_node, source).expect("outline should exist");

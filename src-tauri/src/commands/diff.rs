@@ -681,7 +681,10 @@ fn build_line_diff_result(source_lines: Vec<String>, target_lines: Vec<String>) 
     }
 }
 
-fn build_target_changed_line_numbers(source_lines: Vec<String>, target_lines: Vec<String>) -> Vec<usize> {
+fn build_target_changed_line_numbers(
+    source_lines: Vec<String>,
+    target_lines: Vec<String>,
+) -> Vec<usize> {
     build_line_diff_result(source_lines, target_lines).target_diff_line_numbers
 }
 
@@ -857,9 +860,9 @@ mod tests {
     use super::{
         apply_aligned_diff_panel_copy, apply_serialized_text_to_document, build_line_diff_result,
         build_line_diff_result_from_aligned, build_target_changed_line_numbers, compute_text_patch,
-        extract_actual_lines_from_aligned,
-        find_line_numbers_by_keyword, map_matched_line_numbers_to_aligned_rows,
-        normalize_rope_line_text, serialize_actual_lines, AlignedDiffKind, DiffEditSide,
+        extract_actual_lines_from_aligned, find_line_numbers_by_keyword,
+        map_matched_line_numbers_to_aligned_rows, normalize_rope_line_text, serialize_actual_lines,
+        AlignedDiffKind, DiffEditSide,
     };
     use crate::state::{default_line_ending, Document};
     use encoding_rs::UTF_8;
@@ -1021,11 +1024,7 @@ mod tests {
     fn build_target_changed_line_numbers_should_map_insert_delete_and_modify_to_current_lines() {
         let changed = build_target_changed_line_numbers(
             vec!["alpha".to_string(), "beta".to_string(), "delta".to_string()],
-            vec![
-                "alpha".to_string(),
-                "BETA".to_string(),
-                "gamma".to_string(),
-            ],
+            vec!["alpha".to_string(), "BETA".to_string(), "gamma".to_string()],
         );
 
         assert_eq!(changed, vec![2, 3]);
@@ -1146,7 +1145,10 @@ mod tests {
             result.line_diff.aligned_target_lines,
             vec!["left-1", "", "right-3"]
         );
-        assert_eq!(result.line_diff.aligned_target_present, vec![true, false, true]);
+        assert_eq!(
+            result.line_diff.aligned_target_present,
+            vec![true, false, true]
+        );
     }
 
     #[test]
@@ -1163,7 +1165,13 @@ mod tests {
         );
 
         assert!(!result.changed);
-        assert_eq!(result.line_diff.aligned_source_lines, vec!["same-1", "same-2"]);
-        assert_eq!(result.line_diff.aligned_target_lines, vec!["same-1", "same-2"]);
+        assert_eq!(
+            result.line_diff.aligned_source_lines,
+            vec!["same-1", "same-2"]
+        );
+        assert_eq!(
+            result.line_diff.aligned_target_lines,
+            vec!["same-1", "same-2"]
+        );
     }
 }

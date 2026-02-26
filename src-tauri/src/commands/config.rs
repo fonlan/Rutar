@@ -1236,7 +1236,12 @@ pub(super) fn export_filter_rule_groups_impl(
 mod tests {
     use super::*;
 
-    fn make_rule(keyword: &str, match_mode: &str, apply_to: &str, text_color: &str) -> FilterRuleInput {
+    fn make_rule(
+        keyword: &str,
+        match_mode: &str,
+        apply_to: &str,
+        text_color: &str,
+    ) -> FilterRuleInput {
         FilterRuleInput {
             keyword: keyword.to_string(),
             match_mode: match_mode.to_string(),
@@ -1250,7 +1255,8 @@ mod tests {
 
     #[test]
     fn normalize_filter_rule_input_should_trim_and_normalize_fields() {
-        let normalized = normalize_filter_rule_input(make_rule("  error  ", "exists", "LINE", "  "));
+        let normalized =
+            normalize_filter_rule_input(make_rule("  error  ", "exists", "LINE", "  "));
         assert!(normalized.is_some());
 
         let normalized = normalized.expect("normalized rule should exist");
@@ -1262,9 +1268,13 @@ mod tests {
 
     #[test]
     fn normalize_filter_rule_input_should_drop_invalid_rules() {
-        assert!(normalize_filter_rule_input(make_rule("   ", "contains", "line", "#fff")).is_none());
+        assert!(
+            normalize_filter_rule_input(make_rule("   ", "contains", "line", "#fff")).is_none()
+        );
         assert!(normalize_filter_rule_input(make_rule("x", "invalid", "line", "#fff")).is_none());
-        assert!(normalize_filter_rule_input(make_rule("x", "contains", "invalid", "#fff")).is_none());
+        assert!(
+            normalize_filter_rule_input(make_rule("x", "contains", "invalid", "#fff")).is_none()
+        );
     }
 
     #[test]
@@ -1321,7 +1331,10 @@ mod tests {
             " ".to_string(),
             "*".to_string(),
         ]));
-        assert_eq!(fallback, settings::default_windows_file_association_extensions());
+        assert_eq!(
+            fallback,
+            settings::default_windows_file_association_extensions()
+        );
     }
 
     #[test]
@@ -1338,7 +1351,10 @@ mod tests {
     fn normalize_mouse_gesture_pattern_should_filter_and_uppercase() {
         assert_eq!(normalize_mouse_gesture_pattern(" lrxdu9 "), "LRDU");
         assert_eq!(normalize_mouse_gesture_pattern("123"), "");
-        assert_eq!(normalize_mouse_gesture_pattern("llllrrrruuuudddd"), "LLLLRRRR");
+        assert_eq!(
+            normalize_mouse_gesture_pattern("llllrrrruuuudddd"),
+            "LLLLRRRR"
+        );
     }
 
     #[test]
@@ -1423,7 +1439,10 @@ mod tests {
         assert_eq!(normalized.font_family, DEFAULT_FONT_FAMILY);
         assert_eq!(normalized.font_size, 72);
         assert_eq!(normalized.tab_width, 1);
-        assert_eq!(normalized.new_file_line_ending, default_line_ending().label());
+        assert_eq!(
+            normalized.new_file_line_ending,
+            default_line_ending().label()
+        );
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
         assert_eq!(normalized.pinned_tab_paths, vec!["c".to_string()]);

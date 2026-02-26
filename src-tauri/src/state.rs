@@ -98,13 +98,19 @@ impl Document {
 
     pub fn mark_saved_undo_checkpoint(&mut self) {
         self.saved_undo_depth = self.undo_stack.len();
-        self.saved_undo_operation_id = self.undo_stack.last().map(|operation| operation.operation_id);
+        self.saved_undo_operation_id = self
+            .undo_stack
+            .last()
+            .map(|operation| operation.operation_id);
     }
 
     pub fn has_unsaved_text_changes(&self) -> bool {
         self.saved_undo_depth != self.undo_stack.len()
             || self.saved_undo_operation_id
-                != self.undo_stack.last().map(|operation| operation.operation_id)
+                != self
+                    .undo_stack
+                    .last()
+                    .map(|operation| operation.operation_id)
     }
 }
 

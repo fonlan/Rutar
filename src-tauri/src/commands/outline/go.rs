@@ -272,7 +272,10 @@ mod tests {
 
         let mut nodes = Vec::new();
         collect_named_descendants_by_kind(root, "function_declaration", &mut nodes);
-        let function_node = nodes.into_iter().next().expect("function node should exist");
+        let function_node = nodes
+            .into_iter()
+            .next()
+            .expect("function node should exist");
 
         let outlined = build_go_outline_node(function_node, source).expect("outline should exist");
         assert_eq!(outlined.node_type, "function");

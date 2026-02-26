@@ -68,8 +68,7 @@ mod tests {
         collect_named_descendants_by_kind(root, "class_definition", &mut nodes);
         let class_node = nodes.into_iter().next().expect("class node should exist");
 
-        let outlined =
-            build_python_outline_node(class_node, source).expect("outline should exist");
+        let outlined = build_python_outline_node(class_node, source).expect("outline should exist");
         assert_eq!(outlined.node_type, "class");
         assert_eq!(outlined.label, "class Service");
         assert!(outlined

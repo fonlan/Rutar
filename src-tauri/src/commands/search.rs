@@ -342,8 +342,8 @@ pub(super) fn filter_session_cache() -> &'static DashMap<String, FilterSessionEn
     FILTER_SESSION_CACHE.get_or_init(DashMap::new)
 }
 
-pub(super) fn search_cursor_context_cache() -> &'static DashMap<String, SearchCursorContextCacheEntry>
-{
+pub(super) fn search_cursor_context_cache(
+) -> &'static DashMap<String, SearchCursorContextCacheEntry> {
     SEARCH_CURSOR_CONTEXT_CACHE.get_or_init(DashMap::new)
 }
 
@@ -2624,8 +2624,13 @@ pub(super) fn search_step_from_cursor_in_document_impl(
     let normalized_result_filter_keyword = normalize_result_filter_keyword(result_filter_keyword);
     let filter_case_sensitive = result_filter_case_sensitive.unwrap_or(case_sensitive);
     let result_filter_keyword_ref = normalized_result_filter_keyword.as_deref();
-    let cursor_offset =
-        resolve_search_cursor_offset(source_text.as_str(), &line_starts, cursor_line, cursor_column, step);
+    let cursor_offset = resolve_search_cursor_offset(
+        source_text.as_str(),
+        &line_starts,
+        cursor_line,
+        cursor_column,
+        step,
+    );
 
     let mut target_match = if step > 0 {
         let forward_match = find_next_filtered_search_match(
