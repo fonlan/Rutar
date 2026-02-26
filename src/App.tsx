@@ -1070,7 +1070,10 @@ function App() {
       trailLastY: 0,
       sequence: '',
       movedEnough: false,
-      suppressNextContextMenu: false,
+      suppressContextMenuBudget: 0,
+      suppressContextMenuUntil: 0,
+      suppressContextMenuX: 0,
+      suppressContextMenuY: 0,
       clearTrailTimer: null as number | null,
       clearPreviewTimer: null as number | null,
     };
@@ -1079,6 +1082,9 @@ function App() {
     const gestureDistanceThreshold = 6;
     const trailPointDistanceThreshold = 1.5;
     const finalizeDirectionThreshold = 8;
+    const contextMenuSuppressionWindowMs = 2000;
+    const contextMenuSuppressionBudget = 3;
+    const contextMenuSuppressionDistanceThreshold = 32;
 
     const resolveGestureAction = (sequence: string): MouseGestureAction | undefined => {
       let candidate = sequence;
@@ -1093,6 +1099,48 @@ function App() {
       }
 
       return undefined;
+    };
+
+    const registerContextMenuSuppression = (clientX: number, clientY: number) => {
+      const now = performance.now();
+      state.suppressContextMenuBudget = Math.max(
+        state.suppressContextMenuBudget,
+        contextMenuSuppressionBudget,
+      );
+      state.suppressContextMenuUntil = Math.max(
+        state.suppressContextMenuUntil,
+        now + contextMenuSuppressionWindowMs,
+      );
+      state.suppressContextMenuX = clientX;
+      state.suppressContextMenuY = clientY;
+    };
+
+    const consumeContextMenuSuppression = (clientX: number, clientY: number) => {
+      if (state.suppressContextMenuBudget <= 0) {
+        return false;
+      }
+
+      const now = performance.now();
+      if (state.suppressContextMenuUntil <= now) {
+        state.suppressContextMenuBudget = 0;
+        state.suppressContextMenuUntil = 0;
+        return false;
+      }
+
+      const distanceFromLastFinalize = Math.hypot(
+        clientX - state.suppressContextMenuX,
+        clientY - state.suppressContextMenuY,
+      );
+      if (distanceFromLastFinalize > contextMenuSuppressionDistanceThreshold) {
+        return false;
+      }
+
+      state.suppressContextMenuBudget = Math.max(0, state.suppressContextMenuBudget - 1);
+      if (state.suppressContextMenuBudget === 0) {
+        state.suppressContextMenuUntil = 0;
+      }
+
+      return true;
     };
 
     const trailCanvas = document.createElement('canvas');
@@ -1308,10 +1356,10 @@ function App() {
       const action = pattern ? resolveGestureAction(pattern) : undefined;
 
       if (action) {
-        state.suppressNextContextMenu = true;
+        registerContextMenuSuppression(clientX, clientY);
         executeMouseGestureAction(action);
       } else if (wasGestureAttempt) {
-        state.suppressNextContextMenu = true;
+        registerContextMenuSuppression(clientX, clientY);
       }
 
       scheduleTrailClear();
@@ -1368,21 +1416,27 @@ function App() {
     };
 
     const handleContextMenu = (event: MouseEvent) => {
+      const suppressContextMenuEvent = () => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+          event.stopImmediatePropagation();
+        }
+      };
+
       if (state.active) {
         const { actionMatched, wasGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
-        if (actionMatched || wasGestureAttempt || state.suppressNextContextMenu) {
-          state.suppressNextContextMenu = false;
-          event.preventDefault();
+        if (actionMatched || wasGestureAttempt || consumeContextMenuSuppression(event.clientX, event.clientY)) {
+          suppressContextMenuEvent();
         }
         return;
       }
 
-      if (!state.suppressNextContextMenu) {
+      if (!consumeContextMenuSuppression(event.clientX, event.clientY)) {
         return;
       }
 
-      state.suppressNextContextMenu = false;
-      event.preventDefault();
+      suppressContextMenuEvent();
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
