@@ -46,6 +46,8 @@ export type I18nKey =
   | 'toolbar.recent.noFolders'
   | 'toolbar.recent.clearFiles'
   | 'toolbar.recent.clearFolders'
+  | 'toolbar.recent.missingFileRemoved'
+  | 'toolbar.recent.missingFolderRemoved'
   | 'toolbar.wordCount'
   | 'toolbar.wordCount.title'
   | 'toolbar.wordCount.words'
@@ -279,6 +281,8 @@ const zhCN: Messages = {
   'toolbar.recent.noFolders': '暂无最近文件夹',
   'toolbar.recent.clearFiles': '清空最近文件',
   'toolbar.recent.clearFolders': '清空最近文件夹',
+  'toolbar.recent.missingFileRemoved': '目标文件不存在，已从最近文件中移除。',
+  'toolbar.recent.missingFolderRemoved': '目标文件夹不存在，已从最近文件夹中移除。',
   'toolbar.wordCount': '字数统计',
   'toolbar.wordCount.title': '字数统计',
   'toolbar.wordCount.words': '字数',
@@ -511,6 +515,8 @@ const enUS: Messages = {
   'toolbar.recent.noFolders': 'No recent folders',
   'toolbar.recent.clearFiles': 'Clear recent files',
   'toolbar.recent.clearFolders': 'Clear recent folders',
+  'toolbar.recent.missingFileRemoved': 'The file no longer exists and was removed from recent files.',
+  'toolbar.recent.missingFolderRemoved': 'The folder no longer exists and was removed from recent folders.',
   'toolbar.wordCount': 'Word Count',
   'toolbar.wordCount.title': 'Word Count',
   'toolbar.wordCount.words': 'Words',

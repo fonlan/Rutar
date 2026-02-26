@@ -109,6 +109,9 @@ describe("Toolbar", () => {
           isDirty: false,
         };
       }
+      if (command === "path_exists") {
+        return true;
+      }
       return undefined;
     });
   });
@@ -2217,6 +2220,47 @@ describe("Toolbar", () => {
     });
   });
 
+  it("shows toast and removes recent file when split-menu target file is missing", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-missing.ts"],
+    });
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "path_exists") {
+        if (payload?.path === "C:\\repo\\recent-missing.ts") {
+          return false;
+        }
+        return true;
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-missing.ts");
+    fireEvent.click(recentItemRow);
+
+    await waitFor(() => {
+      expect(removeRecentFilePathMock).toHaveBeenCalledWith("C:\\repo\\recent-missing.ts");
+    });
+    expect(openFilePathMock).not.toHaveBeenCalledWith("C:\\repo\\recent-missing.ts");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The file no longer exists and was removed from recent files."
+    );
+  });
+
   it("opens recent file when clicking split menu row padding area", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
@@ -2487,6 +2531,50 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(addRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-a");
     });
+  });
+
+  it("shows toast and removes recent folder when split-menu target folder is missing", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-missing"],
+    });
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: false,
+          canRedo: false,
+          isDirty: false,
+        };
+      }
+      if (command === "path_exists") {
+        if (payload?.path === "C:\\repo\\folder-missing") {
+          return false;
+        }
+        return true;
+      }
+      if (command === "read_dir_if_directory") {
+        return [{ name: "main.ts", path: "C:\\repo\\folder-missing\\main.ts" }];
+      }
+      return undefined;
+    });
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    const recentFolderRow = await screen.findByTitle("C:\\repo\\folder-missing");
+    fireEvent.click(recentFolderRow);
+
+    await waitFor(() => {
+      expect(removeRecentFolderPathMock).toHaveBeenCalledWith("C:\\repo\\folder-missing");
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\folder-missing" });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The folder no longer exists and was removed from recent folders."
+    );
   });
 
   it("keeps state unchanged when opening recent folder returns null entries", async () => {

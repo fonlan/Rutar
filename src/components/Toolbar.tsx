@@ -193,9 +193,11 @@ export function Toolbar() {
     const [canClipboardSelectionAction, setCanClipboardSelectionAction] = useState(false);
     const [editHistoryState, setEditHistoryState] = useState<EditHistoryState>(DEFAULT_EDIT_HISTORY_STATE);
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
+    const [recentPathToastMessage, setRecentPathToastMessage] = useState<string | null>(null);
     const openFileMenuRef = useRef<HTMLDivElement>(null);
     const openFolderMenuRef = useRef<HTMLDivElement>(null);
     const selectionChangeRafRef = useRef<number | null>(null);
+    const recentPathToastTimerRef = useRef<number | null>(null);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
     const filterTitle = tr('toolbar.filter');
     const formatBeautifyTitle = tr('toolbar.format.beautify');
@@ -206,6 +208,8 @@ export function Toolbar() {
     const noRecentFoldersText = tr('toolbar.recent.noFolders');
     const clearRecentFilesText = tr('toolbar.recent.clearFiles');
     const clearRecentFoldersText = tr('toolbar.recent.clearFolders');
+    const recentMissingFileRemovedText = tr('toolbar.recent.missingFileRemoved');
+    const recentMissingFolderRemovedText = tr('toolbar.recent.missingFolderRemoved');
     const removeRecentItemText = tr('bookmark.remove');
     const openContainingFolderText = tr('titleBar.openContainingFolder');
     const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
@@ -297,6 +301,29 @@ export function Toolbar() {
             }
         }
     }, [activeTabIdForActions, updateTab]);
+
+    const showRecentPathRemovedToast = useCallback((messageText: string) => {
+        if (recentPathToastTimerRef.current !== null) {
+            window.clearTimeout(recentPathToastTimerRef.current);
+            recentPathToastTimerRef.current = null;
+        }
+
+        setRecentPathToastMessage(messageText);
+        recentPathToastTimerRef.current = window.setTimeout(() => {
+            setRecentPathToastMessage(null);
+            recentPathToastTimerRef.current = null;
+        }, 2200);
+    }, []);
+
+    const checkPathExists = useCallback(async (path: string) => {
+        try {
+            const result = await invoke<unknown>('path_exists', { path });
+            return typeof result === 'boolean' ? result : true;
+        } catch (error) {
+            console.error('Failed to check path existence:', error);
+            return true;
+        }
+    }, []);
 
     useEffect(() => {
         if (!activeTabIdForActions) {
@@ -485,6 +512,11 @@ export function Toolbar() {
 
     const handleOpenRecentFile = useCallback(async (path: string) => {
         setRecentMenu(null);
+        if (!(await checkPathExists(path))) {
+            removeRecentFilePath(path);
+            showRecentPathRemovedToast(recentMissingFileRemovedText);
+            return;
+        }
 
         try {
             await openFilePath(path);
@@ -492,12 +524,28 @@ export function Toolbar() {
                 void refreshEditHistoryState(activeTabIdForActions);
             }
         } catch (error) {
+            if (!(await checkPathExists(path))) {
+                removeRecentFilePath(path);
+                showRecentPathRemovedToast(recentMissingFileRemovedText);
+                return;
+            }
             console.error('Failed to open recent file:', error);
         }
-    }, [activeTabIdForActions, refreshEditHistoryState]);
+    }, [
+        activeTabIdForActions,
+        checkPathExists,
+        recentMissingFileRemovedText,
+        refreshEditHistoryState,
+        showRecentPathRemovedToast,
+    ]);
 
     const handleOpenRecentFolder = useCallback(async (path: string) => {
         setRecentMenu(null);
+        if (!(await checkPathExists(path))) {
+            removeRecentFolderPath(path);
+            showRecentPathRemovedToast(recentMissingFolderRemovedText);
+            return;
+        }
 
         try {
             const entries = await invoke<any[] | null>('read_dir_if_directory', { path });
@@ -508,9 +556,14 @@ export function Toolbar() {
             setFolder(path, entries);
             addRecentFolderPath(path);
         } catch (error) {
+            if (!(await checkPathExists(path))) {
+                removeRecentFolderPath(path);
+                showRecentPathRemovedToast(recentMissingFolderRemovedText);
+                return;
+            }
             console.error('Failed to open recent folder:', error);
         }
-    }, [setFolder]);
+    }, [checkPathExists, recentMissingFolderRemovedText, setFolder, showRecentPathRemovedToast]);
 
     const handleToggleRecentMenu = useCallback((kind: Exclude<RecentMenuKind, null>) => {
         setRecentMenu((current) => (current === kind ? null : kind));
@@ -948,12 +1001,22 @@ export function Toolbar() {
         };
     }, [recentMenu]);
 
+    useEffect(() => {
+        return () => {
+            if (recentPathToastTimerRef.current !== null) {
+                window.clearTimeout(recentPathToastTimerRef.current);
+                recentPathToastTimerRef.current = null;
+            }
+        };
+    }, []);
+
     const handleToolbarContextMenuCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
     }, []);
 
     return (
+        <>
         <div
             className="flex items-center gap-0.5 p-1 border-b bg-background h-10 overflow-x-auto no-scrollbar overflow-y-hidden z-40"
             data-layout-region="toolbar"
@@ -1116,6 +1179,17 @@ export function Toolbar() {
                 disabledReason={noActiveDocumentReason}
             />
         </div>
+        <div
+            className={cn(
+                'pointer-events-none fixed bottom-6 right-6 z-[70] rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 shadow-lg transition-[opacity,transform] dark:text-amber-200',
+                recentPathToastMessage ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+            )}
+            role="status"
+            aria-live="polite"
+        >
+            {recentPathToastMessage}
+        </div>
+        </>
     )
 }
 

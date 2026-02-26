@@ -207,6 +207,7 @@ pub fn run() {
             commands::file_io_commands::new_file,
             commands::file_io_commands::read_dir,
             commands::file_io_commands::read_dir_if_directory,
+            commands::file_io_commands::path_exists,
             commands::file_io_commands::open_in_file_manager,
             commands::file_io_commands::get_word_count_info,
             commands::file_io_commands::has_external_file_change,

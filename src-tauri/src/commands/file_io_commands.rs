@@ -120,6 +120,11 @@ pub fn read_dir_if_directory(path: String) -> Result<Option<Vec<DirEntry>>, Stri
 }
 
 #[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    file_io::path_exists_impl(path)
+}
+
+#[tauri::command]
 pub fn open_in_file_manager(path: String) -> Result<(), String> {
     file_io::open_in_file_manager_impl(path)
 }
@@ -205,6 +210,17 @@ mod tests {
         let file_entries = read_dir_if_directory(child_file)
             .expect("read_dir_if_directory should succeed for file");
         assert!(file_entries.is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn path_exists_wrapper_should_reflect_file_system_state() {
+        let (root, _child_dir, child_file) = make_temp_dir_with_entries();
+        let missing_file = root.join("missing.txt").to_string_lossy().to_string();
+
+        assert!(path_exists(child_file));
+        assert!(!path_exists(missing_file));
 
         let _ = fs::remove_dir_all(root);
     }

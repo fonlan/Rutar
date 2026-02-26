@@ -801,6 +801,10 @@ pub(super) fn read_dir_if_directory_impl(path: String) -> Result<Option<Vec<DirE
     read_dir_impl(path).map(Some)
 }
 
+pub(super) fn path_exists_impl(path: String) -> bool {
+    PathBuf::from(path).exists()
+}
+
 pub(super) fn open_in_file_manager_impl(path: String) -> Result<(), String> {
     let target_path = PathBuf::from(path);
 
@@ -909,8 +913,8 @@ mod tests {
             .expect("GB2312 should be supported");
         assert_eq!(gb2312.name(), "GBK");
 
-        let big5 =
-            Encoding::for_label(normalize_encoding_label("Big5").as_bytes()).expect("Big5 should be supported");
+        let big5 = Encoding::for_label(normalize_encoding_label("Big5").as_bytes())
+            .expect("Big5 should be supported");
         assert_eq!(big5.name(), "Big5");
 
         let ansi = Encoding::for_label(normalize_encoding_label("ANSI").as_bytes())
