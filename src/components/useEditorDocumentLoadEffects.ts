@@ -112,6 +112,7 @@ export function useEditorDocumentLoadEffects({
 }: UseEditorDocumentLoadEffectsParams) {
   const previousTabIdRef = useRef<string | null>(null);
   const tabSnapshotRef = useRef<Record<string, EditorDocumentLoadSnapshot>>({});
+  const externalSyncDoneTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +217,7 @@ export function useEditorDocumentLoadEffects({
     }
 
     previousTabIdRef.current = tabId;
+    externalSyncDoneTabIdRef.current = null;
     const restoredSnapshot = tabSnapshotRef.current[tabId];
     const safeSavedCursorLine = Math.max(1, Math.min(Math.max(1, tabLineCount), Math.floor(savedCursorLine || 1)));
     const savedCursorTargetIndex = Math.max(0, safeSavedCursorLine - 1);
@@ -264,8 +266,8 @@ export function useEditorDocumentLoadEffects({
       }
       restoreCaretToSavedPosition();
     } else {
-      setTokenFallbackPlainLines([]);
-      setTokenFallbackPlainStartLine(0);
+      setTokenFallbackPlainLines((prev) => (prev.length === 0 ? prev : []));
+      setTokenFallbackPlainStartLine((prev) => (prev === 0 ? prev : 0));
       const targetContentScrollTop = 0;
       const targetContentScrollLeft = 0;
       const targetContainerScrollTop = isHugeEditableMode
@@ -422,6 +424,11 @@ export function useEditorDocumentLoadEffects({
       return;
     }
 
+    if (externalSyncDoneTabIdRef.current === tabId) {
+      return;
+    }
+    externalSyncDoneTabIdRef.current = tabId;
+
     const syncExternalChange = async () => {
       try {
         await loadTextFromBackend();
@@ -432,7 +439,15 @@ export function useEditorDocumentLoadEffects({
     };
 
     syncExternalChange();
-  }, [initializedRef, loadTextFromBackend, suppressExternalReloadRef, syncVisibleTokens, tabLineCount]);
+  }, [
+    externalSyncDoneTabIdRef,
+    initializedRef,
+    loadTextFromBackend,
+    suppressExternalReloadRef,
+    syncVisibleTokens,
+    tabId,
+    tabLineCount,
+  ]);
 
   useEffect(() => {
     if (!usePlainLineRendering) {
