@@ -67,7 +67,7 @@ describe('useEditorVisibleItemsRendered', () => {
     vi.useRealTimers();
   });
 
-  it('expands sync range and shortens debounce when a fast jump is detected', () => {
+  it('keeps start at visible line, expands stop, and shortens debounce when a fast jump is detected', () => {
     vi.useFakeTimers();
     const nowValues = [0, 20];
     const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => nowValues.shift() ?? 20);
@@ -96,7 +96,7 @@ describe('useEditorVisibleItemsRendered', () => {
     });
     expect(syncVisibleTokens).toHaveBeenCalledTimes(1);
     expect(syncVisibleTokens).toHaveBeenCalledWith(500, {
-      start: 63,
+      start: 220,
       stop: 387,
     });
 
@@ -104,4 +104,3 @@ describe('useEditorVisibleItemsRendered', () => {
     vi.useRealTimers();
   });
 });
-
