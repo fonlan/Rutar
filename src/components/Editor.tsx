@@ -432,6 +432,7 @@ export function Editor({
     rectangularSelectionPointerActiveRef,
     rectangularSelectionLastClientPointRef,
     setLineNumberMultiSelection,
+    setTextSelectionHighlight,
     setPointerSelectionNativeHighlightMode,
     setRectangularSelection,
     isPointerOnScrollbar,

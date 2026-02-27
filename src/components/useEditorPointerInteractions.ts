@@ -2,7 +2,12 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useCallback } from 'react';
 import type React from 'react';
 import type { MutableRefObject } from 'react';
-import type { RectangularSelectionState, TextDragMoveState, VerticalSelectionState } from './Editor.types';
+import type {
+  RectangularSelectionState,
+  TextDragMoveState,
+  TextSelectionState,
+  VerticalSelectionState,
+} from './Editor.types';
 
 interface UseEditorPointerInteractionsParams {
   isHugeEditableMode: boolean;
@@ -17,6 +22,12 @@ interface UseEditorPointerInteractionsParams {
   rectangularSelectionPointerActiveRef: MutableRefObject<boolean>;
   rectangularSelectionLastClientPointRef: MutableRefObject<{ x: number; y: number } | null>;
   setLineNumberMultiSelection: (updater: number[] | ((prev: number[]) => number[])) => void;
+  setTextSelectionHighlight: (
+    updater:
+      | TextSelectionState
+      | null
+      | ((prev: TextSelectionState | null) => TextSelectionState | null)
+  ) => void;
   setPointerSelectionNativeHighlightMode: (enabled: boolean) => void;
   setRectangularSelection: (selection: RectangularSelectionState | null) => void;
   isPointerOnScrollbar: (element: HTMLElement, clientX: number, clientY: number) => boolean;
@@ -43,6 +54,7 @@ export function useEditorPointerInteractions({
   rectangularSelectionPointerActiveRef,
   rectangularSelectionLastClientPointRef,
   setLineNumberMultiSelection,
+  setTextSelectionHighlight,
   setPointerSelectionNativeHighlightMode,
   setRectangularSelection,
   isPointerOnScrollbar,
@@ -195,7 +207,9 @@ export function useEditorPointerInteractions({
         const selectionOffsets = getSelectionOffsetsInElement(currentElement);
         if (selectionOffsets && !selectionOffsets.isCollapsed) {
           const pointerLogicalOffset = resolveDropOffsetFromPointer(currentElement, event.clientX, event.clientY);
-          if (pointerLogicalOffset >= selectionOffsets.start && pointerLogicalOffset <= selectionOffsets.end) {
+          const pointerInsideCurrentSelection =
+            pointerLogicalOffset >= selectionOffsets.start && pointerLogicalOffset <= selectionOffsets.end;
+          if (pointerInsideCurrentSelection) {
             textDragMoveStateRef.current = {
               pointerId: event.pointerId,
               startClientX: event.clientX,
@@ -209,6 +223,8 @@ export function useEditorPointerInteractions({
             };
           } else {
             textDragMoveStateRef.current = null;
+            currentElement.setSelectionRange(pointerLogicalOffset, pointerLogicalOffset);
+            setTextSelectionHighlight((prev) => (prev === null ? prev : null));
           }
         } else {
           textDragMoveStateRef.current = null;
@@ -323,6 +339,7 @@ export function useEditorPointerInteractions({
       rectangularSelectionRef,
       resolveDropOffsetFromPointer,
       setLineNumberMultiSelection,
+      setTextSelectionHighlight,
       setPointerSelectionNativeHighlightMode,
       setRectangularSelection,
       textDragMoveStateRef,

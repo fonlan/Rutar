@@ -4776,6 +4776,43 @@ describe('Editor component', () => {
     expect(textarea.title).toBe('Ctrl+Left Click to open');
   });
 
+  it('clears previous text selection immediately on pointerdown outside current range', async () => {
+    const tab = createTab({ id: 'tab-clear-selection-on-pointerdown' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await waitFor(() => {
+      const hasTextSelectionHighlight = Array.from(
+        container.querySelectorAll('.editor-line mark')
+      ).some((element) => element.className.includes('bg-blue-400/35'));
+      expect(hasTextSelectionHighlight).toBe(true);
+    });
+
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      buttons: 1,
+      clientX: 0,
+      clientY: 30,
+    });
+
+    expect(textarea.selectionStart).toBe(textarea.selectionEnd);
+    await waitFor(() => {
+      const hasTextSelectionHighlight = Array.from(
+        container.querySelectorAll('.editor-line mark')
+      ).some((element) => element.className.includes('bg-blue-400/35'));
+      expect(hasTextSelectionHighlight).toBe(false);
+    });
+
+    fireEvent.pointerUp(window);
+  });
+
   it('keeps text selection highlight after pointerup when drag selection ends', async () => {
     const tab = createTab({ id: 'tab-drag-selection-highlight-after-pointerup' });
     const { container } = render(<Editor tab={tab} />);
