@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, SyntaxToken } from './Editor.types';
 
@@ -22,10 +22,14 @@ interface UseEditorContentSyncParams {
   pendingRestoreScrollTopRef: MutableRefObject<number | null>;
   syncedTextRef: MutableRefObject<string>;
   pendingSyncRequestedRef: MutableRefObject<boolean>;
+  lineTokensLength: number;
+  tokenStartLine: number;
   setPlainLines: (lines: string[]) => void;
   setPlainStartLine: (line: number) => void;
   setLineTokens: (tokens: SyntaxToken[][]) => void;
   setStartLine: (line: number) => void;
+  setTokenFallbackPlainLines: (lines: string[]) => void;
+  setTokenFallbackPlainStartLine: (line: number) => void;
   setEditableSegment: (segment: EditorSegmentState) => void;
   normalizeLineText: (text: string) => string;
   normalizeEditableLineText: (text: string) => string;
@@ -53,10 +57,14 @@ export function useEditorContentSync({
   pendingRestoreScrollTopRef,
   syncedTextRef,
   pendingSyncRequestedRef,
+  lineTokensLength,
+  tokenStartLine,
   setPlainLines,
   setPlainStartLine,
   setLineTokens,
   setStartLine,
+  setTokenFallbackPlainLines,
+  setTokenFallbackPlainStartLine,
   setEditableSegment,
   normalizeLineText,
   normalizeEditableLineText,
@@ -64,6 +72,8 @@ export function useEditorContentSync({
   setInputLayerText,
   getEditableText,
 }: UseEditorContentSyncParams) {
+  const fallbackPlainRequestVersionRef = useRef(0);
+
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
       const version = ++currentRequestVersionRef.current;
@@ -151,8 +161,7 @@ export function useEditorContentSync({
   );
 
   const fetchTokens = useCallback(
-    async (start: number, end: number) => {
-      const version = ++currentRequestVersionRef.current;
+    async (start: number, end: number, version: number) => {
       try {
         const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
           id: tabId,
@@ -165,11 +174,42 @@ export function useEditorContentSync({
 
         setLineTokens(lineResult);
         setStartLine(start);
+        setTokenFallbackPlainLines([]);
+        setTokenFallbackPlainStartLine(0);
       } catch (error) {
         console.error('Fetch error:', error);
       }
     },
-    [currentRequestVersionRef, setLineTokens, setStartLine, tabId]
+    [
+      currentRequestVersionRef,
+      setLineTokens,
+      setStartLine,
+      setTokenFallbackPlainLines,
+      setTokenFallbackPlainStartLine,
+      tabId,
+    ]
+  );
+
+  const fetchTokenFallbackPlainLines = useCallback(
+    async (start: number, end: number) => {
+      const version = ++fallbackPlainRequestVersionRef.current;
+      try {
+        const lines = await invoke<string[]>('get_visible_lines_chunk', {
+          id: tabId,
+          startLine: start,
+          endLine: end,
+        });
+
+        if (version !== fallbackPlainRequestVersionRef.current) return;
+        if (!Array.isArray(lines)) return;
+
+        setTokenFallbackPlainLines(lines.map(normalizeLineText));
+        setTokenFallbackPlainStartLine(start);
+      } catch (error) {
+        console.error('Fetch token fallback lines error:', error);
+      }
+    },
+    [normalizeLineText, setTokenFallbackPlainLines, setTokenFallbackPlainStartLine, tabId]
   );
 
   const syncVisibleTokens = useCallback(
@@ -208,11 +248,21 @@ export function useEditorContentSync({
         return;
       }
 
-      await fetchTokens(start, end);
+      const tokenCacheStart = tokenStartLine;
+      const tokenCacheEnd = tokenCacheStart + Math.max(0, lineTokensLength);
+      const hasTokenCoverage =
+        lineTokensLength > 0 && start >= tokenCacheStart && end <= tokenCacheEnd;
+      if (isScrollbarDragRef.current || !hasTokenCoverage) {
+        void fetchTokenFallbackPlainLines(start, end);
+      }
+
+      const version = ++currentRequestVersionRef.current;
+      await fetchTokens(start, end, version);
     },
     [
       contentRef,
       fetchEditableSegment,
+      fetchTokenFallbackPlainLines,
       fetchPlainLines,
       fetchTokens,
       height,
@@ -220,9 +270,11 @@ export function useEditorContentSync({
       hugeWindowLockedRef,
       isHugeEditableMode,
       itemSize,
+      lineTokensLength,
       largeFetchBuffer,
       listRef,
       scrollContainerRef,
+      tokenStartLine,
       usePlainLineRendering,
     ]
   );

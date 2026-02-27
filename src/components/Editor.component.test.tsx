@@ -964,6 +964,109 @@ describe('Editor component', () => {
     });
   });
 
+  it('renders plain-line fallback while syntax tokens are still loading after fast navigation', async () => {
+    const tab = createTab({ id: 'tab-token-fallback-on-fast-navigate', lineCount: 400 });
+    const lines = Array.from({ length: 400 }, (_, index) => `line-${index + 1}`);
+    const fullText = `${lines.join('\n')}\n`;
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return fullText;
+      }
+      if (command === 'get_visible_lines_chunk') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+        return lines.slice(safeStart, safeEnd);
+      }
+      if (command === 'get_syntax_token_lines') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (startLine >= 120) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 120);
+          });
+          return Array.from({ length: count }, (_, index) => [
+            {
+              text: `token-line-${startLine + index + 1}`,
+              type: 'plain',
+            },
+          ]);
+        }
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: 'plain',
+          },
+        ]);
+      }
+      if (command === 'find_matching_pair_offsets') {
+        return null;
+      }
+      if (command === 'edit_text' || command === 'replace_line_range' || command === 'cleanup_document') {
+        return 400;
+      }
+      if (command === 'toggle_line_comments') {
+        return {
+          changed: false,
+          lineCount: 400,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === 'convert_text_base64') {
+        return '';
+      }
+      if (command === 'get_rectangular_selection_text') {
+        return '';
+      }
+      if (command === 'get_unsaved_change_line_numbers') {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, fullText);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId: tab.id,
+            line: 220,
+            column: 1,
+            length: 0,
+            lineText: 'line-220',
+          },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some(
+          ([command, callPayload]) =>
+            command === 'get_visible_lines_chunk'
+            && Number((callPayload as { startLine?: number } | undefined)?.startLine ?? 0) >= 120
+        )
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('line-220')).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('token-line-220')).toBeTruthy();
+    });
+  });
+
   it('handles non-array huge editable chunk result without crashing', async () => {
     const tab = createTab({ id: 'tab-huge-chunk-non-array', lineCount: 22000 });
 

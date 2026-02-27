@@ -47,6 +47,8 @@ export function EditorView({
   usePlainLineRendering,
   plainStartLine,
   startLine,
+  tokenFallbackPlainLines,
+  tokenFallbackPlainStartLine,
   lineTokens,
   editableSegmentLines,
   plainLines,
@@ -170,6 +172,8 @@ export function EditorView({
         usePlainLineRendering={usePlainLineRendering}
         plainStartLine={plainStartLine}
         startLine={startLine}
+        tokenFallbackPlainLines={tokenFallbackPlainLines}
+        tokenFallbackPlainStartLine={tokenFallbackPlainStartLine}
         lineTokens={lineTokens}
         editableSegmentLines={editableSegmentLines}
         plainLines={plainLines}

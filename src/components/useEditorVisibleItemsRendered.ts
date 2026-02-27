@@ -11,6 +11,7 @@ interface UseEditorVisibleItemsRenderedParams {
   pendingSyncRequestedRef: MutableRefObject<boolean>;
   syncInFlightRef: MutableRefObject<boolean>;
   isComposingRef: MutableRefObject<boolean>;
+  isScrollbarDragRef: MutableRefObject<boolean>;
   largeFetchBuffer: number;
   tabLineCount: number;
   tabLargeFileMode: boolean;
@@ -25,6 +26,7 @@ interface UseEditorVisibleItemsRenderedParams {
   hugeEditableFetchDebounceMs: number;
   largeFileFetchDebounceMs: number;
   normalFileFetchDebounceMs: number;
+  scrollbarDragFetchDebounceMs: number;
   syncVisibleTokens: (lineCount: number, visibleRange?: { start: number; stop: number }) => Promise<void>;
 }
 
@@ -33,6 +35,7 @@ export function useEditorVisibleItemsRendered({
   pendingSyncRequestedRef,
   syncInFlightRef,
   isComposingRef,
+  isScrollbarDragRef,
   largeFetchBuffer,
   tabLineCount,
   tabLargeFileMode,
@@ -47,6 +50,7 @@ export function useEditorVisibleItemsRendered({
   hugeEditableFetchDebounceMs,
   largeFileFetchDebounceMs,
   normalFileFetchDebounceMs,
+  scrollbarDragFetchDebounceMs,
   syncVisibleTokens,
 }: UseEditorVisibleItemsRenderedParams) {
   const onItemsRendered = useCallback(
@@ -84,6 +88,8 @@ export function useEditorVisibleItemsRendered({
           ? hugeEditableFetchDebounceMs
           : tabLargeFileMode
           ? largeFileFetchDebounceMs
+          : isScrollbarDragRef.current
+          ? scrollbarDragFetchDebounceMs
           : normalFileFetchDebounceMs;
         requestTimeoutRef.current = setTimeout(
           () => syncVisibleTokens(tabLineCount, {
@@ -100,6 +106,7 @@ export function useEditorVisibleItemsRendered({
       hugeEditableFetchDebounceMs,
       isComposingRef,
       isHugeEditableMode,
+      isScrollbarDragRef,
       largeFetchBuffer,
       largeFileFetchDebounceMs,
       lineTokensLength,
@@ -108,6 +115,7 @@ export function useEditorVisibleItemsRendered({
       plainLinesLength,
       plainStartLine,
       requestTimeoutRef,
+      scrollbarDragFetchDebounceMs,
       startLine,
       syncInFlightRef,
       syncVisibleTokens,

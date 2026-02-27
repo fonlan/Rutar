@@ -61,6 +61,7 @@ const HUGE_EDITABLE_FETCH_BUFFER_LINES = 100;
 const LARGE_FILE_FETCH_DEBOUNCE_MS = 12;
 const HUGE_EDITABLE_FETCH_DEBOUNCE_MS = 24;
 const NORMAL_FILE_FETCH_DEBOUNCE_MS = 50;
+const SCROLLBAR_DRAG_FETCH_DEBOUNCE_MS = 8;
 const LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD = 20000;
 const LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS = 160;
 const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
@@ -145,6 +146,10 @@ export function Editor({
     setLineTokens,
     startLine,
     setStartLine,
+    tokenFallbackPlainLines,
+    setTokenFallbackPlainLines,
+    tokenFallbackPlainStartLine,
+    setTokenFallbackPlainStartLine,
     plainLines,
     setPlainLines,
     plainStartLine,
@@ -345,10 +350,14 @@ export function Editor({
     pendingRestoreScrollTopRef,
     syncedTextRef,
     pendingSyncRequestedRef,
+    lineTokensLength: lineTokens.length,
+    tokenStartLine: startLine,
     setPlainLines,
     setPlainStartLine,
     setLineTokens,
     setStartLine,
+    setTokenFallbackPlainLines,
+    setTokenFallbackPlainStartLine,
     setEditableSegment,
     normalizeLineText,
     normalizeEditableLineText,
@@ -802,6 +811,7 @@ export function Editor({
     pendingSyncRequestedRef,
     syncInFlightRef,
     isComposingRef,
+    isScrollbarDragRef,
     largeFetchBuffer,
     tabLineCount: tab.lineCount,
     tabLargeFileMode: tab.largeFileMode,
@@ -816,6 +826,7 @@ export function Editor({
     hugeEditableFetchDebounceMs: HUGE_EDITABLE_FETCH_DEBOUNCE_MS,
     largeFileFetchDebounceMs: LARGE_FILE_FETCH_DEBOUNCE_MS,
     normalFileFetchDebounceMs: NORMAL_FILE_FETCH_DEBOUNCE_MS,
+    scrollbarDragFetchDebounceMs: SCROLLBAR_DRAG_FETCH_DEBOUNCE_MS,
     syncVisibleTokens,
   });
 
@@ -865,6 +876,8 @@ export function Editor({
     isHugeEditableMode,
     lineTokens,
     startLine,
+    tokenFallbackPlainLines,
+    tokenFallbackPlainStartLine,
     plainLines,
     plainStartLine,
     editableSegmentState: editableSegment,
@@ -888,6 +901,8 @@ export function Editor({
     lastKnownContainerScrollLeftRef,
     setLineTokens,
     setStartLine,
+    setTokenFallbackPlainLines,
+    setTokenFallbackPlainStartLine,
     setEditableSegment,
     setPlainLines,
     setPlainStartLine,
@@ -1123,6 +1138,8 @@ export function Editor({
       usePlainLineRendering={usePlainLineRendering}
       plainStartLine={plainStartLine}
       startLine={startLine}
+      tokenFallbackPlainLines={tokenFallbackPlainLines}
+      tokenFallbackPlainStartLine={tokenFallbackPlainStartLine}
       lineTokens={lineTokens}
       editableSegmentLines={editableSegmentLines}
       plainLines={plainLines}

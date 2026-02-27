@@ -19,6 +19,8 @@ interface EditorBackdropLayerProps {
   usePlainLineRendering: boolean;
   plainStartLine: number;
   startLine: number;
+  tokenFallbackPlainLines: string[];
+  tokenFallbackPlainStartLine: number;
   lineTokens: SyntaxToken[][];
   editableSegmentLines: string[];
   plainLines: string[];
@@ -57,6 +59,8 @@ export function EditorBackdropLayer({
   usePlainLineRendering,
   plainStartLine,
   startLine,
+  tokenFallbackPlainLines,
+  tokenFallbackPlainStartLine,
   lineTokens,
   editableSegmentLines,
   plainLines,
@@ -112,10 +116,18 @@ export function EditorBackdropLayer({
             ? index - plainStartLine
             : index - startLine;
           const plainRelativeIndex = index - plainStartLine;
+          const tokenFallbackRelativeIndex = index - tokenFallbackPlainStartLine;
           const lineTokensArr =
             !usePlainLineRendering && relativeIndex >= 0 && relativeIndex < lineTokens.length
               ? lineTokens[relativeIndex]
               : [];
+          const hasTokenFallbackLine =
+            !usePlainLineRendering
+            && tokenFallbackRelativeIndex >= 0
+            && tokenFallbackRelativeIndex < tokenFallbackPlainLines.length;
+          const tokenFallbackPlainLine = hasTokenFallbackLine
+            ? tokenFallbackPlainLines[tokenFallbackRelativeIndex]
+            : '';
           const plainLine =
             isHugeEditableMode && relativeIndex >= 0 && relativeIndex < editableSegmentLines.length
               ? editableSegmentLines[relativeIndex]
@@ -167,6 +179,8 @@ export function EditorBackdropLayer({
                   ? renderHighlightedPlainLine(plainLine, index + 1)
                   : lineTokensArr.length > 0
                   ? renderHighlightedTokens(lineTokensArr, index + 1)
+                  : hasTokenFallbackLine
+                  ? renderHighlightedPlainLine(tokenFallbackPlainLine, index + 1)
                   : <span className="opacity-10 italic">...</span>}
               </div>
             </div>

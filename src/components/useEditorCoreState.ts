@@ -23,6 +23,8 @@ export function useEditorCoreState({
 }: UseEditorCoreStateParams) {
   const [lineTokens, setLineTokens] = useState<SyntaxToken[][]>([]);
   const [startLine, setStartLine] = useState(0);
+  const [tokenFallbackPlainLines, setTokenFallbackPlainLines] = useState<string[]>([]);
+  const [tokenFallbackPlainStartLine, setTokenFallbackPlainStartLine] = useState(0);
   const [plainLines, setPlainLines] = useState<string[]>([]);
   const [plainStartLine, setPlainStartLine] = useState(0);
   const [editableSegment, setEditableSegment] = useState<EditorSegmentState>({
@@ -100,6 +102,10 @@ export function useEditorCoreState({
     setLineTokens,
     startLine,
     setStartLine,
+    tokenFallbackPlainLines,
+    setTokenFallbackPlainLines,
+    tokenFallbackPlainStartLine,
+    setTokenFallbackPlainStartLine,
     plainLines,
     setPlainLines,
     plainStartLine,

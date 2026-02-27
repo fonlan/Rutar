@@ -6,6 +6,8 @@ interface EditorDocumentLoadSnapshot {
   text: string;
   lineTokens: SyntaxToken[][];
   startLine: number;
+  tokenFallbackPlainLines: string[];
+  tokenFallbackPlainStartLine: number;
   plainLines: string[];
   plainStartLine: number;
   editableSegment: EditorSegmentState;
@@ -25,6 +27,8 @@ interface UseEditorDocumentLoadEffectsParams {
   isHugeEditableMode: boolean;
   lineTokens: SyntaxToken[][];
   startLine: number;
+  tokenFallbackPlainLines: string[];
+  tokenFallbackPlainStartLine: number;
   plainLines: string[];
   plainStartLine: number;
   editableSegmentState: EditorSegmentState;
@@ -48,6 +52,8 @@ interface UseEditorDocumentLoadEffectsParams {
   lastKnownContainerScrollLeftRef: MutableRefObject<number>;
   setLineTokens: (updater: SyntaxToken[][] | ((prev: SyntaxToken[][]) => SyntaxToken[][])) => void;
   setStartLine: (updater: number | ((prev: number) => number)) => void;
+  setTokenFallbackPlainLines: (updater: string[] | ((prev: string[]) => string[])) => void;
+  setTokenFallbackPlainStartLine: (updater: number | ((prev: number) => number)) => void;
   setEditableSegment: (updater: EditorSegmentState | ((prev: EditorSegmentState) => EditorSegmentState)) => void;
   setPlainLines: (updater: string[] | ((prev: string[]) => string[])) => void;
   setPlainStartLine: (updater: number | ((prev: number) => number)) => void;
@@ -68,6 +74,8 @@ export function useEditorDocumentLoadEffects({
   isHugeEditableMode,
   lineTokens,
   startLine,
+  tokenFallbackPlainLines,
+  tokenFallbackPlainStartLine,
   plainLines,
   plainStartLine,
   editableSegmentState,
@@ -91,6 +99,8 @@ export function useEditorDocumentLoadEffects({
   lastKnownContainerScrollLeftRef,
   setLineTokens,
   setStartLine,
+  setTokenFallbackPlainLines,
+  setTokenFallbackPlainStartLine,
   setEditableSegment,
   setPlainLines,
   setPlainStartLine,
@@ -189,6 +199,8 @@ export function useEditorDocumentLoadEffects({
         text: currentText,
         lineTokens: lineTokens.map((line) => line.map((token) => ({ ...token }))),
         startLine,
+        tokenFallbackPlainLines: [...tokenFallbackPlainLines],
+        tokenFallbackPlainStartLine,
         plainLines: [...plainLines],
         plainStartLine,
         editableSegment: {
@@ -227,6 +239,8 @@ export function useEditorDocumentLoadEffects({
     if (restoredSnapshot) {
       setLineTokens(restoredSnapshot.lineTokens);
       setStartLine(restoredSnapshot.startLine);
+      setTokenFallbackPlainLines(restoredSnapshot.tokenFallbackPlainLines);
+      setTokenFallbackPlainStartLine(restoredSnapshot.tokenFallbackPlainStartLine);
       setPlainLines(restoredSnapshot.plainLines);
       setPlainStartLine(restoredSnapshot.plainStartLine);
       editableSegmentRef.current = restoredSnapshot.editableSegment;
@@ -250,6 +264,8 @@ export function useEditorDocumentLoadEffects({
       }
       restoreCaretToSavedPosition();
     } else {
+      setTokenFallbackPlainLines([]);
+      setTokenFallbackPlainStartLine(0);
       const targetContentScrollTop = 0;
       const targetContentScrollLeft = 0;
       const targetContainerScrollTop = isHugeEditableMode
@@ -381,12 +397,16 @@ export function useEditorDocumentLoadEffects({
     setPlainLines,
     setPlainStartLine,
     setStartLine,
+    setTokenFallbackPlainLines,
+    setTokenFallbackPlainStartLine,
     suppressExternalReloadRef,
     syncInFlightRef,
     syncedTextRef,
     syncVisibleTokens,
     tabId,
     tabLineCount,
+    tokenFallbackPlainLines,
+    tokenFallbackPlainStartLine,
     itemSize,
     contentRef,
     scrollContainerRef,
@@ -430,6 +450,11 @@ export function useEditorDocumentLoadEffects({
         hugeWindowUnlockTimerRef.current = null;
       }
     }
+
+    if (usePlainLineRendering || isHugeEditableMode) {
+      setTokenFallbackPlainLines([]);
+      setTokenFallbackPlainStartLine(0);
+    }
   }, [
     editableSegmentRef,
     hugeWindowFollowScrollOnUnlockRef,
@@ -439,6 +464,8 @@ export function useEditorDocumentLoadEffects({
     setEditableSegment,
     setPlainLines,
     setPlainStartLine,
+    setTokenFallbackPlainLines,
+    setTokenFallbackPlainStartLine,
     usePlainLineRendering,
   ]);
 }
