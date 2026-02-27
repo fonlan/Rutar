@@ -116,6 +116,7 @@ impl Document {
 
 pub struct AppState {
     pub documents: DashMap<String, Document>,
+    pub syntax_request_serials: DashMap<String, u64>,
     startup_paths: Mutex<Vec<String>>,
 }
 
@@ -123,6 +124,7 @@ impl AppState {
     pub fn new(startup_paths: Vec<String>) -> Self {
         Self {
             documents: DashMap::new(),
+            syntax_request_serials: DashMap::new(),
             startup_paths: Mutex::new(startup_paths),
         }
     }

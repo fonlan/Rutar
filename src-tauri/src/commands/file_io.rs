@@ -452,11 +452,13 @@ pub(super) fn get_visible_lines_impl(
 
 pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
     state.documents.remove(&id);
+    state.syntax_request_serials.remove(&id);
 }
 
 pub(super) fn close_files_impl(state: State<'_, AppState>, ids: Vec<String>) {
     for id in ids {
         state.documents.remove(&id);
+        state.syntax_request_serials.remove(&id);
     }
 }
 

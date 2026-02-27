@@ -240,8 +240,9 @@ pub fn get_syntax_tokens(
     id: String,
     start_line: usize,
     end_line: usize,
+    request_serial: Option<u64>,
 ) -> Result<Vec<SyntaxToken>, String> {
-    document::get_syntax_tokens_impl(state, id, start_line, end_line)
+    document::get_syntax_tokens_impl(state, id, start_line, end_line, request_serial)
 }
 
 #[tauri::command]
@@ -250,8 +251,9 @@ pub fn get_syntax_token_lines(
     id: String,
     start_line: usize,
     end_line: usize,
+    request_serial: Option<u64>,
 ) -> Result<Vec<Vec<SyntaxToken>>, String> {
-    document::get_syntax_token_lines_impl(state, id, start_line, end_line)
+    document::get_syntax_token_lines_impl(state, id, start_line, end_line, request_serial)
 }
 
 #[tauri::command]

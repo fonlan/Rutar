@@ -3,6 +3,11 @@ import { useCallback, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EditorSegmentState, SyntaxToken } from './Editor.types';
 
+interface TokenRange {
+  start: number;
+  end: number;
+}
+
 interface UseEditorContentSyncParams {
   maxLineRange: number;
   tabId: string;
@@ -73,6 +78,10 @@ export function useEditorContentSync({
   getEditableText,
 }: UseEditorContentSyncParams) {
   const fallbackPlainRequestVersionRef = useRef(0);
+  const tokenRequestSerialRef = useRef(0);
+  const tokenFetchInFlightRef = useRef(false);
+  const inFlightTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
+  const pendingTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -161,12 +170,18 @@ export function useEditorContentSync({
   );
 
   const fetchTokens = useCallback(
-    async (start: number, end: number, version: number) => {
+    async (
+      start: number,
+      end: number,
+      version: number,
+      requestSerial: number
+    ) => {
       try {
         const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
           id: tabId,
           startLine: start,
           endLine: end,
+          requestSerial,
         });
 
         if (version !== currentRequestVersionRef.current) return;
@@ -210,6 +225,65 @@ export function useEditorContentSync({
       }
     },
     [normalizeLineText, setTokenFallbackPlainLines, setTokenFallbackPlainStartLine, tabId]
+  );
+
+  const enqueueTokenFetch = useCallback(
+    async (start: number, end: number) => {
+      const nextRange = { start, end };
+
+      const isSameRange = (left: TokenRange | null, right: TokenRange) =>
+        !!left && left.start === right.start && left.end === right.end;
+
+      if (tokenFetchInFlightRef.current) {
+        if (
+          isSameRange(inFlightTokenRangeRef.current, nextRange)
+          || isSameRange(pendingTokenRangeRef.current, nextRange)
+        ) {
+          return;
+        }
+
+        pendingTokenRangeRef.current = nextRange;
+        return;
+      }
+
+      tokenFetchInFlightRef.current = true;
+      inFlightTokenRangeRef.current = nextRange;
+      pendingTokenRangeRef.current = null;
+
+      try {
+        let activeRange: TokenRange | null = nextRange;
+        while (activeRange) {
+          const currentRange: TokenRange = activeRange;
+          const version = ++currentRequestVersionRef.current;
+          const requestSerial = ++tokenRequestSerialRef.current;
+          await fetchTokens(currentRange.start, currentRange.end, version, requestSerial);
+
+          const queuedRange: TokenRange | null = pendingTokenRangeRef.current;
+          pendingTokenRangeRef.current = null;
+
+          if (queuedRange !== null) {
+            const nextQueuedRange = queuedRange as TokenRange;
+            const isSameAsCurrent =
+              nextQueuedRange.start === currentRange.start && nextQueuedRange.end === currentRange.end;
+            if (isSameAsCurrent) {
+              activeRange = null;
+              continue;
+            }
+
+            inFlightTokenRangeRef.current = nextQueuedRange;
+            activeRange = nextQueuedRange;
+            continue;
+          }
+
+          activeRange = null;
+        }
+      } finally {
+        tokenFetchInFlightRef.current = false;
+        inFlightTokenRangeRef.current = null;
+        pendingTokenRangeRef.current = null;
+      }
+    },
+    [currentRequestVersionRef, fetchTokens]
   );
 
   const syncVisibleTokens = useCallback(
@@ -256,15 +330,14 @@ export function useEditorContentSync({
         void fetchTokenFallbackPlainLines(start, end);
       }
 
-      const version = ++currentRequestVersionRef.current;
-      await fetchTokens(start, end, version);
+      await enqueueTokenFetch(start, end);
     },
     [
       contentRef,
+      enqueueTokenFetch,
       fetchEditableSegment,
       fetchTokenFallbackPlainLines,
       fetchPlainLines,
-      fetchTokens,
       height,
       hugeWindowFollowScrollOnUnlockRef,
       hugeWindowLockedRef,

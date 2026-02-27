@@ -221,6 +221,40 @@ fn split_tokens_by_line(tokens: Vec<SyntaxToken>) -> Vec<Vec<SyntaxToken>> {
     lines
 }
 
+fn register_syntax_request_serial(
+    state: &AppState,
+    id: &str,
+    request_serial: Option<u64>,
+) -> Option<u64> {
+    let Some(serial) = request_serial else {
+        return None;
+    };
+
+    state
+        .syntax_request_serials
+        .entry(id.to_string())
+        .and_modify(|latest| {
+            if serial > *latest {
+                *latest = serial;
+            }
+        })
+        .or_insert(serial);
+
+    Some(serial)
+}
+
+fn is_syntax_request_stale(state: &AppState, id: &str, request_serial: Option<u64>) -> bool {
+    let Some(serial) = request_serial else {
+        return false;
+    };
+
+    state
+        .syntax_request_serials
+        .get(id)
+        .map(|latest| *latest > serial)
+        .unwrap_or(false)
+}
+
 pub(super) fn get_document_version_impl(
     state: State<'_, AppState>,
     id: String,
@@ -237,8 +271,15 @@ pub(super) fn get_syntax_tokens_impl(
     id: String,
     start_line: usize,
     end_line: usize,
+    request_serial: Option<u64>,
 ) -> Result<Vec<SyntaxToken>, String> {
+    let request_serial = register_syntax_request_serial(&state, &id, request_serial);
+
     if let Some(mut doc) = state.documents.get_mut(&id) {
+        if is_syntax_request_stale(&state, &id, request_serial) {
+            return Ok(Vec::new());
+        }
+
         let len = doc.rope.len_lines();
         let start = start_line.min(len);
         let end = end_line.min(len);
@@ -258,6 +299,9 @@ pub(super) fn get_syntax_tokens_impl(
         }
 
         ensure_document_tree(&mut doc);
+        if is_syntax_request_stale(&state, &id, request_serial) {
+            return Ok(Vec::new());
+        }
 
         if let Some(tree) = doc.tree.as_ref() {
             let mut leaves = Vec::new();
@@ -283,14 +327,19 @@ pub(super) fn get_syntax_token_lines_impl(
     id: String,
     start_line: usize,
     end_line: usize,
+    request_serial: Option<u64>,
 ) -> Result<Vec<Vec<SyntaxToken>>, String> {
-    let tokens = get_syntax_tokens_impl(state, id, start_line, end_line)?;
+    let tokens = get_syntax_tokens_impl(state, id, start_line, end_line, request_serial)?;
     Ok(split_tokens_by_line(tokens))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_tokens_with_gaps, collect_leaf_tokens};
+    use super::{
+        build_tokens_with_gaps, collect_leaf_tokens, is_syntax_request_stale,
+        register_syntax_request_serial,
+    };
+    use crate::state::AppState;
     use ropey::Rope;
     use tree_sitter::Parser;
 
@@ -319,5 +368,31 @@ mod tests {
         assert!(token_types.iter().any(|kind| kind == "key_setting_name"));
         assert!(token_types.iter().any(|kind| kind == "setting_value"));
         assert!(token_types.iter().any(|kind| kind == "comment_text"));
+    }
+
+    #[test]
+    fn syntax_request_serial_should_keep_latest_value() {
+        let state = AppState::new(Vec::new());
+        register_syntax_request_serial(&state, "doc-1", Some(5));
+        register_syntax_request_serial(&state, "doc-1", Some(3));
+        register_syntax_request_serial(&state, "doc-1", Some(8));
+
+        let latest = state
+            .syntax_request_serials
+            .get("doc-1")
+            .map(|value| *value)
+            .expect("latest syntax request serial should exist");
+        assert_eq!(latest, 8);
+    }
+
+    #[test]
+    fn syntax_request_stale_detection_should_compare_against_latest_value() {
+        let state = AppState::new(Vec::new());
+        register_syntax_request_serial(&state, "doc-2", Some(10));
+
+        assert!(is_syntax_request_stale(&state, "doc-2", Some(9)));
+        assert!(!is_syntax_request_stale(&state, "doc-2", Some(10)));
+        assert!(!is_syntax_request_stale(&state, "doc-2", Some(12)));
+        assert!(!is_syntax_request_stale(&state, "doc-2", None));
     }
 }
