@@ -127,6 +127,7 @@ export function useEditorNavigationAndRefreshEffects({
         const columnForCaret = targetCaretColumn;
 
         setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
+        setCursorPosition(tabId, targetLine, columnForCaret);
       };
 
       if (detail.source === 'outline') {
@@ -155,8 +156,13 @@ export function useEditorNavigationAndRefreshEffects({
           return;
         }
 
-        const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
-        const lineNumberElement = lineNumberListRef.current?._outerRef as HTMLDivElement | undefined;
+        const listInstance = listRef.current as { _outerRef?: HTMLDivElement; scrollTo?: (offset: number) => void } | null;
+        const lineNumberListInstance = lineNumberListRef.current as {
+          _outerRef?: HTMLDivElement;
+          scrollTo?: (offset: number) => void;
+        } | null;
+        const listElement = listInstance?._outerRef;
+        const lineNumberElement = lineNumberListInstance?._outerRef;
 
         if (isHugeEditableMode) {
           if (scrollContainerRef.current) {
@@ -166,10 +172,16 @@ export function useEditorNavigationAndRefreshEffects({
           contentRef.current.scrollTop = targetScrollTop;
         }
 
+        if (typeof listInstance?.scrollTo === 'function') {
+          listInstance.scrollTo(targetScrollTop);
+        }
         if (listElement) {
           listElement.scrollTop = targetScrollTop;
         }
 
+        if (typeof lineNumberListInstance?.scrollTo === 'function') {
+          lineNumberListInstance.scrollTo(targetScrollTop);
+        }
         if (lineNumberElement) {
           lineNumberElement.scrollTop = targetScrollTop;
         }

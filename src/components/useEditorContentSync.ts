@@ -218,13 +218,19 @@ export function useEditorContentSync({
         if (version !== fallbackPlainRequestVersionRef.current) return;
         if (!Array.isArray(lines)) return;
 
-        setTokenFallbackPlainLines(lines.map(normalizeLineText));
+        const normalizedLines = lines.map(normalizeLineText);
+        setTokenFallbackPlainLines(normalizedLines);
         setTokenFallbackPlainStartLine(start);
       } catch (error) {
         console.error('Fetch token fallback lines error:', error);
       }
     },
-    [normalizeLineText, setTokenFallbackPlainLines, setTokenFallbackPlainStartLine, tabId]
+    [
+      normalizeLineText,
+      setTokenFallbackPlainLines,
+      setTokenFallbackPlainStartLine,
+      tabId,
+    ]
   );
 
   const enqueueTokenFetch = useCallback(

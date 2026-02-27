@@ -375,44 +375,7 @@ export function useEditorDocumentLoadEffects({
         hugeWindowUnlockTimerRef.current = null;
       }
     };
-  }, [
-    editableSegmentRef,
-    editTimeoutRef,
-    getEditableText,
-    hugeWindowFollowScrollOnUnlockRef,
-    hugeWindowLockedRef,
-    hugeWindowUnlockTimerRef,
-    initializedRef,
-    isHugeEditableMode,
-    lastKnownContainerScrollLeftRef,
-    lastKnownContainerScrollTopRef,
-    lastKnownContentScrollLeftRef,
-    lastKnownContentScrollTopRef,
-    loadTextFromBackend,
-    pendingRestoreScrollTopRef,
-    pendingSyncRequestedRef,
-    requestTimeoutRef,
-    setInputLayerText,
-    setCaretToLineColumn,
-    setEditableSegment,
-    setLineTokens,
-    setPlainLines,
-    setPlainStartLine,
-    setStartLine,
-    setTokenFallbackPlainLines,
-    setTokenFallbackPlainStartLine,
-    suppressExternalReloadRef,
-    syncInFlightRef,
-    syncedTextRef,
-    syncVisibleTokens,
-    tabId,
-    tabLineCount,
-    tokenFallbackPlainLines,
-    tokenFallbackPlainStartLine,
-    itemSize,
-    contentRef,
-    scrollContainerRef,
-  ]);
+  }, [tabId]);
 
   useEffect(() => {
     if (!initializedRef.current) {

@@ -124,7 +124,9 @@ export function useEditorVisibleItemsRendered({
           : isFastScrollJump
           ? Math.min(normalFileFetchDebounceMs, largeFileFetchDebounceMs)
           : normalFileFetchDebounceMs;
-        const syncStart = Math.max(0, visibleStartIndex - adaptiveExtraBuffer);
+        const syncStart = isFastScrollJump
+          ? visibleStartIndex
+          : Math.max(0, visibleStartIndex - adaptiveExtraBuffer);
         const syncStop = Math.max(syncStart, Math.min(tabLineCount - 1, visibleStopIndex + adaptiveExtraBuffer));
         requestTimeoutRef.current = setTimeout(
           () => syncVisibleTokens(tabLineCount, {
