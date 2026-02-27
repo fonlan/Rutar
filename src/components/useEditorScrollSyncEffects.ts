@@ -88,6 +88,10 @@ export function useEditorScrollSyncEffects({
             listEl.scrollLeft = targetLeft;
           }
 
+          if (canClampHorizontal && Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
+            scrollElement.scrollLeft = targetLeft;
+          }
+
           updateLastKnownScrollOffsets();
           return;
         }
@@ -108,8 +112,9 @@ export function useEditorScrollSyncEffects({
           scrollElement.scrollTop = targetTop;
         }
 
-        // Keep input-layer horizontal scroll as source of truth.
-        // Avoid snapping it back based on backdrop width.
+        if (canClampHorizontal && Math.abs(scrollElement.scrollLeft - targetLeft) > 0.001) {
+          scrollElement.scrollLeft = targetLeft;
+        }
       }
     }
     updateLastKnownScrollOffsets();
