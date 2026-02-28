@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, FileCode2, FileJson, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -227,6 +227,7 @@ function TreeNodeItem({
   level,
   activeTabId,
   treeExpandSignal,
+  initialExpanded,
 }: {
   node: OutlineNode;
   level: number;
@@ -235,13 +236,22 @@ function TreeNodeItem({
     version: number;
     expanded: boolean;
   };
+  initialExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(initialExpanded ?? true);
+  const [childrenInitialExpanded, setChildrenInitialExpanded] = useState(initialExpanded ?? true);
+  const appliedExpandSignalVersionRef = useRef(treeExpandSignal.version);
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded;
 
   useEffect(() => {
+    if (treeExpandSignal.version === appliedExpandSignalVersionRef.current) {
+      return;
+    }
+
+    appliedExpandSignalVersionRef.current = treeExpandSignal.version;
     setExpanded(treeExpandSignal.expanded);
+    setChildrenInitialExpanded(treeExpandSignal.expanded);
   }, [treeExpandSignal.version, treeExpandSignal.expanded]);
 
   const handleSelectNode = () => {
@@ -254,7 +264,12 @@ function TreeNodeItem({
       return;
     }
 
-    setExpanded((value) => !value);
+    const nextExpanded = !expanded;
+    if (nextExpanded) {
+      // Manually expanding a node should reveal only its direct children.
+      setChildrenInitialExpanded(false);
+    }
+    setExpanded(nextExpanded);
   };
 
   return (
@@ -312,6 +327,7 @@ function TreeNodeItem({
               level={level + 1}
               activeTabId={activeTabId}
               treeExpandSignal={treeExpandSignal}
+              initialExpanded={childrenInitialExpanded}
             />
           ))
         : null}

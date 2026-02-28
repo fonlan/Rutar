@@ -33,7 +33,15 @@ function createOutlineNodes(): OutlineNode[] {
           nodeType: "key",
           line: 2,
           column: 3,
-          children: [],
+          children: [
+            {
+              label: "Grandchild",
+              nodeType: "key",
+              line: 3,
+              column: 5,
+              children: [],
+            },
+          ],
         },
       ],
     },
@@ -134,6 +142,27 @@ describe("OutlineSidebar", () => {
     fireEvent.click(screen.getByText("Leaf"));
 
     expect(dispatchNavigateMock).toHaveBeenCalledWith("tab-outline", 8, 2);
+  });
+
+  it("expands only one level when toggling a collapsed node", async () => {
+    render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
+
+    const rootRow = screen.getByText("Root").closest("div");
+    expect(rootRow).not.toBeNull();
+    const rootToggle = rootRow?.querySelector("span.w-4.h-4.flex.items-center.justify-center");
+    expect(rootToggle).not.toBeNull();
+
+    fireEvent.click(rootToggle as HTMLSpanElement);
+    await waitFor(() => {
+      expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(rootToggle as HTMLSpanElement);
+    await waitFor(() => {
+      expect(screen.getByText("Child")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Grandchild")).not.toBeInTheDocument();
   });
 
   it("closes sidebar and prevents default context menu", () => {
