@@ -146,6 +146,42 @@ describe("OutlineSidebar", () => {
     expect(dispatchNavigateMock).toHaveBeenCalledWith("tab-outline", 8, 2);
   });
 
+  it("supports expanding and collapsing all descendants from node context menu", async () => {
+    render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse All" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    });
+
+    const rootRow = screen.getByRole("button", { name: "Root" });
+    fireEvent.contextMenu(rootRow, { clientX: 120, clientY: 140 });
+    fireEvent.click(screen.getByRole("button", { name: "Expand all child nodes" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Child")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Grandchild")).toBeInTheDocument();
+
+    fireEvent.contextMenu(rootRow, { clientX: 140, clientY: 160 });
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all child nodes" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Child")).not.toBeInTheDocument();
+      expect(screen.queryByText("Grandchild")).not.toBeInTheDocument();
+    });
+  });
+
+  it("disables node context menu subtree actions for leaf nodes", () => {
+    render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
+
+    const leafRow = screen.getByRole("button", { name: "Leaf" });
+    fireEvent.contextMenu(leafRow, { clientX: 220, clientY: 200 });
+
+    expect(screen.getByRole("button", { name: "Expand all child nodes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Collapse all child nodes" })).toBeDisabled();
+  });
+
   it("expands only one level when toggling a collapsed node", async () => {
     render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
 

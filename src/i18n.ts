@@ -87,6 +87,8 @@ export type I18nKey =
   | 'outline.searchClear'
   | 'outline.expandAll'
   | 'outline.collapseAll'
+  | 'outline.expandNodeChildrenAll'
+  | 'outline.collapseNodeChildrenAll'
   | 'outline.unsupportedType'
   | 'outline.parseFailed'
   | 'settings.title'
@@ -322,6 +324,8 @@ const zhCN: Messages = {
   'outline.searchClear': '清除搜索',
   'outline.expandAll': '展开全部',
   'outline.collapseAll': '收起全部',
+  'outline.expandNodeChildrenAll': '展开所有子节点',
+  'outline.collapseNodeChildrenAll': '收起所有子节点',
   'outline.unsupportedType': '当前标签页不是 JSON / YAML / XML / TOML / INI / Python / JavaScript / TypeScript / C / C++ / Go / Java / Rust / C# / PHP / Kotlin / Swift 文件，无法打开大纲。',
   'outline.parseFailed': '无法解析当前文件：',
   'settings.title': '设置',
@@ -556,6 +560,8 @@ const enUS: Messages = {
   'outline.searchClear': 'Clear search',
   'outline.expandAll': 'Expand All',
   'outline.collapseAll': 'Collapse All',
+  'outline.expandNodeChildrenAll': 'Expand all child nodes',
+  'outline.collapseNodeChildrenAll': 'Collapse all child nodes',
   'outline.unsupportedType': 'The active tab is not JSON, YAML, XML, TOML, INI, Python, JavaScript, TypeScript, C, C++, Go, Java, Rust, C#, PHP, Kotlin, or Swift. Cannot open outline.',
   'outline.parseFailed': 'Failed to parse active file:',
   'settings.title': 'Settings',

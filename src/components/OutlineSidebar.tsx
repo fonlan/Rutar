@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, FileCode2, FileJson, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,23 @@ import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 const OUTLINE_MIN_WIDTH = 160;
 const OUTLINE_MAX_WIDTH = 720;
 type TreeExpandMode = 'all' | 'collapsed' | 'first-level';
+
+interface TreeExpandSignal {
+  version: number;
+  mode: TreeExpandMode | 'subtree-all' | 'subtree-collapsed';
+  targetNodePath?: string;
+}
+
+interface OutlineNodeContextMenuState {
+  x: number;
+  y: number;
+  nodePath: string;
+  hasChildren: boolean;
+}
+
+const OUTLINE_NODE_CONTEXT_MENU_WIDTH = 128;
+const OUTLINE_NODE_CONTEXT_MENU_HEIGHT = 100;
+const OUTLINE_NODE_CONTEXT_MENU_PADDING = 8;
 
 function getNodeIcon(nodeType: string) {
   if (nodeType === 'object' || nodeType === 'array' || nodeType === 'element') {
@@ -36,13 +53,12 @@ export function OutlineSidebar({
   const setOutlineWidth = useStore((state) => state.setOutlineWidth);
   const [searchValue, setSearchValue] = useState('');
   const [filteredNodes, setFilteredNodes] = useState<OutlineNode[]>(nodes);
-  const [treeExpandSignal, setTreeExpandSignal] = useState<{
-    version: number;
-    mode: TreeExpandMode;
-  }>({
+  const [treeExpandSignal, setTreeExpandSignal] = useState<TreeExpandSignal>({
     version: 0,
     mode: 'first-level',
   });
+  const [nodeContextMenu, setNodeContextMenu] = useState<OutlineNodeContextMenuState | null>(null);
+  const nodeContextMenuRef = useRef<HTMLDivElement | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
     width: outlineWidth,
@@ -100,14 +116,82 @@ export function OutlineSidebar({
   const searchClearLabel = tr('outline.searchClear');
   const expandAllLabel = tr('outline.expandAll');
   const collapseAllLabel = tr('outline.collapseAll');
+  const expandNodeChildrenAllLabel = tr('outline.expandNodeChildrenAll');
+  const collapseNodeChildrenAllLabel = tr('outline.collapseNodeChildrenAll');
   const treeActionDisabled = Boolean(parseError) || filteredNodes.length === 0;
 
-  const setTreeExpandMode = (mode: TreeExpandMode) => {
+  const setTreeExpandMode = (mode: TreeExpandSignal['mode'], targetNodePath?: string) => {
     setTreeExpandSignal((state) => ({
       version: state.version + 1,
       mode,
+      targetNodePath,
     }));
   };
+
+  const handleNodeContextMenu = (
+    event: ReactMouseEvent<HTMLDivElement>,
+    nodePath: string,
+    hasChildren: boolean
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const boundedX = Math.min(
+      event.clientX,
+      window.innerWidth - OUTLINE_NODE_CONTEXT_MENU_WIDTH - OUTLINE_NODE_CONTEXT_MENU_PADDING
+    );
+    const boundedY = Math.min(
+      event.clientY,
+      window.innerHeight - OUTLINE_NODE_CONTEXT_MENU_HEIGHT - OUTLINE_NODE_CONTEXT_MENU_PADDING
+    );
+
+    setNodeContextMenu({
+      x: Math.max(OUTLINE_NODE_CONTEXT_MENU_PADDING, boundedX),
+      y: Math.max(OUTLINE_NODE_CONTEXT_MENU_PADDING, boundedY),
+      nodePath,
+      hasChildren,
+    });
+  };
+
+  useEffect(() => {
+    if (!nodeContextMenu) {
+      return;
+    }
+
+    const handleWindowPointerDown = (event: PointerEvent) => {
+      if (
+        nodeContextMenuRef.current
+        && event.target instanceof Node
+        && nodeContextMenuRef.current.contains(event.target)
+      ) {
+        return;
+      }
+
+      setNodeContextMenu(null);
+    };
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      setNodeContextMenu(null);
+    };
+
+    const handleWindowBlur = () => {
+      setNodeContextMenu(null);
+    };
+
+    window.addEventListener('pointerdown', handleWindowPointerDown);
+    window.addEventListener('keydown', handleWindowKeyDown);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('pointerdown', handleWindowPointerDown);
+      window.removeEventListener('keydown', handleWindowKeyDown);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [nodeContextMenu]);
 
   useEffect(() => {
     if (normalizedSearchValue) {
@@ -120,8 +204,14 @@ export function OutlineSidebar({
     setTreeExpandSignal((state) => ({
       version: state.version + 1,
       mode: 'first-level',
+      targetNodePath: undefined,
     }));
+    setNodeContextMenu(null);
   }, [activeTabId, activeType]);
+
+  useEffect(() => {
+    setNodeContextMenu(null);
+  }, [nodes, normalizedSearchValue, parseError]);
 
   if (!outlineOpen) {
     return null;
@@ -209,11 +299,60 @@ export function OutlineSidebar({
               node={node}
               level={0}
               activeTabId={activeTabId}
+              nodePath={`${index}`}
               treeExpandSignal={treeExpandSignal}
+              onNodeContextMenu={handleNodeContextMenu}
             />
           ))
         )}
       </div>
+
+      {nodeContextMenu ? (
+        <div
+          ref={nodeContextMenuRef}
+          data-testid="outline-node-context-menu"
+          className="fixed z-[75] rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          style={{
+            left: nodeContextMenu.x,
+            top: nodeContextMenu.y,
+            width: `${OUTLINE_NODE_CONTEXT_MENU_WIDTH}px`,
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+          }}
+        >
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!nodeContextMenu.hasChildren}
+            onClick={() => {
+              if (!nodeContextMenu.hasChildren) {
+                return;
+              }
+
+              setTreeExpandMode('subtree-all', nodeContextMenu.nodePath);
+              setNodeContextMenu(null);
+            }}
+          >
+            {expandNodeChildrenAllLabel}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!nodeContextMenu.hasChildren}
+            onClick={() => {
+              if (!nodeContextMenu.hasChildren) {
+                return;
+              }
+
+              setTreeExpandMode('subtree-collapsed', nodeContextMenu.nodePath);
+              setNodeContextMenu(null);
+            }}
+          >
+            {collapseNodeChildrenAllLabel}
+          </button>
+        </div>
+      ) : null}
 
       <div
         role="separator"
@@ -233,16 +372,21 @@ function TreeNodeItem({
   node,
   level,
   activeTabId,
+  nodePath,
   treeExpandSignal,
+  onNodeContextMenu,
   initialExpanded,
 }: {
   node: OutlineNode;
   level: number;
   activeTabId: string | null;
-  treeExpandSignal: {
-    version: number;
-    mode: TreeExpandMode;
-  };
+  nodePath: string;
+  treeExpandSignal: TreeExpandSignal;
+  onNodeContextMenu: (
+    event: ReactMouseEvent<HTMLDivElement>,
+    nodePath: string,
+    hasChildren: boolean
+  ) => void;
   initialExpanded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(initialExpanded ?? level === 0);
@@ -269,9 +413,43 @@ function TreeNodeItem({
       return;
     }
 
+    if (treeExpandSignal.mode === 'subtree-all') {
+      const targetPath = treeExpandSignal.targetNodePath;
+      if (!targetPath) {
+        return;
+      }
+
+      if (nodePath === targetPath || nodePath.startsWith(`${targetPath}.`)) {
+        setExpanded(true);
+        setChildrenInitialExpanded(true);
+      }
+
+      return;
+    }
+
+    if (treeExpandSignal.mode === 'subtree-collapsed') {
+      const targetPath = treeExpandSignal.targetNodePath;
+      if (!targetPath) {
+        return;
+      }
+
+      if (nodePath === targetPath) {
+        setExpanded(false);
+        setChildrenInitialExpanded(false);
+        return;
+      }
+
+      if (nodePath.startsWith(`${targetPath}.`)) {
+        setExpanded(false);
+        setChildrenInitialExpanded(false);
+      }
+
+      return;
+    }
+
     setExpanded(level === 0);
     setChildrenInitialExpanded(false);
-  }, [level, treeExpandSignal.version, treeExpandSignal.mode]);
+  }, [level, nodePath, treeExpandSignal.mode, treeExpandSignal.targetNodePath, treeExpandSignal.version]);
 
   const handleSelectNode = () => {
     if (activeTabId) {
@@ -310,6 +488,9 @@ function TreeNodeItem({
         role="button"
         tabIndex={0}
         aria-label={node.label}
+        onContextMenu={(event) => {
+          onNodeContextMenu(event, nodePath, hasChildren);
+        }}
       >
         <span
           className="w-4 h-4 flex items-center justify-center"
@@ -345,7 +526,9 @@ function TreeNodeItem({
               node={child}
               level={level + 1}
               activeTabId={activeTabId}
+              nodePath={`${nodePath}.${index}`}
               treeExpandSignal={treeExpandSignal}
+              onNodeContextMenu={onNodeContextMenu}
               initialExpanded={childrenInitialExpanded}
             />
           ))
