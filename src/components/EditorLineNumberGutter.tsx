@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import type { MutableRefObject, MouseEvent, WheelEvent } from 'react';
 import { VariableSizeList as List } from 'react-window';
 
@@ -48,6 +49,65 @@ export function EditorLineNumberGutter({
   onLineNumberClick,
   onLineNumberContextMenu,
 }: EditorLineNumberGutterProps) {
+  const dragAnchorLineRef = useRef<number | null>(null);
+  const dragLastLineRef = useRef<number | null>(null);
+  const suppressNextClickRef = useRef(false);
+
+  const endLineNumberDrag = useCallback(() => {
+    dragAnchorLineRef.current = null;
+    dragLastLineRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const handleWindowMouseUp = () => {
+      endLineNumberDrag();
+    };
+    const handleWindowBlur = () => {
+      endLineNumberDrag();
+      suppressNextClickRef.current = false;
+    };
+
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [endLineNumberDrag]);
+
+  const beginLineNumberDrag = useCallback(
+    (lineNumber: number) => {
+      dragAnchorLineRef.current = lineNumber;
+      dragLastLineRef.current = lineNumber;
+      suppressNextClickRef.current = false;
+      onLineNumberClick(lineNumber, false, false);
+    },
+    [onLineNumberClick]
+  );
+
+  const updateLineNumberDrag = useCallback(
+    (lineNumber: number) => {
+      const anchorLine = dragAnchorLineRef.current;
+      if (anchorLine === null) {
+        return;
+      }
+
+      if (dragLastLineRef.current === lineNumber) {
+        return;
+      }
+
+      dragLastLineRef.current = lineNumber;
+
+      if (lineNumber !== anchorLine) {
+        suppressNextClickRef.current = true;
+      }
+
+      onLineNumberClick(lineNumber, true, false);
+    },
+    [onLineNumberClick]
+  );
+
   if (!visible || width <= 0 || height <= 0) {
     return null;
   }
@@ -103,6 +163,30 @@ export function EditorLineNumberGutter({
               onMouseDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
+
+                if (event.button !== 0) {
+                  return;
+                }
+
+                const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
+                beginLineNumberDrag(lineNumber);
+              }}
+              onMouseOver={(event) => {
+                if (!dragAnchorLineRef.current) {
+                  return;
+                }
+
+                const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
+                updateLineNumberDrag(lineNumber);
+              }}
+              onMouseUp={(event) => {
+                if (event.button !== 0 || dragAnchorLineRef.current === null) {
+                  return;
+                }
+
+                const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
+                updateLineNumberDrag(lineNumber);
+                endLineNumberDrag();
               }}
               onClick={(event) => {
                 event.preventDefault();
@@ -110,7 +194,13 @@ export function EditorLineNumberGutter({
                 const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
 
                 if (event.detail === 2) {
+                  suppressNextClickRef.current = false;
                   onLineNumberDoubleClick(lineNumber);
+                  return;
+                }
+
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false;
                   return;
                 }
 

@@ -134,6 +134,19 @@ async function clickLineNumber(
   fireEvent.click(lineElement as Element, options ?? {});
 }
 
+async function getLineNumberElement(container: HTMLElement, lineNumber: number) {
+  await waitFor(() => {
+    expect(container.querySelectorAll('div.cursor-pointer.select-none').length).toBeGreaterThan(0);
+  });
+
+  const lineElement = Array.from(container.querySelectorAll('div.cursor-pointer.select-none')).find(
+    (element) => element.textContent === String(lineNumber)
+  );
+  expect(lineElement).toBeTruthy();
+
+  return lineElement as Element;
+}
+
 async function openLineNumberContextMenu(
   container: HTMLElement,
   lineNumber: number,
@@ -1450,6 +1463,37 @@ describe('Editor component', () => {
     });
   });
 
+  it('selects crossed lines when dragging on line-number gutter', async () => {
+    const tab = createTab({ id: 'tab-line-number-drag-select', lineCount: 10 });
+    const multilineText = 'one\ntwo\nthree\nfour\nfive\n';
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_visible_lines') {
+        return multilineText;
+      }
+      if (command === 'get_visible_lines_chunk') {
+        return ['one', 'two', 'three', 'four', 'five'];
+      }
+
+      return defaultInvokeImpl ? defaultInvokeImpl(command, payload) : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+    const lineTwo = await getLineNumberElement(container, 2);
+
+    fireEvent.mouseDown(lineTwo, { button: 0, buttons: 1 });
+    const lineFour = await getLineNumberElement(container, 4);
+    fireEvent.mouseOver(lineFour, { buttons: 1 });
+    fireEvent.mouseUp(lineFour, { button: 0 });
+
+    await waitFor(() => {
+      const selectedText = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd);
+      expect(selectedText).toBe('two\nthree\nfour\n');
+    });
+  });
+
   it('uses preventScroll when first-click focusing from line number gutter', async () => {
     const tab = createTab({ id: 'tab-line-number-first-click-prevent-scroll', lineCount: 8 });
     const { container } = render(<Editor tab={tab} />);
@@ -1477,7 +1521,9 @@ describe('Editor component', () => {
   it('prevents default and propagation on line-number mouse down', async () => {
     const tab = createTab({ id: 'tab-line-number-mousedown', lineCount: 8 });
     const { container } = render(<Editor tab={tab} />);
-    await clickLineNumber(container, 1);
+    await waitFor(() => {
+      expect(container.querySelectorAll('div.cursor-pointer.select-none').length).toBeGreaterThan(0);
+    });
 
     const lineOne = Array.from(container.querySelectorAll('div.cursor-pointer.select-none')).find(
       (element) => element.textContent === '1'
@@ -1487,6 +1533,7 @@ describe('Editor component', () => {
     const mouseDownEvent = new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
+      button: 2,
     });
     lineOne?.dispatchEvent(mouseDownEvent);
 
