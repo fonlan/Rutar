@@ -9,6 +9,7 @@ import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
 const OUTLINE_MIN_WIDTH = 160;
 const OUTLINE_MAX_WIDTH = 720;
+type TreeExpandMode = 'all' | 'collapsed' | 'first-level';
 
 function getNodeIcon(nodeType: string) {
   if (nodeType === 'object' || nodeType === 'array' || nodeType === 'element') {
@@ -35,7 +36,13 @@ export function OutlineSidebar({
   const setOutlineWidth = useStore((state) => state.setOutlineWidth);
   const [searchValue, setSearchValue] = useState('');
   const [filteredNodes, setFilteredNodes] = useState<OutlineNode[]>(nodes);
-  const [treeExpandSignal, setTreeExpandSignal] = useState({ version: 0, expanded: true });
+  const [treeExpandSignal, setTreeExpandSignal] = useState<{
+    version: number;
+    mode: TreeExpandMode;
+  }>({
+    version: 0,
+    mode: 'first-level',
+  });
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
   const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
     width: outlineWidth,
@@ -95,16 +102,16 @@ export function OutlineSidebar({
   const collapseAllLabel = tr('outline.collapseAll');
   const treeActionDisabled = Boolean(parseError) || filteredNodes.length === 0;
 
-  const setTreeExpanded = (expanded: boolean) => {
+  const setTreeExpandMode = (mode: TreeExpandMode) => {
     setTreeExpandSignal((state) => ({
       version: state.version + 1,
-      expanded,
+      mode,
     }));
   };
 
   useEffect(() => {
     if (normalizedSearchValue) {
-      setTreeExpanded(true);
+      setTreeExpandMode('all');
     }
   }, [normalizedSearchValue]);
 
@@ -112,7 +119,7 @@ export function OutlineSidebar({
     setSearchValue('');
     setTreeExpandSignal((state) => ({
       version: state.version + 1,
-      expanded: true,
+      mode: 'first-level',
     }));
   }, [activeTabId, activeType]);
 
@@ -172,7 +179,7 @@ export function OutlineSidebar({
           aria-label={expandAllLabel}
           disabled={treeActionDisabled}
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-          onClick={() => setTreeExpanded(true)}
+          onClick={() => setTreeExpandMode('all')}
         >
           <ChevronsDown className="h-3.5 w-3.5" />
         </button>
@@ -182,7 +189,7 @@ export function OutlineSidebar({
           aria-label={collapseAllLabel}
           disabled={treeActionDisabled}
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-input bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-          onClick={() => setTreeExpanded(false)}
+          onClick={() => setTreeExpandMode('collapsed')}
         >
           <ChevronsUp className="h-3.5 w-3.5" />
         </button>
@@ -234,12 +241,12 @@ function TreeNodeItem({
   activeTabId: string | null;
   treeExpandSignal: {
     version: number;
-    expanded: boolean;
+    mode: TreeExpandMode;
   };
   initialExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(initialExpanded ?? true);
-  const [childrenInitialExpanded, setChildrenInitialExpanded] = useState(initialExpanded ?? true);
+  const [expanded, setExpanded] = useState(initialExpanded ?? level === 0);
+  const [childrenInitialExpanded, setChildrenInitialExpanded] = useState(initialExpanded ?? false);
   const appliedExpandSignalVersionRef = useRef(treeExpandSignal.version);
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded;
@@ -250,9 +257,21 @@ function TreeNodeItem({
     }
 
     appliedExpandSignalVersionRef.current = treeExpandSignal.version;
-    setExpanded(treeExpandSignal.expanded);
-    setChildrenInitialExpanded(treeExpandSignal.expanded);
-  }, [treeExpandSignal.version, treeExpandSignal.expanded]);
+    if (treeExpandSignal.mode === 'all') {
+      setExpanded(true);
+      setChildrenInitialExpanded(true);
+      return;
+    }
+
+    if (treeExpandSignal.mode === 'collapsed') {
+      setExpanded(false);
+      setChildrenInitialExpanded(false);
+      return;
+    }
+
+    setExpanded(level === 0);
+    setChildrenInitialExpanded(false);
+  }, [level, treeExpandSignal.version, treeExpandSignal.mode]);
 
   const handleSelectNode = () => {
     if (activeTabId) {

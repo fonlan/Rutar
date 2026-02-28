@@ -128,6 +128,7 @@ describe("OutlineSidebar", () => {
     render(<OutlineSidebar nodes={createOutlineNodes()} activeType="json" parseError={null} />);
 
     expect(screen.getByText("Child")).toBeInTheDocument();
+    expect(screen.queryByText("Grandchild")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse All" }));
     await waitFor(() => {
@@ -138,6 +139,7 @@ describe("OutlineSidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Child")).toBeInTheDocument();
     });
+    expect(screen.getByText("Grandchild")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Leaf"));
 
