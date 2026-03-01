@@ -1549,6 +1549,75 @@ describe('App component', () => {
     }
   });
 
+  it('acknowledges deleted file after confirmed reload failure and prevents prompt loop', async () => {
+    const fileTab = createFileTab({
+      id: 'tab-external-change-reload-missing-file',
+      isDirty: true,
+    });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+
+      return () => undefined;
+    });
+
+    let hasExternalChange = true;
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => hasExternalChange,
+        reload_file_from_disk: async () => {
+          throw new Error('reload-external-file-failed');
+        },
+        path_exists: async () => false,
+        acknowledge_external_file_change: async () => {
+          hasExternalChange = false;
+        },
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('path_exists', { path: fileTab.path });
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith('acknowledge_external_file_change', {
+          id: fileTab.id,
+        });
+      });
+
+      expect(externalChangedHandler).toBeTruthy();
+
+      act(() => {
+        externalChangedHandler?.({ payload: { id: fileTab.id } });
+      });
+
+      await waitFor(() => {
+        expect(
+          vi
+            .mocked(invoke)
+            .mock.calls.filter(([command]) => command === 'has_external_file_change').length
+        ).toBeGreaterThanOrEqual(2);
+      });
+
+      expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(invoke).mock.calls.filter(([command]) => command === 'reload_file_from_disk')
+      ).toHaveLength(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('logs error when external file reload fails after confirmation', async () => {
     const fileTab = createFileTab({
       id: 'tab-external-change-reload-failed',

@@ -480,6 +480,14 @@ function App() {
         return;
       }
 
+      const acknowledgeExternalChange = async () => {
+        try {
+          await invoke('acknowledge_external_file_change', { id: latestTab.id });
+        } catch (error) {
+          console.error(`Failed to acknowledge external change: ${latestTab.path}`, error);
+        }
+      };
+
       const fileName = latestTab.name || latestTab.path;
       const promptText = t(latestState.settings.language, 'app.externalFileChanged.prompt')
         .replace('{fileName}', fileName);
@@ -520,16 +528,24 @@ function App() {
           dispatchDocumentUpdated(latestTab.id);
         } catch (error) {
           console.error(`Failed to reload changed file: ${latestTab.path}`, error);
+
+          let fileMissingAfterReloadFailure = false;
+          try {
+            const fileExists = await invoke<boolean>('path_exists', { path: latestTab.path });
+            fileMissingAfterReloadFailure = fileExists === false;
+          } catch (pathExistsError) {
+            console.error(`Failed to check changed file existence: ${latestTab.path}`, pathExistsError);
+          }
+
+          if (fileMissingAfterReloadFailure) {
+            await acknowledgeExternalChange();
+          }
         }
 
         return;
       }
 
-      try {
-        await invoke('acknowledge_external_file_change', { id: latestTab.id });
-      } catch (error) {
-        console.error(`Failed to acknowledge external change: ${latestTab.path}`, error);
-      }
+      await acknowledgeExternalChange();
     } finally {
       externalChangeCheckingTabIdsRef.current.delete(snapshotTab.id);
     }
