@@ -55,6 +55,11 @@ function getReactOnClick(button: HTMLButtonElement): (() => void) | undefined {
   return propsKey ? (button as any)[propsKey]?.onClick : undefined;
 }
 
+function getReactStyle(element: HTMLElement): Record<string, unknown> | undefined {
+  const propsKey = Object.keys(element as object).find((key) => key.startsWith("__reactProps$"));
+  return propsKey ? (element as any)[propsKey]?.style : undefined;
+}
+
 function getRenderedTabLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll("div.group.flex.items-center span.truncate"))
     .map((element) => (element.textContent ?? "").replace(/\*$/, ""));
@@ -612,6 +617,27 @@ describe("TitleBar", () => {
     await waitFor(() => {
       expect(clipboardWriteTextMock).toHaveBeenCalledWith("main.rs");
     });
+  });
+
+  it("marks tab context menu as no-drag to keep menu actions clickable", async () => {
+    const tab = createTab({ id: "tab-contextmenu-no-drag", name: "main.rs", path: "C:\\repo\\src\\main.rs" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<TitleBar />);
+
+    fireEvent.contextMenu(screen.getByText("main.rs"), {
+      clientX: 121,
+      clientY: 81,
+    });
+
+    const copyFileNameButton = await screen.findByRole("button", { name: "Copy File Name" });
+    const menuRoot = copyFileNameButton.parentElement as HTMLDivElement | null;
+    expect(menuRoot).not.toBeNull();
+    const reactStyle = menuRoot ? getReactStyle(menuRoot) : undefined;
+    expect(reactStyle?.WebkitAppRegion).toBe("no-drag");
   });
 
   it("copies parent directory from tab context menu", async () => {

@@ -1071,7 +1071,7 @@ export function TitleBar() {
                 <div
                     ref={tabContextMenuRef}
                     className="fixed z-[80] min-w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
-                    style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+                    style={{ ...noDragStyle, left: tabContextMenu.x, top: tabContextMenu.y }}
                 >
                     <div className="px-3 py-1 text-[11px] text-muted-foreground">
                         {compareSourceHintLabel}
