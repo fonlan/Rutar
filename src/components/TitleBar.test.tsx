@@ -9,6 +9,8 @@ const tauriWindowMocks = vi.hoisted(() => {
     appWindow: {
       minimize: vi.fn(async () => undefined),
       toggleMaximize: vi.fn(async () => undefined),
+      isMaximized: vi.fn(async () => false),
+      onResized: vi.fn(async (_handler: (event: unknown) => void) => () => undefined),
       close: vi.fn(async () => undefined),
       isAlwaysOnTop: vi.fn(async () => false),
       setAlwaysOnTop: vi.fn(async () => undefined),
@@ -85,6 +87,8 @@ describe("TitleBar", () => {
       },
     });
     invokeMock.mockResolvedValue(undefined);
+    tauriWindowMocks.appWindow.isMaximized.mockResolvedValue(false);
+    tauriWindowMocks.appWindow.onResized.mockResolvedValue(() => undefined);
     tauriWindowMocks.appWindow.isAlwaysOnTop.mockResolvedValue(false);
   });
 
@@ -238,25 +242,52 @@ describe("TitleBar", () => {
       activeTabId: tab.id,
     });
 
-    const { container } = render(<TitleBar />);
+    render(<TitleBar />);
 
-    const minimizeButton = container.querySelector(".lucide-minus")?.closest("button");
-    const maximizeButton = container.querySelector(".lucide-square")?.closest("button");
-    expect(minimizeButton).not.toBeNull();
-    expect(maximizeButton).not.toBeNull();
+    const minimizeButton = await screen.findByRole("button", { name: "Minimize window" });
+    const maximizeButton = screen.getByRole("button", { name: "Maximize window" });
+    const closeButton = screen.getByRole("button", { name: "Close window" });
 
-    const closeButton = maximizeButton?.nextElementSibling as HTMLButtonElement | null;
-    expect(closeButton).not.toBeNull();
-
-    fireEvent.click(minimizeButton as HTMLButtonElement);
-    fireEvent.click(maximizeButton as HTMLButtonElement);
-    fireEvent.click(closeButton as HTMLButtonElement);
+    fireEvent.click(minimizeButton);
+    fireEvent.click(maximizeButton);
+    fireEvent.click(closeButton);
 
     await waitFor(() => {
       expect(tauriWindowMocks.appWindow.minimize).toHaveBeenCalledTimes(1);
       expect(tauriWindowMocks.appWindow.toggleMaximize).toHaveBeenCalledTimes(1);
       expect(tauriWindowMocks.appWindow.close).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("shows restore button state when window is maximized", async () => {
+    const tab = createTab({ id: "tab-window-maximized", name: "window-maximized.ts", path: "C:\\repo\\window-maximized.ts" });
+    const resizeHandlers: Array<(event: unknown) => void> = [];
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    tauriWindowMocks.appWindow.isMaximized.mockResolvedValueOnce(true);
+    tauriWindowMocks.appWindow.onResized.mockImplementationOnce(
+      async (handler: (event: unknown) => void) => {
+        resizeHandlers.push(handler);
+        return () => undefined;
+      }
+    );
+
+    const { container } = render(<TitleBar />);
+
+    await screen.findByRole("button", { name: "Restore window" });
+    const restoreIcon = container.querySelector(".lucide-copy");
+    expect(restoreIcon).not.toBeNull();
+    expect(restoreIcon).toHaveClass("-scale-x-100");
+
+    tauriWindowMocks.appWindow.isMaximized.mockResolvedValueOnce(false);
+    await act(async () => {
+      resizeHandlers[0]?.({ payload: { width: 1920, height: 1080 } });
+      await Promise.resolve();
+    });
+
+    await screen.findByRole("button", { name: "Maximize window" });
   });
 
   it("prevents native context menu on title-bar control buttons", async () => {
@@ -266,16 +297,12 @@ describe("TitleBar", () => {
       activeTabId: tab.id,
     });
 
-    const { container } = render(<TitleBar />);
+    render(<TitleBar />);
     const alwaysOnTopButton = await screen.findByRole("button", { name: "Enable Always on Top" });
     const settingsButton = screen.getByRole("button", { name: "Settings" });
-    const minimizeButton = container.querySelector(".lucide-minus")?.closest("button");
-    const maximizeButton = container.querySelector(".lucide-square")?.closest("button");
-    const closeButton = maximizeButton?.nextElementSibling as HTMLButtonElement | null;
-
-    expect(minimizeButton).not.toBeNull();
-    expect(maximizeButton).not.toBeNull();
-    expect(closeButton).not.toBeNull();
+    const minimizeButton = screen.getByRole("button", { name: "Minimize window" });
+    const maximizeButton = screen.getByRole("button", { name: "Maximize window" });
+    const closeButton = screen.getByRole("button", { name: "Close window" });
 
     const assertContextMenuPrevented = (button: HTMLElement) => {
       const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
@@ -286,9 +313,9 @@ describe("TitleBar", () => {
 
     assertContextMenuPrevented(alwaysOnTopButton);
     assertContextMenuPrevented(settingsButton);
-    assertContextMenuPrevented(minimizeButton as HTMLButtonElement);
-    assertContextMenuPrevented(maximizeButton as HTMLButtonElement);
-    assertContextMenuPrevented(closeButton as HTMLButtonElement);
+    assertContextMenuPrevented(minimizeButton);
+    assertContextMenuPrevented(maximizeButton);
+    assertContextMenuPrevented(closeButton);
   });
 
   it("prevents context menu on tab close button", () => {

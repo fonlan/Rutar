@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
     Braces,
+    Copy,
     FileCode2,
     FileJson,
     FileText,
@@ -189,6 +190,7 @@ export function TitleBar() {
     const addTab = useStore((state) => state.addTab);
     const settings = useStore((state) => state.settings);
     const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+    const [isWindowMaximized, setIsWindowMaximized] = useState(false);
     const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
     const [tabPathTooltip, setTabPathTooltip] = useState<TabPathTooltipState | null>(null);
     const [compareSourceTabId, setCompareSourceTabId] = useState<string | null>(null);
@@ -218,7 +220,9 @@ export function TitleBar() {
     const closeTabLabel = settings.language === 'zh-CN' ? '关闭标签页' : 'Close tab';
     const dirtyTabIndicatorLabel = tr('titleBar.unsavedChanges');
     const minimizeWindowLabel = settings.language === 'zh-CN' ? '最小化窗口' : 'Minimize window';
-    const maximizeWindowLabel = settings.language === 'zh-CN' ? '切换最大化' : 'Toggle maximize window';
+    const maximizeWindowLabel = settings.language === 'zh-CN'
+        ? (isWindowMaximized ? '还原窗口' : '最大化窗口')
+        : (isWindowMaximized ? 'Restore window' : 'Maximize window');
     const closeWindowLabel = settings.language === 'zh-CN' ? '关闭窗口' : 'Close window';
     const contextMenuTab = tabContextMenu
         ? tabs.find((tab) => tab.id === tabContextMenu.tabId) ?? null
@@ -288,7 +292,15 @@ export function TitleBar() {
     }, []);
 
     const handleMinimize = () => appWindow.minimize();
-    const handleMaximize = () => appWindow.toggleMaximize();
+    const handleMaximize = useCallback(async () => {
+        try {
+            await appWindow.toggleMaximize();
+            const maximized = await appWindow.isMaximized();
+            setIsWindowMaximized((previous) => (previous === maximized ? previous : maximized));
+        } catch (error) {
+            console.error('Failed to toggle maximize state:', error);
+        }
+    }, []);
     const handleClose = () => appWindow.close();
     const handleWindowControlContextMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -313,6 +325,40 @@ export function TitleBar() {
 
         return () => {
             isMounted = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+        let unlistenWindowResized: (() => void) | null = null;
+
+        const syncWindowMaximizedState = async () => {
+            try {
+                const maximized = await appWindow.isMaximized();
+                if (isMounted) {
+                    setIsWindowMaximized((previous) => (previous === maximized ? previous : maximized));
+                }
+            } catch (error) {
+                console.error('Failed to query maximized state:', error);
+            }
+        };
+
+        const bindWindowResizeListener = async () => {
+            try {
+                unlistenWindowResized = await appWindow.onResized(() => {
+                    void syncWindowMaximizedState();
+                });
+            } catch (error) {
+                console.error('Failed to subscribe maximized-state updates:', error);
+            }
+        };
+
+        void syncWindowMaximizedState();
+        void bindWindowResizeListener();
+
+        return () => {
+            isMounted = false;
+            unlistenWindowResized?.();
         };
     }, []);
 
@@ -1246,13 +1292,13 @@ export function TitleBar() {
                 </button>
                 <button
                     type="button"
-                    onClick={handleMaximize}
+                    onClick={() => void handleMaximize()}
                     onContextMenu={handleWindowControlContextMenu}
                     className="h-8 w-8 hover:bg-accent flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     title={maximizeWindowLabel}
                     aria-label={maximizeWindowLabel}
                 >
-                    <Square className="w-3.5 h-3.5" />
+                    {isWindowMaximized ? <Copy className="w-3.5 h-3.5 -scale-x-100" /> : <Square className="w-3.5 h-3.5" />}
                 </button>
                 <button
                     type="button"
