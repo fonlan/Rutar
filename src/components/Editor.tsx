@@ -53,6 +53,7 @@ import { useEditorToggleLineCommentsAction } from './useEditorToggleLineComments
 import { useEditorTextSelectionHighlightSync } from './useEditorTextSelectionHighlightSync';
 import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
 import { useEditorVisibleItemsRendered } from './useEditorVisibleItemsRendered';
+import { useEffectiveIndentation } from './useEffectiveIndentation';
 
 const MAX_LINE_RANGE = 2147483647;
 const DEFAULT_FETCH_BUFFER_LINES = 50;
@@ -141,6 +142,12 @@ export function Editor({
   const savedCursorPosition = useStore((state) => state.cursorPositionByTab[tab.id]);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
+  const effectiveIndentation = useEffectiveIndentation({
+    tab,
+    activeSyntaxKey,
+    tabIndentMode: settings.tabIndentMode,
+    tabWidth: settings.tabWidth,
+  });
   const {
     lineTokens,
     setLineTokens,
@@ -782,8 +789,8 @@ export function Editor({
     tabId: tab.id,
     tabLineCount: tab.lineCount,
     activeLineNumber,
-    tabWidth: settings.tabWidth,
-    tabIndentMode: settings.tabIndentMode,
+    tabWidth: effectiveIndentation.width,
+    tabIndentMode: effectiveIndentation.mode,
     contentRef,
     rectangularSelectionRef,
     lineNumberMultiSelection,

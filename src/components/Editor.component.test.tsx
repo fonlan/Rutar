@@ -4427,6 +4427,60 @@ describe('Editor component', () => {
     });
   });
 
+  it('prefers detected indentation for python Tab insertions', async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: 'tabs',
+      tabWidth: 8,
+    });
+    const previousImplementation = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (
+        command === 'detect_document_indentation'
+        && payload
+        && typeof payload === 'object'
+        && payload.id === 'tab-insert-detected-python-spaces'
+      ) {
+        return {
+          mode: 'spaces',
+          width: 3,
+        };
+      }
+
+      return previousImplementation ? previousImplementation(command, payload) : undefined;
+    });
+
+    const tab = createTab({
+      id: 'tab-insert-detected-python-spaces',
+      name: 'script.py',
+      path: 'C:\\repo\\script.py',
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('detect_document_indentation', {
+        id: tab.id,
+        maxLines: 2000,
+      });
+    });
+
+    textarea.focus();
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: 'Tab', isComposing: false });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: '   ',
+        })
+      );
+      expect(textarea.value).toBe('alpha   \nbeta\n');
+    });
+  });
+
   it('deletes selected text from context menu and syncs edit', async () => {
     const tab = createTab({ id: 'tab-context-delete' });
     const { container } = render(<Editor tab={tab} />);

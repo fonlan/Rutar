@@ -5,6 +5,7 @@ import {
 } from 'react';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
 import { t } from '@/i18n';
+import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
 import { DiffEditorContextMenus } from './DiffEditorContextMenus';
@@ -38,6 +39,7 @@ import { useDiffEditorSync } from './useDiffEditorSync';
 import { useDiffEditorEditActions } from './useDiffEditorEditActions';
 import { useDiffEditorPanelInteractions } from './useDiffEditorPanelInteractions';
 import { useDiffEditorPresentationState } from './useDiffEditorPresentationState';
+import { useEffectiveIndentation } from './useEffectiveIndentation';
 
 export { diffEditorTestUtils } from './diffEditor.utils';
 
@@ -68,6 +70,20 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
   const sourceTabId = sourceTab?.id ?? null;
   const targetTabId = targetTab?.id ?? null;
+  const sourceSyntaxKey = sourceTab ? sourceTab.syntaxOverride ?? detectSyntaxKeyFromTab(sourceTab) : null;
+  const targetSyntaxKey = targetTab ? targetTab.syntaxOverride ?? detectSyntaxKeyFromTab(targetTab) : null;
+  const sourceEffectiveIndentation = useEffectiveIndentation({
+    tab: sourceTab,
+    activeSyntaxKey: sourceSyntaxKey,
+    tabIndentMode: settings.tabIndentMode,
+    tabWidth: settings.tabWidth,
+  });
+  const targetEffectiveIndentation = useEffectiveIndentation({
+    tab: targetTab,
+    activeSyntaxKey: targetSyntaxKey,
+    tabIndentMode: settings.tabIndentMode,
+    tabWidth: settings.tabWidth,
+  });
   const sourcePairHighlightEnabled = sourceTab ? !sourceTab.largeFileMode : false;
   const targetPairHighlightEnabled = targetTab ? !targetTab.largeFileMode : false;
   const sourcePath = sourceTab?.path || tab.diffPayload.sourcePath || '';
@@ -179,8 +195,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   } = useDiffEditorEditActions({
     sourceTab,
     targetTab,
-    tabWidth: settings.tabWidth,
-    tabIndentMode: settings.tabIndentMode,
+    sourceIndentText: sourceEffectiveIndentation.indentText,
+    targetIndentText: targetEffectiveIndentation.indentText,
     setActivePanel,
     sourceTextareaRef,
     targetTextareaRef,

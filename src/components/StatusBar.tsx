@@ -5,6 +5,7 @@ import { Globe, Zap } from 'lucide-react';
 import { t } from '@/i18n';
 import { detectSyntaxKeyFromTab, getSyntaxLabel, SYNTAX_OPTIONS } from '@/lib/syntax';
 import { SyntaxKey } from '@/store/useStore';
+import { useEffectiveIndentation } from './useEffectiveIndentation';
 
 type LineEnding = 'CRLF' | 'LF' | 'CR';
 type EncodingOption = {
@@ -59,6 +60,13 @@ export function StatusBar() {
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const gesturePreviewLabel = tr('settings.mouseGestures');
     const [gesturePreview, setGesturePreview] = useState('');
+    const activeSyntaxKey = activeTab ? activeTab.syntaxOverride ?? detectSyntaxKeyFromTab(activeTab) : null;
+    const effectiveIndentation = useEffectiveIndentation({
+        tab: activeTab ?? null,
+        activeSyntaxKey,
+        tabIndentMode: settings.tabIndentMode,
+        tabWidth: settings.tabWidth,
+    });
 
     useEffect(() => {
         const handleGesturePreview = (event: Event) => {
@@ -134,6 +142,9 @@ export function StatusBar() {
     const lineEndingSelectLabel = settings.language === 'zh-CN' ? '行尾符' : 'Line ending';
     const encodingSelectLabel = settings.language === 'zh-CN' ? '编码' : 'Encoding';
     const syntaxSelectLabel = settings.language === 'zh-CN' ? '语法' : 'Syntax';
+    const indentationValueLabel = effectiveIndentation.mode === 'tabs'
+        ? tr('status.indentation.tabs')
+        : `${tr('status.indentation.spaces')} ${effectiveIndentation.width}`;
     const statusSelectClassName =
         'statusbar-select border-none outline-none cursor-pointer appearance-none text-[10px] focus-visible:ring-1 focus-visible:ring-ring';
     const statusOptionClassName = 'statusbar-option';
@@ -160,6 +171,8 @@ export function StatusBar() {
                 <span>{tr('status.lines')}: {activeTab.lineCount.toLocaleString()}</span>
                 <div className="w-[1px] h-3 bg-border" />
                 <span>{tr('status.cursor')}: {cursorLine}:{cursorColumn}</span>
+                <div className="w-[1px] h-3 bg-border" />
+                <span>{tr('status.indentation')}: {indentationValueLabel}</span>
                 {settings.mouseGesturesEnabled && gesturePreview && (
                     <>
                         <div className="w-[1px] h-3 bg-border" />

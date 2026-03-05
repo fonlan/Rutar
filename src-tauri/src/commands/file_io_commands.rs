@@ -138,6 +138,15 @@ pub async fn get_word_count_info(
 }
 
 #[tauri::command]
+pub fn detect_document_indentation(
+    state: State<'_, AppState>,
+    id: String,
+    max_lines: Option<usize>,
+) -> Result<Option<file_io::DetectedIndentation>, String> {
+    file_io::detect_document_indentation_impl(state, id, max_lines)
+}
+
+#[tauri::command]
 pub fn has_external_file_change(state: State<'_, AppState>, id: String) -> Result<bool, String> {
     file_io::has_external_file_change_impl(state, id)
 }

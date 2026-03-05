@@ -251,6 +251,125 @@ fn count_word_stats(rope: &Rope) -> WordCountInfo {
     }
 }
 
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedIndentation {
+    pub mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<usize>,
+}
+
+fn gcd_usize(mut left: usize, mut right: usize) -> usize {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+
+    left
+}
+
+fn infer_space_indent_width(space_indent_counts: &[usize]) -> Option<usize> {
+    let mut non_zero = space_indent_counts.iter().copied().filter(|value| *value > 0);
+    let first = non_zero.next()?;
+    let mut gcd = first;
+
+    for value in non_zero {
+        gcd = gcd_usize(gcd, value);
+    }
+
+    if (2..=8).contains(&gcd) {
+        return Some(gcd);
+    }
+
+    let mut best_candidate = None::<(usize, usize)>;
+    for candidate in [4usize, 2, 8, 3] {
+        let score = space_indent_counts
+            .iter()
+            .filter(|value| **value % candidate == 0)
+            .count();
+
+        if score == 0 {
+            continue;
+        }
+
+        if best_candidate
+            .map(|(_, best_score)| score > best_score)
+            .unwrap_or(true)
+        {
+            best_candidate = Some((candidate, score));
+        }
+    }
+
+    if let Some((candidate, score)) = best_candidate {
+        if score * 2 >= space_indent_counts.len() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+fn detect_indentation_from_rope(rope: &Rope, max_lines: usize) -> Option<DetectedIndentation> {
+    let safe_max_lines = max_lines.max(1);
+    let sampled_line_count = rope.len_lines().min(safe_max_lines);
+    let mut tab_prefixed_line_count = 0usize;
+    let mut space_indent_counts = Vec::new();
+
+    for line_index in 0..sampled_line_count {
+        let line = rope.line(line_index).to_string();
+        let content = line.trim_end_matches(['\r', '\n']);
+        if content.is_empty() {
+            continue;
+        }
+
+        let trimmed_start = content.trim_start_matches([' ', '\t']);
+        if trimmed_start.is_empty() || trimmed_start.len() == content.len() {
+            continue;
+        }
+
+        let indent = &content[..content.len() - trimmed_start.len()];
+        let has_tabs = indent.contains('\t');
+        let has_spaces = indent.contains(' ');
+
+        match (has_tabs, has_spaces) {
+            (true, false) => {
+                tab_prefixed_line_count = tab_prefixed_line_count.saturating_add(1);
+            }
+            (false, true) => {
+                let space_count = indent.chars().count();
+                if space_count > 0 {
+                    space_indent_counts.push(space_count);
+                }
+            }
+            _ => {
+                continue;
+            }
+        }
+    }
+
+    let space_prefixed_line_count = space_indent_counts.len();
+    if tab_prefixed_line_count == 0 && space_prefixed_line_count == 0 {
+        return None;
+    }
+
+    if tab_prefixed_line_count > space_prefixed_line_count {
+        return Some(DetectedIndentation {
+            mode: "tabs".to_string(),
+            width: None,
+        });
+    }
+
+    if space_prefixed_line_count > tab_prefixed_line_count {
+        return Some(DetectedIndentation {
+            mode: "spaces".to_string(),
+            width: infer_space_indent_width(&space_indent_counts),
+        });
+    }
+
+    None
+}
+
 fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
 
@@ -869,9 +988,22 @@ pub(super) async fn get_word_count_info_impl(
         .map_err(|error| error.to_string())
 }
 
+pub(super) fn detect_document_indentation_impl(
+    state: State<'_, AppState>,
+    id: String,
+    max_lines: Option<usize>,
+) -> Result<Option<DetectedIndentation>, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        let max_lines = max_lines.unwrap_or(2000).clamp(1, 20_000);
+        Ok(detect_indentation_from_rope(&doc.rope, max_lines))
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{count_word_stats, normalize_encoding_label};
+    use super::{count_word_stats, detect_indentation_from_rope, normalize_encoding_label};
     use encoding_rs::Encoding;
     use ropey::Rope;
 
@@ -922,5 +1054,32 @@ mod tests {
         let ansi = Encoding::for_label(normalize_encoding_label("ANSI").as_bytes())
             .expect("ANSI alias should map to windows-1252");
         assert_eq!(ansi.name(), "windows-1252");
+    }
+
+    #[test]
+    fn indentation_detection_should_prefer_tabs_when_tab_prefix_lines_dominate() {
+        let rope = Rope::from_str("\tdef foo():\n\t\tpass\n    value = 1\n");
+        let result = detect_indentation_from_rope(&rope, 2000);
+
+        assert_eq!(result.as_ref().map(|item| item.mode.as_str()), Some("tabs"));
+        assert_eq!(result.and_then(|item| item.width), None);
+    }
+
+    #[test]
+    fn indentation_detection_should_infer_space_width_from_prefix_counts() {
+        let rope = Rope::from_str("def foo():\n    if ok:\n        pass\n    return\n");
+        let result = detect_indentation_from_rope(&rope, 2000)
+            .expect("space-indented content should be detected");
+
+        assert_eq!(result.mode, "spaces");
+        assert_eq!(result.width, Some(4));
+    }
+
+    #[test]
+    fn indentation_detection_should_return_none_for_evenly_mixed_tab_and_space_prefixes() {
+        let rope = Rope::from_str("\tfirst\n  second\n");
+        let result = detect_indentation_from_rope(&rope, 2000);
+
+        assert!(result.is_none());
     }
 }

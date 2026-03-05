@@ -77,6 +77,9 @@ export type I18nKey =
   | 'status.ready'
   | 'status.lines'
   | 'status.cursor'
+  | 'status.indentation'
+  | 'status.indentation.tabs'
+  | 'status.indentation.spaces'
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
   | 'sidebar.close'
@@ -318,6 +321,9 @@ const zhCN: Messages = {
   'status.ready': 'Rutar 就绪',
   'status.lines': '行数',
   'status.cursor': '光标',
+  'status.indentation': '缩进',
+  'status.indentation.tabs': '制表符',
+  'status.indentation.spaces': '空格',
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
   'sidebar.close': '关闭侧边栏',
@@ -558,6 +564,9 @@ const enUS: Messages = {
   'status.ready': 'Rutar Ready',
   'status.lines': 'Lines',
   'status.cursor': 'Cursor',
+  'status.indentation': 'Indent',
+  'status.indentation.tabs': 'Tabs',
+  'status.indentation.spaces': 'Spaces',
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
   'sidebar.close': 'Close Sidebar',

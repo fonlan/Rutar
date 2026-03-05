@@ -34,6 +34,12 @@ describe("StatusBar", () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US" });
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
   });
 
   it("renders ready state without active tab", () => {
@@ -61,6 +67,7 @@ describe("StatusBar", () => {
     render(<StatusBar />);
     expect(screen.getByText("Lines: 12")).toBeInTheDocument();
     expect(screen.getByText("Cursor: 3:9")).toBeInTheDocument();
+    expect(screen.getByText("Indent: Tabs")).toBeInTheDocument();
 
     act(() => {
       window.dispatchEvent(
@@ -107,7 +114,12 @@ describe("StatusBar", () => {
   });
 
   it("shows newly added encoding options and supports selecting ANSI", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
     const tab = createTab({ id: "tab-encoding-options", path: "C:\\repo\\encoding-options.ts" });
     useStore.getState().addTab(tab);
 
@@ -193,7 +205,12 @@ describe("StatusBar", () => {
   });
 
   it("changes syntax and calls backend command", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
     const tab = createTab({ id: "tab-syntax", path: "C:\\repo\\main.ts" });
     useStore.getState().addTab(tab);
 
@@ -233,7 +250,12 @@ describe("StatusBar", () => {
   });
 
   it("changes line ending and encoding then dispatches document-updated", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
     const tab = createTab({ id: "tab-format", path: "C:\\repo\\format.ts" });
     useStore.getState().addTab(tab);
 
@@ -325,7 +347,12 @@ describe("StatusBar", () => {
     errorSpy.mockRestore();
   });
   it("maps auto syntax selection to null override", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
     const tab = createTab({
       id: "tab-syntax-auto",
       path: "C:\\repo\\auto.ts",
@@ -375,5 +402,64 @@ describe("StatusBar", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Mouse Gestures:/)).toBeNull();
     });
+  });
+
+  it("shows detected indentation for indentation-sensitive language tabs", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return { mode: "spaces", width: 4 };
+      }
+      return undefined;
+    });
+
+    const tab = createTab({
+      id: "tab-python-indent",
+      path: "C:\\repo\\script.py",
+      name: "script.py",
+    });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("detect_document_indentation", {
+        id: "tab-python-indent",
+        maxLines: 2000,
+      });
+    });
+
+    expect(screen.getByText("Indent: Spaces 4")).toBeInTheDocument();
+  });
+
+  it("falls back to settings indentation when detection has no result", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      return undefined;
+    });
+
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+
+    const tab = createTab({
+      id: "tab-python-indent-fallback",
+      path: "C:\\repo\\fallback.py",
+      name: "fallback.py",
+    });
+    useStore.getState().addTab(tab);
+
+    render(<StatusBar />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("detect_document_indentation", {
+        id: "tab-python-indent-fallback",
+        maxLines: 2000,
+      });
+    });
+
+    expect(screen.getByText("Indent: Spaces 2")).toBeInTheDocument();
   });
 });

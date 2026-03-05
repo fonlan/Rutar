@@ -1574,6 +1574,61 @@ describe('DiffEditor component', () => {
     });
   });
 
+  it('prefers detected indentation for python diff panel Tab insertions', async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: 'tabs',
+      tabWidth: 8,
+    });
+    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+    const targetTab = createFileTab({ id: 'target-tab', name: 'script.py', path: 'C:\\repo\\script.py' });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const previousImplementation = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
+      if (
+        command === 'detect_document_indentation'
+        && payload
+        && typeof payload === 'object'
+        && 'id' in payload
+        && (payload as { id?: string }).id === targetTab.id
+      ) {
+        return {
+          mode: 'spaces',
+          width: 2,
+        };
+      }
+
+      return previousImplementation ? previousImplementation(command, payload as any) : undefined;
+    });
+
+    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('detect_document_indentation', {
+        id: targetTab.id,
+        maxLines: 2000,
+      });
+    });
+
+    fireEvent.change(targetTextarea, { target: { value: 'abc' } });
+    targetTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(targetTextarea, { key: 'Tab' });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toContain('a  bc');
+      expect(targetTextarea.value).not.toContain('\t');
+    });
+  });
+
   it('writes target selection to clipboard on copy event', async () => {
     const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
     const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
