@@ -153,6 +153,10 @@ export type I18nKey =
   | 'settings.typography'
   | 'settings.tabWidth'
   | 'settings.tabWidthDesc'
+  | 'settings.tabIndentMode'
+  | 'settings.tabIndentModeDesc'
+  | 'settings.tabIndentMode.tabs'
+  | 'settings.tabIndentMode.spaces'
   | 'settings.shortcuts'
   | 'settings.shortcutsDesc'
   | 'settings.shortcutsAction'
@@ -390,6 +394,10 @@ const zhCN: Messages = {
   'settings.typography': '排版',
   'settings.tabWidth': '制表符宽度',
   'settings.tabWidthDesc': '用于工具栏格式化按钮的缩进宽度。',
+  'settings.tabIndentMode': 'Tab 缩进方式',
+  'settings.tabIndentModeDesc': '按下 Tab 键时，插入制表符或空格。',
+  'settings.tabIndentMode.tabs': '制表符',
+  'settings.tabIndentMode.spaces': '空格',
   'settings.shortcuts': '快捷键列表',
   'settings.shortcutsDesc': '以下为当前版本已实现的常用快捷键。',
   'settings.shortcutsAction': '功能',
@@ -626,6 +634,10 @@ const enUS: Messages = {
   'settings.typography': 'Typography',
   'settings.tabWidth': 'Tab Width',
   'settings.tabWidthDesc': 'Indent width used by toolbar beautify action.',
+  'settings.tabIndentMode': 'Tab Indentation',
+  'settings.tabIndentModeDesc': 'Choose whether Tab inserts a tab character or spaces.',
+  'settings.tabIndentMode.tabs': 'Tabs',
+  'settings.tabIndentMode.spaces': 'Spaces',
   'settings.shortcuts': 'Shortcuts',
   'settings.shortcutsDesc': 'Common keyboard shortcuts currently supported in Rutar.',
   'settings.shortcutsAction': 'Action',

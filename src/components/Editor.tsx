@@ -782,6 +782,8 @@ export function Editor({
     tabId: tab.id,
     tabLineCount: tab.lineCount,
     activeLineNumber,
+    tabWidth: settings.tabWidth,
+    tabIndentMode: settings.tabIndentMode,
     contentRef,
     rectangularSelectionRef,
     lineNumberMultiSelection,

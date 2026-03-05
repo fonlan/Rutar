@@ -4401,6 +4401,32 @@ describe('Editor component', () => {
     });
   });
 
+  it('inserts spaces on Tab when tab indentation mode is spaces', async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: 'spaces',
+      tabWidth: 2,
+    });
+    const tab = createTab({ id: 'tab-insert-spaces-indent' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: 'Tab', isComposing: false });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: '  ',
+        })
+      );
+      expect(textarea.value).toBe('alpha  \nbeta\n');
+    });
+  });
+
   it('deletes selected text from context menu and syncs edit', async () => {
     const tab = createTab({ id: 'tab-context-delete' });
     const { container } = render(<Editor tab={tab} />);

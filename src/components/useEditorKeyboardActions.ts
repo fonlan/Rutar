@@ -6,6 +6,8 @@ interface UseEditorKeyboardActionsParams {
   tabId: string;
   tabLineCount: number;
   activeLineNumber: number;
+  tabWidth: number;
+  tabIndentMode: 'tabs' | 'spaces';
   contentRef: MutableRefObject<any>;
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
@@ -37,6 +39,8 @@ export function useEditorKeyboardActions({
   tabId,
   tabLineCount,
   activeLineNumber,
+  tabWidth,
+  tabIndentMode,
   contentRef,
   rectangularSelectionRef,
   lineNumberMultiSelection,
@@ -61,6 +65,13 @@ export function useEditorKeyboardActions({
   clearLineNumberMultiSelection,
   handleInput,
 }: UseEditorKeyboardActionsParams) {
+  const normalizedTabWidth = Number.isFinite(tabWidth)
+    ? Math.min(8, Math.max(1, Math.floor(tabWidth)))
+    : 4;
+  const indentText = tabIndentMode === 'spaces'
+    ? ' '.repeat(normalizedTabWidth)
+    : '\t';
+
   const handleRectangularSelectionInputByKey = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!normalizedRectangularSelection || event.nativeEvent.isComposing) {
@@ -102,7 +113,7 @@ export function useEditorKeyboardActions({
       if (key === 'Tab') {
         event.preventDefault();
         event.stopPropagation();
-        void replaceRectangularSelection('\t');
+        void replaceRectangularSelection(indentText);
         return true;
       }
 
@@ -115,7 +126,7 @@ export function useEditorKeyboardActions({
 
       return false;
     },
-    [clearRectangularSelection, normalizedRectangularSelection, replaceRectangularSelection]
+    [clearRectangularSelection, indentText, normalizedRectangularSelection, replaceRectangularSelection]
   );
 
   const insertTextAtSelection = useCallback((text: string) => {
@@ -225,7 +236,7 @@ export function useEditorKeyboardActions({
         clearLineNumberMultiSelection();
         event.preventDefault();
         event.stopPropagation();
-        if (insertTextAtSelection('\t')) {
+        if (insertTextAtSelection(indentText)) {
           handleInput();
         }
         return;
@@ -316,6 +327,7 @@ export function useEditorKeyboardActions({
       isToggleLineCommentShortcut,
       isVerticalSelectionShortcut,
       lineNumberMultiSelection,
+      indentText,
       mapLogicalOffsetToInputLayerOffset,
       normalizedRectangularSelection,
       normalizeSegmentText,

@@ -19,7 +19,7 @@ import {
   shouldEnableBulkTabCloseActions,
   type TabCloseDecision,
 } from '@/lib/tabClose';
-import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, isDiffTab } from '@/store/useStore';
+import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, TabIndentMode, isDiffTab } from '@/store/useStore';
 import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
@@ -73,12 +73,17 @@ function normalizeLineEnding(value?: string): LineEnding {
   return detectWindowsPlatform() ? 'CRLF' : 'LF';
 }
 
+function normalizeTabIndentMode(value?: string): TabIndentMode {
+  return value === 'spaces' ? 'spaces' : 'tabs';
+}
+
 interface AppConfig {
   language: AppLanguage;
   theme: AppTheme;
   fontFamily: string;
   fontSize: number;
   tabWidth: number;
+  tabIndentMode?: TabIndentMode;
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
@@ -935,6 +940,7 @@ function App() {
           fontFamily: config.fontFamily || 'Consolas, "Courier New", monospace',
           fontSize: Number.isFinite(config.fontSize) ? config.fontSize : 14,
           tabWidth: Number.isFinite(config.tabWidth) ? Math.min(8, Math.max(1, config.tabWidth)) : 4,
+          tabIndentMode: normalizeTabIndentMode(config.tabIndentMode),
           newFileLineEnding: normalizeLineEnding(config.newFileLineEnding),
           wordWrap: !!config.wordWrap,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
@@ -985,6 +991,7 @@ function App() {
           fontFamily: settings.fontFamily,
           fontSize: settings.fontSize,
           tabWidth: settings.tabWidth,
+          tabIndentMode: settings.tabIndentMode,
           newFileLineEnding: settings.newFileLineEnding,
           wordWrap: settings.wordWrap,
           doubleClickCloseTab: settings.doubleClickCloseTab,
@@ -1012,6 +1019,7 @@ function App() {
     settings.fontFamily,
     settings.fontSize,
     settings.tabWidth,
+    settings.tabIndentMode,
     settings.newFileLineEnding,
     settings.language,
     settings.theme,

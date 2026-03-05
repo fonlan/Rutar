@@ -333,6 +333,9 @@ describe("SettingsModal", () => {
     const numberInputs = screen.getAllByRole("spinbutton");
     fireEvent.change(numberInputs[0], { target: { value: "18" } });
     fireEvent.change(numberInputs[1], { target: { value: "20" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tab Indentation" }), {
+      target: { value: "spaces" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Show Line Numbers" }));
     fireEvent.click(screen.getByRole("button", { name: "Highlight Current Line" }));
 
@@ -341,6 +344,7 @@ describe("SettingsModal", () => {
       expect(settings.theme).toBe("dark");
       expect(settings.fontSize).toBe(18);
       expect(settings.tabWidth).toBe(8);
+      expect(settings.tabIndentMode).toBe("spaces");
       expect(settings.showLineNumbers).toBe(false);
       expect(settings.highlightCurrentLine).toBe(false);
     });
@@ -356,6 +360,7 @@ describe("SettingsModal", () => {
     expect(screen.getByLabelText("Font Family")).toBeInTheDocument();
     expect(screen.getByLabelText("Font Size")).toBeInTheDocument();
     expect(screen.getByLabelText("Tab Width")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tab Indentation")).toBeInTheDocument();
   });
 
   it("renders shortcut table in shortcuts tab", async () => {

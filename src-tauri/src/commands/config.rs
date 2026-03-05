@@ -239,6 +239,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         },
         font_size: config.font_size.clamp(8, 72),
         tab_width: settings::normalize_tab_width(config.tab_width),
+        tab_indent_mode: settings::normalize_tab_indent_mode(Some(config.tab_indent_mode.as_str())),
         new_file_line_ending: settings::normalize_new_file_line_ending(Some(
             config.new_file_line_ending.as_str(),
         )),
@@ -1023,6 +1024,10 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
         config.tab_width = settings::normalize_tab_width(tab_width);
     }
 
+    if let Some(tab_indent_mode) = partial.tab_indent_mode {
+        config.tab_indent_mode = settings::normalize_tab_indent_mode(Some(tab_indent_mode.as_str()));
+    }
+
     if let Some(new_file_line_ending) = partial.new_file_line_ending {
         config.new_file_line_ending =
             settings::normalize_new_file_line_ending(Some(new_file_line_ending.as_str()));
@@ -1406,6 +1411,7 @@ mod tests {
             font_family: "  ".to_string(),
             font_size: 100,
             tab_width: 0,
+            tab_indent_mode: "invalid".to_string(),
             new_file_line_ending: "bad".to_string(),
             word_wrap: true,
             double_click_close_tab: true,
@@ -1439,6 +1445,7 @@ mod tests {
         assert_eq!(normalized.font_family, DEFAULT_FONT_FAMILY);
         assert_eq!(normalized.font_size, 72);
         assert_eq!(normalized.tab_width, 1);
+        assert_eq!(normalized.tab_indent_mode, "tabs");
         assert_eq!(
             normalized.new_file_line_ending,
             default_line_ending().label()

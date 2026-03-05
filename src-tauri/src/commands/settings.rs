@@ -52,6 +52,10 @@ fn default_new_file_line_ending() -> String {
     default_line_ending().label().to_string()
 }
 
+fn default_tab_indent_mode() -> String {
+    "tabs".to_string()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowStateConfig {
@@ -78,6 +82,8 @@ pub struct AppConfig {
     pub(super) font_family: String,
     pub(super) font_size: u32,
     pub(super) tab_width: u8,
+    #[serde(default = "default_tab_indent_mode")]
+    pub(super) tab_indent_mode: String,
     #[serde(default = "default_new_file_line_ending")]
     pub(super) new_file_line_ending: String,
     pub(super) word_wrap: bool,
@@ -114,6 +120,7 @@ pub struct PartialAppConfig {
     pub(super) font_family: Option<String>,
     pub(super) font_size: Option<u32>,
     pub(super) tab_width: Option<u8>,
+    pub(super) tab_indent_mode: Option<String>,
     pub(super) new_file_line_ending: Option<String>,
     pub(super) word_wrap: Option<bool>,
     pub(super) double_click_close_tab: Option<bool>,
@@ -139,6 +146,7 @@ impl Default for AppConfig {
             font_family: DEFAULT_FONT_FAMILY.to_string(),
             font_size: DEFAULT_FONT_SIZE,
             tab_width: DEFAULT_TAB_WIDTH,
+            tab_indent_mode: default_tab_indent_mode(),
             new_file_line_ending: default_new_file_line_ending(),
             word_wrap: false,
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
@@ -176,6 +184,13 @@ pub(super) fn normalize_tab_width(tab_width: u8) -> u8 {
     tab_width.clamp(1, 8)
 }
 
+pub(super) fn normalize_tab_indent_mode(mode: Option<&str>) -> String {
+    match mode {
+        Some("spaces") => "spaces".to_string(),
+        _ => default_tab_indent_mode(),
+    }
+}
+
 pub(super) fn normalize_new_file_line_ending(label: Option<&str>) -> String {
     label
         .and_then(LineEnding::from_label)
@@ -211,6 +226,14 @@ mod tests {
     }
 
     #[test]
+    fn normalize_tab_indent_mode_should_only_accept_supported_values() {
+        assert_eq!(normalize_tab_indent_mode(Some("spaces")), "spaces");
+        assert_eq!(normalize_tab_indent_mode(Some("tabs")), "tabs");
+        assert_eq!(normalize_tab_indent_mode(Some("invalid")), "tabs");
+        assert_eq!(normalize_tab_indent_mode(None), "tabs");
+    }
+
+    #[test]
     fn normalize_new_file_line_ending_should_fallback_to_platform_default() {
         assert_eq!(normalize_new_file_line_ending(Some("lf")), "LF");
         assert_eq!(
@@ -230,6 +253,7 @@ mod tests {
         assert_eq!(config.language, DEFAULT_LANGUAGE);
         assert_eq!(config.theme, DEFAULT_THEME);
         assert_eq!(config.tab_width, DEFAULT_TAB_WIDTH);
+        assert_eq!(config.tab_indent_mode, "tabs");
         assert_eq!(config.new_file_line_ending, default_line_ending().label());
         assert_eq!(config.single_instance_mode, DEFAULT_SINGLE_INSTANCE_MODE);
         assert!(config.remember_window_state);

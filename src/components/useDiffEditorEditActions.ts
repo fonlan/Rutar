@@ -20,6 +20,8 @@ interface ApplyAlignedDiffPanelCopyResult {
 interface UseDiffEditorEditActionsParams {
   sourceTab: FileTab | null;
   targetTab: FileTab | null;
+  tabWidth: number;
+  tabIndentMode: 'tabs' | 'spaces';
   setActivePanel: (side: ActivePanel) => void;
   sourceTextareaRef: MutableRefObject<HTMLTextAreaElement | null>;
   targetTextareaRef: MutableRefObject<HTMLTextAreaElement | null>;
@@ -57,6 +59,8 @@ interface UseDiffEditorEditActionsParams {
 export function useDiffEditorEditActions({
   sourceTab,
   targetTab,
+  tabWidth,
+  tabIndentMode,
   setActivePanel,
   sourceTextareaRef,
   targetTextareaRef,
@@ -76,6 +80,13 @@ export function useDiffEditorEditActions({
   getSelectedLineRangeByOffset,
   normalizeLineDiffResult,
 }: UseDiffEditorEditActionsParams) {
+  const normalizedTabWidth = Number.isFinite(tabWidth)
+    ? Math.min(8, Math.max(1, Math.floor(tabWidth)))
+    : 4;
+  const indentText = tabIndentMode === 'spaces'
+    ? ' '.repeat(normalizedTabWidth)
+    : '\t';
+
   const handlePanelInputBlur = useCallback(() => {
     window.requestAnimationFrame(() => {
       applyDeferredBackendResultIfIdle();
@@ -214,12 +225,12 @@ export function useDiffEditorEditActions({
         const end = target.selectionEnd ?? start;
         const safeStart = Math.max(0, Math.min(start, value.length));
         const safeEnd = Math.max(safeStart, Math.min(end, value.length));
-        const nextValue = `${value.slice(0, safeStart)}\t${value.slice(safeEnd)}`;
-        const nextCaret = safeStart + 1;
+        const nextValue = `${value.slice(0, safeStart)}${indentText}${value.slice(safeEnd)}`;
+        const nextCaret = safeStart + indentText.length;
         handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
       }
     },
-    [handlePanelTextareaChange]
+    [handlePanelTextareaChange, indentText]
   );
 
   const handlePanelTextareaCopy = useCallback(

@@ -1514,6 +1514,29 @@ export function SettingsModal() {
                         {tr('settings.tabWidthDesc')}
                       </p>
                     </div>
+
+                    <div className="space-y-2 lg:col-span-2">
+                      <label htmlFor="settings-tab-indent-mode-input" className="text-sm font-medium leading-none">
+                        {tr('settings.tabIndentMode')}
+                      </label>
+                      <select
+                        id="settings-tab-indent-mode-input"
+                        className={cn(controlClassName, 'max-w-[220px]')}
+                        value={settings.tabIndentMode}
+                        onChange={(event) => {
+                          updateSettings({
+                            tabIndentMode: event.target.value === 'spaces' ? 'spaces' : 'tabs',
+                          });
+                        }}
+                        aria-label={tr('settings.tabIndentMode')}
+                      >
+                        <option value="tabs">{tr('settings.tabIndentMode.tabs')}</option>
+                        <option value="spaces">{tr('settings.tabIndentMode.spaces')}</option>
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        {tr('settings.tabIndentModeDesc')}
+                      </p>
+                    </div>
                   </div>
                 </section>
 

@@ -71,6 +71,7 @@ export type SyntaxKey =
 
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';
+export type TabIndentMode = 'tabs' | 'spaces';
 
 export type OutlineType =
   | 'json'
@@ -114,6 +115,7 @@ interface SettingsState {
   fontFamily: string;
   fontSize: number;
   tabWidth: number;
+  tabIndentMode: TabIndentMode;
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   doubleClickCloseTab: boolean;
@@ -198,6 +200,7 @@ export const useStore = create<AppState>((set) => ({
     fontFamily: 'Consolas, "Courier New", monospace',
     fontSize: 14,
     tabWidth: 4,
+    tabIndentMode: 'tabs',
     newFileLineEnding: defaultNewFileLineEnding,
     wordWrap: false,
     doubleClickCloseTab: true,

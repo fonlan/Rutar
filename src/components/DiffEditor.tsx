@@ -179,6 +179,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   } = useDiffEditorEditActions({
     sourceTab,
     targetTab,
+    tabWidth: settings.tabWidth,
+    tabIndentMode: settings.tabIndentMode,
     setActivePanel,
     sourceTextareaRef,
     targetTextareaRef,
