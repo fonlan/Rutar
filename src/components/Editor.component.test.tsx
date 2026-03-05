@@ -4379,6 +4379,28 @@ describe('Editor component', () => {
     });
   });
 
+  it('inserts tab character on Tab and syncs text diff', async () => {
+    const tab = createTab({ id: 'tab-insert-tab-char' });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: 'Tab', isComposing: false });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'edit_text',
+        expect.objectContaining({
+          id: tab.id,
+          newText: '\t',
+        })
+      );
+      expect(textarea.value).toBe('alpha\t\nbeta\n');
+    });
+  });
+
   it('deletes selected text from context menu and syncs edit', async () => {
     const tab = createTab({ id: 'tab-context-delete' });
     const { container } = render(<Editor tab={tab} />);

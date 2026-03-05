@@ -212,6 +212,25 @@ export function useEditorKeyboardActions({
         return;
       }
 
+      if (
+        event.key === 'Tab'
+        && !event.shiftKey
+        && !event.altKey
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.nativeEvent.isComposing
+      ) {
+        clearVerticalSelectionState();
+        clearRectangularSelection();
+        clearLineNumberMultiSelection();
+        event.preventDefault();
+        event.stopPropagation();
+        if (insertTextAtSelection('\t')) {
+          handleInput();
+        }
+        return;
+      }
+
       if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
         if (event.key === 'Delete' && lineNumberMultiSelection.length > 0) {
           event.preventDefault();
