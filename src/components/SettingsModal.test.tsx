@@ -422,7 +422,10 @@ describe("SettingsModal", () => {
 
     const input = await screen.findByPlaceholderText("e.g. L, RD, UL");
     fireEvent.change(input, { target: { value: "rdx1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    const addButton = screen.getByRole("button", { name: "Add" });
+    expect(addButton.textContent?.trim()).toBe("");
+    expect(addButton.querySelector("svg")).not.toBeNull();
+    fireEvent.click(addButton);
 
     await waitFor(() => {
       const gestures = useStore.getState().settings.mouseGestures;

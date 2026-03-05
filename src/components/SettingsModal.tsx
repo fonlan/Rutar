@@ -1,4 +1,4 @@
-import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard, Trash2, MousePointer2, Copy } from 'lucide-react';
+import { X, Type, Monitor, Palette, Languages, SquareTerminal, FileText, Info, Keyboard, Trash2, MousePointer2, Copy, Plus } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
@@ -1765,9 +1765,10 @@ export function SettingsModal() {
                           type="button"
                           onClick={handleAddGesture}
                           disabled={addGestureDisabled}
-                          className="h-9 rounded-md border border-border px-3 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={mouseGestureAddLabel}
                         >
-                          {mouseGestureAddLabel}
+                          <Plus className="h-4 w-4" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
