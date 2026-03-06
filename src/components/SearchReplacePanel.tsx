@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -18,6 +17,7 @@ import { SearchInputContextMenu } from '@/components/search-panel/SearchInputCon
 import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
+import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -33,8 +33,6 @@ import type {
   FilterChunkBackendResult,
   FilterCountBackendResult,
   FilterMatch,
-  FilterRule,
-  FilterRuleDragState,
   FilterRuleGroupPayload,
   FilterRunResult,
   FilterResultFilterStepBackendResult,
@@ -60,9 +58,7 @@ import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
-  buildFilterRulesFromPayload,
   buildFilterRulesPayload,
-  createDefaultFilterRule,
   DEFAULT_FILTER_RULE_BACKGROUND,
   DEFAULT_FILTER_RULE_TEXT,
   dispatchEditorForceRefresh,
@@ -80,7 +76,6 @@ import {
   isTextInputEditable,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
-  reorderFilterRules,
   replaceSelectedInputText,
   resolveSearchKeyword,
   resolveSearchSidebarTextInputTarget,
@@ -124,11 +119,7 @@ export function SearchReplacePanel() {
   const [parseEscapeSequences, setParseEscapeSequences] = useState(false);
   const [reverseSearch, setReverseSearch] = useState(false);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
-  const [filterRules, setFilterRules] = useState<FilterRule[]>([createDefaultFilterRule(0)]);
   const [filterRuleGroups, setFilterRuleGroups] = useState<FilterRuleGroupPayload[]>([]);
-  const [selectedFilterGroupName, setSelectedFilterGroupName] = useState('');
-  const [filterGroupNameInput, setFilterGroupNameInput] = useState('');
-  const [filterRuleDragState, setFilterRuleDragState] = useState<FilterRuleDragState | null>(null);
   const [filterMatches, setFilterMatches] = useState<FilterMatch[]>([]);
   const [totalMatchCount, setTotalMatchCount] = useState<number | null>(null);
   const [totalMatchedLineCount, setTotalMatchedLineCount] = useState<number | null>(null);
@@ -157,25 +148,6 @@ export function SearchReplacePanel() {
   const inputContextCopyLabel = useMemo(() => t(language, 'toolbar.copy'), [language]);
   const inputContextCutLabel = useMemo(() => t(language, 'toolbar.cut'), [language]);
   const inputContextPasteLabel = useMemo(() => t(language, 'toolbar.paste'), [language]);
-  const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
-  const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
-  const hasAnyConfiguredFilterRule = useMemo(
-    () =>
-      filterRules.length > 1
-      || filterRules.some((rule) => {
-        const keyword = rule.keyword.trim();
-        return (
-          keyword.length > 0
-          || rule.matchMode !== 'contains'
-          || rule.backgroundColor !== DEFAULT_FILTER_RULE_BACKGROUND
-          || rule.textColor !== DEFAULT_FILTER_RULE_TEXT
-          || rule.bold
-          || rule.italic
-          || rule.applyTo !== 'line'
-        );
-      }),
-    [filterRules]
-  );
   const normalizedFilterRuleGroups = useMemo(
     () => normalizeFilterRuleGroups(filterRuleGroups),
     [filterRuleGroups]
@@ -196,7 +168,6 @@ export function SearchReplacePanel() {
     resizeEdge: 'left',
   });
   const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
-  const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
   const rememberSearchKeyword = useCallback((value: string) => {
     if (value.length === 0) {
@@ -559,6 +530,53 @@ export function SearchReplacePanel() {
       setTotalFilterMatchedLineCount(null);
     }
   }, [setFilterSessionId]);
+
+  const {
+    addFilterRule,
+    clearFilterRules,
+    filterGroupNameInput,
+    filterRuleDragState,
+    filterRules,
+    handleLoadFilterRuleGroup,
+    handleSelectedFilterGroupChange,
+    moveFilterRule,
+    onFilterRuleDragEnd,
+    onFilterRuleDragOver,
+    onFilterRuleDragStart,
+    onFilterRuleDrop,
+    removeFilterRule,
+    selectedFilterGroupName,
+    setFilterGroupNameInput,
+    setSelectedFilterGroupName,
+    updateFilterRule,
+  } = useFilterRuleEditorState({
+    messages,
+    normalizedFilterRuleGroups,
+    resetFilterState,
+    setErrorMessage,
+    setFeedbackMessage,
+  });
+
+  const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
+  const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
+  const hasAnyConfiguredFilterRule = useMemo(
+    () =>
+      filterRules.length > 1
+      || filterRules.some((rule) => {
+        const keyword = rule.keyword.trim();
+        return (
+          keyword.length > 0
+          || rule.matchMode !== 'contains'
+          || rule.backgroundColor !== DEFAULT_FILTER_RULE_BACKGROUND
+          || rule.textColor !== DEFAULT_FILTER_RULE_TEXT
+          || rule.bold
+          || rule.italic
+          || rule.applyTo !== 'line'
+        );
+      }),
+    [filterRules]
+  );
+  const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
 
   const normalizedResultFilterKeyword = appliedResultFilterKeyword.trim().toLowerCase();
   const isResultFilterActive = normalizedResultFilterKeyword.length > 0;
@@ -2254,121 +2272,6 @@ export function SearchReplacePanel() {
     [filterMatches, isFilterMode, matches, navigateToFilterMatch, navigateToMatch]
   );
 
-  const updateFilterRule = useCallback((id: string, updater: (rule: FilterRule) => FilterRule) => {
-    setFilterRules((previousRules) =>
-      previousRules.map((rule) => {
-        if (rule.id !== id) {
-          return rule;
-        }
-
-        return updater(rule);
-      })
-    );
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-    resetFilterState();
-  }, [resetFilterState]);
-
-  const addFilterRule = useCallback(() => {
-    setFilterRules((previousRules) => [...previousRules, createDefaultFilterRule(previousRules.length)]);
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-  }, []);
-
-  const clearFilterRules = useCallback(() => {
-    setFilterRules([createDefaultFilterRule(0)]);
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-    resetFilterState();
-  }, [resetFilterState]);
-
-  const removeFilterRule = useCallback((id: string) => {
-    setFilterRules((previousRules) => {
-      const nextRules = previousRules.filter((rule) => rule.id !== id);
-      if (nextRules.length > 0) {
-        return nextRules;
-      }
-
-      return [createDefaultFilterRule(0)];
-    });
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-    resetFilterState();
-  }, [resetFilterState]);
-
-  const moveFilterRule = useCallback((id: string, direction: -1 | 1) => {
-    setFilterRules((previousRules) => {
-      const index = previousRules.findIndex((rule) => rule.id === id);
-      if (index < 0) {
-        return previousRules;
-      }
-
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= previousRules.length) {
-        return previousRules;
-      }
-
-      const nextRules = [...previousRules];
-      const [movedRule] = nextRules.splice(index, 1);
-      nextRules.splice(targetIndex, 0, movedRule);
-      return nextRules;
-    });
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-    resetFilterState();
-  }, [resetFilterState]);
-
-  const onFilterRuleDragStart = useCallback((event: ReactDragEvent<HTMLElement>, ruleId: string) => {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', ruleId);
-    setFilterRuleDragState({
-      draggingRuleId: ruleId,
-      overRuleId: null,
-    });
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-  }, []);
-
-  const onFilterRuleDragOver = useCallback((event: ReactDragEvent<HTMLElement>, ruleId: string) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-
-    setFilterRuleDragState((previous) => {
-      if (!previous || previous.overRuleId === ruleId) {
-        return previous;
-      }
-
-      return {
-        ...previous,
-        overRuleId: ruleId,
-      };
-    });
-  }, []);
-
-  const onFilterRuleDrop = useCallback((event: ReactDragEvent<HTMLElement>, targetRuleId: string) => {
-    event.preventDefault();
-
-    setFilterRules((previousRules) => {
-      const fallbackSourceId = event.dataTransfer.getData('text/plain');
-      const sourceRuleId = filterRuleDragState?.draggingRuleId || fallbackSourceId;
-      if (!sourceRuleId) {
-        return previousRules;
-      }
-
-      const reordered = reorderFilterRules(previousRules, sourceRuleId, targetRuleId);
-      return reordered;
-    });
-
-    setFilterRuleDragState(null);
-    setFeedbackMessage(null);
-    setErrorMessage(null);
-    resetFilterState();
-  }, [filterRuleDragState?.draggingRuleId, resetFilterState]);
-
-  const onFilterRuleDragEnd = useCallback(() => {
-    setFilterRuleDragState(null);
-  }, []);
-
   const persistFilterRuleGroups = useCallback(
     async (groups: FilterRuleGroupPayload[]) => {
       const normalized = normalizeFilterRuleGroups(groups);
@@ -2427,25 +2330,6 @@ export function SearchReplacePanel() {
     normalizedFilterRuleGroups,
     persistFilterRuleGroups,
   ]);
-
-  const handleLoadFilterRuleGroup = useCallback(() => {
-    if (!selectedFilterGroupName) {
-      setErrorMessage(messages.filterGroupSelectRequired);
-      return;
-    }
-
-    const group = normalizedFilterRuleGroups.find((item) => item.name === selectedFilterGroupName);
-    if (!group) {
-      setErrorMessage(messages.filterGroupSelectRequired);
-      return;
-    }
-
-    setFilterRules(buildFilterRulesFromPayload(group.rules));
-    setFilterGroupNameInput(group.name);
-    setFeedbackMessage(messages.filterGroupLoaded(group.name));
-    setErrorMessage(null);
-    resetFilterState();
-  }, [messages, normalizedFilterRuleGroups, resetFilterState, selectedFilterGroupName]);
 
   const handleDeleteFilterRuleGroup = useCallback(async () => {
     if (!selectedFilterGroupName) {
@@ -3818,13 +3702,6 @@ export function SearchReplacePanel() {
       void executeSearch();
     }
   }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword, rememberSearchKeyword]);
-
-  const handleSelectedFilterGroupChange = useCallback((nextName: string) => {
-    setSelectedFilterGroupName(nextName);
-    if (nextName) {
-      setFilterGroupNameInput(nextName);
-    }
-  }, []);
 
   const handleInputContextMenuAction = useCallback(
     async (action: SearchSidebarInputContextAction) => {
