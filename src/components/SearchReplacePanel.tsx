@@ -12,9 +12,8 @@ import {
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
-import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
+import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
 import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
-import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
@@ -3638,60 +3637,59 @@ export function SearchReplacePanel() {
         />
       </SearchSidebarChrome>
 
-      {inputContextMenu && (
-        <SearchInputContextMenu
-          contextMenu={inputContextMenu}
-          copyLabel={inputContextCopyLabel}
-          cutLabel={inputContextCutLabel}
-          deleteLabel={messages.filterDeleteRule}
-          menuRef={inputContextMenuRef}
-          pasteLabel={inputContextPasteLabel}
-          onAction={(action) => void handleInputContextMenuAction(action)}
-        />
-      )}
-
-      <SearchResultsPanel
-        displayTotalFilterMatchedLineCountText={displayTotalFilterMatchedLineCountText}
-        displayTotalMatchCountText={displayTotalMatchCountText}
-        displayTotalMatchedLineCountText={displayTotalMatchedLineCountText}
-        errorMessage={errorMessage}
-        filterMatchCount={filterMatches.length}
-        filterRulesPayloadLength={filterRulesPayload.length}
-        hasAppliedResultFilterKeyword={hasAppliedResultFilterKeyword}
-        hasMoreFilterMatches={hasMoreFilterMatches}
-        hasMoreMatches={hasMoreMatches}
-        isFilterMode={isFilterMode}
-        isResultFilterActive={isResultFilterActive}
-        isResultFilterSearching={isResultFilterSearching}
-        isSearching={isSearching}
-        keyword={keyword}
-        matchCount={matches.length}
-        messages={messages}
-        minimizedResultWrapperRef={minimizedResultWrapperRef}
-        plainTextResultEntryCount={plainTextResultEntries.length}
-        renderedResultItems={renderedResultItems}
-        resultFilterKeyword={resultFilterKeyword}
-        resultFilterStepLoadingDirection={resultFilterStepLoadingDirection}
-        resultListRef={resultListRef}
-        resultPanelHeight={resultPanelHeight}
-        resultPanelState={resultPanelState}
-        resultPanelWrapperRef={resultPanelWrapperRef}
-        visibleFilterMatchCount={visibleFilterMatches.length}
-        visibleMatchCount={visibleMatches.length}
-        onApplyResultFilter={handleResultFilterAction}
-        onCancelPendingBatchLoad={cancelPendingBatchLoad}
-        onClearResultFilter={handleClearResultFilter}
-        onClose={handleCloseResultPanel}
-        onCopy={() => void copyPlainTextResults()}
-        onMinimize={() => setResultPanelState('minimized')}
-        onNavigateResultFilterNext={handleResultFilterNext}
-        onNavigateResultFilterPrev={handleResultFilterPrev}
-        onOpenMinimized={handleReopenResultPanel}
-        onRefresh={handleRefreshResults}
-        onRequestStopResultFilterSearch={requestStopResultFilterSearch}
-        onResizeMouseDown={handleResultPanelResizeMouseDown}
-        onResultFilterKeywordChange={setResultFilterKeyword}
-        onScroll={handleResultListScroll}
+      <SearchPanelOverlays
+        inputContextMenu={inputContextMenu}
+        inputContextMenuProps={{
+          copyLabel: inputContextCopyLabel,
+          cutLabel: inputContextCutLabel,
+          deleteLabel: messages.filterDeleteRule,
+          menuRef: inputContextMenuRef,
+          pasteLabel: inputContextPasteLabel,
+          onAction: (action) => void handleInputContextMenuAction(action),
+        }}
+        resultsPanelProps={{
+          displayTotalFilterMatchedLineCountText,
+          displayTotalMatchCountText,
+          displayTotalMatchedLineCountText,
+          errorMessage,
+          filterMatchCount: filterMatches.length,
+          filterRulesPayloadLength: filterRulesPayload.length,
+          hasAppliedResultFilterKeyword,
+          hasMoreFilterMatches,
+          hasMoreMatches,
+          isFilterMode,
+          isResultFilterActive,
+          isResultFilterSearching,
+          isSearching,
+          keyword,
+          matchCount: matches.length,
+          messages,
+          minimizedResultWrapperRef,
+          plainTextResultEntryCount: plainTextResultEntries.length,
+          renderedResultItems,
+          resultFilterKeyword,
+          resultFilterStepLoadingDirection,
+          resultListRef,
+          resultPanelHeight,
+          resultPanelState,
+          resultPanelWrapperRef,
+          visibleFilterMatchCount: visibleFilterMatches.length,
+          visibleMatchCount: visibleMatches.length,
+          onApplyResultFilter: handleResultFilterAction,
+          onCancelPendingBatchLoad: cancelPendingBatchLoad,
+          onClearResultFilter: handleClearResultFilter,
+          onClose: handleCloseResultPanel,
+          onCopy: () => void copyPlainTextResults(),
+          onMinimize: () => setResultPanelState('minimized'),
+          onNavigateResultFilterNext: handleResultFilterNext,
+          onNavigateResultFilterPrev: handleResultFilterPrev,
+          onOpenMinimized: handleReopenResultPanel,
+          onRefresh: handleRefreshResults,
+          onRequestStopResultFilterSearch: requestStopResultFilterSearch,
+          onResizeMouseDown: handleResultPanelResizeMouseDown,
+          onResultFilterKeywordChange: setResultFilterKeyword,
+          onScroll: handleResultListScroll,
+        }}
       />
     </>
   );
