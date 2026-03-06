@@ -25,7 +25,7 @@ import {
   matchModeLabel,
 } from './utils';
 
-interface FilterRulesEditorProps {
+export interface FilterRulesEditorProps {
   messages: ReturnType<typeof getSearchPanelMessages>;
   effectiveFilterRules: FilterRule[];
   filterGroupNameInput: string;

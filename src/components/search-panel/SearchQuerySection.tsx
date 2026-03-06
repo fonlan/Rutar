@@ -8,7 +8,7 @@ import { getSearchPanelMessages } from '@/i18n';
 import { ModeButton } from './ModeButton';
 import type { SearchMode } from './types';
 
-interface SearchQuerySectionProps {
+export interface SearchQuerySectionProps {
   canReplace: boolean;
   caseSensitive: boolean;
   isReplaceMode: boolean;
