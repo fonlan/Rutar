@@ -10,7 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readText as readClipboardText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GO_TO_LINE_DIALOG_REQUEST_EVENT } from "@/lib/goToLineDialog";
-import { Editor } from "./Editor";
+import { Editor, editorTestUtils } from "./Editor";
 import { type FileTab, useStore } from "@/store/useStore";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -1511,6 +1511,137 @@ describe("Editor component", () => {
       expect(textarea.scrollTop).toBe(0);
       expect(textarea.scrollLeft).toBe(0);
     });
+  });
+
+
+  it("keeps huge editable selection after scrollbar-driven segment refresh", async () => {
+    const tab = createTab({ id: "tab-huge-scroll-selection-persist", lineCount: 22000 });
+    const hugeLines = Array.from(
+      { length: tab.lineCount },
+      (_, index) => `huge-line-${index + 1}`,
+    );
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return "alpha\nbeta\n";
+      }
+      if (command === "get_visible_lines_chunk") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const safeStart = Math.max(0, startLine);
+        const safeEnd = Math.max(safeStart + 1, endLine);
+        return hugeLines.slice(safeStart, safeEnd);
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return 2;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: tab.lineCount,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "convert_text_base64") {
+        return "";
+      }
+      if (command === "get_rectangular_selection_text") {
+        return "";
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitFor(() => {
+      expect(textarea.value).toContain("huge-line-110");
+    });
+
+    const selectedLine = 115;
+    const selectionStart = editorTestUtils.getCodeUnitOffsetFromLineColumn(
+      textarea.value,
+      selectedLine,
+      1,
+    );
+    const selectionEnd = editorTestUtils.getCodeUnitOffsetFromLineColumn(
+      textarea.value,
+      selectedLine,
+      10,
+    );
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const scrollContainer = textarea.parentElement?.parentElement as HTMLDivElement | null;
+    expect(scrollContainer).toBeTruthy();
+    const lineHeightPx = Number.parseFloat(textarea.style.lineHeight || "24") || 24;
+
+    act(() => {
+      scrollContainer!.scrollTop = lineHeightPx * 110;
+      window.dispatchEvent(
+        new CustomEvent("rutar:force-refresh", {
+          detail: {
+            tabId: tab.id,
+            lineCount: tab.lineCount,
+            preserveCaret: false,
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const chunkCalls = invokeMock.mock.calls.filter(
+        ([command, payload]) =>
+          command === "get_visible_lines_chunk" &&
+          typeof payload === "object" &&
+          payload !== null &&
+          (payload as { id?: string }).id === tab.id &&
+          Number((payload as { startLine?: number }).startLine ?? 0) > 0,
+      );
+      expect(chunkCalls.length).toBeGreaterThan(0);
+    });
+
+    const latestShiftedChunkCall = [...invokeMock.mock.calls]
+      .reverse()
+      .find(
+        ([command, payload]) =>
+          command === "get_visible_lines_chunk" &&
+          typeof payload === "object" &&
+          payload !== null &&
+          (payload as { id?: string }).id === tab.id &&
+          Number((payload as { startLine?: number }).startLine ?? 0) > 0,
+      );
+    const shiftedStartLine = Number(
+      ((latestShiftedChunkCall?.[1] as { startLine?: number } | undefined)?.startLine) ?? 0,
+    );
+    const expectedLocalLine = selectedLine - shiftedStartLine;
+
+    await waitFor(() => {
+      expect(textarea.value).toContain(`huge-line-${shiftedStartLine + 1}`);
+      expect(textarea.selectionStart).toBe(
+        editorTestUtils.getCodeUnitOffsetFromLineColumn(textarea.value, expectedLocalLine, 1),
+      );
+      expect(textarea.selectionEnd).toBe(
+        editorTestUtils.getCodeUnitOffsetFromLineColumn(textarea.value, expectedLocalLine, 10),
+      );
+    });
+
   });
 
   it("shows disabled copy/cut/delete in context menu when there is no selection", async () => {

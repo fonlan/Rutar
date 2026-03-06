@@ -232,6 +232,7 @@ export function Editor({
     defaultSubmenuMaxHeights: DEFAULT_SUBMENU_MAX_HEIGHTS,
   });
   const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
+  const syncSelectionAfterEditableSegmentSwapRef = useRef<(() => void) | null>(null);
   const {
     lineNumberMultiSelectionSet,
     diffHighlightLineSet,
@@ -374,6 +375,10 @@ export function Editor({
     normalizeEditorText,
     setInputLayerText,
     getEditableText,
+    getSelectionOffsetsInElement,
+    codeUnitOffsetToLineColumn,
+    getCodeUnitOffsetFromLineColumn,
+    syncSelectionAfterEditableSegmentSwapRef,
   });
 
   const { handleScroll } = useEditorScrollSyncEffects({
@@ -593,6 +598,11 @@ export function Editor({
     setTextSelectionHighlight,
     getSelectionOffsetsInElement,
   });
+
+  syncSelectionAfterEditableSegmentSwapRef.current = () => {
+    syncSelectionState();
+    syncTextSelectionHighlight();
+  };
 
   const { hasSelectionInsideEditor } = useEditorSelectionPresence({
     contentRef,

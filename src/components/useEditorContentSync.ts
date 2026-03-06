@@ -8,6 +8,14 @@ interface TokenRange {
   end: number;
 }
 
+interface EditableSegmentSelectionSnapshot {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  direction: "forward" | "backward" | "none";
+}
+
 interface UseEditorContentSyncParams {
   maxLineRange: number;
   tabId: string;
@@ -41,6 +49,12 @@ interface UseEditorContentSyncParams {
   normalizeEditorText: (text: string) => string;
   setInputLayerText: (element: HTMLTextAreaElement, text: string) => void;
   getEditableText: (element: HTMLTextAreaElement) => string;
+  getSelectionOffsetsInElement: (
+    element: HTMLTextAreaElement
+  ) => { start: number; end: number; isCollapsed: boolean } | null;
+  codeUnitOffsetToLineColumn: (text: string, offset: number) => { line: number; column: number };
+  getCodeUnitOffsetFromLineColumn: (text: string, line: number, column: number) => number;
+  syncSelectionAfterEditableSegmentSwapRef: MutableRefObject<(() => void) | null>;
 }
 
 export function useEditorContentSync({
@@ -76,12 +90,78 @@ export function useEditorContentSync({
   normalizeEditorText,
   setInputLayerText,
   getEditableText,
+  getSelectionOffsetsInElement,
+  codeUnitOffsetToLineColumn,
+  getCodeUnitOffsetFromLineColumn,
+  syncSelectionAfterEditableSegmentSwapRef,
 }: UseEditorContentSyncParams) {
   const fallbackPlainRequestVersionRef = useRef(0);
   const tokenRequestSerialRef = useRef(0);
   const tokenFetchInFlightRef = useRef(false);
   const inFlightTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
   const pendingTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
+
+  const captureEditableSegmentSelectionSnapshot = useCallback((): EditableSegmentSelectionSnapshot | null => {
+    const element = contentRef.current;
+    const segmentText = editableSegmentRef.current.text;
+    if (!element || !segmentText) {
+      return null;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets || selectionOffsets.isCollapsed) {
+      return null;
+    }
+
+    const startPosition = codeUnitOffsetToLineColumn(segmentText, selectionOffsets.start);
+    const endPosition = codeUnitOffsetToLineColumn(segmentText, selectionOffsets.end);
+    const direction = element.selectionDirection === 'backward'
+      ? 'backward'
+      : element.selectionDirection === 'none'
+        ? 'none'
+        : 'forward';
+
+    return {
+      startLine: editableSegmentRef.current.startLine + startPosition.line,
+      startColumn: startPosition.column + 1,
+      endLine: editableSegmentRef.current.startLine + endPosition.line,
+      endColumn: endPosition.column + 1,
+      direction,
+    };
+  }, [
+    codeUnitOffsetToLineColumn,
+    contentRef,
+    editableSegmentRef,
+    getSelectionOffsetsInElement,
+  ]);
+
+  const restoreEditableSegmentSelectionSnapshot = useCallback(
+    (snapshot: EditableSegmentSelectionSnapshot | null, segment: EditorSegmentState) => {
+      const element = contentRef.current;
+      if (!element || !snapshot) {
+        return;
+      }
+
+      const segmentFirstLine = segment.startLine + 1;
+      const segmentLastLine = segment.endLine;
+      const selectionFirstLine = Math.min(snapshot.startLine, snapshot.endLine);
+      const selectionLastLine = Math.max(snapshot.startLine, snapshot.endLine);
+      if (selectionLastLine < segmentFirstLine || selectionFirstLine > segmentLastLine) {
+        return;
+      }
+
+      const clampedStartLine = Math.min(Math.max(snapshot.startLine, segmentFirstLine), segmentLastLine);
+      const clampedEndLine = Math.min(Math.max(snapshot.endLine, segmentFirstLine), segmentLastLine);
+      const localStartLine = clampedStartLine - segment.startLine;
+      const localEndLine = clampedEndLine - segment.startLine;
+      const startOffset = getCodeUnitOffsetFromLineColumn(segment.text, localStartLine, snapshot.startColumn);
+      const endOffset = getCodeUnitOffsetFromLineColumn(segment.text, localEndLine, snapshot.endColumn);
+
+      element.setSelectionRange(startOffset, endOffset, snapshot.direction);
+      syncSelectionAfterEditableSegmentSwapRef.current?.();
+    },
+    [contentRef, getCodeUnitOffsetFromLineColumn, syncSelectionAfterEditableSegmentSwapRef]
+  );
 
   const fetchPlainLines = useCallback(
     async (start: number, end: number) => {
@@ -120,6 +200,7 @@ export function useEditorContentSync({
         if (version !== currentRequestVersionRef.current) return;
         if (!Array.isArray(lines)) return;
 
+        const selectionSnapshot = captureEditableSegmentSelectionSnapshot();
         const normalizedLines = lines.map(normalizeEditableLineText);
         const text = normalizedLines.join('\n');
         const segment = {
@@ -145,6 +226,8 @@ export function useEditorContentSync({
           if (Math.abs(contentRef.current.scrollLeft) > 0.001) {
             contentRef.current.scrollLeft = 0;
           }
+
+          restoreEditableSegmentSelectionSnapshot(selectionSnapshot, segment);
         }
 
         syncedTextRef.current = text;
@@ -157,10 +240,12 @@ export function useEditorContentSync({
       contentRef,
       currentRequestVersionRef,
       editableSegmentRef,
+      captureEditableSegmentSelectionSnapshot,
       isScrollbarDragRef,
       normalizeEditableLineText,
       pendingRestoreScrollTopRef,
       pendingSyncRequestedRef,
+      restoreEditableSegmentSelectionSnapshot,
       scrollContainerRef,
       setEditableSegment,
       setInputLayerText,
