@@ -18,6 +18,7 @@ import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRul
 import { useFilterRulesEditorProps } from '@/components/search-panel/useFilterRulesEditorProps';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
 import { useSearchQuerySectionProps } from '@/components/search-panel/useSearchQuerySectionProps';
+import { useSearchPanelOverlaysProps } from '@/components/search-panel/useSearchPanelOverlaysProps';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
@@ -3453,6 +3454,56 @@ export function SearchReplacePanel() {
     setFilterGroupNameInput,
   });
 
+  const searchPanelOverlaysProps = useSearchPanelOverlaysProps({
+    copyLabel: inputContextCopyLabel,
+    cutLabel: inputContextCutLabel,
+    deleteLabel: messages.filterDeleteRule,
+    menuRef: inputContextMenuRef,
+    pasteLabel: inputContextPasteLabel,
+    handleInputContextMenuAction,
+    copyPlainTextResults,
+    inputContextMenu,
+    setResultPanelState,
+    displayTotalFilterMatchedLineCountText,
+    displayTotalMatchCountText,
+    displayTotalMatchedLineCountText,
+    errorMessage,
+    filterMatchCount: filterMatches.length,
+    filterRulesPayloadLength: filterRulesPayload.length,
+    hasAppliedResultFilterKeyword,
+    hasMoreFilterMatches,
+    hasMoreMatches,
+    isFilterMode,
+    isResultFilterActive,
+    isResultFilterSearching,
+    isSearching,
+    keyword,
+    matchCount: matches.length,
+    messages,
+    minimizedResultWrapperRef,
+    plainTextResultEntryCount: plainTextResultEntries.length,
+    renderedResultItems,
+    resultFilterKeyword,
+    resultFilterStepLoadingDirection,
+    resultListRef,
+    resultPanelHeight,
+    resultPanelState,
+    resultPanelWrapperRef,
+    visibleFilterMatchCount: visibleFilterMatches.length,
+    visibleMatchCount: visibleMatches.length,
+    onApplyResultFilter: handleResultFilterAction,
+    onCancelPendingBatchLoad: cancelPendingBatchLoad,
+    onClearResultFilter: handleClearResultFilter,
+    onClose: handleCloseResultPanel,
+    onNavigateResultFilterNext: handleResultFilterNext,
+    onNavigateResultFilterPrev: handleResultFilterPrev,
+    onOpenMinimized: handleReopenResultPanel,
+    onRefresh: handleRefreshResults,
+    onRequestStopResultFilterSearch: requestStopResultFilterSearch,
+    onResizeMouseDown: handleResultPanelResizeMouseDown,
+    onResultFilterKeywordChange: setResultFilterKeyword,
+    onScroll: handleResultListScroll,
+  });
   if (!activeTab) {
     return null;
   }
@@ -3491,60 +3542,7 @@ export function SearchReplacePanel() {
         />
       </SearchSidebarChrome>
 
-      <SearchPanelOverlays
-        inputContextMenu={inputContextMenu}
-        inputContextMenuProps={{
-          copyLabel: inputContextCopyLabel,
-          cutLabel: inputContextCutLabel,
-          deleteLabel: messages.filterDeleteRule,
-          menuRef: inputContextMenuRef,
-          pasteLabel: inputContextPasteLabel,
-          onAction: (action) => void handleInputContextMenuAction(action),
-        }}
-        resultsPanelProps={{
-          displayTotalFilterMatchedLineCountText,
-          displayTotalMatchCountText,
-          displayTotalMatchedLineCountText,
-          errorMessage,
-          filterMatchCount: filterMatches.length,
-          filterRulesPayloadLength: filterRulesPayload.length,
-          hasAppliedResultFilterKeyword,
-          hasMoreFilterMatches,
-          hasMoreMatches,
-          isFilterMode,
-          isResultFilterActive,
-          isResultFilterSearching,
-          isSearching,
-          keyword,
-          matchCount: matches.length,
-          messages,
-          minimizedResultWrapperRef,
-          plainTextResultEntryCount: plainTextResultEntries.length,
-          renderedResultItems,
-          resultFilterKeyword,
-          resultFilterStepLoadingDirection,
-          resultListRef,
-          resultPanelHeight,
-          resultPanelState,
-          resultPanelWrapperRef,
-          visibleFilterMatchCount: visibleFilterMatches.length,
-          visibleMatchCount: visibleMatches.length,
-          onApplyResultFilter: handleResultFilterAction,
-          onCancelPendingBatchLoad: cancelPendingBatchLoad,
-          onClearResultFilter: handleClearResultFilter,
-          onClose: handleCloseResultPanel,
-          onCopy: () => void copyPlainTextResults(),
-          onMinimize: () => setResultPanelState('minimized'),
-          onNavigateResultFilterNext: handleResultFilterNext,
-          onNavigateResultFilterPrev: handleResultFilterPrev,
-          onOpenMinimized: handleReopenResultPanel,
-          onRefresh: handleRefreshResults,
-          onRequestStopResultFilterSearch: requestStopResultFilterSearch,
-          onResizeMouseDown: handleResultPanelResizeMouseDown,
-          onResultFilterKeywordChange: setResultFilterKeyword,
-          onScroll: handleResultListScroll,
-        }}
-      />
+      <SearchPanelOverlays {...searchPanelOverlaysProps} />
     </>
   );
 }
