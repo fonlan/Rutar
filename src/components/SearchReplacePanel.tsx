@@ -1,16 +1,13 @@
-﻿import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import {
   ArrowDown,
   Check,
   ArrowUp,
   CirclePlus,
-  ChevronDown,
   ChevronUp,
-  Copy,
   GripVertical,
   Palette,
-  RefreshCw,
   Search,
   Trash2,
   X,
@@ -22,7 +19,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -30,833 +26,88 @@ import {
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { HistoryDropdownInput } from '@/components/HistoryDropdownInput';
+import { ModeButton } from '@/components/search-panel/ModeButton';
+import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
+import { SearchPanelHeader } from '@/components/search-panel/SearchPanelHeader';
+import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
+import {
+  isFilterResultFilterStepBackendResult,
+  isFilterSessionNextBackendResult,
+  isFilterSessionRestoreBackendResult,
+  isFilterSessionStartBackendResult,
+  isMissingInvokeCommandError,
+  isSearchCursorStepBackendResult,
+  isSearchSessionNextBackendResult,
+  isSearchSessionRestoreBackendResult,
+  isSearchSessionStartBackendResult,
+} from '@/components/search-panel/backendGuards';
+import type {
+  FilterChunkBackendResult,
+  FilterCountBackendResult,
+  FilterMatch,
+  FilterRule,
+  FilterRuleDragState,
+  FilterRuleGroupPayload,
+  FilterRunResult,
+  FilterResultFilterStepBackendResult,
+  PanelMode,
+  ReplaceAllAndSearchChunkBackendResult,
+  ReplaceCurrentAndSearchChunkBackendResult,
+  SearchChunkBackendResult,
+  SearchCountBackendResult,
+  SearchFirstBackendResult,
+  SearchMatch,
+  SearchMode,
+  SearchOpenEventDetail,
+  SearchResultFilterStepBackendResult,
+  SearchResultPanelState,
+  SearchRunResult,
+  SearchSidebarInputContextAction,
+  SearchSidebarInputContextMenuState,
+  SearchSidebarTextInputElement,
+  TabSearchPanelSnapshot,
+} from '@/components/search-panel/types';
 import { cn } from '@/lib/utils';
 import { getSearchPanelMessages, t } from '@/i18n';
 import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
-
-type SearchMode = 'literal' | 'regex' | 'wildcard';
-type SearchOpenMode = 'find' | 'replace' | 'filter';
-type SearchResultPanelState = 'closed' | 'minimized' | 'open';
-type PanelMode = 'find' | 'replace' | 'filter';
-type FilterRuleMatchMode = 'contains' | 'regex' | 'wildcard';
-type FilterRuleApplyTo = 'line' | 'match';
-
-const FILTER_MATCH_MODES: FilterRuleMatchMode[] = ['contains', 'regex', 'wildcard'];
-
-interface FilterRule {
-  id: string;
-  keyword: string;
-  matchMode: FilterRuleMatchMode;
-  backgroundColor: string;
-  textColor: string;
-  bold: boolean;
-  italic: boolean;
-  applyTo: FilterRuleApplyTo;
-}
-
-interface FilterRuleDragState {
-  draggingRuleId: string;
-  overRuleId: string | null;
-}
-
-interface FilterRuleStyle {
-  backgroundColor: string;
-  textColor: string;
-  bold: boolean;
-  italic: boolean;
-  applyTo: FilterRuleApplyTo;
-}
-
-interface FilterMatchRange {
-  startChar: number;
-  endChar: number;
-}
-
-interface PreviewSegment {
-  text: string;
-  isPrimaryMatch?: boolean;
-  isSecondaryMatch?: boolean;
-  isRuleMatch?: boolean;
-}
-
-interface FilterMatch {
-  line: number;
-  column: number;
-  length: number;
-  lineText: string;
-  ruleIndex: number;
-  style: FilterRuleStyle;
-  ranges: FilterMatchRange[];
-  previewSegments?: PreviewSegment[];
-}
-
-interface FilterRuleInputPayload {
-  keyword: string;
-  matchMode: FilterRuleMatchMode;
-  backgroundColor: string;
-  textColor: string;
-  bold: boolean;
-  italic: boolean;
-  applyTo: FilterRuleApplyTo;
-}
-
-interface FilterRuleGroupPayload {
-  name: string;
-  rules: FilterRuleInputPayload[];
-}
-
-interface SearchMatch {
-  start: number;
-  end: number;
-  startChar: number;
-  endChar: number;
-  text: string;
-  line: number;
-  column: number;
-  lineText: string;
-  previewSegments?: PreviewSegment[];
-}
-
-interface SearchOpenEventDetail {
-  mode?: SearchOpenMode;
-}
-
-interface SearchRunResult {
-  matches: SearchMatch[];
-  documentVersion: number;
-  errorMessage: string | null;
-  nextOffset?: number | null;
-}
-
-interface FilterRunResult {
-  matches: FilterMatch[];
-  documentVersion: number;
-  errorMessage: string | null;
-  nextLine?: number | null;
-}
-
-interface SearchChunkBackendResult {
-  matches: SearchMatch[];
-  documentVersion: number;
-  nextOffset: number | null;
-}
-
-interface SearchSessionStartBackendResult {
-  sessionId: string | null;
-  matches: SearchMatch[];
-  documentVersion: number;
-  nextOffset: number | null;
-  totalMatches: number;
-  totalMatchedLines: number;
-}
-
-interface SearchSessionNextBackendResult {
-  matches: SearchMatch[];
-  documentVersion: number;
-  nextOffset: number | null;
-}
-
-interface SearchSessionRestoreBackendResult {
-  restored: boolean;
-  sessionId: string | null;
-  documentVersion: number;
-  nextOffset: number | null;
-  totalMatches: number;
-  totalMatchedLines: number;
-}
-
-interface FilterChunkBackendResult {
-  matches: FilterMatch[];
-  documentVersion: number;
-  nextLine: number | null;
-}
-
-interface FilterSessionStartBackendResult {
-  sessionId: string | null;
-  matches: FilterMatch[];
-  documentVersion: number;
-  nextLine: number | null;
-  totalMatchedLines: number;
-}
-
-interface FilterSessionNextBackendResult {
-  matches: FilterMatch[];
-  documentVersion: number;
-  nextLine: number | null;
-}
-
-interface FilterSessionRestoreBackendResult {
-  restored: boolean;
-  sessionId: string | null;
-  documentVersion: number;
-  nextLine: number | null;
-  totalMatchedLines: number;
-}
-
-interface FilterCountBackendResult {
-  matchedLines: number;
-  documentVersion: number;
-}
-
-interface SearchFirstBackendResult {
-  firstMatch: SearchMatch | null;
-  documentVersion: number;
-}
-
-interface SearchCountBackendResult {
-  totalMatches: number;
-  matchedLines: number;
-  documentVersion: number;
-}
-
-interface ReplaceAllAndSearchChunkBackendResult {
-  replacedCount: number;
-  lineCount: number;
-  documentVersion: number;
-  matches: SearchMatch[];
-  nextOffset: number | null;
-  totalMatches: number;
-  totalMatchedLines: number;
-}
-
-interface ReplaceCurrentAndSearchChunkBackendResult {
-  replaced: boolean;
-  lineCount: number;
-  documentVersion: number;
-  matches: SearchMatch[];
-  nextOffset: number | null;
-  preferredMatch: SearchMatch | null;
-  totalMatches: number;
-  totalMatchedLines: number;
-}
-
-interface SearchResultFilterStepBackendResult {
-  targetMatch: SearchMatch | null;
-  documentVersion: number;
-  batchStartOffset: number;
-  batchMatches?: SearchMatch[];
-  nextOffset?: number | null;
-  targetIndexInBatch?: number | null;
-  totalMatches: number;
-  totalMatchedLines: number;
-}
-
-interface SearchCursorStepBackendResult {
-  targetMatch: SearchMatch | null;
-  documentVersion: number;
-}
-
-interface FilterResultFilterStepBackendResult {
-  targetMatch: FilterMatch | null;
-  documentVersion: number;
-  batchStartLine: number;
-  batchMatches?: FilterMatch[];
-  nextLine?: number | null;
-  targetIndexInBatch?: number | null;
-  totalMatchedLines: number;
-}
-
-interface TabSearchPanelSnapshot {
-  isOpen: boolean;
-  panelMode: PanelMode;
-  resultPanelState: SearchResultPanelState;
-  resultPanelHeight: number;
-  searchSidebarWidth: number;
-  keyword: string;
-  replaceValue: string;
-  searchMode: SearchMode;
-  caseSensitive: boolean;
-  parseEscapeSequences: boolean;
-  reverseSearch: boolean;
-  resultFilterKeyword: string;
-  appliedResultFilterKeyword: string;
-  matches: SearchMatch[];
-  filterMatches: FilterMatch[];
-  currentMatchIndex: number;
-  currentFilterMatchIndex: number;
-  totalMatchCount: number | null;
-  totalMatchedLineCount: number | null;
-  totalFilterMatchedLineCount: number | null;
-  searchSessionId: string | null;
-  filterSessionId: string | null;
-  searchNextOffset: number | null;
-  filterNextLine: number | null;
-  searchDocumentVersion: number | null;
-  filterDocumentVersion: number | null;
-  filterRulesKey: string;
-}
-
-function isSearchSessionStartBackendResult(value: unknown): value is SearchSessionStartBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<SearchSessionStartBackendResult>;
-  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
-  return (
-    sessionIdValid &&
-    Array.isArray(candidate.matches) &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null) &&
-    typeof candidate.totalMatches === 'number' &&
-    typeof candidate.totalMatchedLines === 'number'
-  );
-}
-
-function isSearchSessionNextBackendResult(value: unknown): value is SearchSessionNextBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<SearchSessionNextBackendResult>;
-  return (
-    Array.isArray(candidate.matches) &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null)
-  );
-}
-
-function isSearchSessionRestoreBackendResult(value: unknown): value is SearchSessionRestoreBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<SearchSessionRestoreBackendResult>;
-  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
-  return (
-    typeof candidate.restored === 'boolean' &&
-    sessionIdValid &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null) &&
-    typeof candidate.totalMatches === 'number' &&
-    typeof candidate.totalMatchedLines === 'number'
-  );
-}
-
-function isFilterSessionStartBackendResult(value: unknown): value is FilterSessionStartBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<FilterSessionStartBackendResult>;
-  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
-  return (
-    sessionIdValid &&
-    Array.isArray(candidate.matches) &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextLine === 'number' || candidate.nextLine === null) &&
-    typeof candidate.totalMatchedLines === 'number'
-  );
-}
-
-function isFilterSessionNextBackendResult(value: unknown): value is FilterSessionNextBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<FilterSessionNextBackendResult>;
-  return (
-    Array.isArray(candidate.matches) &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextLine === 'number' || candidate.nextLine === null)
-  );
-}
-
-function isFilterSessionRestoreBackendResult(value: unknown): value is FilterSessionRestoreBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<FilterSessionRestoreBackendResult>;
-  const sessionIdValid = candidate.sessionId === null || typeof candidate.sessionId === 'string';
-  return (
-    typeof candidate.restored === 'boolean' &&
-    sessionIdValid &&
-    typeof candidate.documentVersion === 'number' &&
-    (typeof candidate.nextLine === 'number' || candidate.nextLine === null) &&
-    typeof candidate.totalMatchedLines === 'number'
-  );
-}
-
-function isSearchCursorStepBackendResult(value: unknown): value is SearchCursorStepBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<SearchCursorStepBackendResult>;
-  const targetMatchValid = candidate.targetMatch === null || typeof candidate.targetMatch === 'object';
-  return targetMatchValid && typeof candidate.documentVersion === 'number';
-}
-
-function isFilterResultFilterStepBackendResult(value: unknown): value is FilterResultFilterStepBackendResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<FilterResultFilterStepBackendResult>;
-  return (
-    typeof candidate.documentVersion === 'number' &&
-    typeof candidate.batchStartLine === 'number' &&
-    typeof candidate.totalMatchedLines === 'number'
-  );
-}
-
-function isMissingInvokeCommandError(error: unknown, commandName: string): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  const normalizedCommandName = commandName.toLowerCase();
-  if (!message.includes(normalizedCommandName)) {
-    return false;
-  }
-
-  return (
-    message.includes('unknown') ||
-    message.includes('not found') ||
-    message.includes('cannot find') ||
-    message.includes('unrecognized')
-  );
-}
-
-type SearchSidebarTextInputElement = HTMLInputElement | HTMLTextAreaElement;
-type SearchSidebarInputContextAction = 'copy' | 'cut' | 'paste' | 'delete';
-
-interface SearchSidebarInputContextMenuState {
-  x: number;
-  y: number;
-  hasSelection: boolean;
-  canEdit: boolean;
-}
-
-const SEARCH_CHUNK_SIZE = 300;
-const FILTER_CHUNK_SIZE = 300;
-const RESULT_PANEL_DEFAULT_HEIGHT = 224;
-const RESULT_PANEL_MIN_HEIGHT = 140;
-const RESULT_PANEL_MAX_HEIGHT = 640;
-const SEARCH_SIDEBAR_DEFAULT_WIDTH = 325;
-const SEARCH_SIDEBAR_MIN_WIDTH = 280;
-const SEARCH_SIDEBAR_MAX_WIDTH = 900;
-const SEARCH_SIDEBAR_RIGHT_OFFSET = 12;
-const DEFAULT_FILTER_RULE_BACKGROUND = '#fff7a8';
-const DEFAULT_FILTER_RULE_TEXT = '#1f2937';
-const TEXT_INPUT_TYPES = new Set([
-  'text',
-  'search',
-  'url',
-  'tel',
-  'email',
-  'password',
-  'number',
-]);
-
-function getReservedLayoutHeight(selector: string) {
-  const elements = document.querySelectorAll<HTMLElement>(selector);
-  if (elements.length === 0) {
-    return 0;
-  }
-
-  return Array.from(elements).reduce((total, element) => {
-    return total + element.getBoundingClientRect().height;
-  }, 0);
-}
-
-function dispatchEditorForceRefresh(tabId: string, lineCount?: number) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:force-refresh', {
-      detail: { tabId, lineCount },
-    })
-  );
-}
-
-function dispatchNavigateToMatch(tabId: string, match: SearchMatch, occludedRightPx = 0) {
-  const matchLength = Math.max(0, match.endChar - match.startChar);
-
-  window.dispatchEvent(
-    new CustomEvent('rutar:navigate-to-line', {
-      detail: {
-        tabId,
-        line: match.line,
-        column: match.column,
-        length: matchLength,
-        lineText: match.lineText,
-        occludedRightPx: Math.max(0, occludedRightPx),
-      },
-    })
-  );
-}
-
-function dispatchNavigateToLine(
-  tabId: string,
-  line: number,
-  column: number,
-  length: number,
-  lineText = '',
-  occludedRightPx = 0
-) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:navigate-to-line', {
-      detail: {
-        tabId,
-        line,
-        column,
-        length,
-        lineText,
-        occludedRightPx: Math.max(0, occludedRightPx),
-      },
-    })
-  );
-}
-
-function dispatchSearchClose(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:search-close', {
-      detail: {
-        tabId,
-      },
-    })
-  );
-}
-
-function createDefaultFilterRule(index: number): FilterRule {
-  return {
-    id: `filter-rule-${Date.now()}-${index}`,
-    keyword: '',
-    matchMode: 'contains',
-    backgroundColor: DEFAULT_FILTER_RULE_BACKGROUND,
-    textColor: DEFAULT_FILTER_RULE_TEXT,
-    bold: false,
-    italic: false,
-    applyTo: 'line',
-  };
-}
-
-function normalizeFilterRuleInputPayload(rule: FilterRuleInputPayload): FilterRuleInputPayload | null {
-  const keyword = rule.keyword.trim();
-  if (!keyword) {
-    return null;
-  }
-
-  const matchMode = FILTER_MATCH_MODES.includes(rule.matchMode) ? rule.matchMode : 'contains';
-  const applyTo: FilterRuleApplyTo = rule.applyTo === 'match' ? 'match' : 'line';
-
-  return {
-    keyword,
-    matchMode,
-    backgroundColor: rule.backgroundColor?.trim() || '',
-    textColor: rule.textColor?.trim() || DEFAULT_FILTER_RULE_TEXT,
-    bold: !!rule.bold,
-    italic: !!rule.italic,
-    applyTo,
-  };
-}
-
-function normalizeFilterRuleGroups(groups: FilterRuleGroupPayload[]): FilterRuleGroupPayload[] {
-  return groups
-    .map((group) => ({
-      name: group.name.trim(),
-      rules: (group.rules || []).map(normalizeFilterRuleInputPayload).filter((rule): rule is FilterRuleInputPayload => !!rule),
-    }))
-    .filter((group) => group.name.length > 0 && group.rules.length > 0);
-}
-
-function buildFilterRulesFromPayload(rules: FilterRuleInputPayload[]): FilterRule[] {
-  const normalizedRules = rules
-    .map(normalizeFilterRuleInputPayload)
-    .filter((rule): rule is FilterRuleInputPayload => !!rule);
-
-  if (normalizedRules.length === 0) {
-    return [createDefaultFilterRule(0)];
-  }
-
-  return normalizedRules.map((rule, index) => ({
-    id: `filter-rule-${Date.now()}-${index}`,
-    keyword: rule.keyword,
-    matchMode: rule.matchMode,
-    backgroundColor: rule.backgroundColor,
-    textColor: rule.textColor,
-    bold: rule.bold,
-    italic: rule.italic,
-    applyTo: rule.applyTo,
-  }));
-}
-
-function reorderFilterRules(rules: FilterRule[], draggingRuleId: string, targetRuleId: string): FilterRule[] {
-  if (draggingRuleId === targetRuleId) {
-    return rules;
-  }
-
-  const sourceIndex = rules.findIndex((rule) => rule.id === draggingRuleId);
-  const targetIndex = rules.findIndex((rule) => rule.id === targetRuleId);
-
-  if (sourceIndex < 0 || targetIndex < 0) {
-    return rules;
-  }
-
-  const nextRules = [...rules];
-  const [movedRule] = nextRules.splice(sourceIndex, 1);
-  nextRules.splice(targetIndex, 0, movedRule);
-  return nextRules;
-}
-
-function normalizeFilterRules(rules: FilterRule[]) {
-  return rules
-    .map((rule) => ({
-      id: rule.id,
-      keyword: rule.keyword.trim(),
-      matchMode: rule.matchMode,
-      backgroundColor: rule.backgroundColor,
-      textColor: rule.textColor,
-      bold: rule.bold,
-      italic: rule.italic,
-      applyTo: rule.applyTo,
-    }))
-    .filter((rule) => rule.keyword.length > 0);
-}
-
-function buildFilterRulesPayload(rules: FilterRule[]): FilterRuleInputPayload[] {
-  return normalizeFilterRules(rules).map((rule) => ({
-    keyword: rule.keyword,
-    matchMode: rule.matchMode,
-    backgroundColor: rule.backgroundColor,
-    textColor: rule.textColor,
-    bold: rule.bold,
-    italic: rule.italic,
-    applyTo: rule.applyTo,
-  }));
-}
-
-function cssColor(value: string | undefined, fallback: string) {
-  if (!value || value.trim().length === 0) {
-    return fallback;
-  }
-
-  return value;
-}
-
-function getSearchModeValue(mode: SearchMode) {
-  return mode;
-}
-
-function decodeSearchReplaceEscapeSequences(value: string) {
-  let decoded = '';
-
-  for (let index = 0; index < value.length; index += 1) {
-    const ch = value[index];
-    if (ch !== '\\') {
-      decoded += ch;
-      continue;
-    }
-
-    const next = value[index + 1];
-    if (next === 'n') {
-      decoded += '\n';
-      index += 1;
-      continue;
-    }
-    if (next === 'r') {
-      decoded += '\r';
-      index += 1;
-      continue;
-    }
-    if (next === 't') {
-      decoded += '\t';
-      index += 1;
-      continue;
-    }
-    if (next === '\\') {
-      decoded += '\\';
-      index += 1;
-      continue;
-    }
-
-    decoded += ch;
-  }
-
-  return decoded;
-}
-
-function resolveSearchKeyword(value: string, parseEscapeSequences: boolean) {
-  if (!parseEscapeSequences) {
-    return value;
-  }
-
-  return decodeSearchReplaceEscapeSequences(value);
-}
-
-function renderMatchPreview(match: SearchMatch) {
-  const lineText = match.lineText || '';
-  const previewSegments = match.previewSegments ?? [];
-
-  if (previewSegments.length === 0) {
-    return <span>{lineText || ' '}</span>;
-  }
-
-  return (
-    <>
-      {previewSegments.map((segment, index) => {
-        if (!segment.text) {
-          return null;
-        }
-
-        if (segment.isSecondaryMatch) {
-          return (
-            <mark key={`secondary-${index}`} className="rounded-sm px-0.5" style={{ backgroundColor: '#bae6fd' }}>
-              {segment.text}
-            </mark>
-          );
-        }
-
-        if (segment.isPrimaryMatch) {
-          return (
-            <mark key={`primary-${index}`} className="rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70">
-              {segment.text}
-            </mark>
-          );
-        }
-
-        return <span key={`plain-${index}`}>{segment.text}</span>;
-      })}
-    </>
-  );
-}
-
-function renderFilterPreview(match: FilterMatch) {
-  const lineText = match.lineText || '';
-  const previewSegments = match.previewSegments ?? [];
-  const style = match.style;
-  const textColor = cssColor(style?.textColor, 'inherit');
-  const bgColor = cssColor(style?.backgroundColor, 'transparent');
-  const isBold = !!style?.bold;
-  const isItalic = !!style?.italic;
-  const secondaryHighlightBg = '#bae6fd';
-
-  const applySegmentStyle = (isRuleMatch: boolean, isSecondaryMatch: boolean): CSSProperties => {
-    const nextStyle: CSSProperties = {
-      backgroundColor: isSecondaryMatch ? secondaryHighlightBg : isRuleMatch ? bgColor : 'transparent',
-    };
-
-    if (isRuleMatch) {
-      nextStyle.color = textColor;
-      nextStyle.fontWeight = isBold ? 700 : 400;
-      nextStyle.fontStyle = isItalic ? 'italic' : 'normal';
-    }
-
-    return nextStyle;
-  };
-
-  if (previewSegments.length === 0) {
-    return <span>{lineText || ' '}</span>;
-  }
-
-  return (
-    <>
-      {previewSegments.map((segment, index) => {
-        if (!segment.text) {
-          return null;
-        }
-
-        return (
-          <span
-            key={`segment-${index}`}
-            style={applySegmentStyle(!!segment.isRuleMatch, !!segment.isSecondaryMatch)}
-          >
-            {segment.text}
-          </span>
-        );
-      })}
-    </>
-  );
-}
-
-function matchModeLabel(mode: FilterRuleMatchMode, messages: ReturnType<typeof getSearchPanelMessages>) {
-  if (mode === 'contains') {
-    return messages.filterMatchContains;
-  }
-
-  if (mode === 'regex') {
-    return messages.filterMatchRegex;
-  }
-
-  return messages.filterMatchWildcard;
-}
-
-async function writePlainTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.setAttribute('readonly', 'true');
-  textArea.style.position = 'fixed';
-  textArea.style.opacity = '0';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  const copied = document.execCommand('copy');
-  document.body.removeChild(textArea);
-
-  if (!copied) {
-    throw new Error('Clipboard copy not supported');
-  }
-}
-
-function resolveSearchSidebarTextInputTarget(
-  target: EventTarget | null
-): SearchSidebarTextInputElement | null {
-  if (!(target instanceof Element)) {
-    return null;
-  }
-
-  const inputElement = target.closest('input, textarea');
-  if (!inputElement) {
-    return null;
-  }
-
-  if (inputElement instanceof HTMLTextAreaElement) {
-    return inputElement;
-  }
-
-  if (!(inputElement instanceof HTMLInputElement)) {
-    return null;
-  }
-
-  const inputType = (inputElement.type || 'text').toLowerCase();
-  return TEXT_INPUT_TYPES.has(inputType) ? inputElement : null;
-}
-
-function getTextInputSelectionRange(input: SearchSidebarTextInputElement) {
-  const start = input.selectionStart ?? 0;
-  const rawEnd = input.selectionEnd ?? start;
-  const end = rawEnd < start ? start : rawEnd;
-  return { start, end };
-}
-
-function hasTextInputSelection(input: SearchSidebarTextInputElement) {
-  const { start, end } = getTextInputSelectionRange(input);
-  return end > start;
-}
-
-function isTextInputEditable(input: SearchSidebarTextInputElement) {
-  return !input.readOnly && !input.disabled;
-}
-
-function dispatchTextInputEvent(input: SearchSidebarTextInputElement) {
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function replaceSelectedInputText(
-  input: SearchSidebarTextInputElement,
-  text: string,
-  selectionMode: SelectionMode
-) {
-  const { start, end } = getTextInputSelectionRange(input);
-  input.setRangeText(text, start, end, selectionMode);
-  dispatchTextInputEvent(input);
-}
-
+import {
+  buildFilterRulesFromPayload,
+  buildFilterRulesPayload,
+  createDefaultFilterRule,
+  DEFAULT_FILTER_RULE_BACKGROUND,
+  DEFAULT_FILTER_RULE_TEXT,
+  dispatchEditorForceRefresh,
+  dispatchNavigateToLine,
+  dispatchNavigateToMatch,
+  dispatchSearchClose,
+  FILTER_CHUNK_SIZE,
+  FILTER_MATCH_MODES,
+  getReservedLayoutHeight,
+  getTextInputSelectionRange,
+  getSearchModeValue,
+  hasTextInputSelection,
+  isTextInputEditable,
+  matchModeLabel,
+  normalizeFilterRuleGroups,
+  normalizeFilterRules,
+  renderFilterPreview,
+  renderMatchPreview,
+  reorderFilterRules,
+  replaceSelectedInputText,
+  resolveSearchKeyword,
+  resolveSearchSidebarTextInputTarget,
+  RESULT_PANEL_DEFAULT_HEIGHT,
+  RESULT_PANEL_MAX_HEIGHT,
+  RESULT_PANEL_MIN_HEIGHT,
+  SEARCH_CHUNK_SIZE,
+  SEARCH_SIDEBAR_DEFAULT_WIDTH,
+  SEARCH_SIDEBAR_MAX_WIDTH,
+  SEARCH_SIDEBAR_MIN_WIDTH,
+  SEARCH_SIDEBAR_RIGHT_OFFSET,
+  writePlainTextToClipboard,
+} from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
   const tabs = useStore((state) => state.tabs);
   const activeTabId = useStore((state) => state.activeTabId);
@@ -4453,6 +3704,67 @@ export function SearchReplacePanel() {
     }
   }, [messages, plainTextResultEntries]);
 
+  const handleClearResultFilter = useCallback(() => {
+    setResultFilterKeyword('');
+    setAppliedResultFilterKeyword('');
+  }, []);
+
+  const handleResultFilterPrev = useCallback(() => {
+    if (resultFilterStepLoadingDirection === 'prev') {
+      cancelPendingBatchLoad();
+      return;
+    }
+
+    void navigateResultFilterByStep(-1);
+  }, [cancelPendingBatchLoad, navigateResultFilterByStep, resultFilterStepLoadingDirection]);
+
+  const handleResultFilterNext = useCallback(() => {
+    if (resultFilterStepLoadingDirection === 'next') {
+      cancelPendingBatchLoad();
+      return;
+    }
+
+    void navigateResultFilterByStep(1);
+  }, [cancelPendingBatchLoad, navigateResultFilterByStep, resultFilterStepLoadingDirection]);
+
+  const handleResultFilterAction = useCallback(() => {
+    if (isResultFilterSearching) {
+      requestStopResultFilterSearch();
+      return;
+    }
+
+    void handleApplyResultFilter();
+  }, [handleApplyResultFilter, isResultFilterSearching, requestStopResultFilterSearch]);
+
+  const handleRefreshResults = useCallback(() => {
+    cancelPendingBatchLoad();
+    if (isFilterMode) {
+      void executeFilter(true);
+      return;
+    }
+
+    void executeSearch(true);
+  }, [cancelPendingBatchLoad, executeFilter, executeSearch, isFilterMode]);
+
+  const handleCloseResultPanel = useCallback(() => {
+    cancelPendingBatchLoad();
+    setResultPanelState('closed');
+  }, [cancelPendingBatchLoad]);
+
+  const handleReopenResultPanel = useCallback(() => {
+    setResultPanelState('open');
+
+    if (!isSearching) {
+      if (isFilterMode) {
+        if (filterRulesPayload.length > 0) {
+          void executeFilter();
+        }
+      } else if (keyword) {
+        void executeSearch();
+      }
+    }
+  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
+
   const renderedResultItems = useMemo(() => {
     if (resultPanelState !== 'open') {
       return null;
@@ -4624,7 +3936,6 @@ export function SearchReplacePanel() {
 
   const canReplace = !!activeTab;
   const isResultPanelOpen = resultPanelState === 'open';
-  const isResultPanelMinimized = resultPanelState === 'minimized';
   const resultToggleTitle = isResultPanelOpen ? messages.collapseResults : messages.expandResults;
   const filterToggleLabel = isResultPanelOpen ? messages.collapse : messages.filterRun;
 
@@ -4769,69 +4080,16 @@ export function SearchReplacePanel() {
           onFocusCapture={handleSearchUiFocusCapture}
           onBlurCapture={handleSearchUiBlurCapture}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="inline-flex items-center rounded-md border border-border p-0.5">
-              <button
-                type="button"
-                className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                  panelMode === 'find'
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-                onClick={() => {
-                  setPanelMode('find');
-                  focusSearchInput();
-                }}
-              >
-                {messages.find}
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
-                  panelMode === 'replace'
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-                onClick={() => {
-                  setPanelMode('replace');
-                  focusSearchInput();
-                }}
-                disabled={!canReplace}
-                title={canReplace ? messages.switchToReplaceMode : messages.noFileOpen}
-              >
-                {messages.replace}
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'rounded px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
-                  panelMode === 'filter'
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-                onClick={() => {
-                  setPanelMode('filter');
-                  focusSearchInput();
-                }}
-                disabled={!canReplace}
-                title={canReplace ? messages.switchToFilterMode : messages.noFileOpen}
-              >
-                {messages.filter}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => setIsOpen(false)}
-              title={messages.close}
-              aria-label={messages.close}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <SearchPanelHeader
+            canReplace={canReplace}
+            panelMode={panelMode}
+            messages={messages}
+            onClose={() => setIsOpen(false)}
+            onModeChange={(mode) => {
+              setPanelMode(mode);
+              focusSearchInput();
+            }}
+          />
 
           {!isFilterMode ? (
             <div className="mt-3 flex items-center gap-2">
@@ -5413,373 +4671,61 @@ export function SearchReplacePanel() {
       </div>
 
       {inputContextMenu && (
-        <div
-          ref={inputContextMenuRef}
-          role="menu"
-          className="fixed z-[60] min-w-[120px] rounded-md border border-border bg-background p-1 shadow-2xl"
-          style={{
-            left: `${inputContextMenu.x}px`,
-            top: `${inputContextMenu.y}px`,
-          }}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={() => void handleInputContextMenuAction('copy')}
-            disabled={!inputContextMenu.hasSelection}
-          >
-            {inputContextCopyLabel}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={() => void handleInputContextMenuAction('cut')}
-            disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
-          >
-            {inputContextCutLabel}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={() => void handleInputContextMenuAction('paste')}
-            disabled={!inputContextMenu.canEdit}
-          >
-            {inputContextPasteLabel}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={() => void handleInputContextMenuAction('delete')}
-            disabled={!inputContextMenu.canEdit || !inputContextMenu.hasSelection}
-          >
-            {messages.filterDeleteRule}
-          </button>
-        </div>
+        <SearchInputContextMenu
+          contextMenu={inputContextMenu}
+          copyLabel={inputContextCopyLabel}
+          cutLabel={inputContextCutLabel}
+          deleteLabel={messages.filterDeleteRule}
+          menuRef={inputContextMenuRef}
+          pasteLabel={inputContextPasteLabel}
+          onAction={(action) => void handleInputContextMenuAction(action)}
+        />
       )}
 
-      {resultPanelState !== 'closed' && (
-        <div ref={resultPanelWrapperRef} className="pointer-events-none absolute inset-x-0 bottom-6 z-[35] px-2 pb-2">
-        <div
-          className={cn(
-            'pointer-events-auto rounded-lg border border-border shadow-2xl transition-colors',
-            'bg-background',
-            resultPanelState === 'open' ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          )}
-        >
-          <button
-            type="button"
-            className="flex h-2 w-full cursor-row-resize items-center justify-center rounded-t-lg text-muted-foreground/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onMouseDown={handleResultPanelResizeMouseDown}
-            title="Resize results panel"
-            aria-label="Resize results panel"
-          >
-            <span className="h-0.5 w-10 rounded-full bg-border" />
-          </button>
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <div className="shrink-0 text-xs font-medium text-foreground">
-                {isFilterMode
-                  ? messages.filterResultsSummary(displayTotalFilterMatchedLineCountText, visibleFilterMatches.length)
-                  : messages.resultsSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, visibleMatches.length)}
-              </div>
-              <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-input bg-background px-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <input
-                  value={resultFilterKeyword}
-                  onChange={(event) => setResultFilterKeyword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void handleApplyResultFilter();
-                    }
-                  }}
-                  placeholder={messages.resultFilterPlaceholder}
-                  aria-label={messages.resultFilterPlaceholder}
-                  name="result-filter-keyword"
-                  autoComplete="off"
-                  className="h-7 min-w-0 flex-1 bg-transparent pr-6 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {resultFilterKeyword && (
-                  <button
-                    type="button"
-                    className="-ml-5 mr-0.5 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      setResultFilterKeyword('');
-                      setAppliedResultFilterKeyword('');
-                    }}
-                    title={messages.clearResultFilter}
-                    aria-label={messages.clearResultFilter}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                  onClick={() => {
-                    if (resultFilterStepLoadingDirection === 'prev') {
-                      cancelPendingBatchLoad();
-                      return;
-                    }
-
-                    void navigateResultFilterByStep(-1);
-                  }}
-                  title={messages.prevMatch}
-                  disabled={
-                    !hasAppliedResultFilterKeyword ||
-                    isResultFilterSearching ||
-                    (isSearching && resultFilterStepLoadingDirection !== 'prev')
-                  }
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {resultFilterStepLoadingDirection === 'prev' ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ArrowUp className="h-3 w-3" />
-                    )}
-                    {messages.previous}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-border px-1.5 py-1 text-[11px] text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                  onClick={() => {
-                    if (resultFilterStepLoadingDirection === 'next') {
-                      cancelPendingBatchLoad();
-                      return;
-                    }
-
-                    void navigateResultFilterByStep(1);
-                  }}
-                  title={messages.nextMatch}
-                  disabled={
-                    !hasAppliedResultFilterKeyword ||
-                    isResultFilterSearching ||
-                    (isSearching && resultFilterStepLoadingDirection !== 'next')
-                  }
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {resultFilterStepLoadingDirection === 'next' ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ArrowDown className="h-3 w-3" />
-                    )}
-                    {messages.next}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md bg-primary px-2 py-1 text-[11px] text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                  onClick={() => {
-                    if (isResultFilterSearching) {
-                      requestStopResultFilterSearch();
-                      return;
-                    }
-
-                    void handleApplyResultFilter();
-                  }}
-                  disabled={isSearching}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {isResultFilterSearching ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Search className="h-3 w-3" />
-                    )}
-                    {isResultFilterSearching ? messages.resultFilterStop : messages.resultFilterSearch}
-                  </span>
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => {
-                  cancelPendingBatchLoad();
-                  if (isFilterMode) {
-                    void executeFilter(true);
-                    return;
-                  }
-
-                  void executeSearch(true);
-                }}
-                title={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
-                aria-label={isFilterMode ? messages.refreshFilterResults : messages.refreshResults}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                onClick={() => {
-                  void copyPlainTextResults();
-                }}
-                title={messages.copyResults}
-                aria-label={messages.copyResults}
-                disabled={plainTextResultEntries.length === 0}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => setResultPanelState('minimized')}
-                title={messages.minimizeResults}
-                aria-label={messages.minimizeResults}
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => {
-                  cancelPendingBatchLoad();
-                  setResultPanelState('closed');
-                }}
-                title={messages.closeResults}
-                aria-label={messages.closeResults}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div
-            ref={resultListRef}
-            className="overflow-auto"
-            style={{ maxHeight: `${resultPanelHeight}px` }}
-            onScroll={handleResultListScroll}
-          >
-            {isFilterMode ? (
-              <>
-                {filterRulesPayload.length === 0 && (
-                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.filterResultsEmptyHint}</div>
-                )}
-
-                {filterRulesPayload.length > 0 && filterMatches.length === 0 && !isSearching && !errorMessage && (
-                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noFilterMatchesHint}</div>
-                )}
-
-                {filterRulesPayload.length > 0 &&
-                  filterMatches.length > 0 &&
-                  visibleFilterMatches.length === 0 &&
-                  isResultFilterActive && (
-                    <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultFilterNoMatches}</div>
-                  )}
-              </>
-            ) : (
-              <>
-                {!keyword && (
-                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultsEmptyHint}</div>
-                )}
-
-                {!!keyword && matches.length === 0 && !isSearching && !errorMessage && (
-                  <div className="px-3 py-4 text-xs text-muted-foreground">{messages.noMatchesHint}</div>
-                )}
-
-                {!!keyword &&
-                  matches.length > 0 &&
-                  visibleMatches.length === 0 &&
-                  isResultFilterActive && (
-                    <div className="px-3 py-4 text-xs text-muted-foreground">{messages.resultFilterNoMatches}</div>
-                  )}
-              </>
-            )}
-
-            {renderedResultItems}
-
-            {(isFilterMode ? visibleFilterMatches.length > 0 : !!keyword && visibleMatches.length > 0) && (
-              <div className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">
-                {isFilterMode
-                  ? isSearching
-                    ? messages.filterLoadingMore
-                    : hasMoreFilterMatches
-                      ? messages.filterScrollToLoadMore
-                      : messages.filterLoadedAll(displayTotalFilterMatchedLineCountText)
-                  : isSearching
-                    ? messages.loadingMore
-                    : hasMoreMatches
-                      ? messages.scrollToLoadMore
-                      : messages.loadedAll(displayTotalMatchCountText)}
-              </div>
-            )}
-          </div>
-        </div>
-        </div>
-      )}
-
-      {isResultPanelMinimized && (
-        <div ref={minimizedResultWrapperRef} className="pointer-events-none absolute bottom-6 right-2 z-[35]">
-          <div
-            className={cn(
-              'pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs shadow-lg transition-colors'
-            )}
-          >
-            <span className="text-muted-foreground">
-              {isFilterMode
-                ? messages.filterMinimizedSummary(displayTotalFilterMatchedLineCountText, filterMatches.length)
-                : messages.minimizedSummary(displayTotalMatchCountText, displayTotalMatchedLineCountText, matches.length)}
-            </span>
-            <button
-              type="button"
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => {
-                setResultPanelState('open');
-
-                if (!isSearching) {
-                  if (isFilterMode) {
-                    if (filterRulesPayload.length > 0) {
-                      void executeFilter();
-                    }
-                  } else if (keyword) {
-                    void executeSearch();
-                  }
-                }
-              }}
-              title={isFilterMode ? messages.openFilterResults : messages.openResults}
-              aria-label={isFilterMode ? messages.openFilterResults : messages.openResults}
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => {
-                cancelPendingBatchLoad();
-                setResultPanelState('closed');
-              }}
-              title={messages.closeResults}
-              aria-label={messages.closeResults}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+      <SearchResultsPanel
+        displayTotalFilterMatchedLineCountText={displayTotalFilterMatchedLineCountText}
+        displayTotalMatchCountText={displayTotalMatchCountText}
+        displayTotalMatchedLineCountText={displayTotalMatchedLineCountText}
+        errorMessage={errorMessage}
+        filterMatchCount={filterMatches.length}
+        filterRulesPayloadLength={filterRulesPayload.length}
+        hasAppliedResultFilterKeyword={hasAppliedResultFilterKeyword}
+        hasMoreFilterMatches={hasMoreFilterMatches}
+        hasMoreMatches={hasMoreMatches}
+        isFilterMode={isFilterMode}
+        isResultFilterActive={isResultFilterActive}
+        isResultFilterSearching={isResultFilterSearching}
+        isSearching={isSearching}
+        keyword={keyword}
+        matchCount={matches.length}
+        messages={messages}
+        minimizedResultWrapperRef={minimizedResultWrapperRef}
+        plainTextResultEntryCount={plainTextResultEntries.length}
+        renderedResultItems={renderedResultItems}
+        resultFilterKeyword={resultFilterKeyword}
+        resultFilterStepLoadingDirection={resultFilterStepLoadingDirection}
+        resultListRef={resultListRef}
+        resultPanelHeight={resultPanelHeight}
+        resultPanelState={resultPanelState}
+        resultPanelWrapperRef={resultPanelWrapperRef}
+        visibleFilterMatchCount={visibleFilterMatches.length}
+        visibleMatchCount={visibleMatches.length}
+        onApplyResultFilter={handleResultFilterAction}
+        onCancelPendingBatchLoad={cancelPendingBatchLoad}
+        onClearResultFilter={handleClearResultFilter}
+        onClose={handleCloseResultPanel}
+        onCopy={() => void copyPlainTextResults()}
+        onMinimize={() => setResultPanelState('minimized')}
+        onNavigateResultFilterNext={handleResultFilterNext}
+        onNavigateResultFilterPrev={handleResultFilterPrev}
+        onOpenMinimized={handleReopenResultPanel}
+        onRefresh={handleRefreshResults}
+        onRequestStopResultFilterSearch={requestStopResultFilterSearch}
+        onResizeMouseDown={handleResultPanelResizeMouseDown}
+        onResultFilterKeywordChange={setResultFilterKeyword}
+        onScroll={handleResultListScroll}
+      />
     </>
   );
 }
 
-function ModeButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'rounded-md border px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        active
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-      )}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
