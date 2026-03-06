@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 import {
   useCallback,
   type ClipboardEvent as ReactClipboardEvent,
@@ -6,11 +6,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type SetStateAction,
-} from 'react';
-import type { FileTab } from '@/store/useStore';
-import type { ActivePanel, LineDiffComparisonResult } from './diffEditor.types';
-import type { CaretSnapshot } from './diffEditor.utils';
-import { getLineIndexFromTextOffset } from './diffEditor.utils';
+} from "react";
+import type { FileTab, SyntaxKey } from "@/store/useStore";
+import type { ActivePanel, LineDiffComparisonResult } from "./diffEditor.types";
+import type { CaretSnapshot } from "./diffEditor.utils";
+import { getLineIndexFromTextOffset } from "./diffEditor.utils";
+import {
+  buildAutoDedentInsertion,
+  buildEnterAutoIndentText,
+} from "./enterAutoIndent";
 
 interface ApplyAlignedDiffPanelCopyResult {
   lineDiff: LineDiffComparisonResult;
@@ -20,6 +24,8 @@ interface ApplyAlignedDiffPanelCopyResult {
 interface UseDiffEditorEditActionsParams {
   sourceTab: FileTab | null;
   targetTab: FileTab | null;
+  sourceSyntaxKey: SyntaxKey | null;
+  targetSyntaxKey: SyntaxKey | null;
   sourceIndentText: string;
   targetIndentText: string;
   setActivePanel: (side: ActivePanel) => void;
@@ -36,29 +42,37 @@ interface UseDiffEditorEditActionsParams {
     alignedSourceLines: string[],
     alignedTargetLines: string[],
     alignedSourcePresent: boolean[],
-    alignedTargetPresent: boolean[]
+    alignedTargetPresent: boolean[],
   ) => void;
   scheduleSideCommit: (side: ActivePanel) => void;
   invalidatePreviewMetadataComputation: () => void;
   normalizeTextToLines: (text: string) => string[];
-  reconcilePresenceAfterTextEdit: (oldLines: string[], oldPresent: boolean[], newLines: string[]) => boolean[];
+  reconcilePresenceAfterTextEdit: (
+    oldLines: string[],
+    oldPresent: boolean[],
+    newLines: string[],
+  ) => boolean[];
   buildCopyTextWithoutVirtualRows: (
     text: string,
     selectionStart: number,
     selectionEnd: number,
-    present: boolean[]
+    present: boolean[],
   ) => string | null;
   getSelectedLineRangeByOffset: (
     text: string,
     selectionStart: number,
-    selectionEnd: number
+    selectionEnd: number,
   ) => { startLine: number; endLine: number };
-  normalizeLineDiffResult: (input: LineDiffComparisonResult) => LineDiffComparisonResult;
+  normalizeLineDiffResult: (
+    input: LineDiffComparisonResult,
+  ) => LineDiffComparisonResult;
 }
 
 export function useDiffEditorEditActions({
   sourceTab,
   targetTab,
+  sourceSyntaxKey,
+  targetSyntaxKey,
   sourceIndentText,
   targetIndentText,
   setActivePanel,
@@ -91,7 +105,7 @@ export function useDiffEditorEditActions({
       side: ActivePanel,
       nextText: string,
       selectionStart: number,
-      selectionEnd: number
+      selectionEnd: number,
     ) => {
       lastEditAtRef.current = Date.now();
       capturePanelScrollSnapshot();
@@ -99,7 +113,7 @@ export function useDiffEditorEditActions({
       const normalizedLines = normalizeTextToLines(nextText);
 
       setLineDiff((previous) => {
-        const isSourceSide = side === 'source';
+        const isSourceSide = side === "source";
         const previousActiveLines = isSourceSide
           ? previous.alignedSourceLines
           : previous.alignedTargetLines;
@@ -116,30 +130,45 @@ export function useDiffEditorEditActions({
         const reconciledPresent = reconcilePresenceAfterTextEdit(
           previousActiveLines,
           previousActivePresent,
-          normalizedLines
+          normalizedLines,
         );
 
-        const nextAlignedCount = Math.max(1, normalizedLines.length, previousOppositeLines.length);
+        const nextAlignedCount = Math.max(
+          1,
+          normalizedLines.length,
+          previousOppositeLines.length,
+        );
         const nextActiveLines = [...normalizedLines];
         const nextActivePresent = [...reconciledPresent];
         const nextOppositeLines = [...previousOppositeLines];
         const nextOppositePresent = [...previousOppositePresent];
 
         while (nextActiveLines.length < nextAlignedCount) {
-          nextActiveLines.push('');
+          nextActiveLines.push("");
           nextActivePresent.push(false);
         }
 
         while (nextOppositeLines.length < nextAlignedCount) {
-          nextOppositeLines.push('');
+          nextOppositeLines.push("");
           nextOppositePresent.push(false);
         }
 
-        const nextSourceLines = isSourceSide ? nextActiveLines : nextOppositeLines;
-        const nextSourcePresent = isSourceSide ? nextActivePresent : nextOppositePresent;
-        const nextTargetLines = isSourceSide ? nextOppositeLines : nextActiveLines;
-        const nextTargetPresent = isSourceSide ? nextOppositePresent : nextActivePresent;
-        const caretRowIndex = getLineIndexFromTextOffset(nextText, selectionStart);
+        const nextSourceLines = isSourceSide
+          ? nextActiveLines
+          : nextOppositeLines;
+        const nextSourcePresent = isSourceSide
+          ? nextActivePresent
+          : nextOppositePresent;
+        const nextTargetLines = isSourceSide
+          ? nextOppositeLines
+          : nextActiveLines;
+        const nextTargetPresent = isSourceSide
+          ? nextOppositePresent
+          : nextActivePresent;
+        const caretRowIndex = getLineIndexFromTextOffset(
+          nextText,
+          selectionStart,
+        );
         pendingCaretRestoreRef.current = {
           side,
           rowIndex: Math.max(0, Math.min(caretRowIndex, nextAlignedCount - 1)),
@@ -161,7 +190,7 @@ export function useDiffEditorEditActions({
           nextSourceLines,
           nextTargetLines,
           nextSourcePresent,
-          nextTargetPresent
+          nextTargetPresent,
         );
         return nextState;
       });
@@ -179,17 +208,20 @@ export function useDiffEditorEditActions({
       schedulePreviewMetadataComputation,
       scheduleSideCommit,
       setLineDiff,
-    ]
+    ],
   );
 
   const handlePanelPasteText = useCallback(
     (side: ActivePanel, pastedText: string) => {
-      const textarea = side === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      const textarea =
+        side === "source"
+          ? sourceTextareaRef.current
+          : targetTextareaRef.current;
       if (!textarea) {
         return;
       }
 
-      const value = textarea.value ?? '';
+      const value = textarea.value ?? "";
       const selectionStart = textarea.selectionStart ?? value.length;
       const selectionEnd = textarea.selectionEnd ?? value.length;
       const safeStart = Math.max(0, Math.min(selectionStart, value.length));
@@ -200,48 +232,108 @@ export function useDiffEditorEditActions({
       textarea.focus({ preventScroll: true });
       handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
     },
-    [handlePanelTextareaChange, setActivePanel, sourceTextareaRef, targetTextareaRef]
+    [
+      handlePanelTextareaChange,
+      setActivePanel,
+      sourceTextareaRef,
+      targetTextareaRef,
+    ],
   );
 
   const handlePanelTextareaKeyDown = useCallback(
     (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      const target = event.currentTarget;
+      const value = target.value;
+      const start = target.selectionStart ?? value.length;
+      const end = target.selectionEnd ?? start;
+      const safeStart = Math.max(0, Math.min(start, value.length));
+      const safeEnd = Math.max(safeStart, Math.min(end, value.length));
+      const indentText =
+        side === "source" ? sourceIndentText : targetIndentText;
+      const syntaxKey = side === "source" ? sourceSyntaxKey : targetSyntaxKey;
+
       if (
-        event.key === 'Tab'
-        && !event.ctrlKey
-        && !event.metaKey
-        && !event.altKey
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.nativeEvent.isComposing &&
+        safeStart === safeEnd
+      ) {
+        const autoDedentReplacement = buildAutoDedentInsertion({
+          text: value,
+          offset: safeStart,
+          syntaxKey,
+          indentText,
+          key: event.key,
+        });
+        if (autoDedentReplacement) {
+          event.preventDefault();
+          const nextValue = `${value.slice(0, autoDedentReplacement.start)}${autoDedentReplacement.newText}${value.slice(autoDedentReplacement.end)}`;
+          const nextCaret =
+            autoDedentReplacement.start + autoDedentReplacement.newText.length;
+          handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+          return;
+        }
+      }
+
+      if (
+        event.key === "Enter" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.nativeEvent.isComposing
       ) {
         event.preventDefault();
-        const target = event.currentTarget;
-        const indentText = side === 'source' ? sourceIndentText : targetIndentText;
-        const value = target.value;
-        const start = target.selectionStart ?? value.length;
-        const end = target.selectionEnd ?? start;
-        const safeStart = Math.max(0, Math.min(start, value.length));
-        const safeEnd = Math.max(safeStart, Math.min(end, value.length));
+        const newlineText = buildEnterAutoIndentText({
+          text: value,
+          offset: safeStart,
+          syntaxKey,
+          indentText,
+        });
+        const nextValue = `${value.slice(0, safeStart)}${newlineText}${value.slice(safeEnd)}`;
+        const nextCaret = safeStart + newlineText.length;
+        handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+        return;
+      }
+
+      if (
+        event.key === "Tab" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
         const nextValue = `${value.slice(0, safeStart)}${indentText}${value.slice(safeEnd)}`;
         const nextCaret = safeStart + indentText.length;
         handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
       }
     },
-    [handlePanelTextareaChange, sourceIndentText, targetIndentText]
+    [
+      handlePanelTextareaChange,
+      sourceIndentText,
+      sourceSyntaxKey,
+      targetIndentText,
+      targetSyntaxKey,
+    ],
   );
 
   const handlePanelTextareaCopy = useCallback(
     (side: ActivePanel, event: ReactClipboardEvent<HTMLTextAreaElement>) => {
       const target = event.currentTarget;
-      const value = target.value ?? '';
+      const value = target.value ?? "";
       const selectionStart = target.selectionStart ?? 0;
       const selectionEnd = target.selectionEnd ?? selectionStart;
       const snapshot = lineDiffRef.current;
-      const present = side === 'source'
-        ? snapshot.alignedSourcePresent
-        : snapshot.alignedTargetPresent;
+      const present =
+        side === "source"
+          ? snapshot.alignedSourcePresent
+          : snapshot.alignedTargetPresent;
       const copiedText = buildCopyTextWithoutVirtualRows(
         value,
         selectionStart,
         selectionEnd,
-        present
+        present,
       );
 
       if (copiedText === null) {
@@ -249,9 +341,9 @@ export function useDiffEditorEditActions({
       }
 
       event.preventDefault();
-      event.clipboardData.setData('text/plain', copiedText);
+      event.clipboardData.setData("text/plain", copiedText);
     },
-    [buildCopyTextWithoutVirtualRows, lineDiffRef]
+    [buildCopyTextWithoutVirtualRows, lineDiffRef],
   );
 
   const handleCopyLinesToPanel = useCallback(
@@ -260,39 +352,45 @@ export function useDiffEditorEditActions({
         return;
       }
 
-      const destinationTab = targetSide === 'source' ? sourceTab : targetTab;
+      const destinationTab = targetSide === "source" ? sourceTab : targetTab;
       if (!destinationTab) {
         return;
       }
 
-      const sourceTextarea = fromSide === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      const sourceTextarea =
+        fromSide === "source"
+          ? sourceTextareaRef.current
+          : targetTextareaRef.current;
       if (!sourceTextarea) {
         return;
       }
 
-      const sourceText = sourceTextarea.value ?? '';
+      const sourceText = sourceTextarea.value ?? "";
       const selectionStart = sourceTextarea.selectionStart ?? 0;
       const selectionEnd = sourceTextarea.selectionEnd ?? selectionStart;
       const { startLine, endLine } = getSelectedLineRangeByOffset(
         sourceText,
         selectionStart,
-        selectionEnd
+        selectionEnd,
       );
       const snapshot = lineDiffRef.current;
       const requestSequence = copyLinesRequestSequenceRef.current + 1;
       copyLinesRequestSequenceRef.current = requestSequence;
 
       try {
-        const result = await invoke<ApplyAlignedDiffPanelCopyResult>('apply_aligned_diff_panel_copy', {
-          fromSide,
-          toSide: targetSide,
-          startRowIndex: Math.max(0, Math.floor(startLine)),
-          endRowIndex: Math.max(0, Math.floor(endLine)),
-          alignedSourceLines: snapshot.alignedSourceLines,
-          alignedTargetLines: snapshot.alignedTargetLines,
-          alignedSourcePresent: snapshot.alignedSourcePresent,
-          alignedTargetPresent: snapshot.alignedTargetPresent,
-        });
+        const result = await invoke<ApplyAlignedDiffPanelCopyResult>(
+          "apply_aligned_diff_panel_copy",
+          {
+            fromSide,
+            toSide: targetSide,
+            startRowIndex: Math.max(0, Math.floor(startLine)),
+            endRowIndex: Math.max(0, Math.floor(endLine)),
+            alignedSourceLines: snapshot.alignedSourceLines,
+            alignedTargetLines: snapshot.alignedTargetLines,
+            alignedSourcePresent: snapshot.alignedSourcePresent,
+            alignedTargetPresent: snapshot.alignedTargetPresent,
+          },
+        );
 
         if (copyLinesRequestSequenceRef.current !== requestSequence) {
           return;
@@ -313,7 +411,7 @@ export function useDiffEditorEditActions({
         if (copyLinesRequestSequenceRef.current !== requestSequence) {
           return;
         }
-        console.error('Failed to copy diff lines to panel:', error);
+        console.error("Failed to copy diff lines to panel:", error);
       }
     },
     [
@@ -330,7 +428,7 @@ export function useDiffEditorEditActions({
       sourceTextareaRef,
       targetTab,
       targetTextareaRef,
-    ]
+    ],
   );
 
   const isCopyLinesToPanelDisabled = useCallback(
@@ -339,32 +437,38 @@ export function useDiffEditorEditActions({
         return true;
       }
 
-      const destinationTab = targetSide === 'source' ? sourceTab : targetTab;
+      const destinationTab = targetSide === "source" ? sourceTab : targetTab;
       if (!destinationTab) {
         return true;
       }
 
-      const textarea = fromSide === 'source' ? sourceTextareaRef.current : targetTextareaRef.current;
+      const textarea =
+        fromSide === "source"
+          ? sourceTextareaRef.current
+          : targetTextareaRef.current;
       if (!textarea) {
         return true;
       }
 
       const snapshot = lineDiffRef.current;
-      const sourceLines = fromSide === 'source'
-        ? snapshot.alignedSourceLines
-        : snapshot.alignedTargetLines;
-      const destinationLines = targetSide === 'source'
-        ? snapshot.alignedSourceLines
-        : snapshot.alignedTargetLines;
+      const sourceLines =
+        fromSide === "source"
+          ? snapshot.alignedSourceLines
+          : snapshot.alignedTargetLines;
+      const destinationLines =
+        targetSide === "source"
+          ? snapshot.alignedSourceLines
+          : snapshot.alignedTargetLines;
 
-      const maxIndex = Math.min(sourceLines.length, destinationLines.length) - 1;
+      const maxIndex =
+        Math.min(sourceLines.length, destinationLines.length) - 1;
       if (maxIndex < 0) {
         return true;
       }
 
       return false;
     },
-    [lineDiffRef, sourceTab, sourceTextareaRef, targetTab, targetTextareaRef]
+    [lineDiffRef, sourceTab, sourceTextareaRef, targetTab, targetTextareaRef],
   );
 
   return {

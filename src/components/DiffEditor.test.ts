@@ -1,25 +1,39 @@
-import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { invoke } from '@tauri-apps/api/core';
-import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
-import { saveTab } from '@/lib/tabClose';
-import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
-import { DiffEditor, diffEditorTestUtils } from './DiffEditor';
+import React from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { readText as readClipboardText } from "@tauri-apps/plugin-clipboard-manager";
+import { saveTab } from "@/lib/tabClose";
+import { type DiffTabPayload, type FileTab, useStore } from "@/store/useStore";
+import { DiffEditor, diffEditorTestUtils } from "./DiffEditor";
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
-  readText: vi.fn(async () => ''),
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  readText: vi.fn(async () => ""),
 }));
 
-vi.mock('@/lib/tabClose', () => ({
+vi.mock("@/lib/tabClose", () => ({
   saveTab: vi.fn(async () => true),
 }));
 
-vi.mock('@/hooks/useResizeObserver', () => ({
+vi.mock("@/hooks/useResizeObserver", () => ({
   useResizeObserver: () => ({
     ref: () => undefined,
     width: 1200,
@@ -27,14 +41,16 @@ vi.mock('@/hooks/useResizeObserver', () => ({
   }),
 }));
 
-function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayload {
+function createDiffPayload(
+  overrides: Partial<DiffTabPayload> = {},
+): DiffTabPayload {
   return {
-    sourceTabId: 'source-tab',
-    targetTabId: 'target-tab',
-    sourceName: 'source.ts',
-    targetName: 'target.ts',
-    sourcePath: 'C:\\repo\\source.ts',
-    targetPath: 'C:\\repo\\target.ts',
+    sourceTabId: "source-tab",
+    targetTabId: "target-tab",
+    sourceName: "source.ts",
+    targetName: "target.ts",
+    sourcePath: "C:\\repo\\source.ts",
+    targetPath: "C:\\repo\\target.ts",
     alignedSourceLines: [],
     alignedTargetLines: [],
     alignedSourcePresent: [],
@@ -51,31 +67,33 @@ function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayl
 
 function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
   return {
-    id: 'file-tab',
-    name: 'file.ts',
-    path: 'C:\\repo\\file.ts',
-    encoding: 'UTF-8',
-    lineEnding: 'LF',
+    id: "file-tab",
+    name: "file.ts",
+    path: "C:\\repo\\file.ts",
+    encoding: "UTF-8",
+    lineEnding: "LF",
     lineCount: 2,
     largeFileMode: false,
-    tabType: 'file',
+    tabType: "file",
     ...overrides,
   };
 }
 
-function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload } {
+function createDiffTab(
+  overrides: Partial<FileTab> = {},
+): FileTab & { tabType: "diff"; diffPayload: DiffTabPayload } {
   return {
-    id: 'diff-tab',
-    name: 'source.ts <-> target.ts',
-    path: '',
-    encoding: 'UTF-8',
-    lineEnding: 'LF',
+    id: "diff-tab",
+    name: "source.ts <-> target.ts",
+    path: "",
+    encoding: "UTF-8",
+    lineEnding: "LF",
     lineCount: 2,
     largeFileMode: false,
-    tabType: 'diff',
+    tabType: "diff",
     diffPayload: createDiffPayload({
-      alignedSourceLines: ['left-1', 'left-2'],
-      alignedTargetLines: ['right-1', 'right-2'],
+      alignedSourceLines: ["left-1", "left-2"],
+      alignedTargetLines: ["right-1", "right-2"],
       alignedSourcePresent: [true, true],
       alignedTargetPresent: [true, true],
       diffLineNumbers: [1, 2],
@@ -86,31 +104,31 @@ function createDiffTab(overrides: Partial<FileTab> = {}): FileTab & { tabType: '
       alignedLineCount: 2,
     }),
     ...overrides,
-  } as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+  } as FileTab & { tabType: "diff"; diffPayload: DiffTabPayload };
 }
 
 function buildLineDiffMetadataForTest(
   alignedSourceLines: string[],
   alignedTargetLines: string[],
   alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
+  alignedTargetPresent: boolean[],
 ) {
   const alignedLineCount = Math.max(
     1,
     alignedSourceLines.length,
     alignedTargetLines.length,
     alignedSourcePresent.length,
-    alignedTargetPresent.length
+    alignedTargetPresent.length,
   );
   const sourceLines = [...alignedSourceLines];
   const targetLines = [...alignedTargetLines];
   const sourcePresent = [...alignedSourcePresent];
   const targetPresent = [...alignedTargetPresent];
   while (sourceLines.length < alignedLineCount) {
-    sourceLines.push('');
+    sourceLines.push("");
   }
   while (targetLines.length < alignedLineCount) {
-    targetLines.push('');
+    targetLines.push("");
   }
   while (sourcePresent.length < alignedLineCount) {
     sourcePresent.push(false);
@@ -122,14 +140,14 @@ function buildLineDiffMetadataForTest(
   const diffLineNumbers: number[] = [];
   const sourceDiffLineNumbers: number[] = [];
   const targetDiffLineNumbers: number[] = [];
-  const alignedDiffKinds: Array<'insert' | 'delete' | 'modify' | null> = [];
+  const alignedDiffKinds: Array<"insert" | "delete" | "modify" | null> = [];
   for (let rowIndex = 0; rowIndex < alignedLineCount; rowIndex += 1) {
     const kind = diffEditorTestUtils.resolveAlignedDiffKind(
       rowIndex,
       sourceLines,
       targetLines,
       sourcePresent,
-      targetPresent
+      targetPresent,
     );
     alignedDiffKinds.push(kind);
     if (!kind) {
@@ -151,8 +169,10 @@ function buildLineDiffMetadataForTest(
     sourceDiffLineNumbers,
     targetDiffLineNumbers,
     alignedDiffKinds,
-    sourceLineNumbersByAlignedRow: diffEditorTestUtils.buildLineNumberByAlignedRow(sourcePresent),
-    targetLineNumbersByAlignedRow: diffEditorTestUtils.buildLineNumberByAlignedRow(targetPresent),
+    sourceLineNumbersByAlignedRow:
+      diffEditorTestUtils.buildLineNumberByAlignedRow(sourcePresent),
+    targetLineNumbersByAlignedRow:
+      diffEditorTestUtils.buildLineNumberByAlignedRow(targetPresent),
     diffRowIndexes: diffLineNumbers.map((lineNumber) => lineNumber - 1),
     sourceLineCount: Math.max(1, sourcePresent.filter((item) => item).length),
     targetLineCount: Math.max(1, targetPresent.filter((item) => item).length),
@@ -164,24 +184,24 @@ function buildLineDiffResponse(
   alignedSourceLines: string[],
   alignedTargetLines: string[],
   alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
+  alignedTargetPresent: boolean[],
 ) {
   const alignedLineCount = Math.max(
     1,
     alignedSourceLines.length,
     alignedTargetLines.length,
     alignedSourcePresent.length,
-    alignedTargetPresent.length
+    alignedTargetPresent.length,
   );
   const sourceLines = [...alignedSourceLines];
   const targetLines = [...alignedTargetLines];
   const sourcePresent = [...alignedSourcePresent];
   const targetPresent = [...alignedTargetPresent];
   while (sourceLines.length < alignedLineCount) {
-    sourceLines.push('');
+    sourceLines.push("");
   }
   while (targetLines.length < alignedLineCount) {
-    targetLines.push('');
+    targetLines.push("");
   }
   while (sourcePresent.length < alignedLineCount) {
     sourcePresent.push(false);
@@ -199,12 +219,16 @@ function buildLineDiffResponse(
       sourceLines,
       targetLines,
       sourcePresent,
-      targetPresent
+      targetPresent,
     ),
   };
 }
 
-function buildMatchedRowsByKeyword(lines: string[], keyword: string, alignedPresent: boolean[]) {
+function buildMatchedRowsByKeyword(
+  lines: string[],
+  keyword: string,
+  alignedPresent: boolean[],
+) {
   const normalizedKeyword = keyword.trim().toLowerCase();
   if (!normalizedKeyword) {
     return [];
@@ -212,7 +236,7 @@ function buildMatchedRowsByKeyword(lines: string[], keyword: string, alignedPres
 
   const matchedLineNumbers: number[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if ((lines[index] ?? '').toLowerCase().includes(normalizedKeyword)) {
+    if ((lines[index] ?? "").toLowerCase().includes(normalizedKeyword)) {
       matchedLineNumbers.push(index + 1);
     }
   }
@@ -235,30 +259,30 @@ function buildMatchedRowsByKeyword(lines: string[], keyword: string, alignedPres
 }
 
 function buildAlignedDiffPanelCopyResult(
-  fromSide: 'source' | 'target',
-  toSide: 'source' | 'target',
+  fromSide: "source" | "target",
+  toSide: "source" | "target",
   startRowIndex: number,
   endRowIndex: number,
   alignedSourceLines: string[],
   alignedTargetLines: string[],
   alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
+  alignedTargetPresent: boolean[],
 ) {
   const alignedLineCount = Math.max(
     alignedSourceLines.length,
     alignedTargetLines.length,
     alignedSourcePresent.length,
-    alignedTargetPresent.length
+    alignedTargetPresent.length,
   );
   const sourceLines = [...alignedSourceLines];
   const targetLines = [...alignedTargetLines];
   const sourcePresent = [...alignedSourcePresent];
   const targetPresent = [...alignedTargetPresent];
   while (sourceLines.length < alignedLineCount) {
-    sourceLines.push('');
+    sourceLines.push("");
   }
   while (targetLines.length < alignedLineCount) {
-    targetLines.push('');
+    targetLines.push("");
   }
   while (sourcePresent.length < alignedLineCount) {
     sourcePresent.push(false);
@@ -270,27 +294,44 @@ function buildAlignedDiffPanelCopyResult(
   let changed = false;
   if (fromSide !== toSide && alignedLineCount > 0) {
     const maxIndex = alignedLineCount - 1;
-    const safeStart = Math.max(0, Math.min(Math.floor(startRowIndex), maxIndex));
-    const safeEnd = Math.max(safeStart, Math.min(Math.floor(endRowIndex), maxIndex));
+    const safeStart = Math.max(
+      0,
+      Math.min(Math.floor(startRowIndex), maxIndex),
+    );
+    const safeEnd = Math.max(
+      safeStart,
+      Math.min(Math.floor(endRowIndex), maxIndex),
+    );
 
     for (let rowIndex = safeStart; rowIndex <= safeEnd; rowIndex += 1) {
-      const sourceLine = fromSide === 'source' ? sourceLines[rowIndex] : targetLines[rowIndex];
-      const linePresent = fromSide === 'source' ? sourcePresent[rowIndex] : targetPresent[rowIndex];
-      const destinationLines = toSide === 'source' ? sourceLines : targetLines;
-      const destinationPresent = toSide === 'source' ? sourcePresent : targetPresent;
+      const sourceLine =
+        fromSide === "source" ? sourceLines[rowIndex] : targetLines[rowIndex];
+      const linePresent =
+        fromSide === "source"
+          ? sourcePresent[rowIndex]
+          : targetPresent[rowIndex];
+      const destinationLines = toSide === "source" ? sourceLines : targetLines;
+      const destinationPresent =
+        toSide === "source" ? sourcePresent : targetPresent;
 
       if (!linePresent) {
-        if (destinationLines[rowIndex] === '' && destinationPresent[rowIndex] === false) {
+        if (
+          destinationLines[rowIndex] === "" &&
+          destinationPresent[rowIndex] === false
+        ) {
           continue;
         }
 
-        destinationLines[rowIndex] = '';
+        destinationLines[rowIndex] = "";
         destinationPresent[rowIndex] = false;
         changed = true;
         continue;
       }
 
-      if (destinationLines[rowIndex] === sourceLine && destinationPresent[rowIndex] === true) {
+      if (
+        destinationLines[rowIndex] === sourceLine &&
+        destinationPresent[rowIndex] === true
+      ) {
         continue;
       }
 
@@ -302,59 +343,102 @@ function buildAlignedDiffPanelCopyResult(
 
   return {
     changed,
-    lineDiff: buildLineDiffResponse(sourceLines, targetLines, sourcePresent, targetPresent),
+    lineDiff: buildLineDiffResponse(
+      sourceLines,
+      targetLines,
+      sourcePresent,
+      targetPresent,
+    ),
   };
 }
 
-describe('diffEditorTestUtils.getParentDirectoryPath', () => {
-  it('returns parent directory for normal file paths', () => {
-    expect(diffEditorTestUtils.getParentDirectoryPath(' C:\\repo\\src\\main.ts ')).toBe('C:\\repo\\src');
-    expect(diffEditorTestUtils.getParentDirectoryPath('/usr/local/bin/node')).toBe('/usr/local/bin');
+describe("diffEditorTestUtils.getParentDirectoryPath", () => {
+  it("returns parent directory for normal file paths", () => {
+    expect(
+      diffEditorTestUtils.getParentDirectoryPath(" C:\\repo\\src\\main.ts "),
+    ).toBe("C:\\repo\\src");
+    expect(
+      diffEditorTestUtils.getParentDirectoryPath("/usr/local/bin/node"),
+    ).toBe("/usr/local/bin");
   });
 
-  it('handles roots and invalid values', () => {
-    expect(diffEditorTestUtils.getParentDirectoryPath('C:\\file.txt')).toBe('C:\\');
-    expect(diffEditorTestUtils.getParentDirectoryPath('/a')).toBe('/');
-    expect(diffEditorTestUtils.getParentDirectoryPath('README.md')).toBeNull();
-    expect(diffEditorTestUtils.getParentDirectoryPath('')).toBeNull();
-  });
-});
-
-describe('diffEditorTestUtils.pathBaseName', () => {
-  it('extracts basename and trims trailing separators', () => {
-    expect(diffEditorTestUtils.pathBaseName(' C:\\repo\\src\\main.ts ')).toBe('main.ts');
-    expect(diffEditorTestUtils.pathBaseName('/usr/local/bin/')).toBe('bin');
-    expect(diffEditorTestUtils.pathBaseName('single-name')).toBe('single-name');
+  it("handles roots and invalid values", () => {
+    expect(diffEditorTestUtils.getParentDirectoryPath("C:\\file.txt")).toBe(
+      "C:\\",
+    );
+    expect(diffEditorTestUtils.getParentDirectoryPath("/a")).toBe("/");
+    expect(diffEditorTestUtils.getParentDirectoryPath("README.md")).toBeNull();
+    expect(diffEditorTestUtils.getParentDirectoryPath("")).toBeNull();
   });
 });
 
-describe('diffEditorTestUtils.resolveAlignedDiffKind', () => {
-  it('returns insert/delete/modify/null based on aligned rows', () => {
+describe("diffEditorTestUtils.pathBaseName", () => {
+  it("extracts basename and trims trailing separators", () => {
+    expect(diffEditorTestUtils.pathBaseName(" C:\\repo\\src\\main.ts ")).toBe(
+      "main.ts",
+    );
+    expect(diffEditorTestUtils.pathBaseName("/usr/local/bin/")).toBe("bin");
+    expect(diffEditorTestUtils.pathBaseName("single-name")).toBe("single-name");
+  });
+});
+
+describe("diffEditorTestUtils.resolveAlignedDiffKind", () => {
+  it("returns insert/delete/modify/null based on aligned rows", () => {
     expect(
-      diffEditorTestUtils.resolveAlignedDiffKind(0, [''], ['hello'], [false], [true])
-    ).toBe('insert');
+      diffEditorTestUtils.resolveAlignedDiffKind(
+        0,
+        [""],
+        ["hello"],
+        [false],
+        [true],
+      ),
+    ).toBe("insert");
     expect(
-      diffEditorTestUtils.resolveAlignedDiffKind(0, ['hello'], [''], [true], [false])
-    ).toBe('delete');
+      diffEditorTestUtils.resolveAlignedDiffKind(
+        0,
+        ["hello"],
+        [""],
+        [true],
+        [false],
+      ),
+    ).toBe("delete");
     expect(
-      diffEditorTestUtils.resolveAlignedDiffKind(0, ['left'], ['right'], [true], [true])
-    ).toBe('modify');
+      diffEditorTestUtils.resolveAlignedDiffKind(
+        0,
+        ["left"],
+        ["right"],
+        [true],
+        [true],
+      ),
+    ).toBe("modify");
     expect(
-      diffEditorTestUtils.resolveAlignedDiffKind(0, ['same'], ['same'], [true], [true])
+      diffEditorTestUtils.resolveAlignedDiffKind(
+        0,
+        ["same"],
+        ["same"],
+        [true],
+        [true],
+      ),
     ).toBeNull();
   });
 });
 
-describe('diffEditorTestUtils.getDiffKindStyle', () => {
-  it('returns style buckets by diff kind', () => {
-    expect(diffEditorTestUtils.getDiffKindStyle('insert').lineNumberClass).toContain('emerald');
-    expect(diffEditorTestUtils.getDiffKindStyle('delete').lineNumberClass).toContain('red');
-    expect(diffEditorTestUtils.getDiffKindStyle('modify').lineNumberClass).toContain('amber');
+describe("diffEditorTestUtils.getDiffKindStyle", () => {
+  it("returns style buckets by diff kind", () => {
+    expect(
+      diffEditorTestUtils.getDiffKindStyle("insert").lineNumberClass,
+    ).toContain("emerald");
+    expect(
+      diffEditorTestUtils.getDiffKindStyle("delete").lineNumberClass,
+    ).toContain("red");
+    expect(
+      diffEditorTestUtils.getDiffKindStyle("modify").lineNumberClass,
+    ).toContain("amber");
   });
 });
 
-describe('diffEditorTestUtils clamp helpers', () => {
-  it('clamps split ratio and percentage values to safe ranges', () => {
+describe("diffEditorTestUtils clamp helpers", () => {
+  it("clamps split ratio and percentage values to safe ranges", () => {
     expect(diffEditorTestUtils.clampRatio(0.1)).toBe(0.2);
     expect(diffEditorTestUtils.clampRatio(0.5)).toBe(0.5);
     expect(diffEditorTestUtils.clampRatio(0.9)).toBe(0.8);
@@ -365,61 +449,74 @@ describe('diffEditorTestUtils clamp helpers', () => {
   });
 });
 
-describe('diffEditorTestUtils.normalizeTextToLines', () => {
-  it('normalizes CRLF and CR to LF', () => {
-    expect(diffEditorTestUtils.normalizeTextToLines('a\r\nb\rc')).toEqual(['a', 'b', 'c']);
+describe("diffEditorTestUtils.normalizeTextToLines", () => {
+  it("normalizes CRLF and CR to LF", () => {
+    expect(diffEditorTestUtils.normalizeTextToLines("a\r\nb\rc")).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
   });
 });
 
-describe('diffEditorTestUtils.buildFallbackDiffLineNumbers', () => {
-  it('returns all line numbers with content differences', () => {
+describe("diffEditorTestUtils.buildFallbackDiffLineNumbers", () => {
+  it("returns all line numbers with content differences", () => {
     expect(
-      diffEditorTestUtils.buildFallbackDiffLineNumbers(['a', 'b'], ['a', 'x', 'y'])
+      diffEditorTestUtils.buildFallbackDiffLineNumbers(
+        ["a", "b"],
+        ["a", "x", "y"],
+      ),
     ).toEqual([2, 3]);
   });
 });
 
-describe('diffEditorTestUtils.ensureBooleanArray', () => {
-  it('builds fallback arrays and normalizes values to strict true', () => {
-    expect(diffEditorTestUtils.ensureBooleanArray(null, 3, true)).toEqual([true, true, true]);
-    expect(diffEditorTestUtils.ensureBooleanArray([true, false, 'true'], 3, false)).toEqual([
+describe("diffEditorTestUtils.ensureBooleanArray", () => {
+  it("builds fallback arrays and normalizes values to strict true", () => {
+    expect(diffEditorTestUtils.ensureBooleanArray(null, 3, true)).toEqual([
       true,
-      false,
-      false,
+      true,
+      true,
+    ]);
+    expect(
+      diffEditorTestUtils.ensureBooleanArray([true, false, "true"], 3, false),
+    ).toEqual([true, false, false]);
+  });
+});
+
+describe("diffEditorTestUtils.ensureLineNumberArray", () => {
+  it("normalizes non-finite and non-positive values", () => {
+    expect(
+      diffEditorTestUtils.ensureLineNumberArray(
+        [1, 2.8, -1, Number.NaN, "3"],
+        5,
+      ),
+    ).toEqual([1, 2, 0, 0, 0]);
+    expect(diffEditorTestUtils.ensureLineNumberArray(null, 3)).toEqual([
+      0, 0, 0,
     ]);
   });
 });
 
-describe('diffEditorTestUtils.ensureLineNumberArray', () => {
-  it('normalizes non-finite and non-positive values', () => {
-    expect(diffEditorTestUtils.ensureLineNumberArray([1, 2.8, -1, Number.NaN, '3'], 5)).toEqual([
-      1,
-      2,
-      0,
-      0,
-      0,
-    ]);
-    expect(diffEditorTestUtils.ensureLineNumberArray(null, 3)).toEqual([0, 0, 0]);
-  });
-});
-
-describe('diffEditorTestUtils.ensureDiffKindArray', () => {
-  it('normalizes unknown values into nullable diff-kind array', () => {
-    expect(diffEditorTestUtils.ensureDiffKindArray(['insert', 'delete', 'x', null], 4)).toEqual([
-      'insert',
-      'delete',
+describe("diffEditorTestUtils.ensureDiffKindArray", () => {
+  it("normalizes unknown values into nullable diff-kind array", () => {
+    expect(
+      diffEditorTestUtils.ensureDiffKindArray(
+        ["insert", "delete", "x", null],
+        4,
+      ),
+    ).toEqual(["insert", "delete", null, null]);
+    expect(diffEditorTestUtils.ensureDiffKindArray(undefined, 2)).toEqual([
       null,
       null,
     ]);
-    expect(diffEditorTestUtils.ensureDiffKindArray(undefined, 2)).toEqual([null, null]);
   });
 });
 
-describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
-  it('pads line arrays and keeps metadata in safe defaults', () => {
+describe("diffEditorTestUtils.normalizeLineDiffResult", () => {
+  it("pads line arrays and keeps metadata in safe defaults", () => {
     const result = diffEditorTestUtils.normalizeLineDiffResult({
-      alignedSourceLines: ['a'],
-      alignedTargetLines: ['a', 'b'],
+      alignedSourceLines: ["a"],
+      alignedTargetLines: ["a", "b"],
       alignedSourcePresent: [true],
       alignedTargetPresent: [true, false],
       diffLineNumbers: [2],
@@ -430,19 +527,19 @@ describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
       alignedLineCount: 0,
     });
 
-    expect(result.alignedSourceLines).toEqual(['a', '']);
-    expect(result.alignedTargetLines).toEqual(['a', 'b']);
+    expect(result.alignedSourceLines).toEqual(["a", ""]);
+    expect(result.alignedTargetLines).toEqual(["a", "b"]);
     expect(result.alignedSourcePresent).toEqual([true, false]);
-    expect(result.alignedDiffKinds).toEqual([null, 'modify']);
+    expect(result.alignedDiffKinds).toEqual([null, "modify"]);
     expect(result.sourceLineCount).toBe(1);
     expect(result.targetLineCount).toBe(1);
     expect(result.alignedLineCount).toBe(2);
   });
 
-  it('pads target lines when alignedLineCount is larger than payload lengths', () => {
+  it("pads target lines when alignedLineCount is larger than payload lengths", () => {
     const result = diffEditorTestUtils.normalizeLineDiffResult({
-      alignedSourceLines: ['a'],
-      alignedTargetLines: ['b'],
+      alignedSourceLines: ["a"],
+      alignedTargetLines: ["b"],
       alignedSourcePresent: [true],
       alignedTargetPresent: [true],
       diffLineNumbers: undefined as unknown as number[],
@@ -453,8 +550,8 @@ describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
       alignedLineCount: 3,
     });
 
-    expect(result.alignedSourceLines).toEqual(['a', '', '']);
-    expect(result.alignedTargetLines).toEqual(['b', '', '']);
+    expect(result.alignedSourceLines).toEqual(["a", "", ""]);
+    expect(result.alignedTargetLines).toEqual(["b", "", ""]);
     expect(result.diffLineNumbers).toEqual([]);
     expect(result.sourceDiffLineNumbers).toEqual([]);
     expect(result.targetDiffLineNumbers).toEqual([]);
@@ -462,11 +559,11 @@ describe('diffEditorTestUtils.normalizeLineDiffResult', () => {
   });
 });
 
-describe('diffEditorTestUtils.buildInitialDiff', () => {
-  it('uses aligned payload when available', () => {
+describe("diffEditorTestUtils.buildInitialDiff", () => {
+  it("uses aligned payload when available", () => {
     const payload = createDiffPayload({
-      alignedSourceLines: ['a'],
-      alignedTargetLines: ['b'],
+      alignedSourceLines: ["a"],
+      alignedTargetLines: ["b"],
       alignedSourcePresent: [true],
       alignedTargetPresent: [true],
       diffLineNumbers: [1],
@@ -478,12 +575,12 @@ describe('diffEditorTestUtils.buildInitialDiff', () => {
     });
 
     const result = diffEditorTestUtils.buildInitialDiff(payload);
-    expect(result.alignedSourceLines).toEqual(['a']);
-    expect(result.alignedTargetLines).toEqual(['b']);
+    expect(result.alignedSourceLines).toEqual(["a"]);
+    expect(result.alignedTargetLines).toEqual(["b"]);
     expect(result.diffLineNumbers).toEqual([1]);
   });
 
-  it('normalizes empty aligned payload to a safe single-line diff', () => {
+  it("normalizes empty aligned payload to a safe single-line diff", () => {
     const payload = createDiffPayload({
       alignedSourceLines: [],
       alignedTargetLines: [],
@@ -498,8 +595,8 @@ describe('diffEditorTestUtils.buildInitialDiff', () => {
     });
 
     const result = diffEditorTestUtils.buildInitialDiff(payload);
-    expect(result.alignedSourceLines).toEqual(['']);
-    expect(result.alignedTargetLines).toEqual(['']);
+    expect(result.alignedSourceLines).toEqual([""]);
+    expect(result.alignedTargetLines).toEqual([""]);
     expect(result.diffLineNumbers).toEqual([]);
     expect(result.sourceDiffLineNumbers).toEqual([]);
     expect(result.targetDiffLineNumbers).toEqual([]);
@@ -507,139 +604,222 @@ describe('diffEditorTestUtils.buildInitialDiff', () => {
   });
 });
 
-describe('diffEditorTestUtils.buildLineNumberByAlignedRow', () => {
-  it('maps aligned rows to concrete line numbers', () => {
-    expect(diffEditorTestUtils.buildLineNumberByAlignedRow([true, false, true])).toEqual([1, 0, 2]);
+describe("diffEditorTestUtils.buildLineNumberByAlignedRow", () => {
+  it("maps aligned rows to concrete line numbers", () => {
+    expect(
+      diffEditorTestUtils.buildLineNumberByAlignedRow([true, false, true]),
+    ).toEqual([1, 0, 2]);
   });
 });
 
-describe('diffEditorTestUtils.extractActualLines', () => {
-  it('filters out virtual empty rows and keeps concrete text', () => {
-    expect(diffEditorTestUtils.extractActualLines(['a', '', 'b'], [true, false, false])).toEqual([
-      'a',
-      'b',
-    ]);
-    expect(diffEditorTestUtils.extractActualLines(['', ''], [false, false])).toEqual(['']);
+describe("diffEditorTestUtils.extractActualLines", () => {
+  it("filters out virtual empty rows and keeps concrete text", () => {
+    expect(
+      diffEditorTestUtils.extractActualLines(
+        ["a", "", "b"],
+        [true, false, false],
+      ),
+    ).toEqual(["a", "b"]);
+    expect(
+      diffEditorTestUtils.extractActualLines(["", ""], [false, false]),
+    ).toEqual([""]);
   });
 });
 
-describe('diffEditorTestUtils.findAlignedRowIndexByLineNumber', () => {
-  it('finds aligned row index by concrete line number', () => {
-    expect(diffEditorTestUtils.findAlignedRowIndexByLineNumber([true, false, true], 1)).toBe(0);
-    expect(diffEditorTestUtils.findAlignedRowIndexByLineNumber([true, false, true], 2)).toBe(2);
-    expect(diffEditorTestUtils.findAlignedRowIndexByLineNumber([true, false, true], 3)).toBe(-1);
-    expect(diffEditorTestUtils.findAlignedRowIndexByLineNumber([true, false, true], 0)).toBe(-1);
+describe("diffEditorTestUtils.findAlignedRowIndexByLineNumber", () => {
+  it("finds aligned row index by concrete line number", () => {
+    expect(
+      diffEditorTestUtils.findAlignedRowIndexByLineNumber(
+        [true, false, true],
+        1,
+      ),
+    ).toBe(0);
+    expect(
+      diffEditorTestUtils.findAlignedRowIndexByLineNumber(
+        [true, false, true],
+        2,
+      ),
+    ).toBe(2);
+    expect(
+      diffEditorTestUtils.findAlignedRowIndexByLineNumber(
+        [true, false, true],
+        3,
+      ),
+    ).toBe(-1);
+    expect(
+      diffEditorTestUtils.findAlignedRowIndexByLineNumber(
+        [true, false, true],
+        0,
+      ),
+    ).toBe(-1);
   });
 });
 
-describe('diffEditorTestUtils offset helpers', () => {
-  it('maps offsets to line indices', () => {
-    const text = 'aa\nbbb\nc';
+describe("diffEditorTestUtils offset helpers", () => {
+  it("maps offsets to line indices", () => {
+    const text = "aa\nbbb\nc";
     expect(diffEditorTestUtils.getLineIndexFromTextOffset(text, 0)).toBe(0);
     expect(diffEditorTestUtils.getLineIndexFromTextOffset(text, 3)).toBe(1);
-    expect(diffEditorTestUtils.getLineIndexFromTextOffset(text, text.length)).toBe(2);
+    expect(
+      diffEditorTestUtils.getLineIndexFromTextOffset(text, text.length),
+    ).toBe(2);
   });
 
-  it('computes selected line ranges with collapsed and expanded selections', () => {
-    const text = 'aa\nbbb\nc';
-    expect(diffEditorTestUtils.getSelectedLineRangeByOffset(text, 4, 4)).toEqual({
+  it("computes selected line ranges with collapsed and expanded selections", () => {
+    const text = "aa\nbbb\nc";
+    expect(
+      diffEditorTestUtils.getSelectedLineRangeByOffset(text, 4, 4),
+    ).toEqual({
       startLine: 1,
       endLine: 1,
     });
-    expect(diffEditorTestUtils.getSelectedLineRangeByOffset(text, 1, 7)).toEqual({
+    expect(
+      diffEditorTestUtils.getSelectedLineRangeByOffset(text, 1, 7),
+    ).toEqual({
       startLine: 0,
       endLine: 1,
     });
   });
 });
 
-describe('diffEditorTestUtils.buildCopyTextWithoutVirtualRows', () => {
-  it('skips virtual rows while keeping selected concrete content', () => {
-    const text = 'aa\nbb\ncc';
-    expect(diffEditorTestUtils.buildCopyTextWithoutVirtualRows(text, 0, text.length, [true, false, true])).toBe(
-      'aa\ncc'
-    );
-    expect(diffEditorTestUtils.buildCopyTextWithoutVirtualRows(text, 2, 2, [true, false, true])).toBeNull();
+describe("diffEditorTestUtils.buildCopyTextWithoutVirtualRows", () => {
+  it("skips virtual rows while keeping selected concrete content", () => {
+    const text = "aa\nbb\ncc";
+    expect(
+      diffEditorTestUtils.buildCopyTextWithoutVirtualRows(
+        text,
+        0,
+        text.length,
+        [true, false, true],
+      ),
+    ).toBe("aa\ncc");
+    expect(
+      diffEditorTestUtils.buildCopyTextWithoutVirtualRows(text, 2, 2, [
+        true,
+        false,
+        true,
+      ]),
+    ).toBeNull();
   });
 });
 
-describe('diffEditorTestUtils.getLineSelectionRange', () => {
-  it('returns line-range offsets for a given row', () => {
-    expect(diffEditorTestUtils.getLineSelectionRange(['ab', 'c', ''], 1)).toEqual({
+describe("diffEditorTestUtils.getLineSelectionRange", () => {
+  it("returns line-range offsets for a given row", () => {
+    expect(
+      diffEditorTestUtils.getLineSelectionRange(["ab", "c", ""], 1),
+    ).toEqual({
       start: 3,
       end: 4,
     });
   });
 });
 
-describe('diffEditorTestUtils.getNextMatchedRow', () => {
-  it('navigates and wraps for next/previous lookup', () => {
+describe("diffEditorTestUtils.getNextMatchedRow", () => {
+  it("navigates and wraps for next/previous lookup", () => {
     const matchedRows = [2, 5, 8];
-    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, null, 'next')).toBe(2);
-    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, null, 'prev')).toBe(8);
-    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 5, 'next')).toBe(8);
-    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 5, 'prev')).toBe(2);
-    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 3, 'prev')).toBe(8);
+    expect(
+      diffEditorTestUtils.getNextMatchedRow(matchedRows, null, "next"),
+    ).toBe(2);
+    expect(
+      diffEditorTestUtils.getNextMatchedRow(matchedRows, null, "prev"),
+    ).toBe(8);
+    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 5, "next")).toBe(
+      8,
+    );
+    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 5, "prev")).toBe(
+      2,
+    );
+    expect(diffEditorTestUtils.getNextMatchedRow(matchedRows, 3, "prev")).toBe(
+      8,
+    );
   });
 
-  it('returns null when no matched rows are available', () => {
-    expect(diffEditorTestUtils.getNextMatchedRow([], null, 'next')).toBeNull();
+  it("returns null when no matched rows are available", () => {
+    expect(diffEditorTestUtils.getNextMatchedRow([], null, "next")).toBeNull();
   });
 });
 
-describe('diffEditorTestUtils.getNextMatchedRowFromAnchor', () => {
-  it('navigates from arbitrary anchor rows with wrap-around', () => {
+describe("diffEditorTestUtils.getNextMatchedRowFromAnchor", () => {
+  it("navigates from arbitrary anchor rows with wrap-around", () => {
     const matchedRows = [2, 5, 8];
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, null, 'next')).toBe(2);
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, null, 'prev')).toBe(8);
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, 'next')).toBe(5);
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, 'prev')).toBe(2);
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 8, 'next')).toBe(2);
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 2, 'prev')).toBe(8);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(
+        matchedRows,
+        null,
+        "next",
+      ),
+    ).toBe(2);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(
+        matchedRows,
+        null,
+        "prev",
+      ),
+    ).toBe(8);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, "next"),
+    ).toBe(5);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 4, "prev"),
+    ).toBe(2);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 8, "next"),
+    ).toBe(2);
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor(matchedRows, 2, "prev"),
+    ).toBe(8);
   });
 
-  it('returns null when no matched rows exist', () => {
-    expect(diffEditorTestUtils.getNextMatchedRowFromAnchor([], 3, 'next')).toBeNull();
+  it("returns null when no matched rows exist", () => {
+    expect(
+      diffEditorTestUtils.getNextMatchedRowFromAnchor([], 3, "next"),
+    ).toBeNull();
   });
 });
 
-describe('diffEditorTestUtils.reconcilePresenceAfterTextEdit', () => {
-  it('keeps prefix/suffix presence and marks edited span as concrete', () => {
+describe("diffEditorTestUtils.reconcilePresenceAfterTextEdit", () => {
+  it("keeps prefix/suffix presence and marks edited span as concrete", () => {
     const result = diffEditorTestUtils.reconcilePresenceAfterTextEdit(
-      ['A', 'B', 'C', 'D'],
+      ["A", "B", "C", "D"],
       [true, false, true, false],
-      ['A', 'X', 'C', 'D']
+      ["A", "X", "C", "D"],
     );
     expect(result).toEqual([true, true, true, false]);
   });
 });
 
-describe('diffEditorTestUtils trailing-newline and serialization helpers', () => {
-  it('infers trailing newline only for multiline with empty last line', () => {
-    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(1, [''])).toBe(false);
-    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(2, ['hello', ''])).toBe(true);
-    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(2, [])).toBe(false);
+describe("diffEditorTestUtils trailing-newline and serialization helpers", () => {
+  it("infers trailing newline only for multiline with empty last line", () => {
+    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(1, [""])).toBe(
+      false,
+    );
+    expect(
+      diffEditorTestUtils.inferTrailingNewlineFromLines(2, ["hello", ""]),
+    ).toBe(true);
+    expect(diffEditorTestUtils.inferTrailingNewlineFromLines(2, [])).toBe(
+      false,
+    );
   });
 
-  it('serializes lines with optional trailing newline', () => {
-    expect(diffEditorTestUtils.serializeLines([], false)).toBe('');
-    expect(diffEditorTestUtils.serializeLines(['a', 'b'], true)).toBe('a\nb\n');
+  it("serializes lines with optional trailing newline", () => {
+    expect(diffEditorTestUtils.serializeLines([], false)).toBe("");
+    expect(diffEditorTestUtils.serializeLines(["a", "b"], true)).toBe("a\nb\n");
   });
 });
 
-describe('diffEditorTestUtils.bindScrollerViewport', () => {
-  it('returns default viewport when scroller is null', () => {
+describe("diffEditorTestUtils.bindScrollerViewport", () => {
+  it("returns default viewport when scroller is null", () => {
     const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
     const cleanup = diffEditorTestUtils.bindScrollerViewport(null, (value) => {
       snapshots.push(value);
     });
 
     expect(snapshots).toEqual([{ topPercent: 0, heightPercent: 100 }]);
-    expect(typeof cleanup).toBe('function');
+    expect(typeof cleanup).toBe("function");
     expect(cleanup()).toBeUndefined();
   });
 
-  it('updates viewport on scroll and stops after cleanup', () => {
+  it("updates viewport on scroll and stops after cleanup", () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     const disconnectMock = vi.fn();
     let resizeObserverCallback: ResizeObserverCallback | null = null;
@@ -652,25 +832,41 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
       }
     }
 
-    Object.defineProperty(globalThis, 'ResizeObserver', {
+    Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: ResizeObserverMock,
     });
 
-    const scroller = document.createElement('div');
-    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 });
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
-    Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: 0 });
-
-    const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
-    const cleanup = diffEditorTestUtils.bindScrollerViewport(scroller, (value) => {
-      snapshots.push(value);
+    const scroller = document.createElement("div");
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
     });
 
-    expect(snapshots[snapshots.length - 1]).toEqual({ topPercent: 0, heightPercent: 20 });
+    const snapshots: Array<{ topPercent: number; heightPercent: number }> = [];
+    const cleanup = diffEditorTestUtils.bindScrollerViewport(
+      scroller,
+      (value) => {
+        snapshots.push(value);
+      },
+    );
+
+    expect(snapshots[snapshots.length - 1]).toEqual({
+      topPercent: 0,
+      heightPercent: 20,
+    });
 
     scroller.scrollTop = 400;
-    scroller.dispatchEvent(new Event('scroll'));
+    scroller.dispatchEvent(new Event("scroll"));
     const latestSnapshot = snapshots[snapshots.length - 1];
     expect(latestSnapshot?.topPercent).toBeCloseTo(40, 3);
     expect(latestSnapshot?.heightPercent).toBe(20);
@@ -680,7 +876,10 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
       | ((entries: ResizeObserverEntry[], observer: ResizeObserver) => void)
       | null;
     if (invokeResizeObserverCallback) {
-      invokeResizeObserverCallback([] as ResizeObserverEntry[], {} as ResizeObserver);
+      invokeResizeObserverCallback(
+        [] as ResizeObserverEntry[],
+        {} as ResizeObserver,
+      );
     }
     const resizeSnapshot = snapshots[snapshots.length - 1];
     expect(resizeSnapshot?.topPercent).toBeCloseTo(60, 3);
@@ -691,32 +890,38 @@ describe('diffEditorTestUtils.bindScrollerViewport', () => {
     expect(disconnectMock).toHaveBeenCalledTimes(1);
 
     scroller.scrollTop = 500;
-    scroller.dispatchEvent(new Event('scroll'));
+    scroller.dispatchEvent(new Event("scroll"));
     expect(snapshots.length).toBe(snapshotCountBeforeCleanup);
 
-    Object.defineProperty(globalThis, 'ResizeObserver', {
+    Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: originalResizeObserver,
     });
   });
 });
 
-describe('diffEditorTestUtils.dispatchDocumentUpdated', () => {
-  it('dispatches document-updated event with tab id payload', () => {
+describe("diffEditorTestUtils.dispatchDocumentUpdated", () => {
+  it("dispatches document-updated event with tab id payload", () => {
     let detail: { tabId: string } | null = null;
     const listener = (event: Event) => {
       detail = (event as CustomEvent<{ tabId: string }>).detail;
     };
 
-    window.addEventListener('rutar:document-updated', listener as EventListener);
-    diffEditorTestUtils.dispatchDocumentUpdated('diff-tab-id');
-    window.removeEventListener('rutar:document-updated', listener as EventListener);
+    window.addEventListener(
+      "rutar:document-updated",
+      listener as EventListener,
+    );
+    diffEditorTestUtils.dispatchDocumentUpdated("diff-tab-id");
+    window.removeEventListener(
+      "rutar:document-updated",
+      listener as EventListener,
+    );
 
-    expect(detail).toEqual({ tabId: 'diff-tab-id' });
+    expect(detail).toEqual({ tabId: "diff-tab-id" });
   });
 });
 
-describe('DiffEditor component', () => {
+describe("DiffEditor component", () => {
   let initialState: ReturnType<typeof useStore.getState>;
   const originalResizeObserver = globalThis.ResizeObserver;
   const readClipboardTextMock = vi.mocked(readClipboardText);
@@ -729,116 +934,132 @@ describe('DiffEditor component', () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({
-      language: 'en-US',
+      language: "en-US",
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: 14,
     });
-    readClipboardTextMock.mockResolvedValue('');
+    readClipboardTextMock.mockResolvedValue("");
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(
-          ['left-1', 'left-2'],
-          ['right-1', 'right-2'],
-          [true, true],
-          [true, true]
-        );
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        const keyword = String(params.keyword ?? '');
-        const id = String(params.id ?? '');
-        const alignedPresent = Array.isArray(params.alignedPresent)
-          ? params.alignedPresent.map((item) => item === true)
-          : [];
-        const lines = id === 'source-tab'
-          ? ['left-1', 'left-2']
-          : id === 'target-tab'
-            ? ['right-1', 'right-2']
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(
+            ["left-1", "left-2"],
+            ["right-1", "right-2"],
+            [true, true],
+            [true, true],
+          );
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          const keyword = String(params.keyword ?? "");
+          const id = String(params.id ?? "");
+          const alignedPresent = Array.isArray(params.alignedPresent)
+            ? params.alignedPresent.map((item) => item === true)
             : [];
-        return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
-      }
-      if (command === 'preview_aligned_diff_state') {
-        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
-          ? params.alignedSourceLines.map((item) => String(item ?? ''))
-          : ['left-1', 'left-2'];
-        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
-          ? params.alignedTargetLines.map((item) => String(item ?? ''))
-          : ['right-1', 'right-2'];
-        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
-          ? params.alignedSourcePresent.map((item) => item === true)
-          : [true, true];
-        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
-          ? params.alignedTargetPresent.map((item) => item === true)
-          : [true, true];
-        return buildLineDiffResponse(
-          alignedSourceLines,
-          alignedTargetLines,
-          alignedSourcePresent,
-          alignedTargetPresent
-        );
-      }
-      if (command === 'find_matching_pair_offsets') {
-        return null;
-      }
-      if (command === 'apply_aligned_diff_panel_copy') {
-        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
-          ? params.alignedSourceLines.map((item) => String(item ?? ''))
-          : ['left-1', 'left-2'];
-        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
-          ? params.alignedTargetLines.map((item) => String(item ?? ''))
-          : ['right-1', 'right-2'];
-        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
-          ? params.alignedSourcePresent.map((item) => item === true)
-          : [true, true];
-        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
-          ? params.alignedTargetPresent.map((item) => item === true)
-          : [true, true];
-        const fromSide = params.fromSide === 'target' ? 'target' : 'source';
-        const toSide = params.toSide === 'source' ? 'source' : 'target';
-        return buildAlignedDiffPanelCopyResult(
-          fromSide,
-          toSide,
-          Number(params.startRowIndex ?? 0),
-          Number(params.endRowIndex ?? 0),
-          alignedSourceLines,
-          alignedTargetLines,
-          alignedSourcePresent,
-          alignedTargetPresent
-        );
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
-          ? params.alignedSourceLines.map((item) => String(item ?? ''))
-          : ['left-1', 'left-2'];
-        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
-          ? params.alignedTargetLines.map((item) => String(item ?? ''))
-          : ['right-1', 'right-2'];
-        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
-          ? params.alignedSourcePresent.map((item) => item === true)
-          : [true, true];
-        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
-          ? params.alignedTargetPresent.map((item) => item === true)
-          : [true, true];
-
-        return {
-          lineDiff: buildLineDiffResponse(
+          const lines =
+            id === "source-tab"
+              ? ["left-1", "left-2"]
+              : id === "target-tab"
+                ? ["right-1", "right-2"]
+                : [];
+          return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
+        }
+        if (command === "preview_aligned_diff_state") {
+          const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+            ? params.alignedSourceLines.map((item) => String(item ?? ""))
+            : ["left-1", "left-2"];
+          const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+            ? params.alignedTargetLines.map((item) => String(item ?? ""))
+            : ["right-1", "right-2"];
+          const alignedSourcePresent = Array.isArray(
+            params.alignedSourcePresent,
+          )
+            ? params.alignedSourcePresent.map((item) => item === true)
+            : [true, true];
+          const alignedTargetPresent = Array.isArray(
+            params.alignedTargetPresent,
+          )
+            ? params.alignedTargetPresent.map((item) => item === true)
+            : [true, true];
+          return buildLineDiffResponse(
             alignedSourceLines,
             alignedTargetLines,
             alignedSourcePresent,
-            alignedTargetPresent
-          ),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+            alignedTargetPresent,
+          );
+        }
+        if (command === "find_matching_pair_offsets") {
+          return null;
+        }
+        if (command === "apply_aligned_diff_panel_copy") {
+          const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+            ? params.alignedSourceLines.map((item) => String(item ?? ""))
+            : ["left-1", "left-2"];
+          const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+            ? params.alignedTargetLines.map((item) => String(item ?? ""))
+            : ["right-1", "right-2"];
+          const alignedSourcePresent = Array.isArray(
+            params.alignedSourcePresent,
+          )
+            ? params.alignedSourcePresent.map((item) => item === true)
+            : [true, true];
+          const alignedTargetPresent = Array.isArray(
+            params.alignedTargetPresent,
+          )
+            ? params.alignedTargetPresent.map((item) => item === true)
+            : [true, true];
+          const fromSide = params.fromSide === "target" ? "target" : "source";
+          const toSide = params.toSide === "source" ? "source" : "target";
+          return buildAlignedDiffPanelCopyResult(
+            fromSide,
+            toSide,
+            Number(params.startRowIndex ?? 0),
+            Number(params.endRowIndex ?? 0),
+            alignedSourceLines,
+            alignedTargetLines,
+            alignedSourcePresent,
+            alignedTargetPresent,
+          );
+        }
+        if (command === "apply_aligned_diff_edit") {
+          const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+            ? params.alignedSourceLines.map((item) => String(item ?? ""))
+            : ["left-1", "left-2"];
+          const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+            ? params.alignedTargetLines.map((item) => String(item ?? ""))
+            : ["right-1", "right-2"];
+          const alignedSourcePresent = Array.isArray(
+            params.alignedSourcePresent,
+          )
+            ? params.alignedSourcePresent.map((item) => item === true)
+            : [true, true];
+          const alignedTargetPresent = Array.isArray(
+            params.alignedTargetPresent,
+          )
+            ? params.alignedTargetPresent.map((item) => item === true)
+            : [true, true];
+
+          return {
+            lineDiff: buildLineDiffResponse(
+              alignedSourceLines,
+              alignedTargetLines,
+              alignedSourcePresent,
+              alignedTargetPresent,
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
+          };
+        }
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
+        }
+        return undefined;
+      },
+    );
 
     if (!globalThis.ResizeObserver) {
       class ResizeObserverMock {
@@ -847,7 +1068,7 @@ describe('DiffEditor component', () => {
         constructor(_callback: ResizeObserverCallback) {}
       }
 
-      Object.defineProperty(globalThis, 'ResizeObserver', {
+      Object.defineProperty(globalThis, "ResizeObserver", {
         configurable: true,
         value: ResizeObserverMock,
       });
@@ -855,51 +1076,76 @@ describe('DiffEditor component', () => {
   });
 
   afterEach(() => {
-    Object.defineProperty(globalThis, 'ResizeObserver', {
+    Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: originalResizeObserver,
     });
   });
 
-  it('renders source and target panel textareas from diff payload', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("renders source and target panel textareas from diff payload", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
 
     await waitFor(() => {
-      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
-      expect(container.querySelector('textarea[data-diff-panel="target"]')).toBeTruthy();
+      expect(
+        container.querySelector('textarea[data-diff-panel="source"]'),
+      ).toBeTruthy();
+      expect(
+        container.querySelector('textarea[data-diff-panel="target"]'),
+      ).toBeTruthy();
     });
 
     const sourceTextarea = container.querySelector(
-      'textarea[data-diff-panel="source"]'
+      'textarea[data-diff-panel="source"]',
     ) as HTMLTextAreaElement;
     const targetTextarea = container.querySelector(
-      'textarea[data-diff-panel="target"]'
+      'textarea[data-diff-panel="target"]',
     ) as HTMLTextAreaElement;
 
-    expect(sourceTextarea.value).toBe('left-1\nleft-2');
-    expect(targetTextarea.value).toBe('right-1\nright-2');
+    expect(sourceTextarea.value).toBe("left-1\nleft-2");
+    expect(targetTextarea.value).toBe("right-1\nright-2");
   });
 
-  it('copies source file name from header context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies source file name from header context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
     const writeTextMock = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, 'clipboard', {
+    Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: writeTextMock,
@@ -909,28 +1155,39 @@ describe('DiffEditor component', () => {
     try {
       render(React.createElement(DiffEditor, { tab: diffTab }));
 
-      const sourceTitle = await screen.findByText('Source: source.ts');
+      const sourceTitle = await screen.findByText("Source: source.ts");
       fireEvent.contextMenu(sourceTitle, {
         clientX: 80,
         clientY: 60,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Copy File Name' }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy File Name" }),
+      );
 
       await waitFor(() => {
-        expect(writeTextMock).toHaveBeenCalledWith('source.ts');
+        expect(writeTextMock).toHaveBeenCalledWith("source.ts");
       });
     } finally {
       if (originalClipboard) {
-        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
       } else {
-        Reflect.deleteProperty(navigator, 'clipboard');
+        Reflect.deleteProperty(navigator, "clipboard");
       }
     }
   });
 
-  it('saves source panel by clicking source save button', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts', isDirty: true });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("saves source panel by clicking source save button", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+      isDirty: true,
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -939,22 +1196,28 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Save source panel' }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Save source panel" }),
+    );
 
     await waitFor(() => {
       expect(vi.mocked(saveTab)).toHaveBeenCalledWith(
         expect.objectContaining({ id: sourceTab.id }),
-        expect.any(Function)
+        expect.any(Function),
       );
     });
   });
 
-  it('saves target panel by clicking target save button', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+  it("saves target panel by clicking target save button", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
     const targetTab = createFileTab({
-      id: 'target-tab',
-      name: 'target.ts',
-      path: 'C:\\repo\\target.ts',
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
       isDirty: true,
     });
     const diffTab = createDiffTab();
@@ -965,28 +1228,41 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Save target panel' }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Save target panel" }),
+    );
 
     await waitFor(() => {
       expect(vi.mocked(saveTab)).toHaveBeenCalledWith(
         expect.objectContaining({ id: targetTab.id }),
-        expect.any(Function)
+        expect.any(Function),
       );
     });
   });
 
-  it('copies source folder path from header context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies source folder path from header context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
     const writeTextMock = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, 'clipboard', {
+    Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: writeTextMock,
@@ -996,37 +1272,50 @@ describe('DiffEditor component', () => {
     try {
       render(React.createElement(DiffEditor, { tab: diffTab }));
 
-      const sourceTitle = await screen.findByText('Source: source.ts');
+      const sourceTitle = await screen.findByText("Source: source.ts");
       fireEvent.contextMenu(sourceTitle, {
         clientX: 84,
         clientY: 66,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Copy Folder Path' }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy Folder Path" }),
+      );
 
       await waitFor(() => {
-        expect(writeTextMock).toHaveBeenCalledWith('C:\\repo');
+        expect(writeTextMock).toHaveBeenCalledWith("C:\\repo");
       });
     } finally {
       if (originalClipboard) {
-        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
       } else {
-        Reflect.deleteProperty(navigator, 'clipboard');
+        Reflect.deleteProperty(navigator, "clipboard");
       }
     }
   });
 
-  it('copies target file name from header context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies target file name from header context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
     const writeTextMock = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, 'clipboard', {
+    Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: writeTextMock,
@@ -1036,37 +1325,50 @@ describe('DiffEditor component', () => {
     try {
       render(React.createElement(DiffEditor, { tab: diffTab }));
 
-      const targetTitle = await screen.findByText('Target: target.ts');
+      const targetTitle = await screen.findByText("Target: target.ts");
       fireEvent.contextMenu(targetTitle, {
         clientX: 88,
         clientY: 68,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Copy File Name' }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy File Name" }),
+      );
 
       await waitFor(() => {
-        expect(writeTextMock).toHaveBeenCalledWith('target.ts');
+        expect(writeTextMock).toHaveBeenCalledWith("target.ts");
       });
     } finally {
       if (originalClipboard) {
-        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
       } else {
-        Reflect.deleteProperty(navigator, 'clipboard');
+        Reflect.deleteProperty(navigator, "clipboard");
       }
     }
   });
 
-  it('copies source full path from header context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies source full path from header context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
     const writeTextMock = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, 'clipboard', {
+    Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: writeTextMock,
@@ -1076,28 +1378,38 @@ describe('DiffEditor component', () => {
     try {
       render(React.createElement(DiffEditor, { tab: diffTab }));
 
-      const sourceTitle = await screen.findByText('Source: source.ts');
+      const sourceTitle = await screen.findByText("Source: source.ts");
       fireEvent.contextMenu(sourceTitle, {
         clientX: 88,
         clientY: 70,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Copy Full Path' }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy Full Path" }),
+      );
 
       await waitFor(() => {
-        expect(writeTextMock).toHaveBeenCalledWith('C:\\repo\\source.ts');
+        expect(writeTextMock).toHaveBeenCalledWith("C:\\repo\\source.ts");
       });
     } finally {
       if (originalClipboard) {
-        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
       } else {
-        Reflect.deleteProperty(navigator, 'clipboard');
+        Reflect.deleteProperty(navigator, "clipboard");
       }
     }
   });
 
-  it('opens containing folder from header context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("opens containing folder from header context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1106,103 +1418,123 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const sourceTitle = await screen.findByText('Source: source.ts');
+    const sourceTitle = await screen.findByText("Source: source.ts");
     fireEvent.contextMenu(sourceTitle, {
       clientX: 92,
       clientY: 72,
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Containing Folder' }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Containing Folder" }),
+    );
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('open_in_file_manager', {
-        path: 'C:\\repo\\source.ts',
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("open_in_file_manager", {
+        path: "C:\\repo\\source.ts",
       });
     });
   });
 
-  it('logs error when opening containing folder from header context menu fails', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("logs error when opening containing folder from header context menu fails", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(
-          ['left-1', 'left-2'],
-          ['right-1', 'right-2'],
-          [true, true],
-          [true, true]
-        );
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        const keyword = String(params.keyword ?? '');
-        const id = String(params.id ?? '');
-        const alignedPresent = Array.isArray(params.alignedPresent)
-          ? params.alignedPresent.map((item) => item === true)
-          : [];
-        const lines = id === 'source-tab'
-          ? ['left-1', 'left-2']
-          : id === 'target-tab'
-            ? ['right-1', 'right-2']
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(
+            ["left-1", "left-2"],
+            ["right-1", "right-2"],
+            [true, true],
+            [true, true],
+          );
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          const keyword = String(params.keyword ?? "");
+          const id = String(params.id ?? "");
+          const alignedPresent = Array.isArray(params.alignedPresent)
+            ? params.alignedPresent.map((item) => item === true)
             : [];
-        return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
-      }
-      if (command === 'open_in_file_manager') {
-        throw new Error('open-folder-failed');
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        const alignedSourceLines = Array.isArray(params.alignedSourceLines)
-          ? params.alignedSourceLines.map((item) => String(item ?? ''))
-          : ['left-1', 'left-2'];
-        const alignedTargetLines = Array.isArray(params.alignedTargetLines)
-          ? params.alignedTargetLines.map((item) => String(item ?? ''))
-          : ['right-1', 'right-2'];
-        const alignedSourcePresent = Array.isArray(params.alignedSourcePresent)
-          ? params.alignedSourcePresent.map((item) => item === true)
-          : [true, true];
-        const alignedTargetPresent = Array.isArray(params.alignedTargetPresent)
-          ? params.alignedTargetPresent.map((item) => item === true)
-          : [true, true];
+          const lines =
+            id === "source-tab"
+              ? ["left-1", "left-2"]
+              : id === "target-tab"
+                ? ["right-1", "right-2"]
+                : [];
+          return buildMatchedRowsByKeyword(lines, keyword, alignedPresent);
+        }
+        if (command === "open_in_file_manager") {
+          throw new Error("open-folder-failed");
+        }
+        if (command === "apply_aligned_diff_edit") {
+          const alignedSourceLines = Array.isArray(params.alignedSourceLines)
+            ? params.alignedSourceLines.map((item) => String(item ?? ""))
+            : ["left-1", "left-2"];
+          const alignedTargetLines = Array.isArray(params.alignedTargetLines)
+            ? params.alignedTargetLines.map((item) => String(item ?? ""))
+            : ["right-1", "right-2"];
+          const alignedSourcePresent = Array.isArray(
+            params.alignedSourcePresent,
+          )
+            ? params.alignedSourcePresent.map((item) => item === true)
+            : [true, true];
+          const alignedTargetPresent = Array.isArray(
+            params.alignedTargetPresent,
+          )
+            ? params.alignedTargetPresent.map((item) => item === true)
+            : [true, true];
 
-        return {
-          lineDiff: buildLineDiffResponse(
-            alignedSourceLines,
-            alignedTargetLines,
-            alignedSourcePresent,
-            alignedTargetPresent
-          ),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+          return {
+            lineDiff: buildLineDiffResponse(
+              alignedSourceLines,
+              alignedTargetLines,
+              alignedSourcePresent,
+              alignedTargetPresent,
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
+          };
+        }
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
+        }
+        return undefined;
+      },
+    );
 
     try {
       render(React.createElement(DiffEditor, { tab: diffTab }));
 
-      const sourceTitle = await screen.findByText('Source: source.ts');
+      const sourceTitle = await screen.findByText("Source: source.ts");
       fireEvent.contextMenu(sourceTitle, {
         clientX: 96,
         clientY: 76,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Open Containing Folder' }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open Containing Folder" }),
+      );
 
       await waitFor(() => {
         expect(errorSpy).toHaveBeenCalledWith(
-          'Failed to open file directory from diff header:',
-          expect.any(Error)
+          "Failed to open file directory from diff header:",
+          expect.any(Error),
         );
       });
     } finally {
@@ -1210,9 +1542,17 @@ describe('DiffEditor component', () => {
     }
   });
 
-  it('closes header context menu on escape key', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("closes header context menu on escape key", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1221,23 +1561,35 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const sourceTitle = await screen.findByText('Source: source.ts');
+    const sourceTitle = await screen.findByText("Source: source.ts");
     fireEvent.contextMenu(sourceTitle, {
       clientX: 96,
       clientY: 76,
     });
-    expect(await screen.findByRole('button', { name: 'Copy File Name' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Copy File Name" }),
+    ).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: "Escape" });
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Copy File Name" }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it('closes header context menu on outside pointerdown', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("closes header context menu on outside pointerdown", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1246,12 +1598,14 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const sourceTitle = await screen.findByText('Source: source.ts');
+    const sourceTitle = await screen.findByText("Source: source.ts");
     fireEvent.contextMenu(sourceTitle, {
       clientX: 96,
       clientY: 76,
     });
-    expect(await screen.findByRole('button', { name: 'Copy File Name' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Copy File Name" }),
+    ).toBeInTheDocument();
 
     fireEvent.pointerDown(document.body, {
       button: 0,
@@ -1259,30 +1613,47 @@ describe('DiffEditor component', () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Copy File Name" }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it('executes copy command from panel context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("executes copy command from panel context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const originalExecCommand = Object.getOwnPropertyDescriptor(
+      document,
+      "execCommand",
+    );
     const execCommandMock = vi.fn(() => true);
-    Object.defineProperty(document, 'execCommand', {
+    Object.defineProperty(document, "execCommand", {
       configurable: true,
       value: execCommandMock,
     });
 
     try {
-      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const { container } = render(
+        React.createElement(DiffEditor, { tab: diffTab }),
+      );
       const sourceTextarea = await waitFor(() => {
-        const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+        const element = container.querySelector(
+          'textarea[data-diff-panel="source"]',
+        ) as HTMLTextAreaElement | null;
         expect(element).toBeTruthy();
         return element as HTMLTextAreaElement;
       });
@@ -1291,23 +1662,31 @@ describe('DiffEditor component', () => {
         clientX: 140,
         clientY: 140,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+      fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
       await waitFor(() => {
-        expect(execCommandMock).toHaveBeenCalledWith('copy');
+        expect(execCommandMock).toHaveBeenCalledWith("copy");
       });
     } finally {
       if (originalExecCommand) {
-        Object.defineProperty(document, 'execCommand', originalExecCommand);
+        Object.defineProperty(document, "execCommand", originalExecCommand);
       } else {
-        Reflect.deleteProperty(document, 'execCommand');
+        Reflect.deleteProperty(document, "execCommand");
       }
     }
   });
 
-  it('suppresses context menu on both line-number gutters', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("suppresses context menu on both line-number gutters", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1316,34 +1695,51 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const lineNumberCells = await screen.findAllByText('1');
+    const lineNumberCells = await screen.findAllByText("1");
     const sourceCancelled = fireEvent.contextMenu(lineNumberCells[0], {
       clientX: 132,
       clientY: 132,
     });
-    const targetCancelled = fireEvent.contextMenu(lineNumberCells[lineNumberCells.length - 1], {
-      clientX: 164,
-      clientY: 132,
-    });
+    const targetCancelled = fireEvent.contextMenu(
+      lineNumberCells[lineNumberCells.length - 1],
+      {
+        clientX: 164,
+        clientY: 132,
+      },
+    );
 
     expect(sourceCancelled).toBe(false);
     expect(targetCancelled).toBe(false);
-    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy File Name" }),
+    ).not.toBeInTheDocument();
   });
 
-  it('suppresses context menu on both diff panel scrollers', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("suppresses context menu on both diff panel scrollers", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const scrollers = await waitFor(() => {
-      const elements = container.querySelectorAll('.editor-scroll-stable');
+      const elements = container.querySelectorAll(".editor-scroll-stable");
       expect(elements.length).toBe(2);
       return elements;
     });
@@ -1359,13 +1755,25 @@ describe('DiffEditor component', () => {
 
     expect(sourceCancelled).toBe(false);
     expect(targetCancelled).toBe(false);
-    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy File Name" }),
+    ).not.toBeInTheDocument();
   });
 
-  it('suppresses context menu on diff splitter', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("suppresses context menu on diff splitter", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1374,29 +1782,47 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const splitter = await screen.findByRole('separator', { name: 'Resize diff panels' });
+    const splitter = await screen.findByRole("separator", {
+      name: "Resize diff panels",
+    });
     const cancelled = fireEvent.contextMenu(splitter, {
       clientX: 600,
       clientY: 220,
     });
 
     expect(cancelled).toBe(false);
-    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Copy File Name' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy File Name" }),
+    ).not.toBeInTheDocument();
   });
 
-  it('closes panel context menu on window blur', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("closes panel context menu on window blur", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -1405,35 +1831,54 @@ describe('DiffEditor component', () => {
       clientX: 140,
       clientY: 140,
     });
-    expect(await screen.findByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Copy" }),
+    ).toBeInTheDocument();
 
     fireEvent.blur(window);
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Copy" }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it('executes cut command from panel context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("executes cut command from panel context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const originalExecCommand = Object.getOwnPropertyDescriptor(
+      document,
+      "execCommand",
+    );
     const execCommandMock = vi.fn(() => true);
-    Object.defineProperty(document, 'execCommand', {
+    Object.defineProperty(document, "execCommand", {
       configurable: true,
       value: execCommandMock,
     });
 
     try {
-      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const { container } = render(
+        React.createElement(DiffEditor, { tab: diffTab }),
+      );
       const sourceTextarea = await waitFor(() => {
-        const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+        const element = container.querySelector(
+          'textarea[data-diff-panel="source"]',
+        ) as HTMLTextAreaElement | null;
         expect(element).toBeTruthy();
         return element as HTMLTextAreaElement;
       });
@@ -1442,42 +1887,57 @@ describe('DiffEditor component', () => {
         clientX: 146,
         clientY: 146,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Cut' }));
+      fireEvent.click(await screen.findByRole("button", { name: "Cut" }));
 
       await waitFor(() => {
-        expect(execCommandMock).toHaveBeenCalledWith('cut');
+        expect(execCommandMock).toHaveBeenCalledWith("cut");
       });
     } finally {
       if (originalExecCommand) {
-        Object.defineProperty(document, 'execCommand', originalExecCommand);
+        Object.defineProperty(document, "execCommand", originalExecCommand);
       } else {
-        Reflect.deleteProperty(document, 'execCommand');
+        Reflect.deleteProperty(document, "execCommand");
       }
     }
   });
 
-  it('falls back to document paste command when clipboard plugin read fails', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("falls back to document paste command when clipboard plugin read fails", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    readClipboardTextMock.mockRejectedValueOnce(new Error('clipboard-failed'));
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    readClipboardTextMock.mockRejectedValueOnce(new Error("clipboard-failed"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const originalExecCommand = Object.getOwnPropertyDescriptor(
+      document,
+      "execCommand",
+    );
     const execCommandMock = vi.fn(() => true);
-    Object.defineProperty(document, 'execCommand', {
+    Object.defineProperty(document, "execCommand", {
       configurable: true,
       value: execCommandMock,
     });
 
     try {
-      const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+      const { container } = render(
+        React.createElement(DiffEditor, { tab: diffTab }),
+      );
       const targetTextarea = await waitFor(() => {
-        const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+        const element = container.querySelector(
+          'textarea[data-diff-panel="target"]',
+        ) as HTMLTextAreaElement | null;
         expect(element).toBeTruthy();
         return element as HTMLTextAreaElement;
       });
@@ -1486,101 +1946,133 @@ describe('DiffEditor component', () => {
         clientX: 180,
         clientY: 148,
       });
-      fireEvent.click(await screen.findByRole('button', { name: 'Paste' }));
+      fireEvent.click(await screen.findByRole("button", { name: "Paste" }));
 
       await waitFor(() => {
         expect(warnSpy).toHaveBeenCalledWith(
-          'Failed to read clipboard text via Tauri clipboard plugin:',
-          expect.any(Error)
+          "Failed to read clipboard text via Tauri clipboard plugin:",
+          expect.any(Error),
         );
-        expect(execCommandMock).toHaveBeenCalledWith('paste');
+        expect(execCommandMock).toHaveBeenCalledWith("paste");
       });
     } finally {
       warnSpy.mockRestore();
       if (originalExecCommand) {
-        Object.defineProperty(document, 'execCommand', originalExecCommand);
+        Object.defineProperty(document, "execCommand", originalExecCommand);
       } else {
-        Reflect.deleteProperty(document, 'execCommand');
+        Reflect.deleteProperty(document, "execCommand");
       }
     }
   });
 
-  it('handles target textarea change and tab key insertion', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("handles target textarea change and tab key insertion", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    fireEvent.change(targetTextarea, { target: { value: 'abc' } });
-    expect(targetTextarea.value).toBe('abc\n');
+    fireEvent.change(targetTextarea, { target: { value: "abc" } });
+    expect(targetTextarea.value).toBe("abc\n");
 
     targetTextarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(targetTextarea, { key: 'Tab' });
+    fireEvent.keyDown(targetTextarea, { key: "Tab" });
 
     await waitFor(() => {
-      expect(targetTextarea.value).toContain('\t');
+      expect(targetTextarea.value).toContain("\t");
     });
 
     await waitFor(() => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith(
-        'preview_aligned_diff_state',
+        "preview_aligned_diff_state",
         expect.objectContaining({
           alignedSourceLines: expect.any(Array),
           alignedTargetLines: expect.any(Array),
           alignedSourcePresent: expect.any(Array),
           alignedTargetPresent: expect.any(Array),
-        })
+        }),
       );
     });
   });
 
-  it('inserts spaces on diff panel Tab when indentation mode is spaces', async () => {
+  it("inserts spaces on diff panel Tab when indentation mode is spaces", async () => {
     useStore.getState().updateSettings({
-      tabIndentMode: 'spaces',
+      tabIndentMode: "spaces",
       tabWidth: 3,
     });
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    fireEvent.change(targetTextarea, { target: { value: 'abc' } });
+    fireEvent.change(targetTextarea, { target: { value: "abc" } });
     targetTextarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(targetTextarea, { key: 'Tab' });
+    fireEvent.keyDown(targetTextarea, { key: "Tab" });
 
     await waitFor(() => {
-      expect(targetTextarea.value).toContain('a   bc');
-      expect(targetTextarea.value).not.toContain('\t');
+      expect(targetTextarea.value).toContain("a   bc");
+      expect(targetTextarea.value).not.toContain("\t");
     });
   });
 
-  it('prefers detected indentation for python diff panel Tab insertions', async () => {
+  it("prefers detected indentation for python diff panel Tab insertions", async () => {
     useStore.getState().updateSettings({
-      tabIndentMode: 'tabs',
+      tabIndentMode: "tabs",
       tabWidth: 8,
     });
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'script.py', path: 'C:\\repo\\script.py' });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "script.py",
+      path: "C:\\repo\\script.py",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1588,59 +2080,82 @@ describe('DiffEditor component', () => {
     });
 
     const previousImplementation = vi.mocked(invoke).getMockImplementation();
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      if (
-        command === 'detect_document_indentation'
-        && payload
-        && typeof payload === 'object'
-        && 'id' in payload
-        && (payload as { id?: string }).id === targetTab.id
-      ) {
-        return {
-          mode: 'spaces',
-          width: 2,
-        };
-      }
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        if (
+          command === "detect_document_indentation" &&
+          payload &&
+          typeof payload === "object" &&
+          "id" in payload &&
+          (payload as { id?: string }).id === targetTab.id
+        ) {
+          return {
+            mode: "spaces",
+            width: 2,
+          };
+        }
 
-      return previousImplementation ? previousImplementation(command, payload as any) : undefined;
-    });
+        return previousImplementation
+          ? previousImplementation(command, payload as any)
+          : undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('detect_document_indentation', {
-        id: targetTab.id,
-        maxLines: 2000,
-      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "detect_document_indentation",
+        {
+          id: targetTab.id,
+          maxLines: 2000,
+        },
+      );
     });
 
-    fireEvent.change(targetTextarea, { target: { value: 'abc' } });
+    fireEvent.change(targetTextarea, { target: { value: "abc" } });
     targetTextarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(targetTextarea, { key: 'Tab' });
+    fireEvent.keyDown(targetTextarea, { key: "Tab" });
 
     await waitFor(() => {
-      expect(targetTextarea.value).toContain('a  bc');
-      expect(targetTextarea.value).not.toContain('\t');
+      expect(targetTextarea.value).toContain("a  bc");
+      expect(targetTextarea.value).not.toContain("\t");
     });
   });
 
-  it('writes target selection to clipboard on copy event', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("writes target selection to clipboard on copy event", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -1654,33 +2169,48 @@ describe('DiffEditor component', () => {
     });
 
     await waitFor(() => {
-      expect(setDataMock).toHaveBeenCalledWith('text/plain', 'right-1');
+      expect(setDataMock).toHaveBeenCalledWith("text/plain", "right-1");
     });
   });
 
-  it('navigates target search matches via enter and arrow buttons', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("navigates target search matches via enter and arrow buttons", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
-    const searchContainer = targetSearchInput.parentElement as HTMLElement | null;
+    const targetSearchInput = await screen.findByRole("textbox", {
+      name: "Target Search keyword",
+    });
+    const searchContainer =
+      targetSearchInput.parentElement as HTMLElement | null;
     const previousButton = searchContainer?.querySelector(
-      'button[aria-label="Previous Match"]'
+      'button[aria-label="Previous Match"]',
     ) as HTMLButtonElement | null;
     const nextButton = searchContainer?.querySelector(
-      'button[aria-label="Next Match"]'
+      'button[aria-label="Next Match"]',
     ) as HTMLButtonElement | null;
     expect(previousButton).toBeTruthy();
     expect(nextButton).toBeTruthy();
@@ -1688,7 +2218,7 @@ describe('DiffEditor component', () => {
       return;
     }
 
-    fireEvent.change(targetSearchInput, { target: { value: 'right' } });
+    fireEvent.change(targetSearchInput, { target: { value: "right" } });
 
     await waitFor(() => {
       expect(previousButton.disabled).toBe(false);
@@ -1699,36 +2229,53 @@ describe('DiffEditor component', () => {
     fireEvent.click(previousButton);
     fireEvent.mouseDown(nextButton, { button: 0 });
     fireEvent.click(nextButton);
-    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(targetSearchInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(targetTextarea.selectionEnd).toBeGreaterThan(targetTextarea.selectionStart);
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(
+        targetTextarea.selectionStart,
+      );
     });
   });
 
-  it('navigates source search matches via enter and arrow buttons', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("navigates source search matches via enter and arrow buttons", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
-    const searchContainer = sourceSearchInput.parentElement as HTMLElement | null;
+    const sourceSearchInput = await screen.findByRole("textbox", {
+      name: "Source Search keyword",
+    });
+    const searchContainer =
+      sourceSearchInput.parentElement as HTMLElement | null;
     const previousButton = searchContainer?.querySelector(
-      'button[aria-label="Previous Match"]'
+      'button[aria-label="Previous Match"]',
     ) as HTMLButtonElement | null;
     const nextButton = searchContainer?.querySelector(
-      'button[aria-label="Next Match"]'
+      'button[aria-label="Next Match"]',
     ) as HTMLButtonElement | null;
     expect(previousButton).toBeTruthy();
     expect(nextButton).toBeTruthy();
@@ -1736,7 +2283,7 @@ describe('DiffEditor component', () => {
       return;
     }
 
-    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+    fireEvent.change(sourceSearchInput, { target: { value: "left" } });
 
     await waitFor(() => {
       expect(previousButton.disabled).toBe(false);
@@ -1747,16 +2294,26 @@ describe('DiffEditor component', () => {
     fireEvent.click(previousButton);
     fireEvent.mouseDown(nextButton, { button: 0 });
     fireEvent.click(nextButton);
-    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(sourceSearchInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(
+        sourceTextarea.selectionStart,
+      );
     });
   });
 
-  it('jumps source diff lines via header diff navigation buttons', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("jumps source diff lines via header diff navigation buttons", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -1765,8 +2322,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['same-1', 'left-2', 'left-3'],
-        alignedTargetLines: ['same-1', 'right-2', 'right-3'],
+        alignedSourceLines: ["same-1", "left-2", "left-3"],
+        alignedTargetLines: ["same-1", "right-2", "right-3"],
         alignedSourcePresent: [true, true, true],
         alignedTargetPresent: [true, true, true],
         diffLineNumbers: [2, 3],
@@ -1782,23 +2339,27 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
     vi.mocked(invoke).mockImplementation(async (command: string) => {
-      if (command === 'compare_documents_by_line') {
+      if (command === "compare_documents_by_line") {
         return buildLineDiffResponse(
-          ['same-1', 'left-2', 'left-3'],
-          ['same-1', 'right-2', 'right-3'],
+          ["same-1", "left-2", "left-3"],
+          ["same-1", "right-2", "right-3"],
           [true, true, true],
-          [true, true, true]
+          [true, true, true],
         );
       }
-      if (command === 'search_diff_panel_aligned_row_matches') {
+      if (command === "search_diff_panel_aligned_row_matches") {
         return [];
       }
       return 0;
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -1807,9 +2368,13 @@ describe('DiffEditor component', () => {
       sourceTextarea.setSelectionRange(0, 0);
     });
 
-    const previousDiffButton = await screen.findByRole('button', { name: 'Source Previous Diff Line' });
-    const nextDiffButton = await screen.findByRole('button', { name: 'Source Next Diff Line' });
-    const sourceLines = sourceTextarea.value.split('\n');
+    const previousDiffButton = await screen.findByRole("button", {
+      name: "Source Previous Diff Line",
+    });
+    const nextDiffButton = await screen.findByRole("button", {
+      name: "Source Next Diff Line",
+    });
+    const sourceLines = sourceTextarea.value.split("\n");
     const row2Range = diffEditorTestUtils.getLineSelectionRange(sourceLines, 1);
     const row3Range = diffEditorTestUtils.getLineSelectionRange(sourceLines, 2);
 
@@ -1841,9 +2406,17 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('disables diff navigation buttons when there are no diff rows', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("disables diff navigation buttons when there are no diff rows", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -1852,8 +2425,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['same-1', 'same-2'],
-        alignedTargetLines: ['same-1', 'same-2'],
+        alignedSourceLines: ["same-1", "same-2"],
+        alignedTargetLines: ["same-1", "same-2"],
         alignedSourcePresent: [true, true],
         alignedTargetPresent: [true, true],
         diffLineNumbers: [],
@@ -1869,15 +2442,15 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
     vi.mocked(invoke).mockImplementation(async (command: string) => {
-      if (command === 'compare_documents_by_line') {
+      if (command === "compare_documents_by_line") {
         return buildLineDiffResponse(
-          ['same-1', 'same-2'],
-          ['same-1', 'same-2'],
+          ["same-1", "same-2"],
+          ["same-1", "same-2"],
           [true, true],
-          [true, true]
+          [true, true],
         );
       }
-      if (command === 'search_diff_panel_aligned_row_matches') {
+      if (command === "search_diff_panel_aligned_row_matches") {
         return [];
       }
       return 0;
@@ -1885,15 +2458,31 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    expect(await screen.findByRole('button', { name: 'Source Previous Diff Line' })).toBeDisabled();
-    expect(await screen.findByRole('button', { name: 'Source Next Diff Line' })).toBeDisabled();
-    expect(await screen.findByRole('button', { name: 'Target Previous Diff Line' })).toBeDisabled();
-    expect(await screen.findByRole('button', { name: 'Target Next Diff Line' })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Source Previous Diff Line" }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Source Next Diff Line" }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Target Previous Diff Line" }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Target Next Diff Line" }),
+    ).toBeDisabled();
   });
 
-  it('requests backend line matches when diff panel search keyword changes', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("requests backend line matches when diff panel search keyword changes", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
@@ -1902,44 +2491,64 @@ describe('DiffEditor component', () => {
 
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
-    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
-    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+    const sourceSearchInput = await screen.findByRole("textbox", {
+      name: "Source Search keyword",
+    });
+    fireEvent.change(sourceSearchInput, { target: { value: "left" } });
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_diff_panel_aligned_row_matches', {
-        id: sourceTab.id,
-        keyword: 'left',
-        alignedPresent: [true, true],
-      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "search_diff_panel_aligned_row_matches",
+        {
+          id: sourceTab.id,
+          keyword: "left",
+          alignedPresent: [true, true],
+        },
+      );
     });
   });
 
-  it('clears source matched row when source text updates invalidate search rows', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("clears source matched row when source text updates invalidate search rows", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container, rerender } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container, rerender } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
-    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
-    const sourceSearchContainer = sourceSearchInput.parentElement as HTMLElement | null;
+    const sourceSearchInput = await screen.findByRole("textbox", {
+      name: "Source Search keyword",
+    });
+    const sourceSearchContainer =
+      sourceSearchInput.parentElement as HTMLElement | null;
     const sourceNextButton = sourceSearchContainer?.querySelector(
-      'button[aria-label="Next Match"]'
+      'button[aria-label="Next Match"]',
     ) as HTMLButtonElement | null;
 
-    fireEvent.change(sourceSearchInput, { target: { value: 'left' } });
+    fireEvent.change(sourceSearchInput, { target: { value: "left" } });
     await waitFor(() => {
       expect(sourceNextButton?.disabled).toBe(false);
     });
-    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(sourceSearchInput, { key: "Enter" });
     await waitFor(() => {
       expect(sourceTextarea.selectionStart).toBe(0);
       expect(sourceTextarea.selectionEnd).toBeGreaterThan(0);
@@ -1954,8 +2563,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['alpha', 'beta'],
-        alignedTargetLines: ['right-1', 'right-2'],
+        alignedSourceLines: ["alpha", "beta"],
+        alignedTargetLines: ["right-1", "right-2"],
         alignedSourcePresent: [true, true],
         alignedTargetPresent: [true, true],
         sourceLineCount: 2,
@@ -1968,46 +2577,63 @@ describe('DiffEditor component', () => {
     });
     rerender(React.createElement(DiffEditor, { tab: sourceMismatchDiffTab }));
     await waitFor(() => {
-      expect(sourceTextarea.value.startsWith('alpha')).toBe(true);
+      expect(sourceTextarea.value.startsWith("alpha")).toBe(true);
     });
 
     rerender(React.createElement(DiffEditor, { tab: diffTab }));
     await waitFor(() => {
-      expect(sourceTextarea.value.startsWith('left-1')).toBe(true);
+      expect(sourceTextarea.value.startsWith("left-1")).toBe(true);
     });
 
-    fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(sourceSearchInput, { key: "Enter" });
     await waitFor(() => {
-      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(
+        sourceTextarea.selectionStart,
+      );
     });
   });
 
-  it('clears target matched row when target text updates invalidate search rows', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("clears target matched row when target text updates invalidate search rows", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container, rerender } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container, rerender } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
-    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
-    const targetSearchContainer = targetSearchInput.parentElement as HTMLElement | null;
+    const targetSearchInput = await screen.findByRole("textbox", {
+      name: "Target Search keyword",
+    });
+    const targetSearchContainer =
+      targetSearchInput.parentElement as HTMLElement | null;
     const targetNextButton = targetSearchContainer?.querySelector(
-      'button[aria-label="Next Match"]'
+      'button[aria-label="Next Match"]',
     ) as HTMLButtonElement | null;
 
-    fireEvent.change(targetSearchInput, { target: { value: 'right' } });
+    fireEvent.change(targetSearchInput, { target: { value: "right" } });
     await waitFor(() => {
       expect(targetNextButton?.disabled).toBe(false);
     });
-    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(targetSearchInput, { key: "Enter" });
     await waitFor(() => {
       expect(targetTextarea.selectionStart).toBe(0);
       expect(targetTextarea.selectionEnd).toBeGreaterThan(0);
@@ -2022,8 +2648,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['left-1', 'left-2'],
-        alignedTargetLines: ['alpha', 'beta'],
+        alignedSourceLines: ["left-1", "left-2"],
+        alignedTargetLines: ["alpha", "beta"],
         alignedSourcePresent: [true, true],
         alignedTargetPresent: [true, true],
         sourceLineCount: 2,
@@ -2036,42 +2662,60 @@ describe('DiffEditor component', () => {
     });
     rerender(React.createElement(DiffEditor, { tab: targetMismatchDiffTab }));
     await waitFor(() => {
-      expect(targetTextarea.value.startsWith('alpha')).toBe(true);
+      expect(targetTextarea.value.startsWith("alpha")).toBe(true);
     });
 
     rerender(React.createElement(DiffEditor, { tab: diffTab }));
     await waitFor(() => {
-      expect(targetTextarea.value.startsWith('right-1')).toBe(true);
+      expect(targetTextarea.value.startsWith("right-1")).toBe(true);
     });
 
-    fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+    fireEvent.keyDown(targetSearchInput, { key: "Enter" });
     await waitFor(() => {
-      expect(targetTextarea.selectionEnd).toBeGreaterThan(targetTextarea.selectionStart);
+      expect(targetTextarea.selectionEnd).toBeGreaterThan(
+        targetTextarea.selectionStart,
+      );
     });
   });
 
-  it('keeps source selection unchanged when enter is pressed with no source search match', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("keeps source selection unchanged when enter is pressed with no source search match", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
-    const sourceSearchInput = await screen.findByRole('textbox', { name: 'Source Search keyword' });
+    const sourceSearchInput = await screen.findByRole("textbox", {
+      name: "Source Search keyword",
+    });
 
     act(() => {
       sourceTextarea.focus();
       sourceTextarea.setSelectionRange(3, 3);
-      fireEvent.change(sourceSearchInput, { target: { value: 'zzz-not-found' } });
-      fireEvent.keyDown(sourceSearchInput, { key: 'Enter' });
+      fireEvent.change(sourceSearchInput, {
+        target: { value: "zzz-not-found" },
+      });
+      fireEvent.keyDown(sourceSearchInput, { key: "Enter" });
     });
 
     await waitFor(() => {
@@ -2080,28 +2724,44 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('keeps target selection unchanged when enter is pressed with no target search match', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("keeps target selection unchanged when enter is pressed with no target search match", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
-    const targetSearchInput = await screen.findByRole('textbox', { name: 'Target Search keyword' });
+    const targetSearchInput = await screen.findByRole("textbox", {
+      name: "Target Search keyword",
+    });
 
     act(() => {
       targetTextarea.focus();
       targetTextarea.setSelectionRange(4, 4);
-      fireEvent.change(targetSearchInput, { target: { value: 'zzz-not-found' } });
-      fireEvent.keyDown(targetSearchInput, { key: 'Enter' });
+      fireEvent.change(targetSearchInput, {
+        target: { value: "zzz-not-found" },
+      });
+      fireEvent.keyDown(targetSearchInput, { key: "Enter" });
     });
 
     await waitFor(() => {
@@ -2110,45 +2770,290 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('handles source textarea change and tab key insertion', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("handles source textarea change and tab key insertion", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    fireEvent.change(sourceTextarea, { target: { value: 'xyz' } });
-    expect(sourceTextarea.value).toBe('xyz\n');
+    fireEvent.change(sourceTextarea, { target: { value: "xyz" } });
+    expect(sourceTextarea.value).toBe("xyz\n");
 
     sourceTextarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(sourceTextarea, { key: 'Tab' });
+    fireEvent.keyDown(sourceTextarea, { key: "Tab" });
 
     await waitFor(() => {
-      expect(sourceTextarea.value).toContain('\t');
+      expect(sourceTextarea.value).toContain("\t");
     });
   });
 
-  it('writes source selection to clipboard on copy event', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("keeps previous line indentation on Enter in source diff panel", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, {
+      target: { value: "if True:\n    pass" },
+    });
+    const caretOffset = sourceTextarea.value.indexOf("pass") + "pass".length;
+    sourceTextarea.setSelectionRange(caretOffset, caretOffset);
+    fireEvent.keyDown(sourceTextarea, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "preview_aligned_diff_state",
+        expect.objectContaining({
+          alignedSourceLines: expect.arrayContaining([
+            "if True:",
+            "    pass",
+            "    ",
+          ]),
+        }),
+      );
+    });
+  });
+
+  it("adds one indentation level on Enter after json opening brace in diff source panel", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.json",
+      path: "C:\\repo\\source.json",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: "{\n}" } });
+    sourceTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(sourceTextarea, { key: "Enter" });
+
+    await waitFor(() => {
+      const hasIndentedPreviewRequest = vi
+        .mocked(invoke)
+        .mock.calls.some(([command, payload]) => {
+          if (command !== "preview_aligned_diff_state") {
+            return false;
+          }
+
+          const alignedSourceLines = (
+            payload as { alignedSourceLines?: unknown[] }
+          )?.alignedSourceLines;
+          return (
+            Array.isArray(alignedSourceLines) &&
+            alignedSourceLines.includes("  ")
+          );
+        });
+      expect(hasIndentedPreviewRequest).toBe(true);
+    });
+  });
+
+  it("dedents current json line when typing a closing brace in diff source panel", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.json",
+      path: "C:\\repo\\source.json",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: "{\n  \n" } });
+    sourceTextarea.setSelectionRange(4, 4);
+    fireEvent.keyDown(sourceTextarea, { key: "}" });
+
+    await waitFor(() => {
+      const hasDedentedPreviewRequest = vi
+        .mocked(invoke)
+        .mock.calls.some(([command, payload]) => {
+          if (command !== "preview_aligned_diff_state") {
+            return false;
+          }
+
+          const alignedSourceLines = (
+            payload as { alignedSourceLines?: unknown[] }
+          )?.alignedSourceLines;
+          return (
+            Array.isArray(alignedSourceLines) &&
+            alignedSourceLines.includes("}") &&
+            !alignedSourceLines.includes("  ")
+          );
+        });
+      expect(hasDedentedPreviewRequest).toBe(true);
+    });
+  });
+
+  it("dedents python else line when typing a colon in diff source panel", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.py",
+      path: "C:\\repo\\source.py",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, {
+      target: { value: "if outer:\n  if inner:\n    pass\n    else\n" },
+    });
+    const caretOffset = sourceTextarea.value.indexOf("else") + "else".length;
+    sourceTextarea.setSelectionRange(caretOffset, caretOffset);
+    fireEvent.keyDown(sourceTextarea, { key: ":" });
+
+    await waitFor(() => {
+      const hasDedentedPreviewRequest = vi
+        .mocked(invoke)
+        .mock.calls.some(([command, payload]) => {
+          if (command !== "preview_aligned_diff_state") {
+            return false;
+          }
+
+          const alignedSourceLines = (
+            payload as { alignedSourceLines?: unknown[] }
+          )?.alignedSourceLines;
+          return (
+            Array.isArray(alignedSourceLines) &&
+            alignedSourceLines.includes("  else:")
+          );
+        });
+      expect(hasDedentedPreviewRequest).toBe(true);
+    });
+  });
+
+  it("writes source selection to clipboard on copy event", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2162,27 +3067,39 @@ describe('DiffEditor component', () => {
     });
 
     await waitFor(() => {
-      expect(setDataMock).toHaveBeenCalledWith('text/plain', 'left-1');
+      expect(setDataMock).toHaveBeenCalledWith("text/plain", "left-1");
     });
   });
 
-  it('focuses target panel line when target line number is pointer-selected', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("focuses target panel line when target line number is pointer-selected", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    const lineNumberCells = await screen.findAllByText('1');
+    const lineNumberCells = await screen.findAllByText("1");
     fireEvent.pointerDown(lineNumberCells[lineNumberCells.length - 1], {
       button: 0,
       pointerId: 1,
@@ -2195,8 +3112,12 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('renders unavailable placeholder when source tab is missing', async () => {
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("renders unavailable placeholder when source tab is missing", async () => {
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [targetTab, diffTab],
@@ -2206,27 +3127,39 @@ describe('DiffEditor component', () => {
     render(React.createElement(DiffEditor, { tab: diffTab }));
 
     await waitFor(() => {
-      expect(screen.getByText('Source tab closed')).toBeInTheDocument();
+      expect(screen.getByText("Source tab closed")).toBeInTheDocument();
     });
   });
 
-  it('focuses source panel line when source line number is pointer-selected', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("focuses source panel line when source line number is pointer-selected", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    const lineNumberCells = await screen.findAllByText('1');
+    const lineNumberCells = await screen.findAllByText("1");
     fireEvent.pointerDown(lineNumberCells[0], {
       button: 0,
       pointerId: 7,
@@ -2234,22 +3167,28 @@ describe('DiffEditor component', () => {
 
     await waitFor(() => {
       expect(document.activeElement).toBe(sourceTextarea);
-      expect(sourceTextarea.selectionEnd).toBeGreaterThan(sourceTextarea.selectionStart);
+      expect(sourceTextarea.selectionEnd).toBeGreaterThan(
+        sourceTextarea.selectionStart,
+      );
     });
   });
 
-  it('ignores source line-number pointer selection for virtual placeholder rows', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+  it("ignores source line-number pointer selection for virtual placeholder rows", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
-        targetTabId: 'missing-target-tab',
+        targetTabId: "missing-target-tab",
         sourceName: sourceTab.name,
-        targetName: 'target.ts',
+        targetName: "target.ts",
         sourcePath: sourceTab.path,
-        targetPath: 'C:\\repo\\target.ts',
-        alignedSourceLines: ['placeholder-source', 'left-2'],
-        alignedTargetLines: ['right-1', 'right-2'],
+        targetPath: "C:\\repo\\target.ts",
+        alignedSourceLines: ["placeholder-source", "left-2"],
+        alignedTargetLines: ["right-1", "right-2"],
         alignedSourcePresent: [false, true],
         alignedTargetPresent: [true, true],
         sourceLineCount: 1,
@@ -2265,14 +3204,18 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
 
-    const virtualLineCell = await screen.findByText('+');
+    const virtualLineCell = await screen.findByText("+");
     act(() => {
       sourceTextarea.focus();
       sourceTextarea.setSelectionRange(2, 2);
@@ -2289,12 +3232,16 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('disables copy-to-right when target panel tab is missing', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+  it("disables copy-to-right when target panel tab is missing", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
-        targetTabId: 'missing-target-tab',
+        targetTabId: "missing-target-tab",
       }),
     });
     useStore.setState({
@@ -2302,9 +3249,13 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2314,22 +3265,36 @@ describe('DiffEditor component', () => {
       clientY: 154,
     });
 
-    const copyToRightButton = await screen.findByRole('button', { name: 'Copy to Right' });
+    const copyToRightButton = await screen.findByRole("button", {
+      name: "Copy to Right",
+    });
     expect(copyToRightButton).toBeDisabled();
   });
 
-  it('disables copy-to-right when source textarea becomes unavailable after menu opens', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("disables copy-to-right when source textarea becomes unavailable after menu opens", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2338,7 +3303,9 @@ describe('DiffEditor component', () => {
       clientX: 188,
       clientY: 156,
     });
-    const copyToRightButton = await screen.findByRole('button', { name: 'Copy to Right' });
+    const copyToRightButton = await screen.findByRole("button", {
+      name: "Copy to Right",
+    });
     expect(copyToRightButton).not.toBeDisabled();
 
     act(() => {
@@ -2349,22 +3316,28 @@ describe('DiffEditor component', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Copy to Right' })).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Copy to Right" }),
+      ).toBeDisabled();
     });
   });
 
-  it('skips out-of-range diff line numbers when building row diff-kind map', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+  it("skips out-of-range diff line numbers when building row diff-kind map", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
-        targetTabId: 'missing-target-tab',
+        targetTabId: "missing-target-tab",
         sourceName: sourceTab.name,
-        targetName: 'target.ts',
+        targetName: "target.ts",
         sourcePath: sourceTab.path,
-        targetPath: 'C:\\repo\\target.ts',
-        alignedSourceLines: ['left-1'],
-        alignedTargetLines: ['right-1'],
+        targetPath: "C:\\repo\\target.ts",
+        alignedSourceLines: ["left-1"],
+        alignedTargetLines: ["right-1"],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
         sourceLineCount: 1,
@@ -2380,30 +3353,40 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     await waitFor(() => {
-      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
-      expect(screen.getByText('Target tab closed')).toBeInTheDocument();
+      expect(
+        container.querySelector('textarea[data-diff-panel="source"]'),
+      ).toBeTruthy();
+      expect(screen.getByText("Target tab closed")).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      const diffBackgrounds = container.querySelectorAll('div[class*="bg-amber-500/10"]');
+      const diffBackgrounds = container.querySelectorAll(
+        'div[class*="bg-amber-500/10"]',
+      );
       expect(diffBackgrounds.length).toBe(1);
     });
   });
 
-  it('skips null diff kinds even when diff line numbers include the row', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
+  it("skips null diff kinds even when diff line numbers include the row", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
-        targetTabId: 'missing-target-tab',
+        targetTabId: "missing-target-tab",
         sourceName: sourceTab.name,
-        targetName: 'target.ts',
+        targetName: "target.ts",
         sourcePath: sourceTab.path,
-        targetPath: 'C:\\repo\\target.ts',
-        alignedSourceLines: ['same-line'],
-        alignedTargetLines: ['same-line'],
+        targetPath: "C:\\repo\\target.ts",
+        alignedSourceLines: ["same-line"],
+        alignedTargetLines: ["same-line"],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
         sourceLineCount: 1,
@@ -2419,36 +3402,58 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     await waitFor(() => {
-      expect(container.querySelector('textarea[data-diff-panel="source"]')).toBeTruthy();
-      expect(screen.getByText('Target tab closed')).toBeInTheDocument();
+      expect(
+        container.querySelector('textarea[data-diff-panel="source"]'),
+      ).toBeTruthy();
+      expect(screen.getByText("Target tab closed")).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      expect(container.querySelectorAll('div[class*="bg-amber-500/10"]').length).toBe(0);
-      expect(container.querySelectorAll('div[class*="bg-red-500/10"]').length).toBe(0);
-      expect(container.querySelectorAll('div[class*="bg-emerald-500/10"]').length).toBe(0);
+      expect(
+        container.querySelectorAll('div[class*="bg-amber-500/10"]').length,
+      ).toBe(0);
+      expect(
+        container.querySelectorAll('div[class*="bg-red-500/10"]').length,
+      ).toBe(0);
+      expect(
+        container.querySelectorAll('div[class*="bg-emerald-500/10"]').length,
+      ).toBe(0);
     });
   });
 
-  it('copies selected source line to right panel from context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies selected source line to right panel from context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
     const targetTextarea = container.querySelector(
-      'textarea[data-diff-panel="target"]'
+      'textarea[data-diff-panel="target"]',
     ) as HTMLTextAreaElement;
 
     sourceTextarea.setSelectionRange(0, 0);
@@ -2456,38 +3461,52 @@ describe('DiffEditor component', () => {
       clientX: 190,
       clientY: 156,
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy to Right' }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy to Right" }),
+    );
 
     await waitFor(() => {
-      expect(targetTextarea.value.startsWith('left-1')).toBe(true);
+      expect(targetTextarea.value.startsWith("left-1")).toBe(true);
     });
 
     expect(vi.mocked(invoke)).toHaveBeenCalledWith(
-      'apply_aligned_diff_panel_copy',
+      "apply_aligned_diff_panel_copy",
       expect.objectContaining({
-        fromSide: 'source',
-        toSide: 'target',
-      })
+        fromSide: "source",
+        toSide: "target",
+      }),
     );
   });
 
-  it('copies selected target line to left panel from context menu', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("copies selected target line to left panel from context menu", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
     const targetTextarea = container.querySelector(
-      'textarea[data-diff-panel="target"]'
+      'textarea[data-diff-panel="target"]',
     ) as HTMLTextAreaElement;
 
     targetTextarea.setSelectionRange(0, 0);
@@ -2495,33 +3514,47 @@ describe('DiffEditor component', () => {
       clientX: 196,
       clientY: 162,
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy to Left' }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy to Left" }),
+    );
 
     await waitFor(() => {
-      expect(sourceTextarea.value.startsWith('right-1')).toBe(true);
+      expect(sourceTextarea.value.startsWith("right-1")).toBe(true);
     });
 
     expect(vi.mocked(invoke)).toHaveBeenCalledWith(
-      'apply_aligned_diff_panel_copy',
+      "apply_aligned_diff_panel_copy",
       expect.objectContaining({
-        fromSide: 'target',
-        toSide: 'source',
-      })
+        fromSide: "target",
+        toSide: "source",
+      }),
     );
   });
 
-  it('ignores diff toolbar paste event when diffTabId mismatches', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("ignores diff toolbar paste event when diffTabId mismatches", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab();
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2529,13 +3562,13 @@ describe('DiffEditor component', () => {
     const beforeValue = targetTextarea.value;
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('rutar:diff-paste-text', {
+        new CustomEvent("rutar:diff-paste-text", {
           detail: {
-            diffTabId: 'other-diff-tab',
-            panel: 'target',
-            text: 'T',
+            diffTabId: "other-diff-tab",
+            panel: "target",
+            text: "T",
           },
-        })
+        }),
       );
     });
 
@@ -2544,9 +3577,17 @@ describe('DiffEditor component', () => {
     });
   });
 
-  it('highlights source panel matching pair from backend offsets', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("highlights source panel matching pair from backend offsets", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -2556,7 +3597,7 @@ describe('DiffEditor component', () => {
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
         alignedSourceLines: ['("x")'],
-        alignedTargetLines: ['target'],
+        alignedTargetLines: ["target"],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
         diffLineNumbers: [1],
@@ -2572,41 +3613,53 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(['("x")'], ['target'], [true], [true]);
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'find_matching_pair_offsets') {
-        if (String(params.text ?? '') === '("x")') {
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(['("x")'], ["target"], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          if (String(params.text ?? "") === '("x")') {
+            return {
+              leftOffset: 0,
+              rightOffset: 4,
+            };
+          }
+          return null;
+        }
+        if (command === "apply_aligned_diff_edit") {
           return {
-            leftOffset: 0,
-            rightOffset: 4,
+            lineDiff: buildLineDiffResponse(
+              ['("x")'],
+              ["target"],
+              [true],
+              [true],
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
           };
         }
-        return null;
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        return {
-          lineDiff: buildLineDiffResponse(['("x")'], ['target'], [true], [true]),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
+        }
+        return undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2618,22 +3671,32 @@ describe('DiffEditor component', () => {
     fireEvent.select(sourceTextarea);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
-        text: '("x")',
-        offset: 0,
-      });
-      expect(container.querySelectorAll('mark[data-diff-pair-highlight="source"]').length).toBe(2);
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "find_matching_pair_offsets",
+        {
+          text: '("x")',
+          offset: 0,
+        },
+      );
+      expect(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
+          .length,
+      ).toBe(2);
     });
   });
 
-  it('disables pair highlight lookup for large-file diff panel', async () => {
+  it("disables pair highlight lookup for large-file diff panel", async () => {
     const sourceTab = createFileTab({
-      id: 'source-tab',
-      name: 'source.ts',
-      path: 'C:\\repo\\source.ts',
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
       largeFileMode: true,
     });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -2659,53 +3722,65 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(['("x")'], ['{"k":1}'], [true], [true]);
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'find_matching_pair_offsets') {
-        const text = String(params.text ?? '');
-        if (text === '{"k":1}') {
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(['("x")'], ['{"k":1}'], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          const text = String(params.text ?? "");
+          if (text === '{"k":1}') {
+            return {
+              leftOffset: 0,
+              rightOffset: 6,
+            };
+          }
+          if (text === '("x")') {
+            return {
+              leftOffset: 0,
+              rightOffset: 4,
+            };
+          }
+          return null;
+        }
+        if (command === "apply_aligned_diff_edit") {
           return {
-            leftOffset: 0,
-            rightOffset: 6,
+            lineDiff: buildLineDiffResponse(
+              ['("x")'],
+              ['{"k":1}'],
+              [true],
+              [true],
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
           };
         }
-        if (text === '("x")') {
-          return {
-            leftOffset: 0,
-            rightOffset: 4,
-          };
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
         }
-        return null;
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        return {
-          lineDiff: buildLineDiffResponse(['("x")'], ['{"k":1}'], [true], [true]),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+        return undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
     const targetTextarea = container.querySelector(
-      'textarea[data-diff-panel="target"]'
+      'textarea[data-diff-panel="target"]',
     ) as HTMLTextAreaElement;
 
     act(() => {
@@ -2716,16 +3791,21 @@ describe('DiffEditor component', () => {
 
     await waitFor(() => {
       expect(
-        vi.mocked(invoke).mock.calls.some(
-          ([command, payload]) =>
-            command === 'find_matching_pair_offsets' &&
-            typeof payload === 'object' &&
-            payload !== null &&
-            'text' in payload &&
-            (payload as { text?: string }).text === '("x")'
-        )
+        vi
+          .mocked(invoke)
+          .mock.calls.some(
+            ([command, payload]) =>
+              command === "find_matching_pair_offsets" &&
+              typeof payload === "object" &&
+              payload !== null &&
+              "text" in payload &&
+              (payload as { text?: string }).text === '("x")',
+          ),
       ).toBe(false);
-      expect(container.querySelectorAll('mark[data-diff-pair-highlight="source"]').length).toBe(0);
+      expect(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
+          .length,
+      ).toBe(0);
     });
 
     act(() => {
@@ -2735,17 +3815,31 @@ describe('DiffEditor component', () => {
     fireEvent.select(targetTextarea);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
-        text: '{"k":1}',
-        offset: 0,
-      });
-      expect(container.querySelectorAll('mark[data-diff-pair-highlight="target"]').length).toBe(2);
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "find_matching_pair_offsets",
+        {
+          text: '{"k":1}',
+          offset: 0,
+        },
+      );
+      expect(
+        container.querySelectorAll('mark[data-diff-pair-highlight="target"]')
+          .length,
+      ).toBe(2);
     });
   });
 
-  it('highlights target panel matching pair from backend offsets', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("highlights target panel matching pair from backend offsets", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -2754,7 +3848,7 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['source'],
+        alignedSourceLines: ["source"],
         alignedTargetLines: ['{"k":1}'],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
@@ -2771,41 +3865,53 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(['source'], ['{"k":1}'], [true], [true]);
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'find_matching_pair_offsets') {
-        if (String(params.text ?? '') === '{"k":1}') {
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(["source"], ['{"k":1}'], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          if (String(params.text ?? "") === '{"k":1}') {
+            return {
+              leftOffset: 0,
+              rightOffset: 6,
+            };
+          }
+          return null;
+        }
+        if (command === "apply_aligned_diff_edit") {
           return {
-            leftOffset: 0,
-            rightOffset: 6,
+            lineDiff: buildLineDiffResponse(
+              ["source"],
+              ['{"k":1}'],
+              [true],
+              [true],
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
           };
         }
-        return null;
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        return {
-          lineDiff: buildLineDiffResponse(['source'], ['{"k":1}'], [true], [true]),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
+        }
+        return undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const targetTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="target"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2817,17 +3923,31 @@ describe('DiffEditor component', () => {
     fireEvent.select(targetTextarea);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
-        text: '{"k":1}',
-        offset: 0,
-      });
-      expect(container.querySelectorAll('mark[data-diff-pair-highlight="target"]').length).toBe(2);
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "find_matching_pair_offsets",
+        {
+          text: '{"k":1}',
+          offset: 0,
+        },
+      );
+      expect(
+        container.querySelectorAll('mark[data-diff-pair-highlight="target"]')
+          .length,
+      ).toBe(2);
     });
   });
 
-  it('corrects source pair highlight when backend first resolves to previous offset', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("corrects source pair highlight when backend first resolves to previous offset", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -2836,8 +3956,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['a()'],
-        alignedTargetLines: ['target'],
+        alignedSourceLines: ["a()"],
+        alignedTargetLines: ["target"],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
         diffLineNumbers: [1],
@@ -2853,49 +3973,61 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'find_matching_pair_offsets') {
-        const text = String(params.text ?? '');
-        const offset = Number(params.offset ?? -1);
-        if (text === 'a()' && offset === 1) {
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(["a()"], ["target"], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          const text = String(params.text ?? "");
+          const offset = Number(params.offset ?? -1);
+          if (text === "a()" && offset === 1) {
+            return {
+              leftOffset: 0,
+              rightOffset: 2,
+            };
+          }
+          if (text === "a()" && offset === 2) {
+            return {
+              leftOffset: 1,
+              rightOffset: 2,
+            };
+          }
+          return null;
+        }
+        if (command === "apply_aligned_diff_edit") {
           return {
-            leftOffset: 0,
-            rightOffset: 2,
+            lineDiff: buildLineDiffResponse(
+              ["a()"],
+              ["target"],
+              [true],
+              [true],
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
           };
         }
-        if (text === 'a()' && offset === 2) {
-          return {
-            leftOffset: 1,
-            rightOffset: 2,
-          };
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
         }
-        return null;
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        return {
-          lineDiff: buildLineDiffResponse(['a()'], ['target'], [true], [true]),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+        return undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -2907,27 +4039,41 @@ describe('DiffEditor component', () => {
     fireEvent.select(sourceTextarea);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
-        text: 'a()',
-        offset: 1,
-      });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('find_matching_pair_offsets', {
-        text: 'a()',
-        offset: 2,
-      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "find_matching_pair_offsets",
+        {
+          text: "a()",
+          offset: 1,
+        },
+      );
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "find_matching_pair_offsets",
+        {
+          text: "a()",
+          offset: 2,
+        },
+      );
     });
 
     await waitFor(() => {
       const marks = Array.from(
-        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
-      ).map((element) => element.textContent ?? '');
-      expect(marks).toEqual(['(', ')']);
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]'),
+      ).map((element) => element.textContent ?? "");
+      expect(marks).toEqual(["(", ")"]);
     });
   });
 
-  it('uses backend pair line/column positions when provided', async () => {
-    const sourceTab = createFileTab({ id: 'source-tab', name: 'source.ts', path: 'C:\\repo\\source.ts' });
-    const targetTab = createFileTab({ id: 'target-tab', name: 'target.ts', path: 'C:\\repo\\target.ts' });
+  it("uses backend pair line/column positions when provided", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
     const diffTab = createDiffTab({
       diffPayload: createDiffPayload({
         sourceTabId: sourceTab.id,
@@ -2936,8 +4082,8 @@ describe('DiffEditor component', () => {
         targetName: targetTab.name,
         sourcePath: sourceTab.path,
         targetPath: targetTab.path,
-        alignedSourceLines: ['a()'],
-        alignedTargetLines: ['target'],
+        alignedSourceLines: ["a()"],
+        alignedTargetLines: ["target"],
         alignedSourcePresent: [true],
         alignedTargetPresent: [true],
         diffLineNumbers: [1],
@@ -2953,45 +4099,57 @@ describe('DiffEditor component', () => {
       activeTabId: diffTab.id,
     });
 
-    vi.mocked(invoke).mockImplementation(async (command: string, payload?: unknown) => {
-      const params = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      if (command === 'compare_documents_by_line') {
-        return buildLineDiffResponse(['a()'], ['target'], [true], [true]);
-      }
-      if (command === 'search_diff_panel_aligned_row_matches') {
-        return [];
-      }
-      if (command === 'find_matching_pair_offsets') {
-        if (String(params.text ?? '') === 'a()') {
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(["a()"], ["target"], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          if (String(params.text ?? "") === "a()") {
+            return {
+              leftOffset: 0,
+              rightOffset: 0,
+              leftLine: 1,
+              leftColumn: 2,
+              rightLine: 1,
+              rightColumn: 3,
+            };
+          }
+          return null;
+        }
+        if (command === "apply_aligned_diff_edit") {
           return {
-            leftOffset: 0,
-            rightOffset: 0,
-            leftLine: 1,
-            leftColumn: 2,
-            rightLine: 1,
-            rightColumn: 3,
+            lineDiff: buildLineDiffResponse(
+              ["a()"],
+              ["target"],
+              [true],
+              [true],
+            ),
+            sourceIsDirty: true,
+            targetIsDirty: true,
           };
         }
-        return null;
-      }
-      if (command === 'apply_aligned_diff_edit') {
-        return {
-          lineDiff: buildLineDiffResponse(['a()'], ['target'], [true], [true]),
-          sourceIsDirty: true,
-          targetIsDirty: true,
-        };
-      }
-      if (command === 'get_edit_history_state') {
-        return { isDirty: true };
-      }
-      return undefined;
-    });
+        if (command === "get_edit_history_state") {
+          return { isDirty: true };
+        }
+        return undefined;
+      },
+    );
 
-    const { container } = render(React.createElement(DiffEditor, { tab: diffTab }));
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
     const sourceTextarea = await waitFor(() => {
-      const element = container.querySelector('textarea[data-diff-panel="source"]') as HTMLTextAreaElement | null;
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
@@ -3004,9 +4162,9 @@ describe('DiffEditor component', () => {
 
     await waitFor(() => {
       const marks = Array.from(
-        container.querySelectorAll('mark[data-diff-pair-highlight="source"]')
-      ).map((element) => element.textContent ?? '');
-      expect(marks).toEqual(['(', ')']);
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]'),
+      ).map((element) => element.textContent ?? "");
+      expect(marks).toEqual(["(", ")"]);
     });
   });
 });

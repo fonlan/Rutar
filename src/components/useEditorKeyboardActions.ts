@@ -1,30 +1,49 @@
-import { useCallback } from 'react';
-import type { KeyboardEvent, MutableRefObject } from 'react';
-import { dispatchGoToLineDialogRequest } from '@/lib/goToLineDialog';
+import { useCallback } from "react";
+import type { KeyboardEvent, MutableRefObject } from "react";
+import { dispatchGoToLineDialogRequest } from "@/lib/goToLineDialog";
+import type { SyntaxKey } from "@/store/useStore";
+import {
+  buildAutoDedentInsertion,
+  buildEnterAutoIndentText,
+} from "./enterAutoIndent";
 
 interface UseEditorKeyboardActionsParams {
   tabId: string;
   tabLineCount: number;
   activeLineNumber: number;
+  activeSyntaxKey: SyntaxKey | null;
   tabWidth: number;
-  tabIndentMode: 'tabs' | 'spaces';
+  tabIndentMode: "tabs" | "spaces";
   contentRef: MutableRefObject<any>;
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
   normalizedRectangularSelection: unknown;
   replaceRectangularSelection: (insertText: string) => Promise<boolean>;
-  isVerticalSelectionShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
+  isVerticalSelectionShortcut: (
+    event: KeyboardEvent<HTMLDivElement>,
+  ) => boolean;
   beginRectangularSelectionFromCaret: () => void;
-  nudgeRectangularSelectionByKey: (direction: 'up' | 'down' | 'left' | 'right') => Promise<unknown>;
+  nudgeRectangularSelectionByKey: (
+    direction: "up" | "down" | "left" | "right",
+  ) => Promise<unknown>;
   clearVerticalSelectionState: () => void;
-  isToggleLineCommentShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
-  toggleSelectedLinesComment: (event: KeyboardEvent<HTMLDivElement>) => Promise<void>;
-  applyLineNumberMultiSelectionEdit: (mode: 'cut' | 'delete') => Promise<boolean>;
-  buildLineNumberSelectionRangeText: (text: string, selectedLines: number[]) => string;
+  isToggleLineCommentShortcut: (
+    event: KeyboardEvent<HTMLDivElement>,
+  ) => boolean;
+  toggleSelectedLinesComment: (
+    event: KeyboardEvent<HTMLDivElement>,
+  ) => Promise<void>;
+  applyLineNumberMultiSelectionEdit: (
+    mode: "cut" | "delete",
+  ) => Promise<boolean>;
+  buildLineNumberSelectionRangeText: (
+    text: string,
+    selectedLines: number[],
+  ) => string;
   normalizeSegmentText: (text: string) => string;
   getEditableText: (element: any) => string;
   getSelectionOffsetsInElement: (
-    element: any
+    element: any,
   ) => { start: number; end: number; isCollapsed: boolean } | null;
   isTextareaInputElement: (element: unknown) => element is HTMLTextAreaElement;
   setInputLayerText: (element: any, text: string) => void;
@@ -39,6 +58,7 @@ export function useEditorKeyboardActions({
   tabId,
   tabLineCount,
   activeLineNumber,
+  activeSyntaxKey,
   tabWidth,
   tabIndentMode,
   contentRef,
@@ -68,9 +88,8 @@ export function useEditorKeyboardActions({
   const normalizedTabWidth = Number.isFinite(tabWidth)
     ? Math.min(8, Math.max(1, Math.floor(tabWidth)))
     : 4;
-  const indentText = tabIndentMode === 'spaces'
-    ? ' '.repeat(normalizedTabWidth)
-    : '\t';
+  const indentText =
+    tabIndentMode === "spaces" ? " ".repeat(normalizedTabWidth) : "\t";
 
   const handleRectangularSelectionInputByKey = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -82,11 +101,11 @@ export function useEditorKeyboardActions({
       const lower = key.toLowerCase();
 
       if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        if (lower === 'c' || lower === 'x' || lower === 'v') {
+        if (lower === "c" || lower === "x" || lower === "v") {
           return false;
         }
 
-        if (lower === 'a') {
+        if (lower === "a") {
           event.preventDefault();
           event.stopPropagation();
           clearRectangularSelection();
@@ -96,28 +115,33 @@ export function useEditorKeyboardActions({
         return false;
       }
 
-      if (key === 'Escape') {
+      if (key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
         clearRectangularSelection();
         return true;
       }
 
-      if (key === 'Backspace' || key === 'Delete') {
+      if (key === "Backspace" || key === "Delete") {
         event.preventDefault();
         event.stopPropagation();
-        void replaceRectangularSelection('');
+        void replaceRectangularSelection("");
         return true;
       }
 
-      if (key === 'Tab') {
+      if (key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
         void replaceRectangularSelection(indentText);
         return true;
       }
 
-      if (!event.altKey && !event.ctrlKey && !event.metaKey && key.length === 1) {
+      if (
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        key.length === 1
+      ) {
         event.preventDefault();
         event.stopPropagation();
         void replaceRectangularSelection(key);
@@ -126,47 +150,130 @@ export function useEditorKeyboardActions({
 
       return false;
     },
-    [clearRectangularSelection, indentText, normalizedRectangularSelection, replaceRectangularSelection]
+    [
+      clearRectangularSelection,
+      indentText,
+      normalizedRectangularSelection,
+      replaceRectangularSelection,
+    ],
   );
 
-  const insertTextAtSelection = useCallback((text: string) => {
+  const replaceTextRange = useCallback(
+    (start: number, end: number, text: string) => {
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const safeStart = Math.max(0, Math.min(start, end));
+      const safeEnd = Math.max(safeStart, end);
+
+      if (isTextareaInputElement(element)) {
+        const nextText = `${element.value.slice(0, safeStart)}${text}${element.value.slice(safeEnd)}`;
+        element.setRangeText(text, safeStart, safeEnd, "end");
+        if (element.value !== nextText) {
+          element.value = nextText;
+        }
+        return true;
+      }
+
+      const currentText = getEditableText(element);
+      const nextText = `${currentText.slice(0, safeStart)}${text}${currentText.slice(safeEnd)}`;
+      setInputLayerText(element, nextText);
+      const logicalNextOffset = safeStart + text.length;
+      const layerNextOffset = mapLogicalOffsetToInputLayerOffset(
+        nextText,
+        logicalNextOffset,
+      );
+      setCaretToCodeUnitOffset(element, layerNextOffset);
+      return true;
+    },
+    [
+      contentRef,
+      getEditableText,
+      isTextareaInputElement,
+      mapLogicalOffsetToInputLayerOffset,
+      setCaretToCodeUnitOffset,
+      setInputLayerText,
+    ],
+  );
+
+  const insertTextAtSelection = useCallback(
+    (text: string) => {
+      const element = contentRef.current;
+      if (!element) {
+        return false;
+      }
+
+      const selectionOffsets = getSelectionOffsetsInElement(element);
+      if (!selectionOffsets) {
+        return false;
+      }
+
+      return replaceTextRange(
+        selectionOffsets.start,
+        selectionOffsets.end,
+        text,
+      );
+    },
+    [contentRef, getSelectionOffsetsInElement, replaceTextRange],
+  );
+
+  const buildEnterInsertText = useCallback(() => {
     const element = contentRef.current;
     if (!element) {
-      return false;
+      return "\n";
     }
 
     const selectionOffsets = getSelectionOffsetsInElement(element);
     if (!selectionOffsets) {
-      return false;
+      return "\n";
     }
 
-    if (isTextareaInputElement(element)) {
-      const start = selectionOffsets.start;
-      const end = selectionOffsets.end;
-      const nextText = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
-      element.setRangeText(text, start, end, 'end');
-      if (element.value !== nextText) {
-        element.value = nextText;
-      }
-      return true;
-    }
-
-    const currentText = getEditableText(element);
-    const nextText = `${currentText.slice(0, selectionOffsets.start)}${text}${currentText.slice(selectionOffsets.end)}`;
-    setInputLayerText(element, nextText);
-    const logicalNextOffset = selectionOffsets.start + text.length;
-    const layerNextOffset = mapLogicalOffsetToInputLayerOffset(nextText, logicalNextOffset);
-    setCaretToCodeUnitOffset(element, layerNextOffset);
-    return true;
+    const text = getEditableText(element);
+    return buildEnterAutoIndentText({
+      text,
+      offset: selectionOffsets.start,
+      syntaxKey: activeSyntaxKey,
+      indentText,
+    });
   }, [
+    activeSyntaxKey,
     contentRef,
     getEditableText,
     getSelectionOffsetsInElement,
-    isTextareaInputElement,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    setInputLayerText,
+    indentText,
   ]);
+
+  const buildAutoDedentReplacement = useCallback(
+    (key: string) => {
+      const element = contentRef.current;
+      if (!element) {
+        return null;
+      }
+
+      const selectionOffsets = getSelectionOffsetsInElement(element);
+      if (!selectionOffsets?.isCollapsed) {
+        return null;
+      }
+
+      const text = getEditableText(element);
+      return buildAutoDedentInsertion({
+        text,
+        offset: selectionOffsets.start,
+        syntaxKey: activeSyntaxKey,
+        indentText,
+        key,
+      });
+    },
+    [
+      activeSyntaxKey,
+      contentRef,
+      getEditableText,
+      getSelectionOffsetsInElement,
+      indentText,
+    ],
+  );
 
   const handleEditableKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -179,13 +286,13 @@ export function useEditorKeyboardActions({
         !event.altKey &&
         !event.shiftKey &&
         !event.nativeEvent.isComposing &&
-        event.key.toLowerCase() === 'g'
+        event.key.toLowerCase() === "g"
       ) {
         event.preventDefault();
         event.stopPropagation();
         const maxLineNumber = Math.max(1, Math.floor(tabLineCount));
         const defaultLineNumber = String(
-          Math.min(maxLineNumber, Math.max(1, Math.floor(activeLineNumber)))
+          Math.min(maxLineNumber, Math.max(1, Math.floor(activeLineNumber))),
         );
         const defaultLine = Number(defaultLineNumber);
         dispatchGoToLineDialogRequest({
@@ -201,19 +308,21 @@ export function useEditorKeyboardActions({
         event.stopPropagation();
 
         const direction =
-          event.key === 'ArrowUp'
-            ? 'up'
-            : event.key === 'ArrowDown'
-            ? 'down'
-            : event.key === 'ArrowLeft'
-            ? 'left'
-            : 'right';
+          event.key === "ArrowUp"
+            ? "up"
+            : event.key === "ArrowDown"
+              ? "down"
+              : event.key === "ArrowLeft"
+                ? "left"
+                : "right";
 
         if (!rectangularSelectionRef.current) {
           beginRectangularSelectionFromCaret();
         }
 
-        void nudgeRectangularSelectionByKey(direction as 'up' | 'down' | 'left' | 'right');
+        void nudgeRectangularSelectionByKey(
+          direction as "up" | "down" | "left" | "right",
+        );
         return;
       }
 
@@ -224,12 +333,39 @@ export function useEditorKeyboardActions({
       }
 
       if (
-        event.key === 'Tab'
-        && !event.shiftKey
-        && !event.altKey
-        && !event.ctrlKey
-        && !event.metaKey
-        && !event.nativeEvent.isComposing
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.nativeEvent.isComposing
+      ) {
+        const autoDedentReplacement = buildAutoDedentReplacement(event.key);
+        if (autoDedentReplacement) {
+          clearVerticalSelectionState();
+          clearRectangularSelection();
+          clearLineNumberMultiSelection();
+          event.preventDefault();
+          event.stopPropagation();
+          if (
+            replaceTextRange(
+              autoDedentReplacement.start,
+              autoDedentReplacement.end,
+              autoDedentReplacement.newText,
+            )
+          ) {
+            handleInput();
+          }
+          return;
+        }
+      }
+
+      if (
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.nativeEvent.isComposing
       ) {
         clearVerticalSelectionState();
         clearRectangularSelection();
@@ -242,11 +378,11 @@ export function useEditorKeyboardActions({
         return;
       }
 
-      if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
-        if (event.key === 'Delete' && lineNumberMultiSelection.length > 0) {
+      if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+        if (event.key === "Delete" && lineNumberMultiSelection.length > 0) {
           event.preventDefault();
           event.stopPropagation();
-          void applyLineNumberMultiSelectionEdit('delete');
+          void applyLineNumberMultiSelectionEdit("delete");
           return;
         }
 
@@ -254,12 +390,12 @@ export function useEditorKeyboardActions({
           (event.ctrlKey || event.metaKey) &&
           !event.altKey &&
           !event.shiftKey &&
-          event.key.toLowerCase() === 'x' &&
+          event.key.toLowerCase() === "x" &&
           lineNumberMultiSelection.length > 0
         ) {
           event.preventDefault();
           event.stopPropagation();
-          void applyLineNumberMultiSelectionEdit('cut');
+          void applyLineNumberMultiSelectionEdit("cut");
           return;
         }
 
@@ -267,7 +403,7 @@ export function useEditorKeyboardActions({
           (event.ctrlKey || event.metaKey) &&
           !event.altKey &&
           !event.shiftKey &&
-          event.key.toLowerCase() === 'c' &&
+          event.key.toLowerCase() === "c" &&
           lineNumberMultiSelection.length > 0
         ) {
           event.preventDefault();
@@ -275,10 +411,13 @@ export function useEditorKeyboardActions({
           const element = contentRef.current;
           if (element) {
             const text = normalizeSegmentText(getEditableText(element));
-            const selected = buildLineNumberSelectionRangeText(text, lineNumberMultiSelection);
+            const selected = buildLineNumberSelectionRangeText(
+              text,
+              lineNumberMultiSelection,
+            );
             if (selected && navigator.clipboard?.writeText) {
               void navigator.clipboard.writeText(selected).catch(() => {
-                console.warn('Failed to write line selection to clipboard.');
+                console.warn("Failed to write line selection to clipboard.");
               });
             }
           }
@@ -287,14 +426,22 @@ export function useEditorKeyboardActions({
 
         if (
           normalizedRectangularSelection &&
-          (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+          (event.key === "ArrowUp" ||
+            event.key === "ArrowDown" ||
+            event.key === "ArrowLeft" ||
+            event.key === "ArrowRight")
         ) {
           clearRectangularSelection();
         }
-        if (!event.shiftKey && !event.ctrlKey && !event.metaKey && event.key !== 'Shift') {
+        if (
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          event.key !== "Shift"
+        ) {
           clearLineNumberMultiSelection();
         }
-        if (!event.shiftKey || event.key !== 'Shift') {
+        if (!event.shiftKey || event.key !== "Shift") {
           clearVerticalSelectionState();
         }
         return;
@@ -305,41 +452,38 @@ export function useEditorKeyboardActions({
       clearLineNumberMultiSelection();
       event.preventDefault();
       event.stopPropagation();
-      if (insertTextAtSelection('\n')) {
+      if (insertTextAtSelection(buildEnterInsertText())) {
         handleInput();
       }
     },
     [
+      activeLineNumber,
       applyLineNumberMultiSelectionEdit,
       beginRectangularSelectionFromCaret,
+      buildAutoDedentReplacement,
+      buildEnterInsertText,
       buildLineNumberSelectionRangeText,
       clearLineNumberMultiSelection,
       clearRectangularSelection,
       clearVerticalSelectionState,
       contentRef,
-      activeLineNumber,
       getEditableText,
-      getSelectionOffsetsInElement,
       handleInput,
       handleRectangularSelectionInputByKey,
       insertTextAtSelection,
-      isTextareaInputElement,
       isToggleLineCommentShortcut,
       isVerticalSelectionShortcut,
       lineNumberMultiSelection,
       indentText,
-      mapLogicalOffsetToInputLayerOffset,
       normalizedRectangularSelection,
       normalizeSegmentText,
       nudgeRectangularSelectionByKey,
       rectangularSelectionRef,
-      replaceRectangularSelection,
-      setCaretToCodeUnitOffset,
-      setInputLayerText,
+      replaceTextRange,
       tabId,
       tabLineCount,
       toggleSelectedLinesComment,
-    ]
+    ],
   );
 
   return {

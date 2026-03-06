@@ -195,6 +195,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   } = useDiffEditorEditActions({
     sourceTab,
     targetTab,
+    sourceSyntaxKey,
+    targetSyntaxKey,
     sourceIndentText: sourceEffectiveIndentation.indentText,
     targetIndentText: targetEffectiveIndentation.indentText,
     setActivePanel,

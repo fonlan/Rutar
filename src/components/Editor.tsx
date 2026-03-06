@@ -789,6 +789,7 @@ export function Editor({
     tabId: tab.id,
     tabLineCount: tab.lineCount,
     activeLineNumber,
+    activeSyntaxKey,
     tabWidth: effectiveIndentation.width,
     tabIndentMode: effectiveIndentation.mode,
     contentRef,
