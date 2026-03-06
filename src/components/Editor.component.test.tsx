@@ -4909,6 +4909,47 @@ describe("Editor component", () => {
     });
   });
 
+  it("creates paired json block lines when pressing Enter between braces", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const tab = createTab({
+      id: "tab-json-paired-enter-braces",
+      name: "data.json",
+      path: "C:\repo\data.json",
+    });
+    const previousImplementation = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (
+        command === "get_visible_lines" &&
+        payload &&
+        typeof payload === "object" &&
+        payload.id === tab.id
+      ) {
+        return "{}\n";
+      }
+
+      return previousImplementation
+        ? previousImplementation(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, "{}\n");
+
+    textarea.focus();
+    textarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(textarea, { key: "Enter", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("{\n  \n}\n");
+      expect(textarea.selectionStart).toBe(4);
+      expect(textarea.selectionEnd).toBe(4);
+    });
+  });
+
   it("dedents current json line when typing a closing brace", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "spaces",

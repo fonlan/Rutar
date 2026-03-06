@@ -2914,6 +2914,64 @@ describe("DiffEditor component", () => {
     });
   });
 
+  it("creates paired json block lines when pressing Enter between braces in diff source panel", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.json",
+      path: "C:\repo\source.json",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\repo\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: "{}" } });
+    sourceTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(sourceTextarea, { key: "Enter" });
+
+    await waitFor(() => {
+      const hasPairedPreviewRequest = vi
+        .mocked(invoke)
+        .mock.calls.some(([command, payload]) => {
+          if (command !== "preview_aligned_diff_state") {
+            return false;
+          }
+
+          const alignedSourceLines = (
+            payload as { alignedSourceLines?: unknown[] }
+          )?.alignedSourceLines;
+          return (
+            Array.isArray(alignedSourceLines) &&
+            alignedSourceLines[0] === "{" &&
+            alignedSourceLines[1] === "  " &&
+            alignedSourceLines[2] === "}"
+          );
+        });
+      expect(hasPairedPreviewRequest).toBe(true);
+    });
+  });
+
   it("dedents current json line when typing a closing brace in diff source panel", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "spaces",

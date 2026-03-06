@@ -4,7 +4,7 @@ import { dispatchGoToLineDialogRequest } from "@/lib/goToLineDialog";
 import type { SyntaxKey } from "@/store/useStore";
 import {
   buildAutoDedentInsertion,
-  buildEnterAutoIndentText,
+  buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
 
 interface UseEditorKeyboardActionsParams {
@@ -159,7 +159,7 @@ export function useEditorKeyboardActions({
   );
 
   const replaceTextRange = useCallback(
-    (start: number, end: number, text: string) => {
+    (start: number, end: number, text: string, caretOffset?: number) => {
       const element = contentRef.current;
       if (!element) {
         return false;
@@ -174,13 +174,21 @@ export function useEditorKeyboardActions({
         if (element.value !== nextText) {
           element.value = nextText;
         }
+        if (typeof caretOffset === "number") {
+          const nextCaret = safeStart + Math.max(0, caretOffset);
+          element.setSelectionRange(nextCaret, nextCaret);
+        }
         return true;
       }
 
       const currentText = getEditableText(element);
       const nextText = `${currentText.slice(0, safeStart)}${text}${currentText.slice(safeEnd)}`;
       setInputLayerText(element, nextText);
-      const logicalNextOffset = safeStart + text.length;
+      const logicalNextOffset =
+        safeStart +
+        (typeof caretOffset === "number"
+          ? Math.max(0, caretOffset)
+          : text.length);
       const layerNextOffset = mapLogicalOffsetToInputLayerOffset(
         nextText,
         logicalNextOffset,
@@ -219,19 +227,19 @@ export function useEditorKeyboardActions({
     [contentRef, getSelectionOffsetsInElement, replaceTextRange],
   );
 
-  const buildEnterInsertText = useCallback(() => {
+  const buildEnterInsertEdit = useCallback(() => {
     const element = contentRef.current;
     if (!element) {
-      return "\n";
+      return { text: "\n", caretOffset: 1 };
     }
 
     const selectionOffsets = getSelectionOffsetsInElement(element);
     if (!selectionOffsets) {
-      return "\n";
+      return { text: "\n", caretOffset: 1 };
     }
 
     const text = getEditableText(element);
-    return buildEnterAutoIndentText({
+    return buildEnterAutoIndentEdit({
       text,
       offset: selectionOffsets.start,
       syntaxKey: activeSyntaxKey,
@@ -452,7 +460,20 @@ export function useEditorKeyboardActions({
       clearLineNumberMultiSelection();
       event.preventDefault();
       event.stopPropagation();
-      if (insertTextAtSelection(buildEnterInsertText())) {
+      const element = contentRef.current;
+      const selectionOffsets = element
+        ? getSelectionOffsetsInElement(element)
+        : null;
+      const enterEdit = buildEnterInsertEdit();
+      if (
+        selectionOffsets &&
+        replaceTextRange(
+          selectionOffsets.start,
+          selectionOffsets.end,
+          enterEdit.text,
+          enterEdit.caretOffset,
+        )
+      ) {
         handleInput();
       }
     },
@@ -461,13 +482,14 @@ export function useEditorKeyboardActions({
       applyLineNumberMultiSelectionEdit,
       beginRectangularSelectionFromCaret,
       buildAutoDedentReplacement,
-      buildEnterInsertText,
+      buildEnterInsertEdit,
       buildLineNumberSelectionRangeText,
       clearLineNumberMultiSelection,
       clearRectangularSelection,
       clearVerticalSelectionState,
       contentRef,
       getEditableText,
+      getSelectionOffsetsInElement,
       handleInput,
       handleRectangularSelectionInputByKey,
       insertTextAtSelection,

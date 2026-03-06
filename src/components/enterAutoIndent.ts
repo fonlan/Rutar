@@ -69,7 +69,19 @@ function canDedentLeadingWhitespace(
   );
 }
 
-export function buildEnterAutoIndentText({
+function getJsonCloserForPrefix(trimmedLinePrefix: string): "]" | "}" | null {
+  if (trimmedLinePrefix.endsWith("{")) {
+    return "}";
+  }
+
+  if (trimmedLinePrefix.endsWith("[")) {
+    return "]";
+  }
+
+  return null;
+}
+
+export function buildEnterAutoIndentEdit({
   text,
   offset,
   syntaxKey,
@@ -82,11 +94,43 @@ export function buildEnterAutoIndentText({
 }) {
   const leadingWhitespace = getLineLeadingWhitespaceAtOffset(text, offset);
   const linePrefix = getLinePrefixAtOffset(text, offset);
+  const lineSuffix = getLineSuffixAtOffset(text, offset);
   const trimmedPrefix = linePrefix.trimEnd();
+  const trimmedSuffix = lineSuffix.trimStart();
+
+  if (syntaxKey === "json") {
+    const expectedCloser = getJsonCloserForPrefix(trimmedPrefix);
+    if (expectedCloser && trimmedSuffix.startsWith(expectedCloser)) {
+      const insertedText = `\n${leadingWhitespace}${indentText}\n${leadingWhitespace}`;
+      return {
+        text: insertedText,
+        caretOffset: `\n${leadingWhitespace}${indentText}`.length,
+      };
+    }
+  }
+
   const extraIndent = shouldIncreaseIndent(syntaxKey, trimmedPrefix)
     ? indentText
     : "";
-  return `\n${leadingWhitespace}${extraIndent}`;
+  const insertedText = `\n${leadingWhitespace}${extraIndent}`;
+  return {
+    text: insertedText,
+    caretOffset: insertedText.length,
+  };
+}
+
+export function buildEnterAutoIndentText({
+  text,
+  offset,
+  syntaxKey,
+  indentText,
+}: {
+  text: string;
+  offset: number;
+  syntaxKey: SyntaxKey | null | undefined;
+  indentText: string;
+}) {
+  return buildEnterAutoIndentEdit({ text, offset, syntaxKey, indentText }).text;
 }
 
 export function buildAutoDedentInsertion({
