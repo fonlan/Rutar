@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
@@ -17,6 +16,7 @@ import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
+import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
   isFilterResultFilterStepBackendResult,
@@ -65,20 +65,16 @@ import {
   FILTER_CHUNK_SIZE,
   getDisplayCountText,
   getReservedLayoutHeight,
-  getPlainTextResultEntries,
   getSearchStatusText,
   getSearchModeValue,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
   resolveSearchKeyword,
   RESULT_PANEL_DEFAULT_HEIGHT,
-  RESULT_PANEL_MAX_HEIGHT,
-  RESULT_PANEL_MIN_HEIGHT,
   SEARCH_CHUNK_SIZE,
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
   SEARCH_SIDEBAR_MAX_WIDTH,
   SEARCH_SIDEBAR_MIN_WIDTH,
-  writePlainTextToClipboard,
 } from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
   const tabs = useStore((state) => state.tabs);
@@ -194,10 +190,6 @@ export function SearchReplacePanel() {
   const resultListRef = useRef<HTMLDivElement>(null);
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
-  const resizeDragStateRef = useRef<{
-    startY: number;
-    startHeight: number;
-  } | null>(null);
   const runVersionRef = useRef(0);
   const countRunVersionRef = useRef(0);
   const filterRunVersionRef = useRef(0);
@@ -3299,58 +3291,6 @@ export function SearchReplacePanel() {
     ]
   );
 
-  useEffect(() => {
-    if (resultPanelState === 'closed') {
-      cancelPendingBatchLoad();
-    }
-  }, [cancelPendingBatchLoad, resultPanelState]);
-
-  useEffect(() => {
-    return () => {
-      const teardown = () => {
-        resizeDragStateRef.current = null;
-        document.body.style.userSelect = '';
-      };
-
-      teardown();
-    };
-  }, []);
-
-  const handleResultPanelResizeMouseDown = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-
-    resizeDragStateRef.current = {
-      startY: event.clientY,
-      startHeight: resultPanelHeight,
-    };
-
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const dragState = resizeDragStateRef.current;
-      if (!dragState) {
-        return;
-      }
-
-      const delta = dragState.startY - moveEvent.clientY;
-      const nextHeight = Math.max(
-        RESULT_PANEL_MIN_HEIGHT,
-        Math.min(RESULT_PANEL_MAX_HEIGHT, dragState.startHeight + delta)
-      );
-      setResultPanelHeight(nextHeight);
-    };
-
-    const onMouseUp = () => {
-      resizeDragStateRef.current = null;
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }, [resultPanelHeight]);
-
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
   const displayTotalFilterMatchedLineCount = totalFilterMatchedLineCount;
@@ -3360,95 +3300,46 @@ export function SearchReplacePanel() {
     displayTotalFilterMatchedLineCount,
     messages.counting
   );
-
-  const plainTextResultEntries = useMemo(
-    () => getPlainTextResultEntries({
-      filterRulesPayloadLength: filterRulesPayload.length,
-      isFilterMode,
-      keyword,
-      visibleFilterMatches,
-      visibleMatches,
-    }),
-    [filterRulesPayload.length, isFilterMode, keyword, visibleFilterMatches, visibleMatches]
-  );
-
-  const copyPlainTextResults = useCallback(async () => {
-    if (plainTextResultEntries.length === 0) {
-      setFeedbackMessage(messages.copyResultsEmpty);
-      setErrorMessage(null);
-      return;
-    }
-
-    try {
-      await writePlainTextToClipboard(plainTextResultEntries.join('\n'));
-      setFeedbackMessage(messages.copyResultsSuccess(plainTextResultEntries.length));
-      setErrorMessage(null);
-    } catch (error) {
-      const readableError = error instanceof Error ? error.message : 'Unknown error';
-      setErrorMessage(`${messages.copyResultsFailed}: ${readableError}`);
-    }
-  }, [messages, plainTextResultEntries]);
-
-  const handleClearResultFilter = useCallback(() => {
-    setResultFilterKeyword('');
-    setAppliedResultFilterKeyword('');
-  }, []);
-
-  const handleResultFilterPrev = useCallback(() => {
-    if (resultFilterStepLoadingDirection === 'prev') {
-      cancelPendingBatchLoad();
-      return;
-    }
-
-    void navigateResultFilterByStep(-1);
-  }, [cancelPendingBatchLoad, navigateResultFilterByStep, resultFilterStepLoadingDirection]);
-
-  const handleResultFilterNext = useCallback(() => {
-    if (resultFilterStepLoadingDirection === 'next') {
-      cancelPendingBatchLoad();
-      return;
-    }
-
-    void navigateResultFilterByStep(1);
-  }, [cancelPendingBatchLoad, navigateResultFilterByStep, resultFilterStepLoadingDirection]);
-
-  const handleResultFilterAction = useCallback(() => {
-    if (isResultFilterSearching) {
-      requestStopResultFilterSearch();
-      return;
-    }
-
-    void handleApplyResultFilter();
-  }, [handleApplyResultFilter, isResultFilterSearching, requestStopResultFilterSearch]);
-
-  const handleRefreshResults = useCallback(() => {
-    cancelPendingBatchLoad();
-    if (isFilterMode) {
-      void executeFilter(true);
-      return;
-    }
-
-    void executeSearch(true);
-  }, [cancelPendingBatchLoad, executeFilter, executeSearch, isFilterMode]);
-
-  const handleCloseResultPanel = useCallback(() => {
-    cancelPendingBatchLoad();
-    setResultPanelState('closed');
-  }, [cancelPendingBatchLoad]);
-
-  const handleReopenResultPanel = useCallback(() => {
-    setResultPanelState('open');
-
-    if (!isSearching) {
-      if (isFilterMode) {
-        if (filterRulesPayload.length > 0) {
-          void executeFilter();
-        }
-      } else if (keyword) {
-        void executeSearch();
-      }
-    }
-  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
+  const {
+    copyPlainTextResults,
+    filterToggleLabel,
+    handleClearResultFilter,
+    handleCloseResultPanel,
+    handleRefreshResults,
+    handleReopenResultPanel,
+    handleResultFilterAction,
+    handleResultFilterNext,
+    handleResultFilterPrev,
+    handleResultPanelResizeMouseDown,
+    plainTextResultEntries,
+    resultToggleTitle,
+    toggleResultPanelAndRefresh,
+  } = useSearchResultPanelControls({
+    cancelPendingBatchLoad,
+    executeFilter,
+    executeSearch,
+    filterRulesPayloadLength: filterRulesPayload.length,
+    isFilterMode,
+    isResultFilterSearching,
+    isSearching,
+    keyword,
+    messages,
+    navigateResultFilterByStep,
+    onApplyResultFilter: handleApplyResultFilter,
+    rememberSearchKeyword,
+    requestStopResultFilterSearch,
+    resultFilterStepLoadingDirection,
+    resultPanelHeight,
+    resultPanelState,
+    setAppliedResultFilterKeyword,
+    setErrorMessage,
+    setFeedbackMessage,
+    setResultFilterKeyword,
+    setResultPanelHeight,
+    setResultPanelState,
+    visibleFilterMatches,
+    visibleMatches,
+  });
 
   const renderedResultItems = (
     <SearchResultItems
@@ -3500,29 +3391,6 @@ export function SearchReplacePanel() {
   );
 
   const canReplace = !!activeTab;
-  const isResultPanelOpen = resultPanelState === 'open';
-  const resultToggleTitle = isResultPanelOpen ? messages.collapseResults : messages.expandResults;
-  const filterToggleLabel = isResultPanelOpen ? messages.collapse : messages.filterRun;
-
-  const toggleResultPanelAndRefresh = useCallback(() => {
-    setResultPanelState((previous) => (previous === 'open' ? 'minimized' : 'open'));
-
-    if (isSearching) {
-      return;
-    }
-
-    if (isFilterMode) {
-      if (filterRulesPayload.length > 0) {
-        void executeFilter();
-      }
-      return;
-    }
-
-    if (keyword) {
-      rememberSearchKeyword(keyword);
-      void executeSearch();
-    }
-  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword, rememberSearchKeyword]);
 
   if (!activeTab) {
     return null;
