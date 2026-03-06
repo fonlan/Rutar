@@ -53,6 +53,7 @@ interface UseEditorKeyboardActionsParams {
   clearRectangularSelection: () => void;
   clearLineNumberMultiSelection: () => void;
   handleInput: () => void;
+  capturePendingEditBeforeCursor: () => void;
 }
 
 export function useEditorKeyboardActions({
@@ -85,6 +86,7 @@ export function useEditorKeyboardActions({
   clearRectangularSelection,
   clearLineNumberMultiSelection,
   handleInput,
+  capturePendingEditBeforeCursor,
 }: UseEditorKeyboardActionsParams) {
   const normalizedTabWidth = Number.isFinite(tabWidth)
     ? Math.min(8, Math.max(1, Math.floor(tabWidth)))
@@ -376,11 +378,12 @@ export function useEditorKeyboardActions({
             clearVerticalSelectionState();
             clearRectangularSelection();
             clearLineNumberMultiSelection();
-            event.preventDefault();
-            event.stopPropagation();
-            if (
-              replaceTextRange(
-                autoDedentReplacement.start,
+          event.preventDefault();
+          event.stopPropagation();
+          capturePendingEditBeforeCursor();
+          if (
+            replaceTextRange(
+              autoDedentReplacement.start,
                 autoDedentReplacement.end,
                 autoDedentReplacement.newText,
               )
@@ -398,6 +401,7 @@ export function useEditorKeyboardActions({
           clearLineNumberMultiSelection();
           event.preventDefault();
           event.stopPropagation();
+          capturePendingEditBeforeCursor();
           if (
             replaceTextRange(
               autoPairReplacement.start,
@@ -425,6 +429,7 @@ export function useEditorKeyboardActions({
         clearLineNumberMultiSelection();
         event.preventDefault();
         event.stopPropagation();
+        capturePendingEditBeforeCursor();
         if (insertTextAtSelection(indentText)) {
           handleInput();
         }
@@ -505,6 +510,7 @@ export function useEditorKeyboardActions({
       clearLineNumberMultiSelection();
       event.preventDefault();
       event.stopPropagation();
+      capturePendingEditBeforeCursor();
       const element = contentRef.current;
       const selectionOffsets = element
         ? getSelectionOffsetsInElement(element)
@@ -551,6 +557,7 @@ export function useEditorKeyboardActions({
       tabId,
       tabLineCount,
       toggleSelectedLinesComment,
+      capturePendingEditBeforeCursor,
     ],
   );
 

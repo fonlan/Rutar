@@ -9,6 +9,7 @@ import { EditorView } from './EditorView';
 import {
   DEFAULT_SUBMENU_MAX_HEIGHTS,
   DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
+  type PendingEditCursorSnapshot,
 } from './Editor.types';
 import { resolveTokenTypeClass } from './editorTokenClass';
 import { editorTestUtils } from './editorUtils';
@@ -140,6 +141,8 @@ export function Editor({
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const savedCursorPosition = useStore((state) => state.cursorPositionByTab[tab.id]);
+  const pendingEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
+  const queuedEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
   const effectiveIndentation = useEffectiveIndentation({
@@ -711,7 +714,33 @@ export function Editor({
     alignScrollOffset,
     buildCodeUnitDiff,
     codeUnitOffsetToUnicodeScalarIndex,
+    pendingEditCursorSnapshotRef,
+    queuedEditCursorSnapshotRef,
   });
+
+  const capturePendingEditBeforeCursor = useCallback(() => {
+    const currentCursor = useStore.getState().cursorPositionByTab[tab.id] ?? savedCursorPosition;
+    if (!currentCursor) {
+      return;
+    }
+
+    if (!pendingEditCursorSnapshotRef.current) {
+      pendingEditCursorSnapshotRef.current = {
+        line: currentCursor.line,
+        column: currentCursor.column,
+      };
+      return;
+    }
+
+    if (!syncInFlightRef.current || queuedEditCursorSnapshotRef.current) {
+      return;
+    }
+
+    queuedEditCursorSnapshotRef.current = {
+      line: currentCursor.line,
+      column: currentCursor.column,
+    };
+  }, [savedCursorPosition, tab.id, syncInFlightRef]);
 
   const { handleCleanupDocumentFromContext } = useEditorContextCleanupAction({
     tabId: tab.id,
@@ -741,6 +770,7 @@ export function Editor({
   });
 
   const {
+    handleBeforeInput,
     handleInput,
     handleCompositionStart,
     handleCompositionEnd,
@@ -764,6 +794,7 @@ export function Editor({
     syncSelectionAfterInteraction,
     handleScroll,
     flushPendingSync,
+    capturePendingEditBeforeCursor,
   });
 
   const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
@@ -815,6 +846,7 @@ export function Editor({
     clearRectangularSelection,
     clearLineNumberMultiSelection,
     handleInput,
+    capturePendingEditBeforeCursor,
   });
 
   const { onItemsRendered } = useEditorVisibleItemsRendered({
@@ -1131,6 +1163,7 @@ export function Editor({
       contentTextPadding={contentTextPadding}
       contentTextRightPadding={contentTextRightPadding}
       contentBottomSafetyPadding={contentBottomSafetyPadding}
+      handleBeforeInput={handleBeforeInput}
       handleInput={handleInput}
       handleEditableKeyDown={handleEditableKeyDown}
       handleEditorPointerDown={handleEditorPointerDown}

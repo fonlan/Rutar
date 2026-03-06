@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback } from 'react';
 import type { MutableRefObject } from 'react';
+import { useStore } from '@/store/useStore';
 import type { EditorSegmentState } from './Editor.types';
 
 interface UseEditorFlushPendingSyncParams {
@@ -38,6 +39,8 @@ interface UseEditorFlushPendingSyncParams {
     newText: string;
   } | null;
   codeUnitOffsetToUnicodeScalarIndex: (text: string, offset: number) => number;
+  pendingEditCursorSnapshotRef: MutableRefObject<{ line: number; column: number } | null>;
+  queuedEditCursorSnapshotRef: MutableRefObject<{ line: number; column: number } | null>;
 }
 
 export function useEditorFlushPendingSync({
@@ -68,6 +71,8 @@ export function useEditorFlushPendingSync({
   alignScrollOffset,
   buildCodeUnitDiff,
   codeUnitOffsetToUnicodeScalarIndex,
+  pendingEditCursorSnapshotRef,
+  queuedEditCursorSnapshotRef,
 }: UseEditorFlushPendingSyncParams) {
   const releaseHugeEditableWindowLock = useCallback(() => {
     hugeWindowLockedRef.current = false;
@@ -108,6 +113,8 @@ export function useEditorFlushPendingSync({
     const baseText = syncedTextRef.current;
     const targetText = normalizeSegmentText(getEditableText(contentRef.current));
     pendingSyncRequestedRef.current = false;
+    const beforeCursor = pendingEditCursorSnapshotRef.current;
+    const afterCursor = useStore.getState().cursorPositionByTab[tabId];
 
     if (isHugeEditableMode) {
       const segment = editableSegmentRef.current;
@@ -119,6 +126,8 @@ export function useEditorFlushPendingSync({
 
       if (baseText === targetText) {
         syncedTextRef.current = targetText;
+        pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
+        queuedEditCursorSnapshotRef.current = null;
         scheduleHugeEditableWindowUnlock();
         return;
       }
@@ -131,6 +140,10 @@ export function useEditorFlushPendingSync({
           startLine: segment.startLine,
           endLine: segment.endLine,
           newText: targetText,
+          beforeCursorLine: beforeCursor?.line,
+          beforeCursorColumn: beforeCursor?.column,
+          afterCursorLine: afterCursor?.line,
+          afterCursorColumn: afterCursor?.column,
         });
 
         const newLineCountSafe = Math.max(1, newLineCount);
@@ -164,6 +177,8 @@ export function useEditorFlushPendingSync({
         console.error('Large segment sync error:', error);
       } finally {
         syncInFlightRef.current = false;
+        pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
+        queuedEditCursorSnapshotRef.current = null;
         scheduleHugeEditableWindowUnlock();
 
         if (pendingSyncRequestedRef.current && !isComposingRef.current) {
@@ -178,6 +193,8 @@ export function useEditorFlushPendingSync({
 
     if (!diff) {
       syncedTextRef.current = targetText;
+      pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
+      queuedEditCursorSnapshotRef.current = null;
       return;
     }
 
@@ -192,6 +209,10 @@ export function useEditorFlushPendingSync({
         startChar,
         endChar,
         newText: diff.newText,
+        beforeCursorLine: beforeCursor?.line,
+        beforeCursorColumn: beforeCursor?.column,
+        afterCursorLine: afterCursor?.line,
+        afterCursorColumn: afterCursor?.column,
       });
 
       syncedTextRef.current = targetText;
@@ -203,6 +224,8 @@ export function useEditorFlushPendingSync({
       console.error('Edit sync error:', error);
     } finally {
       syncInFlightRef.current = false;
+      pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
+      queuedEditCursorSnapshotRef.current = null;
 
       if (pendingSyncRequestedRef.current && !isComposingRef.current) {
         void flushPendingSync();

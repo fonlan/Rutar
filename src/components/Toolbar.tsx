@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 function dispatchEditorForceRefresh(
     tabId: string,
     lineCount?: number,
-    options?: { preserveCaret?: boolean }
+    options?: { preserveCaret?: boolean; restoreCursorLine?: number; restoreCursorColumn?: number }
 ) {
     window.dispatchEvent(
         new CustomEvent('rutar:force-refresh', {
@@ -37,6 +37,8 @@ function dispatchEditorForceRefresh(
                 tabId,
                 lineCount,
                 preserveCaret: options?.preserveCaret ?? false,
+                restoreCursorLine: options?.restoreCursorLine,
+                restoreCursorColumn: options?.restoreCursorColumn,
             },
         })
     );
@@ -114,6 +116,12 @@ interface EditHistoryState {
     canUndo: boolean;
     canRedo: boolean;
     isDirty: boolean;
+}
+
+interface HistoryActionResult {
+    lineCount: number;
+    cursorLine?: number;
+    cursorColumn?: number;
 }
 
 interface WordCountInfo {
@@ -685,11 +693,19 @@ export function Toolbar() {
 
         if (!activeTab) return;
         try {
-            const newLineCount = await invoke<number>('undo', { id: activeTab.id });
+            const result = await invoke<HistoryActionResult>('undo', { id: activeTab.id });
             await refreshEditHistoryState(activeTab.id);
             const currentDirty = useStore.getState().tabs.find((tab) => tab.id === activeTab.id)?.isDirty ?? true;
-            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: currentDirty });
-            dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
+            updateTab(activeTab.id, { lineCount: result.lineCount, isDirty: currentDirty });
+            if (typeof result.cursorLine === 'number' && typeof result.cursorColumn === 'number') {
+                useStore.getState().setCursorPosition(activeTab.id, result.cursorLine, result.cursorColumn);
+                dispatchEditorForceRefresh(activeTab.id, result.lineCount, {
+                    restoreCursorLine: result.cursorLine,
+                    restoreCursorColumn: result.cursorColumn,
+                });
+            } else {
+                dispatchEditorForceRefresh(activeTab.id, result.lineCount, { preserveCaret: true });
+            }
             dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.warn(e);
@@ -704,11 +720,19 @@ export function Toolbar() {
 
         if (!activeTab) return;
         try {
-            const newLineCount = await invoke<number>('redo', { id: activeTab.id });
+            const result = await invoke<HistoryActionResult>('redo', { id: activeTab.id });
             await refreshEditHistoryState(activeTab.id);
             const currentDirty = useStore.getState().tabs.find((tab) => tab.id === activeTab.id)?.isDirty ?? true;
-            updateTab(activeTab.id, { lineCount: newLineCount, isDirty: currentDirty });
-            dispatchEditorForceRefresh(activeTab.id, newLineCount, { preserveCaret: true });
+            updateTab(activeTab.id, { lineCount: result.lineCount, isDirty: currentDirty });
+            if (typeof result.cursorLine === 'number' && typeof result.cursorColumn === 'number') {
+                useStore.getState().setCursorPosition(activeTab.id, result.cursorLine, result.cursorColumn);
+                dispatchEditorForceRefresh(activeTab.id, result.lineCount, {
+                    restoreCursorLine: result.cursorLine,
+                    restoreCursorColumn: result.cursorColumn,
+                });
+            } else {
+                dispatchEditorForceRefresh(activeTab.id, result.lineCount, { preserveCaret: true });
+            }
             dispatchDocumentUpdated(activeTab.id);
         } catch (e) {
             console.warn(e);

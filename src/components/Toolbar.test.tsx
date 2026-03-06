@@ -452,7 +452,9 @@ describe("Toolbar", () => {
         };
       }
       if (command === "undo") {
-        return 19;
+        return {
+          lineCount: 19,
+        };
       }
       return undefined;
     });
@@ -582,7 +584,9 @@ describe("Toolbar", () => {
         };
       }
       if (command === "redo") {
-        return 21;
+        return {
+          lineCount: 21,
+        };
       }
       return undefined;
     });
@@ -615,7 +619,9 @@ describe("Toolbar", () => {
         };
       }
       if (command === "redo") {
-        return 21;
+        return {
+          lineCount: 21,
+        };
       }
       return undefined;
     });
@@ -635,6 +641,61 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("redo", { id: "tab-toolbar" });
     });
+  });
+
+  it("restores undo cursor through force-refresh payload", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-undo-caret", lineCount: 20 }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: false,
+          isDirty: true,
+        };
+      }
+      if (command === "undo") {
+        return {
+          lineCount: 12,
+          cursorLine: 4,
+          cursorColumn: 7,
+        };
+      }
+      return undefined;
+    });
+
+    const refreshEvents: Array<Record<string, unknown>> = [];
+    const refreshListener = (event: Event) => {
+      refreshEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
+    window.addEventListener("rutar:force-refresh", refreshListener as EventListener);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-undo-caret" });
+    });
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("undo", { id: "tab-undo-caret" });
+    });
+
+    expect(useStore.getState().cursorPositionByTab["tab-undo-caret"]).toEqual({ line: 4, column: 7 });
+    expect(refreshEvents).toContainEqual(
+      expect.objectContaining({
+        tabId: "tab-undo-caret",
+        lineCount: 12,
+        restoreCursorLine: 4,
+        restoreCursorColumn: 7,
+      })
+    );
+
+    window.removeEventListener("rutar:force-refresh", refreshListener as EventListener);
   });
 
   it("dispatches diff redo history action on Ctrl+Y when diff tab is active", async () => {

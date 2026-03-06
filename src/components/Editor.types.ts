@@ -81,6 +81,11 @@ export interface ReplaceRectangularSelectionResultPayload {
   caretOffset: number;
 }
 
+export interface PendingEditCursorSnapshot {
+  line: number;
+  column: number;
+}
+
 export interface TextDragMoveState {
   pointerId: number;
   startClientX: number;

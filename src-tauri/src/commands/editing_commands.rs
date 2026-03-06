@@ -1,12 +1,18 @@
 use super::*;
 
 #[tauri::command]
-pub fn undo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
+pub fn undo(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<editing::HistoryActionResultPayload, String> {
     editing::undo_impl(state, id)
 }
 
 #[tauri::command]
-pub fn redo(state: State<'_, AppState>, id: String) -> Result<usize, String> {
+pub fn redo(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<editing::HistoryActionResultPayload, String> {
     editing::redo_impl(state, id)
 }
 
@@ -25,8 +31,22 @@ pub fn edit_text(
     start_char: usize,
     end_char: usize,
     new_text: String,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
 ) -> Result<usize, String> {
-    editing::edit_text_impl(state, id, start_char, end_char, new_text)
+    editing::edit_text_impl(
+        state,
+        id,
+        start_char,
+        end_char,
+        new_text,
+        before_cursor_line,
+        before_cursor_column,
+        after_cursor_line,
+        after_cursor_column,
+    )
 }
 
 #[tauri::command]
@@ -36,8 +56,22 @@ pub fn replace_line_range(
     start_line: usize,
     end_line: usize,
     new_text: String,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
 ) -> Result<usize, String> {
-    editing::replace_line_range_impl(state, id, start_line, end_line, new_text)
+    editing::replace_line_range_impl(
+        state,
+        id,
+        start_line,
+        end_line,
+        new_text,
+        before_cursor_line,
+        before_cursor_column,
+        after_cursor_line,
+        after_cursor_column,
+    )
 }
 
 #[tauri::command]

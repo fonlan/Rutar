@@ -48,11 +48,19 @@ pub fn default_line_ending() -> LineEnding {
 }
 
 #[derive(Clone)]
+pub struct CursorSnapshot {
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Clone)]
 pub struct EditOperation {
     pub operation_id: u64,
     pub start_char: usize,
     pub old_text: String,
     pub new_text: String,
+    pub before_cursor: Option<CursorSnapshot>,
+    pub after_cursor: Option<CursorSnapshot>,
 }
 
 impl EditOperation {
@@ -62,6 +70,8 @@ impl EditOperation {
             start_char: self.start_char,
             old_text: self.new_text.clone(),
             new_text: self.old_text.clone(),
+            before_cursor: self.after_cursor.clone(),
+            after_cursor: self.before_cursor.clone(),
         }
     }
 }
@@ -140,7 +150,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_line_ending, Document, EditOperation};
+    use super::{default_line_ending, CursorSnapshot, Document, EditOperation};
     use encoding_rs::UTF_8;
     use ropey::Rope;
 
@@ -179,6 +189,8 @@ mod tests {
             start_char: 0,
             old_text: String::new(),
             new_text: "a".to_string(),
+            before_cursor: None,
+            after_cursor: None,
         };
         document.undo_stack.push(first_operation);
         assert!(document.has_unsaved_text_changes());
@@ -191,6 +203,8 @@ mod tests {
             start_char: 1,
             old_text: String::new(),
             new_text: "b".to_string(),
+            before_cursor: None,
+            after_cursor: None,
         };
         document.undo_stack.push(second_operation);
         assert!(document.has_unsaved_text_changes());
@@ -208,6 +222,8 @@ mod tests {
             start_char: 0,
             old_text: String::new(),
             new_text: "a".to_string(),
+            before_cursor: None,
+            after_cursor: None,
         };
         document.undo_stack.push(first_operation);
 
@@ -216,6 +232,8 @@ mod tests {
             start_char: 1,
             old_text: String::new(),
             new_text: "b".to_string(),
+            before_cursor: None,
+            after_cursor: None,
         };
         document.undo_stack.push(second_operation);
 
@@ -229,9 +247,32 @@ mod tests {
             start_char: 1,
             old_text: String::new(),
             new_text: "c".to_string(),
+            before_cursor: None,
+            after_cursor: None,
         };
         document.undo_stack.push(branch_operation);
 
         assert!(document.has_unsaved_text_changes());
+    }
+
+    #[test]
+    fn inverse_operation_should_swap_cursor_snapshots() {
+        let operation = EditOperation {
+            operation_id: 1,
+            start_char: 0,
+            old_text: "a".to_string(),
+            new_text: "b".to_string(),
+            before_cursor: Some(CursorSnapshot { line: 2, column: 3 }),
+            after_cursor: Some(CursorSnapshot { line: 4, column: 5 }),
+        };
+
+        let inverse = operation.inverse();
+        let before = inverse.before_cursor.expect("inverse should keep after cursor as before snapshot");
+        let after = inverse.after_cursor.expect("inverse should keep before cursor as after snapshot");
+
+        assert_eq!(before.line, 4);
+        assert_eq!(before.column, 5);
+        assert_eq!(after.line, 2);
+        assert_eq!(after.column, 3);
     }
 }

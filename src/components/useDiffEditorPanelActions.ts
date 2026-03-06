@@ -13,6 +13,12 @@ interface EditHistoryState {
   isDirty: boolean;
 }
 
+interface HistoryActionResult {
+  lineCount: number;
+  cursorLine?: number;
+  cursorColumn?: number;
+}
+
 interface UseDiffEditorPanelActionsParams {
   tabId: string;
   activePanel: ActivePanel;
@@ -91,7 +97,7 @@ export function useDiffEditorPanelActions({
       await flushSideCommit(side);
 
       try {
-        const nextLineCount = await invoke<number>(action, { id: panelTab.id });
+        const result = await invoke<HistoryActionResult>(action, { id: panelTab.id });
         let nextDirtyState = useStore.getState().tabs.find((item) => item.id === panelTab.id)?.isDirty ?? true;
         try {
           const historyState = await invoke<EditHistoryState>('get_edit_history_state', { id: panelTab.id });
@@ -101,7 +107,7 @@ export function useDiffEditorPanelActions({
         }
 
         updateTab(panelTab.id, {
-          lineCount: Math.max(1, nextLineCount),
+          lineCount: Math.max(1, result.lineCount),
           isDirty: nextDirtyState,
         });
         dispatchDocumentUpdated(panelTab.id);

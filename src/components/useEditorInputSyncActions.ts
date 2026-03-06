@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { MutableRefObject } from 'react';
+import type { FormEventHandler, MutableRefObject } from 'react';
 
 interface UseEditorInputSyncActionsParams {
   tabId: string;
@@ -21,6 +21,7 @@ interface UseEditorInputSyncActionsParams {
   syncSelectionAfterInteraction: () => void;
   handleScroll: () => void;
   flushPendingSync: () => Promise<void>;
+  capturePendingEditBeforeCursor: () => void;
 }
 
 export function useEditorInputSyncActions({
@@ -43,7 +44,12 @@ export function useEditorInputSyncActions({
   syncSelectionAfterInteraction,
   handleScroll,
   flushPendingSync,
+  capturePendingEditBeforeCursor,
 }: UseEditorInputSyncActionsParams) {
+  const handleBeforeInput = useCallback<FormEventHandler<HTMLTextAreaElement>>(() => {
+    capturePendingEditBeforeCursor();
+  }, [capturePendingEditBeforeCursor]);
+
   const queueTextSync = useCallback(
     () => {
       pendingSyncRequestedRef.current = true;
@@ -130,6 +136,7 @@ export function useEditorInputSyncActions({
   );
 
   return {
+    handleBeforeInput,
     handleInput,
     handleCompositionStart,
     handleCompositionEnd,

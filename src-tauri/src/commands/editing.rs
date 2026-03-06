@@ -1,5 +1,34 @@
 use super::*;
+use crate::state::CursorSnapshot;
 use base64::Engine as _;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryActionResultPayload {
+    pub line_count: usize,
+    pub cursor_line: Option<usize>,
+    pub cursor_column: Option<usize>,
+}
+
+fn build_cursor_snapshot(line: Option<usize>, column: Option<usize>) -> Option<CursorSnapshot> {
+    match (line, column) {
+        (Some(line), Some(column)) if line > 0 && column > 0 => Some(CursorSnapshot { line, column }),
+        _ => None,
+    }
+}
+
+fn cursor_payload_from_snapshot(
+    snapshot: Option<&CursorSnapshot>,
+    line_count: usize,
+) -> HistoryActionResultPayload {
+    let safe_line_count = line_count.max(1);
+
+    HistoryActionResultPayload {
+        line_count: safe_line_count,
+        cursor_line: snapshot.map(|cursor| cursor.line.max(1).min(safe_line_count)),
+        cursor_column: snapshot.map(|cursor| cursor.column.max(1)),
+    }
+}
 
 fn point_for_char(rope: &Rope, char_idx: usize) -> Point {
     let clamped = char_idx.min(rope.len_chars());
@@ -86,16 +115,22 @@ pub(super) fn create_edit_operation(
         start_char,
         old_text,
         new_text,
+        before_cursor: None,
+        after_cursor: None,
     }
 }
 
-pub(super) fn undo_impl(state: State<'_, AppState>, id: String) -> Result<usize, String> {
+pub(super) fn undo_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<HistoryActionResultPayload, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(operation) = doc.undo_stack.pop() {
             let inverse = operation.inverse();
             apply_operation(&mut doc, &inverse)?;
+            let result = cursor_payload_from_snapshot(operation.before_cursor.as_ref(), doc.rope.len_lines());
             doc.redo_stack.push(operation);
-            Ok(doc.rope.len_lines())
+            Ok(result)
         } else {
             Err("No more undo steps".to_string())
         }
@@ -104,12 +139,16 @@ pub(super) fn undo_impl(state: State<'_, AppState>, id: String) -> Result<usize,
     }
 }
 
-pub(super) fn redo_impl(state: State<'_, AppState>, id: String) -> Result<usize, String> {
+pub(super) fn redo_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<HistoryActionResultPayload, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(operation) = doc.redo_stack.pop() {
             apply_operation(&mut doc, &operation)?;
+            let result = cursor_payload_from_snapshot(operation.after_cursor.as_ref(), doc.rope.len_lines());
             doc.undo_stack.push(operation);
-            Ok(doc.rope.len_lines())
+            Ok(result)
         } else {
             Err("No more redo steps".to_string())
         }
@@ -141,6 +180,10 @@ pub(super) fn edit_text_impl(
     start_char: usize,
     end_char: usize,
     new_text: String,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
 ) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let len_chars = doc.rope.len_chars();
@@ -152,7 +195,9 @@ pub(super) fn edit_text_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = create_edit_operation(&mut doc, start, old_text, new_text);
+        let mut operation = create_edit_operation(&mut doc, start, old_text, new_text);
+        operation.before_cursor = build_cursor_snapshot(before_cursor_line, before_cursor_column);
+        operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);
@@ -580,6 +625,10 @@ pub(super) fn replace_line_range_impl(
     start_line: usize,
     end_line: usize,
     new_text: String,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
 ) -> Result<usize, String> {
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let len_lines = doc.rope.len_lines();
@@ -598,7 +647,9 @@ pub(super) fn replace_line_range_impl(
             return Ok(doc.rope.len_lines());
         }
 
-        let operation = create_edit_operation(&mut doc, start_char, old_text, new_text);
+        let mut operation = create_edit_operation(&mut doc, start_char, old_text, new_text);
+        operation.before_cursor = build_cursor_snapshot(before_cursor_line, before_cursor_column);
+        operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
 
         apply_operation(&mut doc, &operation)?;
         doc.undo_stack.push(operation);

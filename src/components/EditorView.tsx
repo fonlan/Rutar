@@ -30,6 +30,7 @@ export function EditorView({
   contentTextRightPadding,
   contentBottomSafetyPadding,
   handleInput,
+  handleBeforeInput,
   handleEditableKeyDown,
   handleEditorPointerDown,
   handleEditorPointerMove,
@@ -144,6 +145,7 @@ export function EditorView({
         contentTextPadding={contentTextPadding}
         contentTextRightPadding={contentTextRightPadding}
         contentBottomSafetyPadding={contentBottomSafetyPadding}
+        onBeforeInput={handleBeforeInput}
         onInput={handleInput}
         onEditableKeyDown={handleEditableKeyDown}
         onEditorPointerDown={handleEditorPointerDown}

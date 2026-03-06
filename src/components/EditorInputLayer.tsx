@@ -1,4 +1,4 @@
-import type { CSSProperties, MutableRefObject } from 'react';
+import type { CSSProperties, FormEventHandler, MutableRefObject } from 'react';
 
 interface EditorInputLayerProps {
   isHugeEditableMode: boolean;
@@ -23,6 +23,7 @@ interface EditorInputLayerProps {
   contentTextRightPadding: string;
   contentBottomSafetyPadding: string;
   onInput: (event: any) => void;
+  onBeforeInput: FormEventHandler<HTMLTextAreaElement>;
   onEditableKeyDown: (event: any) => void;
   onEditorPointerDown: (event: any) => void;
   onEditorPointerMove: (event: any) => void;
@@ -56,6 +57,7 @@ export function EditorInputLayer({
   contentTextRightPadding,
   contentBottomSafetyPadding,
   onInput,
+  onBeforeInput,
   onEditableKeyDown,
   onEditorPointerDown,
   onEditorPointerMove,
@@ -109,6 +111,7 @@ export function EditorInputLayer({
               overflowY: 'hidden',
             }}
             wrap={wordWrap ? 'soft' : 'off'}
+            onBeforeInput={onBeforeInput}
             onInput={onInput}
             onKeyDown={onEditableKeyDown}
             onPointerDown={onEditorPointerDown}
@@ -147,6 +150,7 @@ export function EditorInputLayer({
         resize: 'none',
       }}
       wrap={wordWrap ? 'soft' : 'off'}
+      onBeforeInput={onBeforeInput}
       onInput={onInput}
       onKeyDown={onEditableKeyDown}
       onScroll={onScroll}

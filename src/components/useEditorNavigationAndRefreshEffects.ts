@@ -290,6 +290,8 @@ export function useEditorNavigationAndRefreshEffects({
         lineCount?: number;
         preserveCaret?: boolean;
         preserveScroll?: boolean;
+        restoreCursorLine?: number;
+        restoreCursorColumn?: number;
       }>;
       const detail = customEvent.detail;
 
@@ -299,6 +301,12 @@ export function useEditorNavigationAndRefreshEffects({
 
       const preserveCaret = detail.preserveCaret === true;
       const preserveScroll = detail.preserveScroll === true || preserveCaret;
+      const restoreCursorLine = Number.isFinite(detail.restoreCursorLine)
+        ? Math.max(1, Math.floor(detail.restoreCursorLine as number))
+        : null;
+      const restoreCursorColumn = Number.isFinite(detail.restoreCursorColumn)
+        ? Math.max(1, Math.floor(detail.restoreCursorColumn as number))
+        : null;
       const caretOffsets = preserveCaret && contentRef.current
         ? getSelectionOffsetsInElement(contentRef.current)
         : null;
@@ -338,6 +346,14 @@ export function useEditorNavigationAndRefreshEffects({
         }
       };
 
+      if (restoreCursorLine !== null && isHugeEditableMode) {
+        const targetScrollTop = alignScrollOffset((restoreCursorLine - 1) * itemSize);
+        pendingRestoreScrollTopRef.current = targetScrollTop;
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = targetScrollTop;
+        }
+      }
+
       if (typeof detail.lineCount === 'number' && Number.isFinite(detail.lineCount)) {
         updateTab(tabId, { lineCount: Math.max(1, detail.lineCount) });
       }
@@ -346,7 +362,14 @@ export function useEditorNavigationAndRefreshEffects({
         await loadTextFromBackend();
         restorePreservedScrollPosition();
 
-        if (preserveCaret && caretLogicalOffset !== null && contentRef.current) {
+        if (restoreCursorLine !== null && restoreCursorColumn !== null && contentRef.current) {
+          const lineForCaret = isHugeEditableMode
+            ? Math.max(1, restoreCursorLine - editableSegmentRef.current.startLine)
+            : restoreCursorLine;
+          setCaretToLineColumn(contentRef.current, lineForCaret, restoreCursorColumn);
+          setCursorPosition(tabId, restoreCursorLine, restoreCursorColumn);
+          restorePreservedScrollPosition();
+        } else if (preserveCaret && caretLogicalOffset !== null && contentRef.current) {
           const editorText = getEditableText(contentRef.current);
           const safeLogicalOffset = Math.min(caretLogicalOffset, editorText.length);
           const layerOffset = mapLogicalOffsetToInputLayerOffset(editorText, safeLogicalOffset);
@@ -368,8 +391,13 @@ export function useEditorNavigationAndRefreshEffects({
     getEditableText,
     getSelectionOffsetsInElement,
     loadTextFromBackend,
+    alignScrollOffset,
+    editableSegmentRef,
+    itemSize,
     mapLogicalOffsetToInputLayerOffset,
     setCaretToCodeUnitOffset,
+    setCaretToLineColumn,
+    setCursorPosition,
     isHugeEditableMode,
     scrollContainerRef,
     syncVisibleTokens,
