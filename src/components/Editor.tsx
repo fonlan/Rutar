@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, useStore } from '@/store/useStore';
 import { useResizeObserver } from '@/hooks/useResizeObserver';

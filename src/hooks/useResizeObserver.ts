@@ -10,6 +10,14 @@ export function useResizeObserver<T extends HTMLElement>() {
         const element = ref.current;
         if (!element) return;
 
+        if (typeof ResizeObserver === 'undefined') {
+            setSize({
+                width: element.offsetWidth,
+                height: element.offsetHeight,
+            });
+            return;
+        }
+
         const observer = new ResizeObserver((entries) => {
             if (!entries[0]) return;
 

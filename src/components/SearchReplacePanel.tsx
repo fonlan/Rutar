@@ -3836,6 +3836,14 @@ export function SearchReplacePanel() {
   }, [updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateSearchSidebarTopOffset);
+
+      return () => {
+        window.removeEventListener('resize', updateSearchSidebarTopOffset);
+      };
+    }
+
     const titleAndToolbarElements = document.querySelectorAll<HTMLElement>(
       '[data-layout-region="titlebar"], [data-layout-region="toolbar"]'
     );
@@ -3856,6 +3864,14 @@ export function SearchReplacePanel() {
   }, [updateSearchSidebarTopOffset]);
 
   useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateSearchSidebarBottomOffset);
+
+      return () => {
+        window.removeEventListener('resize', updateSearchSidebarBottomOffset);
+      };
+    }
+
     const observer = new ResizeObserver(() => {
       updateSearchSidebarBottomOffset();
     });
