@@ -4,13 +4,8 @@ import {
   ArrowDown,
   Check,
   ArrowUp,
-  CirclePlus,
   ChevronUp,
-  GripVertical,
-  Palette,
   Search,
-  Trash2,
-  X,
 } from 'lucide-react';
 import {
   startTransition,
@@ -26,6 +21,7 @@ import {
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { HistoryDropdownInput } from '@/components/HistoryDropdownInput';
+import { FilterRulesEditor } from '@/components/search-panel/FilterRulesEditor';
 import { ModeButton } from '@/components/search-panel/ModeButton';
 import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
 import { SearchPanelHeader } from '@/components/search-panel/SearchPanelHeader';
@@ -83,13 +79,11 @@ import {
   dispatchNavigateToMatch,
   dispatchSearchClose,
   FILTER_CHUNK_SIZE,
-  FILTER_MATCH_MODES,
   getReservedLayoutHeight,
   getTextInputSelectionRange,
   getSearchModeValue,
   hasTextInputSelection,
   isTextInputEditable,
-  matchModeLabel,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
   renderFilterPreview,
@@ -3959,6 +3953,13 @@ export function SearchReplacePanel() {
     }
   }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword, rememberSearchKeyword]);
 
+  const handleSelectedFilterGroupChange = useCallback((nextName: string) => {
+    setSelectedFilterGroupName(nextName);
+    if (nextName) {
+      setFilterGroupNameInput(nextName);
+    }
+  }, []);
+
   const handleInputContextMenuAction = useCallback(
     async (action: SearchSidebarInputContextAction) => {
       const inputTarget = inputContextMenuTargetRef.current;
@@ -4120,369 +4121,36 @@ export function SearchReplacePanel() {
               />
             </div>
           ) : (
-            <div className="mt-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={addFilterRule}
-                  >
-                    <CirclePlus className="h-3.5 w-3.5" />
-                    {messages.filterAddRule}
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                    onClick={clearFilterRules}
-                    disabled={!hasAnyConfiguredFilterRule}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    {messages.filterClearRules}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                  onClick={toggleResultPanelAndRefresh}
-                  title={isFilterMode ? messages.filterRunHint : resultToggleTitle}
-                >
-                  {filterToggleLabel}
-                </button>
-              </div>
-
-              <div className="rounded-md border border-border/70 p-2">
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="relative min-w-0 flex-1">
-                    <input
-                      value={filterGroupNameInput}
-                      onChange={(event) => setFilterGroupNameInput(event.target.value)}
-                      placeholder={messages.filterGroupNamePlaceholder}
-                      aria-label={messages.filterGroupNamePlaceholder}
-                      name="filter-group-name"
-                      autoComplete="off"
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                    />
-                    {filterGroupNameInput && (
-                      <button
-                        type="button"
-                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => setFilterGroupNameInput('')}
-                        title={messages.clearInput}
-                        aria-label={messages.clearInput}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void handleSaveFilterRuleGroup()}
-                  >
-                    {messages.filterSaveGroup}
-                  </button>
-                </div>
-
-                <div className="mb-2 flex items-center gap-2">
-                  <select
-                    value={selectedFilterGroupName}
-                    onChange={(event) => {
-                      const nextName = event.target.value;
-                      setSelectedFilterGroupName(nextName);
-                      if (nextName) {
-                        setFilterGroupNameInput(nextName);
-                      }
-                    }}
-                    name="filter-group-select"
-                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-label={messages.filterGroupSelectPlaceholder}
-                  >
-                    <option value="">{messages.filterGroupSelectPlaceholder}</option>
-                    {normalizedFilterRuleGroups.map((group) => (
-                      <option key={group.name} value={group.name}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={handleLoadFilterRuleGroup}
-                  >
-                    {messages.filterLoadGroup}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void handleDeleteFilterRuleGroup()}
-                  >
-                    {messages.filterDeleteGroup}
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void handleImportFilterRuleGroups()}
-                  >
-                    {messages.filterImportGroups}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void handleExportFilterRuleGroups()}
-                  >
-                    {messages.filterExportGroups}
-                  </button>
-                  <span className="ml-auto text-[11px] text-muted-foreground">
-                    {normalizedFilterRuleGroups.length > 0
-                      ? `${normalizedFilterRuleGroups.length}`
-                      : messages.filterGroupsEmptyHint}
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-muted-foreground">{messages.filterRunHint}</div>
-
-              {filterRules.map((rule, index) => {
-                const isDropTarget = filterRuleDragState?.overRuleId === rule.id;
-
-                return (
-                <div
-                  key={rule.id}
-                  className={cn(
-                    'rounded-md border border-border/70 p-2 transition-colors',
-                    isDropTarget ? 'border-primary bg-primary/5' : undefined
-                  )}
-                  onDragOver={(event) => onFilterRuleDragOver(event, rule.id)}
-                  onDrop={(event) => onFilterRuleDrop(event, rule.id)}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-1">
-                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <span
-                        draggable
-                        onDragStart={(event) => onFilterRuleDragStart(event, rule.id)}
-                        onDragEnd={onFilterRuleDragEnd}
-                        title={messages.filterDragPriorityHint}
-                        className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
-                      >
-                        <GripVertical className="h-3 w-3" />
-                      </span>
-                      {messages.filterPriority} #{index + 1}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                        onClick={() => moveFilterRule(rule.id, -1)}
-                        disabled={index === 0}
-                        title={messages.filterMoveUp}
-                        aria-label={messages.filterMoveUp}
-                      >
-                        <ArrowUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                        onClick={() => moveFilterRule(rule.id, 1)}
-                        disabled={index === filterRules.length - 1}
-                        title={messages.filterMoveDown}
-                        aria-label={messages.filterMoveDown}
-                      >
-                        <ArrowDown className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onClick={() => removeFilterRule(rule.id)}
-                        title={messages.filterDeleteRule}
-                        aria-label={messages.filterDeleteRule}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      value={rule.keyword}
-                      onChange={(event) => {
-                        updateFilterRule(rule.id, (previous) => ({
-                          ...previous,
-                          keyword: event.target.value,
-                        }));
-                      }}
-                      onKeyDown={handleKeywordKeyDown}
-                      placeholder={messages.filterRuleKeywordPlaceholder}
-                      aria-label={messages.filterRuleKeywordPlaceholder}
-                      name={`filter-rule-keyword-${rule.id}`}
-                      autoComplete="off"
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                    />
-                    {rule.keyword && (
-                      <button
-                        type="button"
-                        className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            keyword: '',
-                          }));
-                        }}
-                        title={messages.clearInput}
-                        aria-label={messages.clearInput}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {FILTER_MATCH_MODES.map((modeOption) => {
-                      return (
-                        <ModeButton
-                          key={`${rule.id}-${modeOption}`}
-                          active={rule.matchMode === modeOption}
-                          label={matchModeLabel(modeOption, messages)}
-                          onClick={() => {
-                            updateFilterRule(rule.id, (previous) => ({
-                              ...previous,
-                              matchMode: modeOption,
-                            }));
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <label
-                      className={cn(
-                        'inline-flex items-center gap-1 text-[11px]',
-                        !rule.backgroundColor ? 'text-muted-foreground/60' : 'text-muted-foreground'
-                      )}
-                    >
-                      <Palette className="h-3 w-3" />
-                      {messages.filterBackground}
-                      <input
-                        type="color"
-                        disabled={!rule.backgroundColor}
-                        value={rule.backgroundColor || DEFAULT_FILTER_RULE_BACKGROUND}
-                        onChange={(event) => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            backgroundColor: event.target.value,
-                          }));
-                        }}
-                        className="h-6 w-8 rounded border border-border bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-40"
-                      />
-                    </label>
-
-                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={!rule.backgroundColor}
-                        onChange={(event) => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            backgroundColor: event.target.checked ? '' : previous.backgroundColor || DEFAULT_FILTER_RULE_BACKGROUND,
-                          }));
-                        }}
-                      />
-                      {messages.filterNoBackground}
-                    </label>
-
-                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      {messages.filterTextColor}
-                      <input
-                        type="color"
-                        value={rule.textColor}
-                        onChange={(event) => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            textColor: event.target.value,
-                          }));
-                        }}
-                        className="h-6 w-8 rounded border border-border bg-transparent p-0"
-                      />
-                    </label>
-
-                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={rule.bold}
-                        onChange={(event) => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            bold: event.target.checked,
-                          }));
-                        }}
-                      />
-                      {messages.filterStyleBold}
-                    </label>
-
-                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={rule.italic}
-                        onChange={(event) => {
-                          updateFilterRule(rule.id, (previous) => ({
-                            ...previous,
-                            italic: event.target.checked,
-                          }));
-                        }}
-                      />
-                      {messages.filterStyleItalic}
-                    </label>
-
-                    <button
-                      type="button"
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                        rule.applyTo === 'line'
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                      )}
-                      onClick={() => {
-                        updateFilterRule(rule.id, (previous) => ({
-                          ...previous,
-                          applyTo: 'line',
-                        }));
-                      }}
-                    >
-                      {messages.filterApplyLine}
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                        rule.applyTo === 'match'
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                      )}
-                      onClick={() => {
-                        updateFilterRule(rule.id, (previous) => ({
-                          ...previous,
-                          applyTo: 'match',
-                        }));
-                      }}
-                    >
-                      {messages.filterApplyMatch}
-                    </button>
-                  </div>
-                </div>
-              )})}
-
-              {effectiveFilterRules.length === 0 && (
-                <div className="rounded-md border border-dashed border-border px-2 py-2 text-xs text-muted-foreground">
-                  {messages.filterRuleEmptyHint}
-                </div>
-              )}
-            </div>
+            <FilterRulesEditor
+              effectiveFilterRules={effectiveFilterRules}
+              filterGroupNameInput={filterGroupNameInput}
+              filterRuleDragState={filterRuleDragState}
+              filterRules={filterRules}
+              filterToggleLabel={filterToggleLabel}
+              hasAnyConfiguredFilterRule={hasAnyConfiguredFilterRule}
+              messages={messages}
+              normalizedFilterRuleGroups={normalizedFilterRuleGroups}
+              selectedFilterGroupName={selectedFilterGroupName}
+              onAddFilterRule={addFilterRule}
+              onClearFilterGroupNameInput={() => setFilterGroupNameInput('')}
+              onClearFilterRules={clearFilterRules}
+              onDeleteFilterRuleGroup={() => void handleDeleteFilterRuleGroup()}
+              onExportFilterRuleGroups={() => void handleExportFilterRuleGroups()}
+              onFilterGroupNameInputChange={setFilterGroupNameInput}
+              onImportFilterRuleGroups={() => void handleImportFilterRuleGroups()}
+              onKeywordKeyDown={handleKeywordKeyDown}
+              onLoadFilterRuleGroup={handleLoadFilterRuleGroup}
+              onMoveFilterRule={moveFilterRule}
+              onRemoveFilterRule={removeFilterRule}
+              onRuleDragEnd={onFilterRuleDragEnd}
+              onRuleDragOver={onFilterRuleDragOver}
+              onRuleDragStart={onFilterRuleDragStart}
+              onRuleDrop={onFilterRuleDrop}
+              onSaveFilterRuleGroup={() => void handleSaveFilterRuleGroup()}
+              onSelectedFilterGroupChange={handleSelectedFilterGroupChange}
+              onToggleResultPanelAndRefresh={toggleResultPanelAndRefresh}
+              onUpdateFilterRule={updateFilterRule}
+            />
           )}
 
           {isReplaceMode && (
