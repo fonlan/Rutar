@@ -12,6 +12,7 @@ src-tauri/Cargo.lock
 .vscode/
 .claude/
 .opencode/
+.codex/
 .idea/
 .knowledge/
 .agents/
@@ -47,3 +48,5 @@ out/
 
 coverage/
 coverage-*-next/
+
+.ruff_cache/
