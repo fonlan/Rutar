@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type UIEvent as ReactUIEvent,
@@ -19,6 +18,7 @@ import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
+import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -131,9 +131,6 @@ export function SearchReplacePanel() {
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
   const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
   const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
-  const [isSearchUiFocused, setIsSearchUiFocused] = useState(false);
-  const [isSearchUiPointerActive, setIsSearchUiPointerActive] = useState(false);
-  const [isSearchUiPinnedActive, setIsSearchUiPinnedActive] = useState(false);
 
   const isReplaceMode = panelMode === 'replace';
   const isFilterMode = panelMode === 'filter';
@@ -160,12 +157,21 @@ export function SearchReplacePanel() {
     resizeEdge: 'left',
   });
   const {
+    getSearchSidebarOccludedRightPx,
+    handleSearchUiBlurCapture,
+    handleSearchUiFocusCapture,
+    handleSearchUiPointerDownCapture,
+    isSearchUiActive,
+  } = useSearchSidebarInteraction({
+    isOpen,
+    searchSidebarContainerRef,
+  });
+  const {
     handleInputContextMenuAction,
     handleSearchSidebarContextMenu,
     inputContextMenu,
     inputContextMenuRef,
   } = useSearchInputContextMenu({ isOpen });
-  const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
 
   const rememberSearchKeyword = useCallback((value: string) => {
     if (value.length === 0) {
@@ -272,7 +278,6 @@ export function SearchReplacePanel() {
   const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
   const previousIsOpenRef = useRef(false);
-  const blurUpdateTimerRef = useRef<number | null>(null);
   const searchSessionCommandUnsupportedRef = useRef(false);
   const searchSessionRestoreCommandUnsupportedRef = useRef(false);
   const filterSessionCommandUnsupportedRef = useRef(false);
@@ -316,122 +321,8 @@ export function SearchReplacePanel() {
     filterSessionIdRef.current = nextSessionId;
   }, [disposeFilterSessionById]);
 
-  const isTargetInsideSearchSidebar = useCallback((target: EventTarget | null) => {
-    if (!(target instanceof Node)) {
-      return false;
-    }
-
-    return !!searchSidebarContainerRef.current?.contains(target);
-  }, []);
-
-  const getSearchSidebarOccludedRightPx = useCallback(() => {
-    if (!isOpen) {
-      return 0;
-    }
-
-    const sidebarElement = searchSidebarContainerRef.current;
-    if (!sidebarElement) {
-      return 0;
-    }
-
-    const rect = sidebarElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return 0;
-    }
-
-    return Math.max(0, window.innerWidth - rect.left);
-  }, [isOpen, searchSidebarContainerRef]);
-
-  const syncSearchSidebarFocusFromDom = useCallback(() => {
-    setIsSearchUiFocused(isTargetInsideSearchSidebar(document.activeElement));
-  }, [isTargetInsideSearchSidebar]);
-
-  const handleSearchUiPointerDownCapture = useCallback(() => {
-    if (blurUpdateTimerRef.current !== null) {
-      window.clearTimeout(blurUpdateTimerRef.current);
-      blurUpdateTimerRef.current = null;
-    }
-
-    setIsSearchUiPointerActive(true);
-    setIsSearchUiPinnedActive(true);
-    setIsSearchUiFocused(true);
-  }, []);
-
-  const handleSearchUiFocusCapture = useCallback(() => {
-    if (blurUpdateTimerRef.current !== null) {
-      window.clearTimeout(blurUpdateTimerRef.current);
-      blurUpdateTimerRef.current = null;
-    }
-
-    setIsSearchUiFocused(true);
-  }, []);
-
-  const handleSearchUiBlurCapture = useCallback(
-    (event: ReactFocusEvent<HTMLElement>) => {
-      if (isTargetInsideSearchSidebar(event.relatedTarget)) {
-        return;
-      }
-
-      if (isSearchUiPointerActive) {
-        return;
-      }
-
-      if (blurUpdateTimerRef.current !== null) {
-        window.clearTimeout(blurUpdateTimerRef.current);
-      }
-
-      blurUpdateTimerRef.current = window.setTimeout(() => {
-        if (!isSearchUiPointerActive) {
-          syncSearchSidebarFocusFromDom();
-        }
-        blurUpdateTimerRef.current = null;
-      }, 40);
-    },
-    [isSearchUiPointerActive, isTargetInsideSearchSidebar, syncSearchSidebarFocusFromDom]
-  );
-
-  useEffect(() => {
-    if (!isSearchUiPointerActive) {
-      return;
-    }
-
-    const handlePointerEnd = () => {
-      setIsSearchUiPointerActive(false);
-      window.requestAnimationFrame(() => {
-        syncSearchSidebarFocusFromDom();
-      });
-    };
-
-    window.addEventListener('pointerup', handlePointerEnd, true);
-    window.addEventListener('pointercancel', handlePointerEnd, true);
-
-    return () => {
-      window.removeEventListener('pointerup', handlePointerEnd, true);
-      window.removeEventListener('pointercancel', handlePointerEnd, true);
-    };
-  }, [isSearchUiPointerActive, syncSearchSidebarFocusFromDom]);
-
-  useEffect(() => {
-    const handleGlobalPointerDown = (event: PointerEvent) => {
-      if (isTargetInsideSearchSidebar(event.target)) {
-        return;
-      }
-
-      setIsSearchUiPinnedActive(false);
-    };
-
-    window.addEventListener('pointerdown', handleGlobalPointerDown, true);
-    return () => {
-      window.removeEventListener('pointerdown', handleGlobalPointerDown, true);
-    };
-  }, [isTargetInsideSearchSidebar]);
-
   useEffect(() => {
     return () => {
-      if (blurUpdateTimerRef.current !== null) {
-        window.clearTimeout(blurUpdateTimerRef.current);
-        blurUpdateTimerRef.current = null;
-      }
       disposeSearchSessionById(searchSessionIdRef.current);
       disposeFilterSessionById(filterSessionIdRef.current);
     };
@@ -2811,16 +2702,6 @@ export function SearchReplacePanel() {
 
     previousIsOpenRef.current = isOpen;
   }, [activeTabId, isOpen]);
-
-  useEffect(() => {
-    if (isOpen) {
-      return;
-    }
-
-    setIsSearchUiFocused(false);
-    setIsSearchUiPointerActive(false);
-    setIsSearchUiPinnedActive(false);
-  }, [isOpen]);
 
   useEffect(() => {
     let cancelled = false;
