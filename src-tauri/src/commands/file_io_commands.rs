@@ -138,6 +138,14 @@ pub async fn get_word_count_info(
 }
 
 #[tauri::command]
+pub async fn get_document_size_bytes(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<u64, String> {
+    file_io::get_document_size_bytes_impl(state, id).await
+}
+
+#[tauri::command]
 pub fn detect_document_indentation(
     state: State<'_, AppState>,
     id: String,

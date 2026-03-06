@@ -18,6 +18,7 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     encoding: "UTF-8",
     lineEnding: "LF",
     lineCount: 12,
+    sizeBytes: 1536,
     largeFileMode: false,
     ...partial,
   };
@@ -37,6 +38,9 @@ describe("StatusBar", () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "detect_document_indentation") {
         return null;
+      }
+      if (command === "get_document_size_bytes") {
+        return 1536;
       }
       return undefined;
     });
@@ -66,6 +70,9 @@ describe("StatusBar", () => {
 
     render(<StatusBar />);
     expect(screen.getByText("Lines: 12")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Size: 1.5 KB")).toBeInTheDocument();
+    });
     expect(screen.getByText("Cursor: 3:9")).toBeInTheDocument();
     expect(screen.getByText("Indent: Tabs")).toBeInTheDocument();
 
@@ -152,6 +159,39 @@ describe("StatusBar", () => {
 
     const currentTab = useStore.getState().tabs.find((item) => item.id === "tab-encoding-options");
     expect(currentTab?.encoding).toBe("ANSI");
+  });
+
+  it("refreshes displayed document size after document-updated for active tab", async () => {
+    const tab = createTab({ id: "tab-size-refresh", sizeBytes: 512 });
+    useStore.getState().addTab(tab);
+
+    let sizeCallCount = 0;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "detect_document_indentation") {
+        return null;
+      }
+      if (command === "get_document_size_bytes") {
+        sizeCallCount += 1;
+        return sizeCallCount > 1 ? 2048 : 512;
+      }
+      return undefined;
+    });
+
+    render(<StatusBar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Size: 512 B")).toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("rutar:document-updated", { detail: { tabId: tab.id } }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Size: 2 KB")).toBeInTheDocument();
+    });
+
+    expect(useStore.getState().tabs.find((item) => item.id === tab.id)?.sizeBytes).toBe(2048);
   });
 
   it("shows line ending options in ascending order", () => {

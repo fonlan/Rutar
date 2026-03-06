@@ -76,6 +76,7 @@ function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
     encoding: fileInfo.encoding,
     lineEnding: fileInfo.lineEnding,
     lineCount: fileInfo.lineCount,
+    sizeBytes: fileInfo.sizeBytes,
     largeFileMode: fileInfo.largeFileMode,
     syntaxOverride: fileInfo.syntaxOverride ?? null,
     isDirty: false,

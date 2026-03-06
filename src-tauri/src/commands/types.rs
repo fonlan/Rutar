@@ -7,6 +7,7 @@ pub struct FileInfo {
     pub(super) encoding: String,
     pub(super) line_ending: String,
     pub(super) line_count: usize,
+    pub(super) size_bytes: u64,
     pub(super) large_file_mode: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) syntax_override: Option<String>,
@@ -83,6 +84,7 @@ mod tests {
             encoding: "UTF-8".to_string(),
             line_ending: "LF".to_string(),
             line_count: 1,
+            size_bytes: 123,
             large_file_mode: false,
             syntax_override: Some("markdown".to_string()),
         };
@@ -97,6 +99,7 @@ mod tests {
                 "encoding":"UTF-8",
                 "lineEnding":"LF",
                 "lineCount":1,
+                "sizeBytes":123,
                 "largeFileMode":false,
                 "syntaxOverride":"markdown"
             })

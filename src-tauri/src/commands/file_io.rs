@@ -135,6 +135,17 @@ fn build_persist_content(doc: &Document) -> String {
     }
 }
 
+fn measure_document_size_bytes(rope: &Rope, encoding: &'static Encoding, line_ending: LineEnding) -> u64 {
+    let utf8_content: String = rope.chunks().collect();
+    let persisted_content = match line_ending {
+        LineEnding::CrLf => utf8_content.replace('\n', "\r\n"),
+        LineEnding::Lf => utf8_content,
+        LineEnding::Cr => utf8_content.replace('\n', "\r"),
+    };
+    let (encoded, _, _) = encoding.encode(&persisted_content);
+    encoded.len() as u64
+}
+
 fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {
     if !enable_syntax {
         doc.language = None;
@@ -389,12 +400,14 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
             encoding: existing.encoding.name().to_string(),
             line_ending: existing.line_ending.label().to_string(),
             line_count: existing.rope.len_lines(),
+            size_bytes: measure_document_size_bytes(&existing.rope, existing.encoding, existing.line_ending),
             large_file_mode: existing.rope.len_bytes() > LARGE_FILE_THRESHOLD_BYTES,
             syntax_override: existing.syntax_override.clone(),
         });
     }
 
     let snapshot = read_disk_file_snapshot(&path_buf)?;
+    let size_bytes = measure_document_size_bytes(&snapshot.rope, snapshot.encoding, snapshot.line_ending);
 
     let id = Uuid::new_v4().to_string();
 
@@ -436,6 +449,7 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
         encoding: snapshot.encoding.name().to_string(),
         line_ending: snapshot.line_ending.label().to_string(),
         line_count: snapshot.line_count,
+        size_bytes,
         large_file_mode: snapshot.large_file_mode,
         syntax_override: None,
     })
@@ -785,6 +799,7 @@ pub(super) fn new_file_impl(
         encoding: encoding.name().to_string(),
         line_ending: line_ending.label().to_string(),
         line_count: 1,
+        size_bytes: 0,
         large_file_mode: false,
         syntax_override: None,
     })
@@ -870,6 +885,7 @@ pub(super) fn reload_file_from_disk_impl(
             encoding: snapshot.encoding.name().to_string(),
             line_ending: snapshot.line_ending.label().to_string(),
             line_count: snapshot.line_count,
+            size_bytes: measure_document_size_bytes(&doc.rope, snapshot.encoding, snapshot.line_ending),
             large_file_mode: snapshot.large_file_mode,
             syntax_override: doc.syntax_override.clone(),
         })
@@ -988,6 +1004,21 @@ pub(super) async fn get_word_count_info_impl(
         .map_err(|error| error.to_string())
 }
 
+pub(super) async fn get_document_size_bytes_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<u64, String> {
+    let (rope, encoding, line_ending) = state
+        .documents
+        .get(&id)
+        .map(|doc| (doc.rope.clone(), doc.encoding, doc.line_ending))
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || measure_document_size_bytes(&rope, encoding, line_ending))
+        .await
+        .map_err(|error| error.to_string())
+}
+
 pub(super) fn detect_document_indentation_impl(
     state: State<'_, AppState>,
     id: String,
@@ -1003,7 +1034,8 @@ pub(super) fn detect_document_indentation_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{count_word_stats, detect_indentation_from_rope, normalize_encoding_label};
+    use super::{count_word_stats, detect_indentation_from_rope, measure_document_size_bytes, normalize_encoding_label};
+    use crate::state::LineEnding;
     use encoding_rs::Encoding;
     use ropey::Rope;
 
@@ -1081,5 +1113,16 @@ mod tests {
         let result = detect_indentation_from_rope(&rope, 2000);
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn measure_document_size_bytes_should_respect_line_endings_and_encoding() {
+        let rope = Rope::from_str("你\nA");
+        let utf8_bytes = measure_document_size_bytes(&rope, encoding_rs::UTF_8, LineEnding::Lf);
+        let gbk = Encoding::for_label(b"GBK").expect("GBK should resolve");
+        let gbk_crlf_bytes = measure_document_size_bytes(&rope, gbk, LineEnding::CrLf);
+
+        assert_eq!(utf8_bytes, 5);
+        assert_eq!(gbk_crlf_bytes, 5);
     }
 }

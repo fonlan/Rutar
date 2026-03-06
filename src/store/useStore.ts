@@ -8,6 +8,7 @@ export interface FileTab {
   encoding: string;
   lineEnding: LineEnding;
   lineCount: number;
+  sizeBytes?: number;
   largeFileMode: boolean;
   syntaxOverride?: SyntaxKey | null;
   isDirty?: boolean;

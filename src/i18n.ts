@@ -76,6 +76,7 @@ export type I18nKey =
   | 'bookmark.sidebar.emptyLine'
   | 'status.ready'
   | 'status.lines'
+  | 'status.size'
   | 'status.cursor'
   | 'status.indentation'
   | 'status.indentation.tabs'
@@ -320,6 +321,7 @@ const zhCN: Messages = {
   'bookmark.sidebar.emptyLine': '(空行)',
   'status.ready': 'Rutar 就绪',
   'status.lines': '行数',
+  'status.size': '大小',
   'status.cursor': '光标',
   'status.indentation': '缩进',
   'status.indentation.tabs': '制表符',
@@ -563,6 +565,7 @@ const enUS: Messages = {
   'bookmark.sidebar.emptyLine': '(empty line)',
   'status.ready': 'Rutar Ready',
   'status.lines': 'Lines',
+  'status.size': 'Size',
   'status.cursor': 'Cursor',
   'status.indentation': 'Indent',
   'status.indentation.tabs': 'Tabs',

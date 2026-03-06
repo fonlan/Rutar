@@ -210,6 +210,7 @@ pub fn run() {
             commands::file_io_commands::path_exists,
             commands::file_io_commands::open_in_file_manager,
             commands::file_io_commands::get_word_count_info,
+            commands::file_io_commands::get_document_size_bytes,
             commands::file_io_commands::detect_document_indentation,
             commands::file_io_commands::has_external_file_change,
             commands::file_io_commands::acknowledge_external_file_change,

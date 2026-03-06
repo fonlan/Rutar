@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Globe, Zap } from 'lucide-react';
@@ -47,6 +47,28 @@ function dispatchDocumentUpdated(tabId: string) {
     );
 }
 
+function formatDocumentSize(sizeBytes: number | null) {
+    if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+        return '—';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = sizeBytes;
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+
+    if (unitIndex === 0) {
+        return `${Math.round(value)} ${units[unitIndex]}`;
+    }
+
+    const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+    return `${value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9])0+$/, '')} ${units[unitIndex]}`;
+}
+
 export function StatusBar() {
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
@@ -60,6 +82,8 @@ export function StatusBar() {
     const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
     const gesturePreviewLabel = tr('settings.mouseGestures');
     const [gesturePreview, setGesturePreview] = useState('');
+    const [documentSizeBytes, setDocumentSizeBytes] = useState<number | null>(activeTab?.sizeBytes ?? null);
+    const sizeRequestSerialRef = useRef(0);
     const activeSyntaxKey = activeTab ? activeTab.syntaxOverride ?? detectSyntaxKeyFromTab(activeTab) : null;
     const effectiveIndentation = useEffectiveIndentation({
         tab: activeTab ?? null,
@@ -80,6 +104,63 @@ export function StatusBar() {
             window.removeEventListener('rutar:gesture-preview', handleGesturePreview as EventListener);
         };
     }, []);
+
+    const refreshDocumentSize = useCallback(async (tabId: string) => {
+        const requestSerial = sizeRequestSerialRef.current + 1;
+        sizeRequestSerialRef.current = requestSerial;
+
+        try {
+            const sizeBytes = await invoke<number>('get_document_size_bytes', { id: tabId });
+
+            if (sizeRequestSerialRef.current !== requestSerial) {
+                return;
+            }
+
+            if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+                return;
+            }
+
+            setDocumentSizeBytes(sizeBytes);
+
+            const currentTab = useStore.getState().tabs.find((tab) => tab.id === tabId && tab.tabType !== 'diff');
+            if (currentTab && currentTab.sizeBytes !== sizeBytes) {
+                updateTab(tabId, { sizeBytes });
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, [updateTab]);
+
+    useEffect(() => {
+        if (!activeTab) {
+            sizeRequestSerialRef.current += 1;
+            setDocumentSizeBytes(null);
+            return;
+        }
+
+        setDocumentSizeBytes(activeTab.sizeBytes ?? null);
+        void refreshDocumentSize(activeTab.id);
+    }, [activeTab?.id, activeTab?.sizeBytes, refreshDocumentSize]);
+
+    useEffect(() => {
+        if (!activeTab) {
+            return;
+        }
+
+        const handleDocumentUpdated = (event: Event) => {
+            const customEvent = event as CustomEvent<{ tabId?: string }>;
+            if (customEvent.detail?.tabId !== activeTab.id) {
+                return;
+            }
+
+            void refreshDocumentSize(activeTab.id);
+        };
+
+        window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+        return () => {
+            window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
+        };
+    }, [activeTab, refreshDocumentSize]);
 
     if (!activeTab) return (
         <div
@@ -169,6 +250,8 @@ export function StatusBar() {
                     </>
                 )}
                 <span>{tr('status.lines')}: {activeTab.lineCount.toLocaleString()}</span>
+                <div className="w-[1px] h-3 bg-border" />
+                <span>{tr('status.size')}: {formatDocumentSize(documentSizeBytes)}</span>
                 <div className="w-[1px] h-3 bg-border" />
                 <span>{tr('status.cursor')}: {cursorLine}:{cursorColumn}</span>
                 <div className="w-[1px] h-3 bg-border" />
