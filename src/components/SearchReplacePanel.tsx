@@ -18,6 +18,7 @@ import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
+import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -48,9 +49,6 @@ import type {
   SearchResultFilterStepBackendResult,
   SearchResultPanelState,
   SearchRunResult,
-  SearchSidebarInputContextAction,
-  SearchSidebarInputContextMenuState,
-  SearchSidebarTextInputElement,
   TabSearchPanelSnapshot,
 } from '@/components/search-panel/types';
 import { getSearchPanelMessages, t } from '@/i18n';
@@ -70,15 +68,10 @@ import {
   getReservedLayoutHeight,
   getPlainTextResultEntries,
   getSearchStatusText,
-  getTextInputSelectionRange,
   getSearchModeValue,
-  hasTextInputSelection,
-  isTextInputEditable,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
-  replaceSelectedInputText,
   resolveSearchKeyword,
-  resolveSearchSidebarTextInputTarget,
   RESULT_PANEL_DEFAULT_HEIGHT,
   RESULT_PANEL_MAX_HEIGHT,
   RESULT_PANEL_MIN_HEIGHT,
@@ -141,7 +134,6 @@ export function SearchReplacePanel() {
   const [isSearchUiFocused, setIsSearchUiFocused] = useState(false);
   const [isSearchUiPointerActive, setIsSearchUiPointerActive] = useState(false);
   const [isSearchUiPinnedActive, setIsSearchUiPinnedActive] = useState(false);
-  const [inputContextMenu, setInputContextMenu] = useState<SearchSidebarInputContextMenuState | null>(null);
 
   const isReplaceMode = panelMode === 'replace';
   const isFilterMode = panelMode === 'filter';
@@ -167,6 +159,12 @@ export function SearchReplacePanel() {
     onWidthChange: setSearchSidebarWidth,
     resizeEdge: 'left',
   });
+  const {
+    handleInputContextMenuAction,
+    handleSearchSidebarContextMenu,
+    inputContextMenu,
+    inputContextMenuRef,
+  } = useSearchInputContextMenu({ isOpen });
   const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
 
   const rememberSearchKeyword = useCallback((value: string) => {
@@ -188,8 +186,6 @@ export function SearchReplacePanel() {
   }, [recentReplaceValues, updateSettings]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const inputContextMenuTargetRef = useRef<SearchSidebarTextInputElement | null>(null);
-  const inputContextMenuRef = useRef<HTMLDivElement>(null);
   const resultListRef = useRef<HTMLDivElement>(null);
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
@@ -320,11 +316,6 @@ export function SearchReplacePanel() {
     filterSessionIdRef.current = nextSessionId;
   }, [disposeFilterSessionById]);
 
-  const closeInputContextMenu = useCallback(() => {
-    setInputContextMenu(null);
-    inputContextMenuTargetRef.current = null;
-  }, []);
-
   const isTargetInsideSearchSidebar = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Node)) {
       return false;
@@ -434,56 +425,6 @@ export function SearchReplacePanel() {
       window.removeEventListener('pointerdown', handleGlobalPointerDown, true);
     };
   }, [isTargetInsideSearchSidebar]);
-
-  useEffect(() => {
-    if (isOpen) {
-      return;
-    }
-
-    closeInputContextMenu();
-  }, [closeInputContextMenu, isOpen]);
-
-  useEffect(() => {
-    if (!inputContextMenu) {
-      return;
-    }
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        closeInputContextMenu();
-        return;
-      }
-
-      if (inputContextMenuRef.current?.contains(target)) {
-        return;
-      }
-
-      closeInputContextMenu();
-    };
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeInputContextMenu();
-      }
-    };
-
-    const closeOnWindowBlur = () => {
-      closeInputContextMenu();
-    };
-
-    window.addEventListener('pointerdown', closeOnOutsidePointer, true);
-    window.addEventListener('keydown', closeOnEscape);
-    window.addEventListener('blur', closeOnWindowBlur);
-    window.addEventListener('resize', closeOnWindowBlur);
-
-    return () => {
-      window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-      window.removeEventListener('keydown', closeOnEscape);
-      window.removeEventListener('blur', closeOnWindowBlur);
-      window.removeEventListener('resize', closeOnWindowBlur);
-    };
-  }, [closeInputContextMenu, inputContextMenu]);
 
   useEffect(() => {
     return () => {
@@ -3702,93 +3643,6 @@ export function SearchReplacePanel() {
       void executeSearch();
     }
   }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword, rememberSearchKeyword]);
-
-  const handleInputContextMenuAction = useCallback(
-    async (action: SearchSidebarInputContextAction) => {
-      const inputTarget = inputContextMenuTargetRef.current;
-      closeInputContextMenu();
-
-      if (!inputTarget) {
-        return;
-      }
-
-      const { start, end } = getTextInputSelectionRange(inputTarget);
-      const hasSelection = end > start;
-      const selectedText = hasSelection ? inputTarget.value.slice(start, end) : '';
-      const canEdit = isTextInputEditable(inputTarget);
-
-      try {
-        if (action === 'copy') {
-          if (!hasSelection) {
-            return;
-          }
-
-          await writePlainTextToClipboard(selectedText);
-          return;
-        }
-
-        if (action === 'cut') {
-          if (!canEdit || !hasSelection) {
-            return;
-          }
-
-          await writePlainTextToClipboard(selectedText);
-          replaceSelectedInputText(inputTarget, '', 'start');
-          return;
-        }
-
-        if (action === 'paste') {
-          if (!canEdit) {
-            return;
-          }
-
-          let clipboardText = '';
-          if (navigator.clipboard?.readText) {
-            clipboardText = await navigator.clipboard.readText();
-          } else {
-            inputTarget.focus();
-            if (document.execCommand('paste')) {
-              return;
-            }
-          }
-
-          replaceSelectedInputText(inputTarget, clipboardText, 'end');
-          return;
-        }
-
-        if (!canEdit || !hasSelection) {
-          return;
-        }
-
-        replaceSelectedInputText(inputTarget, '', 'start');
-      } catch (error) {
-        console.error('Search sidebar input context action failed:', error);
-      }
-    },
-    [closeInputContextMenu]
-  );
-
-  const handleSearchSidebarContextMenu = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      const textInputTarget = resolveSearchSidebarTextInputTarget(event.target);
-      if (!textInputTarget) {
-        event.preventDefault();
-        closeInputContextMenu();
-        return;
-      }
-
-      event.preventDefault();
-      textInputTarget.focus();
-      inputContextMenuTargetRef.current = textInputTarget;
-      setInputContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        hasSelection: hasTextInputSelection(textInputTarget),
-        canEdit: isTextInputEditable(textInputTarget),
-      });
-    },
-    [closeInputContextMenu]
-  );
 
   if (!activeTab) {
     return null;
