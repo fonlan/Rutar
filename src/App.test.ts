@@ -214,6 +214,8 @@ function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
         rememberWindowState: true,
         recentFiles: [],
         recentFolders: [],
+        recentSearchKeywords: [],
+        recentReplaceValues: [],
         pinnedTabPaths: [],
         windowsFileAssociationExtensions: [],
         mouseGesturesEnabled: false,
@@ -614,6 +616,8 @@ describe('App component', () => {
       rememberWindowState: boolean;
       recentFiles: string[];
       recentFolders: string[];
+      recentSearchKeywords?: string[];
+      recentReplaceValues?: string[];
       windowsFileAssociationExtensions: string[];
       mouseGesturesEnabled: boolean;
       mouseGestures: Array<{ pattern: string; action: string }>;
@@ -651,6 +655,8 @@ describe('App component', () => {
         rememberWindowState: true,
         recentFiles: ['C:\\repo\\late-config.ts'],
         recentFolders: ['C:\\repo'],
+        recentSearchKeywords: ['alpha'],
+        recentReplaceValues: ['beta'],
         windowsFileAssociationExtensions: ['.ts'],
         mouseGesturesEnabled: true,
         mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
@@ -724,6 +730,78 @@ describe('App component', () => {
         expect.objectContaining({
           config: expect.objectContaining({
             pinnedTabPaths: [pinnedPath],
+          }),
+        })
+      );
+    });
+  });
+
+  it('loads recent search and replace history from config into settings', async () => {
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          recentSearchKeywords: ['find-a', 'find-b'],
+          recentReplaceValues: ['replace-a'],
+          pinnedTabPaths: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: false,
+          mouseGestures: [],
+        }),
+      })
+    );
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+      expect(useStore.getState().settings.recentSearchKeywords).toEqual(['find-a', 'find-b']);
+      expect(useStore.getState().settings.recentReplaceValues).toEqual(['replace-a']);
+    });
+  });
+
+  it('persists recent search and replace history into save_config payload', async () => {
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({
+        recentSearchKeywords: ['find-me'],
+        recentReplaceValues: ['replace-me'],
+      });
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 260);
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'save_config',
+        expect.objectContaining({
+          config: expect.objectContaining({
+            recentSearchKeywords: ['find-me'],
+            recentReplaceValues: ['replace-me'],
           }),
         })
       );

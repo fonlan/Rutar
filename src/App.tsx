@@ -13,6 +13,7 @@ import {
   normalizeMouseGesturePattern,
   sanitizeMouseGestures,
 } from '@/lib/mouseGestures';
+import { sanitizeRecentTextHistory } from '@/lib/recentTextHistory';
 import {
   confirmTabClose,
   saveTab,
@@ -93,6 +94,8 @@ interface AppConfig {
   rememberWindowState: boolean;
   recentFiles?: string[];
   recentFolders?: string[];
+  recentSearchKeywords?: string[];
+  recentReplaceValues?: string[];
   pinnedTabPaths?: string[];
   windowsFileAssociationExtensions: string[];
   mouseGesturesEnabled?: boolean;
@@ -950,6 +953,8 @@ function App() {
           rememberWindowState: config.rememberWindowState !== false,
           recentFiles: sanitizeRecentPathList(config.recentFiles),
           recentFolders: sanitizeRecentPathList(config.recentFolders),
+          recentSearchKeywords: sanitizeRecentTextHistory(config.recentSearchKeywords),
+          recentReplaceValues: sanitizeRecentTextHistory(config.recentReplaceValues),
           pinnedTabPaths: sanitizePinnedTabPathList(config.pinnedTabPaths),
           windowsFileAssociationExtensions: Array.isArray(config.windowsFileAssociationExtensions)
             ? config.windowsFileAssociationExtensions
@@ -1001,6 +1006,8 @@ function App() {
           rememberWindowState: settings.rememberWindowState,
           recentFiles: settings.recentFiles,
           recentFolders: settings.recentFolders,
+          recentSearchKeywords: settings.recentSearchKeywords,
+          recentReplaceValues: settings.recentReplaceValues,
           pinnedTabPaths: settings.pinnedTabPaths,
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
           mouseGesturesEnabled: settings.mouseGesturesEnabled,
@@ -1031,6 +1038,8 @@ function App() {
     settings.rememberWindowState,
     settings.recentFiles,
     settings.recentFolders,
+    settings.recentSearchKeywords,
+    settings.recentReplaceValues,
     settings.pinnedTabPaths,
     settings.windowsFileAssociationExtensions,
     settings.mouseGesturesEnabled,

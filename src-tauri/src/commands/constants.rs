@@ -10,6 +10,7 @@ pub(super) const DEFAULT_SHOW_LINE_NUMBERS: bool = true;
 pub(super) const DEFAULT_HIGHLIGHT_CURRENT_LINE: bool = true;
 pub(super) const DEFAULT_SINGLE_INSTANCE_MODE: bool = true;
 pub(super) const MAX_RECENT_PATHS: usize = 12;
+pub(super) const MAX_RECENT_TEXT_HISTORY_ITEMS: usize = 10;
 pub(super) const DEFAULT_FILTER_RULE_TEXT: &str = "#1f2937";
 pub(super) const FILTER_MAX_RANGES_PER_LINE: usize = 256;
 pub(super) const DEFAULT_WINDOWS_FILE_ASSOCIATION_EXTENSIONS: &[&str] = &[

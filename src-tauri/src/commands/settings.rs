@@ -19,6 +19,10 @@ fn default_recent_paths() -> Vec<String> {
     Vec::new()
 }
 
+fn default_recent_text_history() -> Vec<String> {
+    Vec::new()
+}
+
 fn default_mouse_gestures_enabled() -> bool {
     true
 }
@@ -98,6 +102,10 @@ pub struct AppConfig {
     pub(super) recent_files: Vec<String>,
     #[serde(default = "default_recent_paths")]
     pub(super) recent_folders: Vec<String>,
+    #[serde(default = "default_recent_text_history")]
+    pub(super) recent_search_keywords: Vec<String>,
+    #[serde(default = "default_recent_text_history")]
+    pub(super) recent_replace_values: Vec<String>,
     #[serde(default = "default_recent_paths")]
     pub(super) pinned_tab_paths: Vec<String>,
     #[serde(default = "default_windows_file_association_extensions")]
@@ -130,6 +138,8 @@ pub struct PartialAppConfig {
     pub(super) remember_window_state: Option<bool>,
     pub(super) recent_files: Option<Vec<String>>,
     pub(super) recent_folders: Option<Vec<String>>,
+    pub(super) recent_search_keywords: Option<Vec<String>>,
+    pub(super) recent_replace_values: Option<Vec<String>>,
     pub(super) pinned_tab_paths: Option<Vec<String>>,
     pub(super) windows_file_association_extensions: Option<Vec<String>>,
     pub(super) mouse_gestures_enabled: Option<bool>,
@@ -156,6 +166,8 @@ impl Default for AppConfig {
             remember_window_state: default_remember_window_state(),
             recent_files: default_recent_paths(),
             recent_folders: default_recent_paths(),
+            recent_search_keywords: default_recent_text_history(),
+            recent_replace_values: default_recent_text_history(),
             pinned_tab_paths: default_recent_paths(),
             windows_file_association_extensions: default_windows_file_association_extensions(),
             mouse_gestures_enabled: default_mouse_gestures_enabled(),
@@ -257,6 +269,8 @@ mod tests {
         assert_eq!(config.new_file_line_ending, default_line_ending().label());
         assert_eq!(config.single_instance_mode, DEFAULT_SINGLE_INSTANCE_MODE);
         assert!(config.remember_window_state);
+        assert!(config.recent_search_keywords.is_empty());
+        assert!(config.recent_replace_values.is_empty());
         assert!(config.pinned_tab_paths.is_empty());
         assert!(config.mouse_gestures_enabled);
         assert!(!config.mouse_gestures.is_empty());

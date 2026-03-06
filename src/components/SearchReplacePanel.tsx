@@ -29,8 +29,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent as ReactUIEvent,
 } from 'react';
+import { HistoryDropdownInput } from '@/components/HistoryDropdownInput';
 import { cn } from '@/lib/utils';
 import { getSearchPanelMessages, t } from '@/i18n';
+import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
@@ -861,9 +863,12 @@ export function SearchReplacePanel() {
   const cursorPositionByTab = useStore((state) => state.cursorPositionByTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const updateTab = useStore((state) => state.updateTab);
+  const updateSettings = useStore((state) => state.updateSettings);
   const language = useStore((state) => state.settings.language);
   const fontFamily = useStore((state) => state.settings.fontFamily);
   const fontSize = useStore((state) => state.settings.fontSize);
+  const recentSearchKeywords = useStore((state) => state.settings.recentSearchKeywords);
+  const recentReplaceValues = useStore((state) => state.settings.recentReplaceValues);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff') ?? null,
     [tabs, activeTabId]
@@ -956,6 +961,24 @@ export function SearchReplacePanel() {
   });
   const isSearchUiActive = isSearchUiFocused || isSearchUiPointerActive || isSearchUiPinnedActive;
   const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
+
+  const rememberSearchKeyword = useCallback((value: string) => {
+    if (value.length === 0) {
+      return;
+    }
+
+    const nextKeywords = appendRecentTextHistoryEntry(recentSearchKeywords, value);
+    if (nextKeywords !== recentSearchKeywords) {
+      updateSettings({ recentSearchKeywords: nextKeywords });
+    }
+  }, [recentSearchKeywords, updateSettings]);
+
+  const rememberReplaceValue = useCallback((value: string) => {
+    const nextValues = appendRecentTextHistoryEntry(recentReplaceValues, value);
+    if (nextValues !== recentReplaceValues) {
+      updateSettings({ recentReplaceValues: nextValues });
+    }
+  }, [recentReplaceValues, updateSettings]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const inputContextMenuTargetRef = useRef<SearchSidebarTextInputElement | null>(null);
@@ -2428,6 +2451,10 @@ export function SearchReplacePanel() {
       const normalizedStep = step < 0 ? -1 : 1;
       const navigationFeedback = normalizedStep < 0 ? messages.prevMatch : messages.nextMatch;
 
+      if (!isFilterMode && keyword.length > 0) {
+        rememberSearchKeyword(keyword);
+      }
+
       if (activeTab && isFilterMode && !filterStepCommandUnsupportedRef.current) {
         try {
           const currentFilterMatch =
@@ -2592,37 +2619,23 @@ export function SearchReplacePanel() {
             if (!targetMatch) {
               return;
             }
-
-            const documentVersion = stepResultValue.documentVersion ?? 0;
             const targetIndex = matches.findIndex(
               (item) => item.start === targetMatch.start && item.end === targetMatch.end
             );
-            const nextMatches = targetIndex >= 0 ? matches : [targetMatch];
             if (targetIndex >= 0) {
               currentMatchIndexRef.current = targetIndex;
               setCurrentMatchIndex(targetIndex);
             } else {
               currentMatchIndexRef.current = 0;
               startTransition(() => {
-                setMatches(nextMatches);
+                setMatches([targetMatch]);
                 setCurrentMatchIndex(0);
               });
-            }
 
-            setSearchSessionId(null);
-            chunkCursorRef.current = null;
-            cachedSearchRef.current = {
-              tabId: activeTab.id,
-              keyword: effectiveSearchKeyword,
-              searchMode,
-              caseSensitive,
-              parseEscapeSequences,
-              resultFilterKeyword: backendResultFilterKeyword,
-              documentVersion,
-              matches: nextMatches,
-              nextOffset: null,
-              sessionId: null,
-            };
+              setSearchSessionId(null);
+              chunkCursorRef.current = null;
+              cachedSearchRef.current = null;
+            }
             setErrorMessage(null);
             setFeedbackMessage(navigationFeedback);
             navigateToMatch(targetMatch);
@@ -2715,6 +2728,7 @@ export function SearchReplacePanel() {
       navigateToFilterMatch,
       navigateToMatch,
       parseEscapeSequences,
+      rememberSearchKeyword,
       searchMode,
       setFilterSessionId,
       setSearchSessionId,
@@ -2726,6 +2740,7 @@ export function SearchReplacePanel() {
       return;
     }
 
+    rememberSearchKeyword(keyword);
     const searchResult = await executeSearch();
     if (!searchResult || searchResult.matches.length === 0) {
       setFeedbackMessage(messages.noReplaceMatches);
@@ -2760,6 +2775,7 @@ export function SearchReplacePanel() {
       dispatchEditorForceRefresh(activeTab.id, safeLineCount);
       setFeedbackMessage(messages.replacedCurrent);
       setErrorMessage(null);
+      rememberReplaceValue(replaceValue);
 
       const documentVersion = result.documentVersion ?? 0;
       const nextMatches = result.matches || [];
@@ -2824,11 +2840,14 @@ export function SearchReplacePanel() {
     caseSensitive,
     effectiveSearchKeyword,
     executeSearch,
+    keyword,
     messages.noReplaceMatches,
     messages.replaceFailed,
     messages.replacedCurrent,
     navigateToMatch,
     parseEscapeSequences,
+    rememberReplaceValue,
+    rememberSearchKeyword,
     replaceValue,
     searchMode,
     updateTab,
@@ -2839,6 +2858,7 @@ export function SearchReplacePanel() {
       return;
     }
 
+    rememberSearchKeyword(keyword);
     const searchResult = await executeSearch();
     if (!searchResult || searchResult.matches.length === 0) {
       setFeedbackMessage(messages.noReplaceMatches);
@@ -2871,6 +2891,7 @@ export function SearchReplacePanel() {
 
       setFeedbackMessage(messages.replacedAll(replacedCount));
       setErrorMessage(null);
+      rememberReplaceValue(replaceValue);
 
       const documentVersion = result.documentVersion ?? 0;
       const nextMatches = result.matches || [];
@@ -2926,11 +2947,14 @@ export function SearchReplacePanel() {
     caseSensitive,
     effectiveSearchKeyword,
     executeSearch,
+    keyword,
     messages.noReplaceMatches,
     messages.replaceAllFailed,
     messages.replacedAll,
     navigateToMatch,
     parseEscapeSequences,
+    rememberReplaceValue,
+    rememberSearchKeyword,
     replaceValue,
     searchMode,
     updateTab,
@@ -2955,6 +2979,7 @@ export function SearchReplacePanel() {
 
         if (event.currentTarget === searchInputRef.current) {
           setResultPanelState('open');
+          rememberSearchKeyword(keyword);
           if (!isSearching) {
             void executeSearch(true);
           }
@@ -2966,7 +2991,7 @@ export function SearchReplacePanel() {
         void navigateByStep(step);
       }
     },
-    [executeFilter, executeSearch, isFilterMode, isSearching, navigateByStep, reverseSearch]
+    [executeFilter, executeSearch, isFilterMode, isSearching, keyword, navigateByStep, rememberSearchKeyword, reverseSearch]
   );
 
   const handleSelectMatch = useCallback(
@@ -4618,9 +4643,10 @@ export function SearchReplacePanel() {
     }
 
     if (keyword) {
+      rememberSearchKeyword(keyword);
       void executeSearch();
     }
-  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
+  }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword, rememberSearchKeyword]);
 
   const handleInputContextMenuAction = useCallback(
     async (action: SearchSidebarInputContextAction) => {
@@ -4810,41 +4836,30 @@ export function SearchReplacePanel() {
           {!isFilterMode ? (
             <div className="mt-3 flex items-center gap-2">
               <Search className="h-4 w-4 text-muted-foreground" />
-              <div className="relative min-w-0 flex-1">
-                <input
-                  ref={searchInputRef}
-                  value={keyword}
-                  onChange={(event) => {
-                    setKeyword(event.target.value);
-                    setFeedbackMessage(null);
-                    setErrorMessage(null);
-                    resetSearchState();
-                  }}
-                  onKeyDown={handleKeywordKeyDown}
-                  placeholder={messages.findPlaceholder}
-                  aria-label={messages.findPlaceholder}
-                  name="search-keyword"
-                  autoComplete="off"
-                  className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {keyword && (
-                  <button
-                    type="button"
-                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      setKeyword('');
-                      setFeedbackMessage(null);
-                      setErrorMessage(null);
-                      resetSearchState();
-                    }}
-                    title={messages.clearInput}
-                    aria-label={messages.clearInput}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <HistoryDropdownInput
+                inputRef={searchInputRef}
+                value={keyword}
+                onChange={(value) => {
+                  setKeyword(value);
+                  setFeedbackMessage(null);
+                  setErrorMessage(null);
+                  resetSearchState();
+                }}
+                onKeyDown={handleKeywordKeyDown}
+                placeholder={messages.findPlaceholder}
+                ariaLabel={messages.findPlaceholder}
+                name="search-keyword"
+                history={recentSearchKeywords}
+                historyLabel={messages.findHistory}
+                clearLabel={messages.clearInput}
+                emptyValueLabel={messages.historyEmptyValue}
+                onClear={() => {
+                  setKeyword('');
+                  setFeedbackMessage(null);
+                  setErrorMessage(null);
+                  resetSearchState();
+                }}
+              />
             </div>
           ) : (
             <div className="mt-3 space-y-2">
@@ -5215,29 +5230,18 @@ export function SearchReplacePanel() {
           {isReplaceMode && (
             <div className="mt-2 flex items-center gap-2">
               <span className="w-4 text-xs text-muted-foreground">→</span>
-              <div className="relative min-w-0 flex-1">
-                <input
-                  value={replaceValue}
-                  onChange={(event) => setReplaceValue(event.target.value)}
-                  placeholder={messages.replacePlaceholder}
-                  aria-label={messages.replacePlaceholder}
-                  name="replace-value"
-                  autoComplete="off"
-                  className="h-8 w-full rounded-md border border-input bg-background px-2 pr-8 text-sm outline-none ring-offset-background focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {replaceValue && (
-                  <button
-                    type="button"
-                    className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setReplaceValue('')}
-                    title={messages.clearInput}
-                    aria-label={messages.clearInput}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <HistoryDropdownInput
+                value={replaceValue}
+                onChange={setReplaceValue}
+                placeholder={messages.replacePlaceholder}
+                ariaLabel={messages.replacePlaceholder}
+                name="replace-value"
+                history={recentReplaceValues}
+                historyLabel={messages.replaceHistory}
+                clearLabel={messages.clearInput}
+                emptyValueLabel={messages.historyEmptyValue}
+                onClear={() => setReplaceValue('')}
+              />
             </div>
           )}
 

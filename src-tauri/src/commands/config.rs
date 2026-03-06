@@ -147,6 +147,24 @@ fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
     normalized_paths
 }
 
+fn normalize_recent_text_history(entries: Option<Vec<String>>) -> Vec<String> {
+    let mut normalized_entries: Vec<String> = Vec::new();
+
+    for entry in entries.unwrap_or_default() {
+        if normalized_entries.iter().any(|item| item == &entry) {
+            continue;
+        }
+
+        normalized_entries.push(entry);
+
+        if normalized_entries.len() >= MAX_RECENT_TEXT_HISTORY_ITEMS {
+            break;
+        }
+    }
+
+    normalized_entries
+}
+
 fn normalize_mouse_gesture_pattern(value: &str) -> String {
     value
         .trim()
@@ -251,6 +269,8 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
         remember_window_state: config.remember_window_state,
         recent_files: normalize_recent_paths(Some(config.recent_files)),
         recent_folders: normalize_recent_paths(Some(config.recent_folders)),
+        recent_search_keywords: normalize_recent_text_history(Some(config.recent_search_keywords)),
+        recent_replace_values: normalize_recent_text_history(Some(config.recent_replace_values)),
         pinned_tab_paths: normalize_recent_paths(Some(config.pinned_tab_paths)),
         windows_file_association_extensions: normalize_windows_file_association_extensions(Some(
             config.windows_file_association_extensions,
@@ -1065,6 +1085,14 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
         config.recent_folders = normalize_recent_paths(Some(recent_folders));
     }
 
+    if let Some(recent_search_keywords) = partial.recent_search_keywords {
+        config.recent_search_keywords = normalize_recent_text_history(Some(recent_search_keywords));
+    }
+
+    if let Some(recent_replace_values) = partial.recent_replace_values {
+        config.recent_replace_values = normalize_recent_text_history(Some(recent_replace_values));
+    }
+
     if let Some(pinned_tab_paths) = partial.pinned_tab_paths {
         config.pinned_tab_paths = normalize_recent_paths(Some(pinned_tab_paths));
     }
@@ -1353,6 +1381,17 @@ mod tests {
     }
 
     #[test]
+    fn normalize_recent_text_history_should_dedup_and_limit_length_without_trimming() {
+        let mut source = vec!["".to_string(), "  ".to_string(), "".to_string()];
+        source.extend((0..(MAX_RECENT_TEXT_HISTORY_ITEMS + 5)).map(|i| format!("value{}", i)));
+
+        let normalized = normalize_recent_text_history(Some(source));
+        assert_eq!(normalized[0], "");
+        assert_eq!(normalized[1], "  ");
+        assert_eq!(normalized.len(), MAX_RECENT_TEXT_HISTORY_ITEMS);
+    }
+
+    #[test]
     fn normalize_mouse_gesture_pattern_should_filter_and_uppercase() {
         assert_eq!(normalize_mouse_gesture_pattern(" lrxdu9 "), "LRDU");
         assert_eq!(normalize_mouse_gesture_pattern("123"), "");
@@ -1421,6 +1460,8 @@ mod tests {
             remember_window_state: true,
             recent_files: vec!["  a  ".to_string(), "a".to_string()],
             recent_folders: vec!["  b  ".to_string(), "b".to_string()],
+            recent_search_keywords: vec!["alpha".to_string(), "alpha".to_string(), "  ".to_string()],
+            recent_replace_values: vec!["".to_string(), "beta".to_string(), "beta".to_string()],
             pinned_tab_paths: vec!["  c  ".to_string(), "c".to_string()],
             windows_file_association_extensions: vec!["TXT".to_string()],
             mouse_gestures_enabled: true,
@@ -1452,6 +1493,8 @@ mod tests {
         );
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
+        assert_eq!(normalized.recent_search_keywords, vec!["alpha".to_string(), "  ".to_string()]);
+        assert_eq!(normalized.recent_replace_values, vec!["".to_string(), "beta".to_string()]);
         assert_eq!(normalized.pinned_tab_paths, vec!["c".to_string()]);
         assert_eq!(
             normalized.windows_file_association_extensions,

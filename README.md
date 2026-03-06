@@ -13,6 +13,7 @@ Rutar is a lightweight, high-performance code editor built with Tauri, React 19,
 - Markdown live preview panel with Mermaid support and scroll sync.
 - Editable side-by-side diff tabs with backend-aligned line comparison.
 - Rust-side search/filter sessions and word count to keep UI responsive.
+- Search and replace inputs keep recent-history dropdowns persisted in config.
 - Locked tabs, recent files/folders, and persisted user settings.
 - Bilingual UI (English and Simplified Chinese).
 
@@ -53,7 +54,7 @@ cd src-tauri && cargo test
 ## Configuration
 
 - User config file: `%AppData%\Rutar\config.json`.
-- Common options: language, font family/size, tab width, line ending, word wrap, recent items, pinned tabs, window state, mouse gestures.
+- Common options: language, font family/size, tab width, line ending, word wrap, recent items, search/replace history, pinned tabs, window state, mouse gestures.
 - Markdown preview currently requires `app.security.freezePrototype = false` in `src-tauri/tauri.conf.json` because of Mermaid runtime compatibility.
 - Locked tabs are persisted by path in `pinnedTabPaths` and restored on startup.
 

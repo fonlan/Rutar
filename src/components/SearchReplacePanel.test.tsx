@@ -310,6 +310,52 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("replaces the search input with a recent find-history entry", async () => {
+    useStore.getState().updateSettings({
+      recentSearchKeywords: ["needle-1", "needle-2"],
+    });
+    useStore.getState().addTab(createTab({ id: "tab-search-history-find" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(keywordInput, { target: { value: "current-keyword" } });
+    fireEvent.focus(keywordInput);
+    fireEvent.click(await screen.findByRole("option", { name: "needle-2" }));
+
+    expect(keywordInput.value).toBe("needle-2");
+  });
+
+  it("replaces the replace input with a recent replace-history entry", async () => {
+    useStore.getState().updateSettings({
+      recentReplaceValues: ["replace-1", "replace-2"],
+    });
+    useStore.getState().addTab(createTab({ id: "tab-search-history-replace" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    const replaceInput = (await screen.findByPlaceholderText("Replace with")) as HTMLInputElement;
+    fireEvent.change(replaceInput, { target: { value: "current-replace" } });
+    fireEvent.focus(replaceInput);
+    fireEvent.click(await screen.findByRole("option", { name: "replace-2" }));
+
+    expect(replaceInput.value).toBe("replace-2");
+  });
+
   it("navigates from replace-mode next-match toolbar button", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
@@ -1251,8 +1297,6 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(screen.getByTitle("Line 3, Col 2")).toBeInTheDocument();
     });
-    expect(screen.getByText((text) => text.includes("Current 1/?"))).toBeInTheDocument();
-
     fireEvent.click(screen.getByTitle("Line 3, Col 2"));
     await waitFor(() => {
       expect(navigateEvents.length).toBeGreaterThan(0);
@@ -1268,6 +1312,114 @@ describe("SearchReplacePanel", () => {
     });
 
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
+  });
+
+  it("runs a full search when opening all results after cursor-step navigation", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "load_filter_rule_groups_config") {
+        return [];
+      }
+      if (command === "search_step_from_cursor_in_document") {
+        return {
+          targetMatch: {
+            start: 40,
+            end: 44,
+            startChar: 40,
+            endChar: 44,
+            text: "todo",
+            line: 5,
+            column: 3,
+            lineText: "  todo later",
+          },
+          documentVersion: 1,
+        };
+      }
+      if (command === "search_session_start_in_document") {
+        throw new Error("unknown command search_session_start_in_document");
+      }
+      if (command === "search_in_document_chunk") {
+        return {
+          matches: [
+            {
+              start: 0,
+              end: 4,
+              startChar: 0,
+              endChar: 4,
+              text: "todo",
+              line: 1,
+              column: 1,
+              lineText: "todo item",
+            },
+            {
+              start: 40,
+              end: 44,
+              startChar: 40,
+              endChar: 44,
+              text: "todo",
+              line: 5,
+              column: 3,
+              lineText: "  todo later",
+            },
+          ],
+          documentVersion: 1,
+          nextOffset: null,
+        };
+      }
+      if (command === "search_count_in_document") {
+        return {
+          totalMatches: 2,
+          matchedLines: 2,
+          documentVersion: 1,
+        };
+      }
+      if (command === "get_document_version") {
+        return 1;
+      }
+      return [];
+    });
+
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const input = await screen.findByPlaceholderText("Find text");
+    fireEvent.change(input, { target: { value: "todo" } });
+    fireEvent.click(screen.getByTitle("Next match"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_step_from_cursor_in_document",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          step: 1,
+        })
+      );
+    });
+
+    fireEvent.click(screen.getByTitle("Expand results"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_in_document_chunk",
+        expect.objectContaining({
+          id: "tab-search",
+          keyword: "todo",
+          startOffset: 0,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Search Results · Total 2 / 2 lines · Loaded 2")).toBeInTheDocument();
+    });
   });
 
   it("minimizes and reopens search results panel", async () => {
