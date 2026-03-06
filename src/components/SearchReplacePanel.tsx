@@ -16,6 +16,7 @@ import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
+import { useSearchQuerySectionProps } from '@/components/search-panel/useSearchQuerySectionProps';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
@@ -3391,6 +3392,35 @@ export function SearchReplacePanel() {
   );
 
   const canReplace = !!activeTab;
+  const searchQuerySectionProps = useSearchQuerySectionProps({
+    canReplace,
+    caseSensitive,
+    handleKeywordKeyDown,
+    handleReplaceAll,
+    handleReplaceCurrent,
+    isReplaceMode,
+    keyword,
+    messages,
+    navigateByStep,
+    parseEscapeSequences,
+    recentReplaceValues,
+    recentSearchKeywords,
+    replaceValue,
+    resetSearchState,
+    resultToggleTitle,
+    reverseSearch,
+    searchInputRef,
+    searchMode,
+    setCaseSensitive,
+    setErrorMessage,
+    setFeedbackMessage,
+    setKeyword,
+    setParseEscapeSequences,
+    setReplaceValue,
+    setReverseSearch,
+    setSearchMode,
+    toggleResultPanelAndRefresh,
+  });
 
   if (!activeTab) {
     return null;
@@ -3425,53 +3455,7 @@ export function SearchReplacePanel() {
       >
         <SearchSidebarBody
           isFilterMode={isFilterMode}
-          searchQuerySectionProps={{
-            canReplace,
-            caseSensitive,
-            isReplaceMode,
-            keyword,
-            messages,
-            parseEscapeSequences,
-            recentReplaceValues,
-            recentSearchKeywords,
-            replaceValue,
-            resultToggleTitle,
-            reverseSearch,
-            searchInputRef,
-            searchMode,
-            onCaseSensitiveChange: (checked) => {
-              setCaseSensitive(checked);
-              setErrorMessage(null);
-              resetSearchState();
-            },
-            onKeywordChange: (value) => {
-              setKeyword(value);
-              setFeedbackMessage(null);
-              setErrorMessage(null);
-              resetSearchState();
-            },
-            onKeywordClear: () => {
-              setKeyword('');
-              setFeedbackMessage(null);
-              setErrorMessage(null);
-              resetSearchState();
-            },
-            onKeywordKeyDown: handleKeywordKeyDown,
-            onNavigateNext: () => void navigateByStep(1),
-            onNavigatePrev: () => void navigateByStep(-1),
-            onParseEscapeSequencesChange: setParseEscapeSequences,
-            onReplaceAll: () => void handleReplaceAll(),
-            onReplaceCurrent: () => void handleReplaceCurrent(),
-            onReplaceValueChange: setReplaceValue,
-            onReplaceValueClear: () => setReplaceValue(''),
-            onReverseSearchChange: setReverseSearch,
-            onSearchModeChange: (mode) => {
-              setSearchMode(mode);
-              setErrorMessage(null);
-              resetSearchState();
-            },
-            onToggleAllResults: toggleResultPanelAndRefresh,
-          }}
+          searchQuerySectionProps={searchQuerySectionProps}
           filterRulesEditorProps={{
             effectiveFilterRules,
             filterGroupNameInput,
