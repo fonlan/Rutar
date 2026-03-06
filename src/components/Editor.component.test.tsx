@@ -4958,7 +4958,11 @@ describe("Editor component", () => {
 
     textarea.focus();
     textarea.setSelectionRange(5, 5);
-    fireEvent.keyDown(textarea, { key: "(", isComposing: false });
+    fireEvent.keyDown(textarea, {
+      key: "(",
+      shiftKey: true,
+      isComposing: false,
+    });
 
     await waitFor(() => {
       expect(textarea.value).toBe("alpha()\nbeta\n");
@@ -5002,7 +5006,11 @@ describe("Editor component", () => {
 
     textarea.focus();
     textarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(textarea, { key: '"', isComposing: false });
+    fireEvent.keyDown(textarea, {
+      key: '"',
+      shiftKey: true,
+      isComposing: false,
+    });
 
     await waitFor(() => {
       expect(textarea.value).toBe(' ""\n');

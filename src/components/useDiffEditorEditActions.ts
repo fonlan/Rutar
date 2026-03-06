@@ -254,53 +254,30 @@ export function useDiffEditorEditActions({
       const syntaxKey = side === "source" ? sourceSyntaxKey : targetSyntaxKey;
 
       if (
-        !event.shiftKey &&
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
-        !event.nativeEvent.isComposing &&
-        safeStart === safeEnd
+        !event.nativeEvent.isComposing
       ) {
-        const autoDedentReplacement = buildAutoDedentInsertion({
-          text: value,
-          offset: safeStart,
-          syntaxKey,
-          indentText,
-          key: event.key,
-        });
-        if (autoDedentReplacement) {
-          event.preventDefault();
-          const nextValue = `${value.slice(0, autoDedentReplacement.start)}${autoDedentReplacement.newText}${value.slice(autoDedentReplacement.end)}`;
-          const nextCaret =
-            autoDedentReplacement.start + autoDedentReplacement.newText.length;
-          handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
-          return;
+        if (!event.shiftKey && safeStart === safeEnd) {
+          const autoDedentReplacement = buildAutoDedentInsertion({
+            text: value,
+            offset: safeStart,
+            syntaxKey,
+            indentText,
+            key: event.key,
+          });
+          if (autoDedentReplacement) {
+            event.preventDefault();
+            const nextValue = `${value.slice(0, autoDedentReplacement.start)}${autoDedentReplacement.newText}${value.slice(autoDedentReplacement.end)}`;
+            const nextCaret =
+              autoDedentReplacement.start +
+              autoDedentReplacement.newText.length;
+            handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+            return;
+          }
         }
 
-        const autoPairReplacement = buildAutoPairEdit({
-          text: value,
-          start: safeStart,
-          end: safeEnd,
-          key: event.key,
-        });
-        if (autoPairReplacement) {
-          event.preventDefault();
-          const nextValue = `${value.slice(0, autoPairReplacement.start)}${autoPairReplacement.newText}${value.slice(autoPairReplacement.end)}`;
-          const nextCaret =
-            autoPairReplacement.start + autoPairReplacement.caretOffset;
-          handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
-          return;
-        }
-      }
-
-      if (
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.nativeEvent.isComposing &&
-        safeStart !== safeEnd
-      ) {
         const autoPairReplacement = buildAutoPairEdit({
           text: value,
           start: safeStart,

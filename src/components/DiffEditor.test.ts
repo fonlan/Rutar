@@ -2949,7 +2949,7 @@ describe("DiffEditor component", () => {
 
     fireEvent.change(sourceTextarea, { target: { value: "alpha" } });
     sourceTextarea.setSelectionRange(5, 5);
-    fireEvent.keyDown(sourceTextarea, { key: "(" });
+    fireEvent.keyDown(sourceTextarea, { key: "(", shiftKey: true });
 
     await waitFor(() => {
       expect(sourceTextarea.value).toBe("alpha()\n");
@@ -2988,7 +2988,7 @@ describe("DiffEditor component", () => {
 
     fireEvent.change(sourceTextarea, { target: { value: " " } });
     sourceTextarea.setSelectionRange(1, 1);
-    fireEvent.keyDown(sourceTextarea, { key: '"' });
+    fireEvent.keyDown(sourceTextarea, { key: '"', shiftKey: true });
 
     await waitFor(() => {
       expect(sourceTextarea.value).toBe(' ""\n');

@@ -365,29 +365,30 @@ export function useEditorKeyboardActions({
       }
 
       if (
-        !event.shiftKey &&
         !event.altKey &&
         !event.ctrlKey &&
         !event.metaKey &&
         !event.nativeEvent.isComposing
       ) {
-        const autoDedentReplacement = buildAutoDedentReplacement(event.key);
-        if (autoDedentReplacement) {
-          clearVerticalSelectionState();
-          clearRectangularSelection();
-          clearLineNumberMultiSelection();
-          event.preventDefault();
-          event.stopPropagation();
-          if (
-            replaceTextRange(
-              autoDedentReplacement.start,
-              autoDedentReplacement.end,
-              autoDedentReplacement.newText,
-            )
-          ) {
-            handleInput();
+        if (!event.shiftKey) {
+          const autoDedentReplacement = buildAutoDedentReplacement(event.key);
+          if (autoDedentReplacement) {
+            clearVerticalSelectionState();
+            clearRectangularSelection();
+            clearLineNumberMultiSelection();
+            event.preventDefault();
+            event.stopPropagation();
+            if (
+              replaceTextRange(
+                autoDedentReplacement.start,
+                autoDedentReplacement.end,
+                autoDedentReplacement.newText,
+              )
+            ) {
+              handleInput();
+            }
+            return;
           }
-          return;
         }
 
         const autoPairReplacement = buildAutoPairReplacement(event.key);
