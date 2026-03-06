@@ -1,12 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import {
-  ArrowDown,
-  Check,
-  ArrowUp,
-  ChevronUp,
-  Search,
-} from 'lucide-react';
+import { Check, ChevronUp } from 'lucide-react';
 import {
   startTransition,
   useCallback,
@@ -20,9 +14,8 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent as ReactUIEvent,
 } from 'react';
-import { HistoryDropdownInput } from '@/components/HistoryDropdownInput';
 import { FilterRulesEditor } from '@/components/search-panel/FilterRulesEditor';
-import { ModeButton } from '@/components/search-panel/ModeButton';
+import { SearchQuerySection } from '@/components/search-panel/SearchQuerySection';
 import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
 import { SearchPanelHeader } from '@/components/search-panel/SearchPanelHeader';
 import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
@@ -4093,33 +4086,53 @@ export function SearchReplacePanel() {
           />
 
           {!isFilterMode ? (
-            <div className="mt-3 flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <HistoryDropdownInput
-                inputRef={searchInputRef}
-                value={keyword}
-                onChange={(value) => {
-                  setKeyword(value);
-                  setFeedbackMessage(null);
-                  setErrorMessage(null);
-                  resetSearchState();
-                }}
-                onKeyDown={handleKeywordKeyDown}
-                placeholder={messages.findPlaceholder}
-                ariaLabel={messages.findPlaceholder}
-                name="search-keyword"
-                history={recentSearchKeywords}
-                historyLabel={messages.findHistory}
-                clearLabel={messages.clearInput}
-                emptyValueLabel={messages.historyEmptyValue}
-                onClear={() => {
-                  setKeyword('');
-                  setFeedbackMessage(null);
-                  setErrorMessage(null);
-                  resetSearchState();
-                }}
-              />
-            </div>
+            <SearchQuerySection
+              canReplace={canReplace}
+              caseSensitive={caseSensitive}
+              isReplaceMode={isReplaceMode}
+              keyword={keyword}
+              messages={messages}
+              parseEscapeSequences={parseEscapeSequences}
+              recentReplaceValues={recentReplaceValues}
+              recentSearchKeywords={recentSearchKeywords}
+              replaceValue={replaceValue}
+              resultToggleTitle={resultToggleTitle}
+              reverseSearch={reverseSearch}
+              searchInputRef={searchInputRef}
+              searchMode={searchMode}
+              onCaseSensitiveChange={(checked) => {
+                setCaseSensitive(checked);
+                setErrorMessage(null);
+                resetSearchState();
+              }}
+              onKeywordChange={(value) => {
+                setKeyword(value);
+                setFeedbackMessage(null);
+                setErrorMessage(null);
+                resetSearchState();
+              }}
+              onKeywordClear={() => {
+                setKeyword('');
+                setFeedbackMessage(null);
+                setErrorMessage(null);
+                resetSearchState();
+              }}
+              onKeywordKeyDown={handleKeywordKeyDown}
+              onNavigateNext={() => void navigateByStep(1)}
+              onNavigatePrev={() => void navigateByStep(-1)}
+              onParseEscapeSequencesChange={setParseEscapeSequences}
+              onReplaceAll={() => void handleReplaceAll()}
+              onReplaceCurrent={() => void handleReplaceCurrent()}
+              onReplaceValueChange={setReplaceValue}
+              onReplaceValueClear={() => setReplaceValue('')}
+              onReverseSearchChange={setReverseSearch}
+              onSearchModeChange={(mode) => {
+                setSearchMode(mode);
+                setErrorMessage(null);
+                resetSearchState();
+              }}
+              onToggleAllResults={toggleResultPanelAndRefresh}
+            />
           ) : (
             <FilterRulesEditor
               effectiveFilterRules={effectiveFilterRules}
@@ -4153,169 +4166,6 @@ export function SearchReplacePanel() {
             />
           )}
 
-          {isReplaceMode && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="w-4 text-xs text-muted-foreground">→</span>
-              <HistoryDropdownInput
-                value={replaceValue}
-                onChange={setReplaceValue}
-                placeholder={messages.replacePlaceholder}
-                ariaLabel={messages.replacePlaceholder}
-                name="replace-value"
-                history={recentReplaceValues}
-                historyLabel={messages.replaceHistory}
-                clearLabel={messages.clearInput}
-                emptyValueLabel={messages.historyEmptyValue}
-                onClear={() => setReplaceValue('')}
-              />
-            </div>
-          )}
-
-          {!isFilterMode && (
-            <>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <ModeButton
-                  active={searchMode === 'literal'}
-                  label={messages.modeLiteral}
-                  onClick={() => {
-                    setSearchMode('literal');
-                    setErrorMessage(null);
-                    resetSearchState();
-                  }}
-                />
-                <ModeButton
-                  active={searchMode === 'regex'}
-                  label={messages.modeRegex}
-                  onClick={() => {
-                    setSearchMode('regex');
-                    setErrorMessage(null);
-                    resetSearchState();
-                  }}
-                />
-                <ModeButton
-                  active={searchMode === 'wildcard'}
-                  label={messages.modeWildcard}
-                  onClick={() => {
-                    setSearchMode('wildcard');
-                    setErrorMessage(null);
-                    resetSearchState();
-                  }}
-                />
-
-                <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={caseSensitive}
-                    onChange={(event) => {
-                      setCaseSensitive(event.target.checked);
-                      setErrorMessage(null);
-                      resetSearchState();
-                    }}
-                  />
-                  {messages.caseSensitive}
-                </label>
-
-                {isReplaceMode && (
-                  <label
-                    className="flex items-center gap-1 text-xs text-muted-foreground"
-                    title={messages.parseEscapeSequencesHint}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={parseEscapeSequences}
-                      onChange={(event) => setParseEscapeSequences(event.target.checked)}
-                      title={messages.parseEscapeSequencesHint}
-                    />
-                    {messages.parseEscapeSequences}
-                  </label>
-                )}
-
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={reverseSearch}
-                    onChange={(event) => setReverseSearch(event.target.checked)}
-                  />
-                  {messages.reverseSearch}
-                </label>
-              </div>
-
-              {isReplaceMode ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void navigateByStep(-1)}
-                    title={messages.prevMatch}
-                  >
-                    <ArrowUp className="h-3 w-3" />
-                    {messages.previous}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void navigateByStep(1)}
-                    title={messages.nextMatch}
-                  >
-                    <ArrowDown className="h-3 w-3" />
-                    {messages.next}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                    onClick={() => void handleReplaceCurrent()}
-                    disabled={!canReplace}
-                    title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
-                  >
-                    {messages.replace}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-                    onClick={() => void handleReplaceAll()}
-                    disabled={!canReplace}
-                    title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
-                  >
-                    {messages.replaceAll}
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void navigateByStep(-1)}
-                    title={messages.prevMatch}
-                  >
-                    <ArrowUp className="h-3 w-3" />
-                    {messages.previous}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => void navigateByStep(1)}
-                    title={messages.nextMatch}
-                  >
-                    <ArrowDown className="h-3 w-3" />
-                    {messages.next}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={toggleResultPanelAndRefresh}
-                    title={resultToggleTitle}
-                  >
-                    {messages.all}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
           <div
             className={cn(
               'mt-2 text-xs',
@@ -4324,6 +4174,7 @@ export function SearchReplacePanel() {
           >
             {feedbackMessage || statusText} · {messages.shortcutHint}
           </div>
+
         </div>
         <div
           role="separator"
