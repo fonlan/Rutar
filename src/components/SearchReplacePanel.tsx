@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Check, ChevronUp } from 'lucide-react';
 import {
   startTransition,
   useCallback,
@@ -18,6 +17,7 @@ import { FilterRulesEditor } from '@/components/search-panel/FilterRulesEditor';
 import { SearchQuerySection } from '@/components/search-panel/SearchQuerySection';
 import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
 import { SearchPanelHeader } from '@/components/search-panel/SearchPanelHeader';
+import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
 import {
   isFilterResultFilterStepBackendResult,
@@ -79,8 +79,6 @@ import {
   isTextInputEditable,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
-  renderFilterPreview,
-  renderMatchPreview,
   reorderFilterRules,
   replaceSelectedInputText,
   resolveSearchKeyword,
@@ -3752,111 +3750,24 @@ export function SearchReplacePanel() {
     }
   }, [executeFilter, executeSearch, filterRulesPayload.length, isFilterMode, isSearching, keyword]);
 
-  const renderedResultItems = useMemo(() => {
-    if (resultPanelState !== 'open') {
-      return null;
-    }
-
-    if (isFilterMode) {
-      if (filterRulesPayload.length === 0 || visibleFilterMatches.length === 0) {
-        return null;
-      }
-
-      return visibleFilterMatches.map((match, index) => {
-        const isActive = index === visibleCurrentFilterMatchIndex;
-        const sourceIndex = filterMatches.indexOf(match);
-
-        return (
-          <button
-            key={`filter-${match.line}-${match.ruleIndex}-${index}`}
-            type="button"
-            data-result-item="true"
-            className={cn(
-              'flex min-w-full w-max items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
-              isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
-            )}
-            title={messages.lineColTitle(match.line, Math.max(1, match.column || 1))}
-            onClick={() => {
-              if (sourceIndex >= 0) {
-                handleSelectMatch(sourceIndex);
-              }
-            }}
-          >
-            <span
-              className="w-16 shrink-0 border-r border-border/70 pr-2 text-right text-[11px] text-muted-foreground"
-              style={{ fontFamily }}
-            >
-              {match.line}
-            </span>
-            <span
-              className="pl-2 text-xs text-foreground whitespace-pre"
-              style={resultListTextStyle}
-            >
-              {renderFilterPreview(match)}
-            </span>
-            {isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
-          </button>
-        );
-      });
-    }
-
-    if (!keyword || visibleMatches.length === 0) {
-      return null;
-    }
-
-    return visibleMatches.map((match, index) => {
-      const isActive = index === visibleCurrentMatchIndex;
-      const sourceIndex = matches.indexOf(match);
-
-      return (
-        <button
-          key={`${match.start}-${match.end}-${index}`}
-          type="button"
-          data-result-item="true"
-          className={cn(
-            'flex min-w-full w-max items-center gap-0 border-b border-border/60 px-2 py-1.5 text-left transition-colors',
-            isActive ? 'bg-primary/12' : 'hover:bg-muted/50'
-          )}
-          title={messages.lineColTitle(match.line, match.column)}
-          onClick={() => {
-            if (sourceIndex >= 0) {
-              handleSelectMatch(sourceIndex);
-            }
-          }}
-        >
-          <span
-            className="w-16 shrink-0 border-r border-border/70 pr-2 text-right text-[11px] text-muted-foreground"
-            style={{ fontFamily }}
-          >
-            {match.line}
-          </span>
-          <span
-            className="pl-2 text-xs text-foreground whitespace-pre"
-            style={resultListTextStyle}
-          >
-            {renderMatchPreview(match)}
-          </span>
-          {isActive ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
-        </button>
-      );
-    });
-  }, [
-    currentFilterMatchIndex,
-    currentMatchIndex,
-    filterMatches,
-    filterRulesPayload.length,
-    handleSelectMatch,
-    isFilterMode,
-    keyword,
-    matches,
-    messages,
-    resultPanelState,
-    visibleCurrentFilterMatchIndex,
-    visibleCurrentMatchIndex,
-    visibleFilterMatches,
-    visibleMatches,
-  ]);
-
+  const renderedResultItems = (
+    <SearchResultItems
+      filterMatches={filterMatches}
+      filterRulesPayloadLength={filterRulesPayload.length}
+      fontFamily={fontFamily}
+      handleSelectMatch={handleSelectMatch}
+      isFilterMode={isFilterMode}
+      keyword={keyword}
+      matches={matches}
+      messages={messages}
+      resultListTextStyle={resultListTextStyle}
+      resultPanelState={resultPanelState}
+      visibleCurrentFilterMatchIndex={visibleCurrentFilterMatchIndex}
+      visibleCurrentMatchIndex={visibleCurrentMatchIndex}
+      visibleFilterMatches={visibleFilterMatches}
+      visibleMatches={visibleMatches}
+    />
+  );
   const statusText = useMemo(() => {
     if (isFilterMode) {
       if (effectiveFilterRules.length === 0) {
