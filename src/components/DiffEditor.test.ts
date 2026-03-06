@@ -2836,6 +2836,9 @@ describe("DiffEditor component", () => {
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
     });
+    await waitFor(() => {
+      expect(sourceTextarea.value).toBe("left-1\nleft-2");
+    });
 
     fireEvent.change(sourceTextarea, {
       target: { value: "if True:\n    pass" },
@@ -2895,7 +2898,7 @@ describe("DiffEditor component", () => {
     fireEvent.keyDown(sourceTextarea, { key: "Enter" });
 
     await waitFor(() => {
-      const hasIndentedPreviewRequest = vi
+      const hasPairedPreviewRequest = vi
         .mocked(invoke)
         .mock.calls.some(([command, payload]) => {
           if (command !== "preview_aligned_diff_state") {
@@ -2907,27 +2910,25 @@ describe("DiffEditor component", () => {
           )?.alignedSourceLines;
           return (
             Array.isArray(alignedSourceLines) &&
-            alignedSourceLines.includes("  ")
+            alignedSourceLines[0] === "{" &&
+            alignedSourceLines[1] === "  " &&
+            alignedSourceLines[2] === "}"
           );
         });
-      expect(hasIndentedPreviewRequest).toBe(true);
+      expect(hasPairedPreviewRequest).toBe(true);
     });
   });
 
-  it("creates paired json block lines when pressing Enter between braces in diff source panel", async () => {
-    useStore.getState().updateSettings({
-      tabIndentMode: "spaces",
-      tabWidth: 2,
-    });
+  it("auto-pairs brackets in diff source panel and keeps the caret in the middle", async () => {
     const sourceTab = createFileTab({
       id: "source-tab",
-      name: "source.json",
-      path: "C:\repo\source.json",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
     });
     const targetTab = createFileTab({
       id: "target-tab",
       name: "target.ts",
-      path: "C:\repo\target.ts",
+      path: "C:\\repo\\target.ts",
     });
     const diffTab = createDiffTab();
     useStore.setState({
@@ -2944,6 +2945,91 @@ describe("DiffEditor component", () => {
       ) as HTMLTextAreaElement | null;
       expect(element).toBeTruthy();
       return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: "alpha" } });
+    sourceTextarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(sourceTextarea, { key: "(" });
+
+    await waitFor(() => {
+      expect(sourceTextarea.value).toBe("alpha()\n");
+      expect(sourceTextarea.selectionStart).toBe(6);
+      expect(sourceTextarea.selectionEnd).toBe(6);
+    });
+  });
+
+  it("auto-pairs quotes in diff source panel when not inside a word", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.txt",
+      path: "C:\\repo\\source.txt",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.txt",
+      path: "C:\\repo\\target.txt",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(sourceTextarea, { target: { value: " " } });
+    sourceTextarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(sourceTextarea, { key: '"' });
+
+    await waitFor(() => {
+      expect(sourceTextarea.value).toBe(' ""\n');
+      expect(sourceTextarea.selectionStart).toBe(2);
+      expect(sourceTextarea.selectionEnd).toBe(2);
+    });
+  });
+
+  it("creates paired json block lines when pressing Enter between braces in diff source panel", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 2,
+    });
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.json",
+      path: "C:\\repo\\source.json",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+    await waitFor(() => {
+      expect(sourceTextarea.value).toBe("left-1\nleft-2");
     });
 
     fireEvent.change(sourceTextarea, { target: { value: "{}" } });

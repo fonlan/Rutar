@@ -11,9 +11,10 @@ import type { FileTab, SyntaxKey } from "@/store/useStore";
 import type { ActivePanel, LineDiffComparisonResult } from "./diffEditor.types";
 import type { CaretSnapshot } from "./diffEditor.utils";
 import { getLineIndexFromTextOffset } from "./diffEditor.utils";
+import { buildAutoPairEdit } from "./autoPairInput";
 import {
   buildAutoDedentInsertion,
-  buildEnterAutoIndentText,
+  buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
 
 interface ApplyAlignedDiffPanelCopyResult {
@@ -275,6 +276,45 @@ export function useDiffEditorEditActions({
           handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
           return;
         }
+
+        const autoPairReplacement = buildAutoPairEdit({
+          text: value,
+          start: safeStart,
+          end: safeEnd,
+          key: event.key,
+        });
+        if (autoPairReplacement) {
+          event.preventDefault();
+          const nextValue = `${value.slice(0, autoPairReplacement.start)}${autoPairReplacement.newText}${value.slice(autoPairReplacement.end)}`;
+          const nextCaret =
+            autoPairReplacement.start + autoPairReplacement.caretOffset;
+          handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+          return;
+        }
+      }
+
+      if (
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.nativeEvent.isComposing &&
+        safeStart !== safeEnd
+      ) {
+        const autoPairReplacement = buildAutoPairEdit({
+          text: value,
+          start: safeStart,
+          end: safeEnd,
+          key: event.key,
+        });
+        if (autoPairReplacement) {
+          event.preventDefault();
+          const nextValue = `${value.slice(0, autoPairReplacement.start)}${autoPairReplacement.newText}${value.slice(autoPairReplacement.end)}`;
+          const nextCaret =
+            autoPairReplacement.start + autoPairReplacement.caretOffset;
+          handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+          return;
+        }
       }
 
       if (
@@ -285,14 +325,14 @@ export function useDiffEditorEditActions({
         !event.nativeEvent.isComposing
       ) {
         event.preventDefault();
-        const newlineText = buildEnterAutoIndentText({
+        const enterEdit = buildEnterAutoIndentEdit({
           text: value,
           offset: safeStart,
           syntaxKey,
           indentText,
         });
-        const nextValue = `${value.slice(0, safeStart)}${newlineText}${value.slice(safeEnd)}`;
-        const nextCaret = safeStart + newlineText.length;
+        const nextValue = `${value.slice(0, safeStart)}${enterEdit.text}${value.slice(safeEnd)}`;
+        const nextCaret = safeStart + enterEdit.caretOffset;
         handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
         return;
       }

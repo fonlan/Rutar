@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { KeyboardEvent, MutableRefObject } from "react";
 import { dispatchGoToLineDialogRequest } from "@/lib/goToLineDialog";
 import type { SyntaxKey } from "@/store/useStore";
+import { buildAutoPairEdit } from "./autoPairInput";
 import {
   buildAutoDedentInsertion,
   buildEnterAutoIndentEdit,
@@ -253,6 +254,29 @@ export function useEditorKeyboardActions({
     indentText,
   ]);
 
+  const buildAutoPairReplacement = useCallback(
+    (key: string) => {
+      const element = contentRef.current;
+      if (!element) {
+        return null;
+      }
+
+      const selectionOffsets = getSelectionOffsetsInElement(element);
+      if (!selectionOffsets) {
+        return null;
+      }
+
+      const text = getEditableText(element);
+      return buildAutoPairEdit({
+        text,
+        start: selectionOffsets.start,
+        end: selectionOffsets.end,
+        key,
+      });
+    },
+    [contentRef, getEditableText, getSelectionOffsetsInElement],
+  );
+
   const buildAutoDedentReplacement = useCallback(
     (key: string) => {
       const element = contentRef.current;
@@ -359,6 +383,26 @@ export function useEditorKeyboardActions({
               autoDedentReplacement.start,
               autoDedentReplacement.end,
               autoDedentReplacement.newText,
+            )
+          ) {
+            handleInput();
+          }
+          return;
+        }
+
+        const autoPairReplacement = buildAutoPairReplacement(event.key);
+        if (autoPairReplacement) {
+          clearVerticalSelectionState();
+          clearRectangularSelection();
+          clearLineNumberMultiSelection();
+          event.preventDefault();
+          event.stopPropagation();
+          if (
+            replaceTextRange(
+              autoPairReplacement.start,
+              autoPairReplacement.end,
+              autoPairReplacement.newText,
+              autoPairReplacement.caretOffset,
             )
           ) {
             handleInput();
@@ -482,6 +526,7 @@ export function useEditorKeyboardActions({
       applyLineNumberMultiSelectionEdit,
       beginRectangularSelectionFromCaret,
       buildAutoDedentReplacement,
+      buildAutoPairReplacement,
       buildEnterInsertEdit,
       buildLineNumberSelectionRangeText,
       clearLineNumberMultiSelection,

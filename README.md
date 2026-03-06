@@ -8,6 +8,7 @@ Rutar is a lightweight, high-performance code editor built with Tauri, React 19,
 
 - Tree-sitter syntax highlighting powered by Rust backend tokens.
 - Virtualized editor rendering for smooth large-file editing.
+- Smart Enter indentation plus auto-paired brackets and quotes in both the main editor and editable diff panels.
 - Outline sidebar for structured files and programming languages.
 - Markdown live preview panel with Mermaid support and scroll sync.
 - Editable side-by-side diff tabs with backend-aligned line comparison.

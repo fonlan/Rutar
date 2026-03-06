@@ -4950,6 +4950,74 @@ describe("Editor component", () => {
     });
   });
 
+  it("auto-pairs brackets and keeps the caret in the middle", async () => {
+    const tab = createTab({ id: "tab-autopair-bracket" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: "(", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("alpha()\nbeta\n");
+      expect(textarea.selectionStart).toBe(6);
+      expect(textarea.selectionEnd).toBe(6);
+      expect(invokeMock).toHaveBeenCalledWith(
+        "edit_text",
+        expect.objectContaining({
+          id: tab.id,
+          newText: "()",
+        }),
+      );
+    });
+  });
+
+  it("auto-pairs quotes in non-word context and keeps the caret in the middle", async () => {
+    const tab = createTab({
+      id: "tab-autopair-quote",
+      name: "note.txt",
+      path: "C:\\repo\\note.txt",
+    });
+    const previousImplementation = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (
+        command === "get_visible_lines" &&
+        payload &&
+        typeof payload === "object" &&
+        payload.id === tab.id
+      ) {
+        return " \n";
+      }
+
+      return previousImplementation
+        ? previousImplementation(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, " \n");
+
+    textarea.focus();
+    textarea.setSelectionRange(1, 1);
+    fireEvent.keyDown(textarea, { key: '"', isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe(' ""\n');
+      expect(textarea.selectionStart).toBe(2);
+      expect(textarea.selectionEnd).toBe(2);
+      expect(invokeMock).toHaveBeenCalledWith(
+        "edit_text",
+        expect.objectContaining({
+          id: tab.id,
+          newText: '""',
+        }),
+      );
+    });
+  });
+
   it("dedents current json line when typing a closing brace", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "spaces",
