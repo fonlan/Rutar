@@ -16,9 +16,9 @@ import {
 import { FilterRulesEditor } from '@/components/search-panel/FilterRulesEditor';
 import { SearchQuerySection } from '@/components/search-panel/SearchQuerySection';
 import { SearchInputContextMenu } from '@/components/search-panel/SearchInputContextMenu';
-import { SearchPanelHeader } from '@/components/search-panel/SearchPanelHeader';
 import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchResultsPanel } from '@/components/search-panel/SearchResultsPanel';
+import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -56,7 +56,6 @@ import type {
   SearchSidebarTextInputElement,
   TabSearchPanelSnapshot,
 } from '@/components/search-panel/types';
-import { cn } from '@/lib/utils';
 import { getSearchPanelMessages, t } from '@/i18n';
 import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import { useStore } from '@/store/useStore';
@@ -90,7 +89,6 @@ import {
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
   SEARCH_SIDEBAR_MAX_WIDTH,
   SEARCH_SIDEBAR_MIN_WIDTH,
-  SEARCH_SIDEBAR_RIGHT_OFFSET,
   writePlainTextToClipboard,
 } from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
@@ -3955,150 +3953,116 @@ export function SearchReplacePanel() {
     return null;
   }
 
+  const sidebarBody = !isFilterMode ? (
+    <SearchQuerySection
+      canReplace={canReplace}
+      caseSensitive={caseSensitive}
+      isReplaceMode={isReplaceMode}
+      keyword={keyword}
+      messages={messages}
+      parseEscapeSequences={parseEscapeSequences}
+      recentReplaceValues={recentReplaceValues}
+      recentSearchKeywords={recentSearchKeywords}
+      replaceValue={replaceValue}
+      resultToggleTitle={resultToggleTitle}
+      reverseSearch={reverseSearch}
+      searchInputRef={searchInputRef}
+      searchMode={searchMode}
+      onCaseSensitiveChange={(checked) => {
+        setCaseSensitive(checked);
+        setErrorMessage(null);
+        resetSearchState();
+      }}
+      onKeywordChange={(value) => {
+        setKeyword(value);
+        setFeedbackMessage(null);
+        setErrorMessage(null);
+        resetSearchState();
+      }}
+      onKeywordClear={() => {
+        setKeyword('');
+        setFeedbackMessage(null);
+        setErrorMessage(null);
+        resetSearchState();
+      }}
+      onKeywordKeyDown={handleKeywordKeyDown}
+      onNavigateNext={() => void navigateByStep(1)}
+      onNavigatePrev={() => void navigateByStep(-1)}
+      onParseEscapeSequencesChange={setParseEscapeSequences}
+      onReplaceAll={() => void handleReplaceAll()}
+      onReplaceCurrent={() => void handleReplaceCurrent()}
+      onReplaceValueChange={setReplaceValue}
+      onReplaceValueClear={() => setReplaceValue('')}
+      onReverseSearchChange={setReverseSearch}
+      onSearchModeChange={(mode) => {
+        setSearchMode(mode);
+        setErrorMessage(null);
+        resetSearchState();
+      }}
+      onToggleAllResults={toggleResultPanelAndRefresh}
+    />
+  ) : (
+    <FilterRulesEditor
+      effectiveFilterRules={effectiveFilterRules}
+      filterGroupNameInput={filterGroupNameInput}
+      filterRuleDragState={filterRuleDragState}
+      filterRules={filterRules}
+      filterToggleLabel={filterToggleLabel}
+      hasAnyConfiguredFilterRule={hasAnyConfiguredFilterRule}
+      messages={messages}
+      normalizedFilterRuleGroups={normalizedFilterRuleGroups}
+      selectedFilterGroupName={selectedFilterGroupName}
+      onAddFilterRule={addFilterRule}
+      onClearFilterGroupNameInput={() => setFilterGroupNameInput('')}
+      onClearFilterRules={clearFilterRules}
+      onDeleteFilterRuleGroup={() => void handleDeleteFilterRuleGroup()}
+      onExportFilterRuleGroups={() => void handleExportFilterRuleGroups()}
+      onFilterGroupNameInputChange={setFilterGroupNameInput}
+      onImportFilterRuleGroups={() => void handleImportFilterRuleGroups()}
+      onKeywordKeyDown={handleKeywordKeyDown}
+      onLoadFilterRuleGroup={handleLoadFilterRuleGroup}
+      onMoveFilterRule={moveFilterRule}
+      onRemoveFilterRule={removeFilterRule}
+      onRuleDragEnd={onFilterRuleDragEnd}
+      onRuleDragOver={onFilterRuleDragOver}
+      onRuleDragStart={onFilterRuleDragStart}
+      onRuleDrop={onFilterRuleDrop}
+      onSaveFilterRuleGroup={() => void handleSaveFilterRuleGroup()}
+      onSelectedFilterGroupChange={handleSelectedFilterGroupChange}
+      onToggleResultPanelAndRefresh={toggleResultPanelAndRefresh}
+      onUpdateFilterRule={updateFilterRule}
+    />
+  );
+
   return (
     <>
-      <div
-        ref={searchSidebarContainerRef}
-        data-rutar-search-sidebar="true"
-        className={cn(
-          'fixed z-40 transform-gpu overflow-hidden transition-transform duration-200 ease-out',
-          isOpen ? 'pointer-events-auto' : 'pointer-events-none'
-        )}
-        style={{
-          width: `${searchSidebarWidth}px`,
-          right: `${SEARCH_SIDEBAR_RIGHT_OFFSET}px`,
-          top: searchSidebarTopOffset,
-          bottom: searchSidebarBottomOffset,
-          transform: isOpen
-            ? 'translateX(0)'
-            : `translateX(calc(100% + ${SEARCH_SIDEBAR_RIGHT_OFFSET}px))`,
-        }}
+      <SearchSidebarChrome
+        canReplace={canReplace}
+        errorMessage={errorMessage}
+        feedbackMessage={feedbackMessage}
+        isOpen={isOpen}
+        isSearchUiActive={isSearchUiActive}
+        isSearchSidebarResizing={isSearchSidebarResizing}
+        messages={messages}
+        panelMode={panelMode}
+        searchSidebarBottomOffset={searchSidebarBottomOffset}
+        searchSidebarContainerRef={searchSidebarContainerRef}
+        searchSidebarTopOffset={searchSidebarTopOffset}
+        searchSidebarWidth={searchSidebarWidth}
+        statusText={statusText}
+        onBlurCapture={handleSearchUiBlurCapture}
+        onClose={() => setIsOpen(false)}
         onContextMenu={handleSearchSidebarContextMenu}
+        onFocusCapture={handleSearchUiFocusCapture}
+        onModeChange={(mode) => {
+          setPanelMode(mode);
+          focusSearchInput();
+        }}
+        onPointerDownCapture={handleSearchUiPointerDownCapture}
+        onResizePointerDown={startSearchSidebarResize}
       >
-        <div
-          className={cn(
-            'flex h-full flex-col overflow-y-auto border-l border-border p-3 shadow-2xl transition-colors',
-            isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
-            isOpen ? 'pointer-events-auto' : 'pointer-events-none'
-          )}
-          onPointerDownCapture={handleSearchUiPointerDownCapture}
-          onFocusCapture={handleSearchUiFocusCapture}
-          onBlurCapture={handleSearchUiBlurCapture}
-        >
-          <SearchPanelHeader
-            canReplace={canReplace}
-            panelMode={panelMode}
-            messages={messages}
-            onClose={() => setIsOpen(false)}
-            onModeChange={(mode) => {
-              setPanelMode(mode);
-              focusSearchInput();
-            }}
-          />
-
-          {!isFilterMode ? (
-            <SearchQuerySection
-              canReplace={canReplace}
-              caseSensitive={caseSensitive}
-              isReplaceMode={isReplaceMode}
-              keyword={keyword}
-              messages={messages}
-              parseEscapeSequences={parseEscapeSequences}
-              recentReplaceValues={recentReplaceValues}
-              recentSearchKeywords={recentSearchKeywords}
-              replaceValue={replaceValue}
-              resultToggleTitle={resultToggleTitle}
-              reverseSearch={reverseSearch}
-              searchInputRef={searchInputRef}
-              searchMode={searchMode}
-              onCaseSensitiveChange={(checked) => {
-                setCaseSensitive(checked);
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-              onKeywordChange={(value) => {
-                setKeyword(value);
-                setFeedbackMessage(null);
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-              onKeywordClear={() => {
-                setKeyword('');
-                setFeedbackMessage(null);
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-              onKeywordKeyDown={handleKeywordKeyDown}
-              onNavigateNext={() => void navigateByStep(1)}
-              onNavigatePrev={() => void navigateByStep(-1)}
-              onParseEscapeSequencesChange={setParseEscapeSequences}
-              onReplaceAll={() => void handleReplaceAll()}
-              onReplaceCurrent={() => void handleReplaceCurrent()}
-              onReplaceValueChange={setReplaceValue}
-              onReplaceValueClear={() => setReplaceValue('')}
-              onReverseSearchChange={setReverseSearch}
-              onSearchModeChange={(mode) => {
-                setSearchMode(mode);
-                setErrorMessage(null);
-                resetSearchState();
-              }}
-              onToggleAllResults={toggleResultPanelAndRefresh}
-            />
-          ) : (
-            <FilterRulesEditor
-              effectiveFilterRules={effectiveFilterRules}
-              filterGroupNameInput={filterGroupNameInput}
-              filterRuleDragState={filterRuleDragState}
-              filterRules={filterRules}
-              filterToggleLabel={filterToggleLabel}
-              hasAnyConfiguredFilterRule={hasAnyConfiguredFilterRule}
-              messages={messages}
-              normalizedFilterRuleGroups={normalizedFilterRuleGroups}
-              selectedFilterGroupName={selectedFilterGroupName}
-              onAddFilterRule={addFilterRule}
-              onClearFilterGroupNameInput={() => setFilterGroupNameInput('')}
-              onClearFilterRules={clearFilterRules}
-              onDeleteFilterRuleGroup={() => void handleDeleteFilterRuleGroup()}
-              onExportFilterRuleGroups={() => void handleExportFilterRuleGroups()}
-              onFilterGroupNameInputChange={setFilterGroupNameInput}
-              onImportFilterRuleGroups={() => void handleImportFilterRuleGroups()}
-              onKeywordKeyDown={handleKeywordKeyDown}
-              onLoadFilterRuleGroup={handleLoadFilterRuleGroup}
-              onMoveFilterRule={moveFilterRule}
-              onRemoveFilterRule={removeFilterRule}
-              onRuleDragEnd={onFilterRuleDragEnd}
-              onRuleDragOver={onFilterRuleDragOver}
-              onRuleDragStart={onFilterRuleDragStart}
-              onRuleDrop={onFilterRuleDrop}
-              onSaveFilterRuleGroup={() => void handleSaveFilterRuleGroup()}
-              onSelectedFilterGroupChange={handleSelectedFilterGroupChange}
-              onToggleResultPanelAndRefresh={toggleResultPanelAndRefresh}
-              onUpdateFilterRule={updateFilterRule}
-            />
-          )}
-
-          <div
-            className={cn(
-              'mt-2 text-xs',
-              errorMessage ? 'text-destructive' : 'text-muted-foreground'
-            )}
-          >
-            {feedbackMessage || statusText} · {messages.shortcutHint}
-          </div>
-
-        </div>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize search sidebar"
-          onPointerDown={startSearchSidebarResize}
-          className={cn(
-            'absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none transition-colors',
-            !isOpen && 'pointer-events-none opacity-0',
-            isSearchSidebarResizing ? 'bg-primary/40' : 'hover:bg-primary/25'
-          )}
-        />
-      </div>
+        {sidebarBody}
+      </SearchSidebarChrome>
 
       {inputContextMenu && (
         <SearchInputContextMenu
