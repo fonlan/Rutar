@@ -259,6 +259,119 @@ export function resolveSearchKeyword(value: string, parseEscapeSequences: boolea
   return decodeSearchReplaceEscapeSequences(value);
 }
 
+interface SearchStatusTextArgs {
+  currentFilterMatchIndex: number;
+  currentMatchIndex: number;
+  errorMessage: string | null;
+  filterMatchCount: number;
+  hasConfiguredFilterRules: boolean;
+  isFilterMode: boolean;
+  isSearching: boolean;
+  keyword: string;
+  matchCount: number;
+  messages: ReturnType<typeof getSearchPanelMessages>;
+  totalFilterMatchedLineCount: number | null;
+  totalMatchCount: number | null;
+}
+
+interface PlainTextResultEntriesArgs {
+  filterRulesPayloadLength: number;
+  isFilterMode: boolean;
+  keyword: string;
+  visibleFilterMatches: FilterMatch[];
+  visibleMatches: SearchMatch[];
+}
+
+export function getDisplayCountText(value: number | null, countingLabel: string) {
+  return value === null ? countingLabel : `${value}`;
+}
+
+export function getPlainTextResultEntries({
+  filterRulesPayloadLength,
+  isFilterMode,
+  keyword,
+  visibleFilterMatches,
+  visibleMatches,
+}: PlainTextResultEntriesArgs): string[] {
+  if (isFilterMode) {
+    if (filterRulesPayloadLength === 0 || visibleFilterMatches.length === 0) {
+      return [];
+    }
+
+    return visibleFilterMatches.map((match) => match.lineText || '');
+  }
+
+  if (!keyword || visibleMatches.length === 0) {
+    return [];
+  }
+
+  return visibleMatches.map((match) => match.lineText || '');
+}
+
+export function getSearchStatusText({
+  currentFilterMatchIndex,
+  currentMatchIndex,
+  errorMessage,
+  filterMatchCount,
+  hasConfiguredFilterRules,
+  isFilterMode,
+  isSearching,
+  keyword,
+  matchCount,
+  messages,
+  totalFilterMatchedLineCount,
+  totalMatchCount,
+}: SearchStatusTextArgs) {
+  if (isFilterMode) {
+    if (!hasConfiguredFilterRules) {
+      return messages.statusEnterToFilter;
+    }
+
+    if (errorMessage) {
+      return errorMessage;
+    }
+
+    if (isSearching) {
+      return messages.statusFiltering;
+    }
+
+    if (filterMatchCount === 0) {
+      return messages.statusFilterNoMatches;
+    }
+
+    if (totalFilterMatchedLineCount === null) {
+      return messages.statusFilterTotalPending(Math.min(currentFilterMatchIndex + 1, filterMatchCount));
+    }
+
+    return messages.statusFilterTotalReady(
+      totalFilterMatchedLineCount,
+      Math.min(currentFilterMatchIndex + 1, filterMatchCount)
+    );
+  }
+
+  if (!keyword) {
+    return messages.statusEnterToSearch;
+  }
+
+  if (errorMessage) {
+    return errorMessage;
+  }
+
+  if (isSearching) {
+    return messages.statusSearching;
+  }
+
+  if (matchCount === 0) {
+    return messages.statusNoMatches;
+  }
+
+  if (totalMatchCount === null) {
+    return messages.statusTotalPending(Math.min(currentMatchIndex + 1, matchCount));
+  }
+
+  return messages.statusTotalReady(totalMatchCount, Math.min(currentMatchIndex + 1, matchCount));
+}
+
 export function renderMatchPreview(match: SearchMatch) {
   const lineText = match.lineText || '';
   const previewSegments = match.previewSegments ?? [];

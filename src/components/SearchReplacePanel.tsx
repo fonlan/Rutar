@@ -71,7 +71,10 @@ import {
   dispatchNavigateToMatch,
   dispatchSearchClose,
   FILTER_CHUNK_SIZE,
+  getDisplayCountText,
   getReservedLayoutHeight,
+  getPlainTextResultEntries,
+  getSearchStatusText,
   getTextInputSelectionRange,
   getSearchModeValue,
   hasTextInputSelection,
@@ -3647,28 +3650,23 @@ export function SearchReplacePanel() {
   const displayTotalMatchCount = totalMatchCount;
   const displayTotalMatchedLineCount = totalMatchedLineCount;
   const displayTotalFilterMatchedLineCount = totalFilterMatchedLineCount;
-  const displayTotalMatchCountText =
-    displayTotalMatchCount === null ? messages.counting : `${displayTotalMatchCount}`;
-  const displayTotalMatchedLineCountText =
-    displayTotalMatchedLineCount === null ? messages.counting : `${displayTotalMatchedLineCount}`;
-  const displayTotalFilterMatchedLineCountText =
-    displayTotalFilterMatchedLineCount === null ? messages.counting : `${displayTotalFilterMatchedLineCount}`;
+  const displayTotalMatchCountText = getDisplayCountText(displayTotalMatchCount, messages.counting);
+  const displayTotalMatchedLineCountText = getDisplayCountText(displayTotalMatchedLineCount, messages.counting);
+  const displayTotalFilterMatchedLineCountText = getDisplayCountText(
+    displayTotalFilterMatchedLineCount,
+    messages.counting
+  );
 
-  const plainTextResultEntries = useMemo(() => {
-    if (isFilterMode) {
-      if (filterRulesPayload.length === 0 || visibleFilterMatches.length === 0) {
-        return [] as string[];
-      }
-
-      return visibleFilterMatches.map((match) => match.lineText || '');
-    }
-
-    if (!keyword || visibleMatches.length === 0) {
-      return [] as string[];
-    }
-
-    return visibleMatches.map((match) => match.lineText || '');
-  }, [filterRulesPayload.length, isFilterMode, keyword, visibleFilterMatches, visibleMatches]);
+  const plainTextResultEntries = useMemo(
+    () => getPlainTextResultEntries({
+      filterRulesPayloadLength: filterRulesPayload.length,
+      isFilterMode,
+      keyword,
+      visibleFilterMatches,
+      visibleMatches,
+    }),
+    [filterRulesPayload.length, isFilterMode, keyword, visibleFilterMatches, visibleMatches]
+  );
 
   const copyPlainTextResults = useCallback(async () => {
     if (plainTextResultEntries.length === 0) {
@@ -3766,69 +3764,36 @@ export function SearchReplacePanel() {
       visibleMatches={visibleMatches}
     />
   );
-  const statusText = useMemo(() => {
-    if (isFilterMode) {
-      if (effectiveFilterRules.length === 0) {
-        return messages.statusEnterToFilter;
-      }
-
-      if (errorMessage) {
-        return errorMessage;
-      }
-
-      if (isSearching) {
-        return messages.statusFiltering;
-      }
-
-      if (filterMatches.length === 0) {
-        return messages.statusFilterNoMatches;
-      }
-
-      if (displayTotalFilterMatchedLineCount === null) {
-        return messages.statusFilterTotalPending(Math.min(currentFilterMatchIndex + 1, filterMatches.length));
-      }
-
-      return messages.statusFilterTotalReady(
-        displayTotalFilterMatchedLineCount,
-        Math.min(currentFilterMatchIndex + 1, filterMatches.length)
-      );
-    }
-
-    if (!keyword) {
-      return messages.statusEnterToSearch;
-    }
-
-    if (errorMessage) {
-      return errorMessage;
-    }
-
-    if (isSearching) {
-      return messages.statusSearching;
-    }
-
-    if (matches.length === 0) {
-      return messages.statusNoMatches;
-    }
-
-    if (displayTotalMatchCount === null) {
-      return messages.statusTotalPending(Math.min(currentMatchIndex + 1, matches.length));
-    }
-
-    return messages.statusTotalReady(displayTotalMatchCount, Math.min(currentMatchIndex + 1, matches.length));
-  }, [
-    currentFilterMatchIndex,
-    currentMatchIndex,
-    displayTotalFilterMatchedLineCount,
-    displayTotalMatchCount,
-    effectiveFilterRules.length,
-    errorMessage,
-    filterMatches.length,
-    isFilterMode,
-    isSearching,
-    keyword,
-    matches.length,
-    messages,
-  ]);
+  const statusText = useMemo(
+    () => getSearchStatusText({
+      currentFilterMatchIndex,
+      currentMatchIndex,
+      errorMessage,
+      filterMatchCount: filterMatches.length,
+      hasConfiguredFilterRules: effectiveFilterRules.length > 0,
+      isFilterMode,
+      isSearching,
+      keyword,
+      matchCount: matches.length,
+      messages,
+      totalFilterMatchedLineCount: displayTotalFilterMatchedLineCount,
+      totalMatchCount: displayTotalMatchCount,
+    }),
+    [
+      currentFilterMatchIndex,
+      currentMatchIndex,
+      displayTotalFilterMatchedLineCount,
+      displayTotalMatchCount,
+      effectiveFilterRules.length,
+      errorMessage,
+      filterMatches.length,
+      isFilterMode,
+      isSearching,
+      keyword,
+      matches.length,
+      messages,
+    ]
+  );
 
   const canReplace = !!activeTab;
   const isResultPanelOpen = resultPanelState === 'open';
