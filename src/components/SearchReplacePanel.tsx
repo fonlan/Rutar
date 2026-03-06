@@ -19,6 +19,7 @@ import { useFilterRulesEditorProps } from '@/components/search-panel/useFilterRu
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
 import { useSearchQuerySectionProps } from '@/components/search-panel/useSearchQuerySectionProps';
 import { useSearchPanelOverlaysProps } from '@/components/search-panel/useSearchPanelOverlaysProps';
+import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
@@ -47,7 +48,6 @@ import type {
   SearchFirstBackendResult,
   SearchMatch,
   SearchMode,
-  SearchOpenEventDetail,
   SearchResultFilterStepBackendResult,
   SearchResultPanelState,
   SearchRunResult,
@@ -64,10 +64,8 @@ import {
   dispatchEditorForceRefresh,
   dispatchNavigateToLine,
   dispatchNavigateToMatch,
-  dispatchSearchClose,
   FILTER_CHUNK_SIZE,
   getDisplayCountText,
-  getReservedLayoutHeight,
   getSearchStatusText,
   getSearchModeValue,
   normalizeFilterRuleGroups,
@@ -127,8 +125,6 @@ export function SearchReplacePanel() {
   const [resultFilterStepLoadingDirection, setResultFilterStepLoadingDirection] = useState<'prev' | 'next' | null>(null);
   const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
-  const [searchSidebarTopOffset, setSearchSidebarTopOffset] = useState('0px');
-  const [searchSidebarBottomOffset, setSearchSidebarBottomOffset] = useState('0px');
 
   const isReplaceMode = panelMode === 'replace';
   const isFilterMode = panelMode === 'filter';
@@ -271,7 +267,6 @@ export function SearchReplacePanel() {
   } | null>(null);
   const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
-  const previousIsOpenRef = useRef(false);
   const searchSessionCommandUnsupportedRef = useRef(false);
   const searchSessionRestoreCommandUnsupportedRef = useRef(false);
   const filterSessionCommandUnsupportedRef = useRef(false);
@@ -2264,33 +2259,29 @@ export function SearchReplacePanel() {
     }
   }, [messages, normalizedFilterRuleGroups]);
 
-  useEffect(() => {
-    const handleSearchOpen = (event: Event) => {
-      if (!activeTab) {
-        return;
-      }
-
-      const customEvent = event as CustomEvent<SearchOpenEventDetail>;
-      const openMode = customEvent.detail?.mode;
-      const nextMode: PanelMode = openMode === 'replace' ? 'replace' : openMode === 'filter' ? 'filter' : 'find';
-
-      setIsOpen(true);
-      setPanelMode(nextMode);
-      setResultPanelState('closed');
-      setResultFilterKeyword('');
-      setAppliedResultFilterKeyword('');
-      setIsResultFilterSearching(false);
-      stopResultFilterSearchRef.current = true;
-      setErrorMessage(null);
-      setFeedbackMessage(null);
-      focusSearchInput();
-    };
-
-    window.addEventListener('rutar:search-open', handleSearchOpen as EventListener);
-    return () => {
-      window.removeEventListener('rutar:search-open', handleSearchOpen as EventListener);
-    };
-  }, [activeTab, focusSearchInput]);
+  const { searchSidebarBottomOffset, searchSidebarTopOffset } = useSearchPanelShellEffects({
+    activeTabId,
+    focusSearchInput,
+    hasActiveTab: !!activeTab,
+    isFilterMode,
+    isOpen,
+    keyword,
+    minimizedResultWrapperRef,
+    navigateByStep,
+    previousActiveTabIdRef,
+    resultPanelState,
+    resultPanelWrapperRef,
+    reverseSearch,
+    setAppliedResultFilterKeyword,
+    setErrorMessage,
+    setFeedbackMessage,
+    setIsOpen,
+    setIsResultFilterSearching,
+    setPanelMode,
+    setResultFilterKeyword,
+    setResultPanelState,
+    stopResultFilterSearchRef,
+  });
 
   useEffect(() => {
     const restoreRunVersion = sessionRestoreRunVersionRef.current + 1;
@@ -2686,16 +2677,6 @@ export function SearchReplacePanel() {
     totalMatchedLineCount,
   ]);
 
-  useEffect(() => {
-    if (previousIsOpenRef.current && !isOpen) {
-      const targetTabId = activeTabId ?? previousActiveTabIdRef.current;
-      if (targetTabId) {
-        dispatchSearchClose(targetTabId);
-      }
-    }
-
-    previousIsOpenRef.current = isOpen;
-  }, [activeTabId, isOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2726,138 +2707,6 @@ export function SearchReplacePanel() {
     };
   }, [messages.filterGroupLoadFailed]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    focusSearchInput();
-  }, [focusSearchInput, isOpen]);
-
-  const updateSearchSidebarTopOffset = useCallback(() => {
-    const reservedTopHeight = Math.max(
-      0,
-      Math.ceil(getReservedLayoutHeight('[data-layout-region="titlebar"], [data-layout-region="toolbar"]'))
-    );
-    const nextOffset = `${reservedTopHeight}px`;
-
-    setSearchSidebarTopOffset((previousOffset) =>
-      previousOffset === nextOffset ? previousOffset : nextOffset
-    );
-  }, []);
-
-  const updateSearchSidebarBottomOffset = useCallback(() => {
-    const reservedBottomHeight = Math.max(
-      0,
-      Math.ceil(getReservedLayoutHeight('[data-layout-region="statusbar"]'))
-    );
-
-    let nextOffsetValue = reservedBottomHeight;
-
-    if (isOpen && resultPanelState !== 'closed') {
-      const targetElement =
-        resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
-
-      if (targetElement) {
-        const rect = targetElement.getBoundingClientRect();
-        const resultPanelOffset = Math.max(0, Math.ceil(window.innerHeight - rect.top));
-        nextOffsetValue = Math.max(nextOffsetValue, resultPanelOffset);
-      }
-    }
-
-    const nextOffset = `${nextOffsetValue}px`;
-    setSearchSidebarBottomOffset((previousOffset) =>
-      previousOffset === nextOffset ? previousOffset : nextOffset
-    );
-  }, [isOpen, resultPanelState]);
-
-  useEffect(() => {
-    updateSearchSidebarTopOffset();
-  }, [updateSearchSidebarTopOffset]);
-
-  useEffect(() => {
-    updateSearchSidebarBottomOffset();
-  }, [updateSearchSidebarBottomOffset]);
-
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateSearchSidebarTopOffset);
-
-      return () => {
-        window.removeEventListener('resize', updateSearchSidebarTopOffset);
-      };
-    }
-
-    const titleAndToolbarElements = document.querySelectorAll<HTMLElement>(
-      '[data-layout-region="titlebar"], [data-layout-region="toolbar"]'
-    );
-    const observer = new ResizeObserver(() => {
-      updateSearchSidebarTopOffset();
-    });
-
-    titleAndToolbarElements.forEach((element) => {
-      observer.observe(element);
-    });
-
-    window.addEventListener('resize', updateSearchSidebarTopOffset);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateSearchSidebarTopOffset);
-    };
-  }, [updateSearchSidebarTopOffset]);
-
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateSearchSidebarBottomOffset);
-
-      return () => {
-        window.removeEventListener('resize', updateSearchSidebarBottomOffset);
-      };
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateSearchSidebarBottomOffset();
-    });
-
-    const statusBarElement = document.querySelector<HTMLElement>('[data-layout-region="statusbar"]');
-    if (statusBarElement) {
-      observer.observe(statusBarElement);
-    }
-
-    if (isOpen && resultPanelState !== 'closed') {
-      const targetElement =
-        resultPanelState === 'open' ? resultPanelWrapperRef.current : minimizedResultWrapperRef.current;
-
-      if (targetElement) {
-        observer.observe(targetElement);
-      }
-    }
-
-    window.addEventListener('resize', updateSearchSidebarBottomOffset);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateSearchSidebarBottomOffset);
-    };
-  }, [isOpen, resultPanelState, updateSearchSidebarBottomOffset]);
 
   useEffect(() => {
     return () => {
@@ -2930,38 +2779,6 @@ export function SearchReplacePanel() {
     matches.length,
     resultPanelState,
   ]);
-
-  useEffect(() => {
-    if (!activeTab) {
-      return;
-    }
-
-    const handleFindNextShortcuts = (event: KeyboardEvent) => {
-      const key = event.key;
-      if (key !== 'F3') {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (!keyword && !isFilterMode) {
-        if (!isOpen) {
-          setIsOpen(true);
-          focusSearchInput();
-        }
-        return;
-      }
-
-      const primaryStep = isFilterMode ? 1 : reverseSearch ? -1 : 1;
-      const step = event.shiftKey ? -primaryStep : primaryStep;
-      void navigateByStep(step);
-    };
-
-    window.addEventListener('keydown', handleFindNextShortcuts);
-    return () => {
-      window.removeEventListener('keydown', handleFindNextShortcuts);
-    };
-  }, [activeTab, focusSearchInput, isFilterMode, isOpen, keyword, navigateByStep, reverseSearch]);
 
   const handleApplyResultFilter = useCallback(async () => {
     cancelPendingBatchLoad();
