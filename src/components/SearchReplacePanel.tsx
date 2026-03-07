@@ -35,8 +35,8 @@ import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilte
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
-import { resolveSearchPanelBoundedIndex, resolveSearchPanelStepCandidateIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
-import { resolveFilterStepTarget, resolveSearchPanelLocalNavigationSelection, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
+import { resolveSearchPanelBoundedIndex, shouldLoadMoreForSearchPanelStep } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
+import { resolveFilterStepTarget, resolveSearchPanelLocalStepSelection, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -1404,19 +1404,20 @@ export function SearchReplacePanel() {
 
       if (isFilterMode) {
         if (filterMatches.length > 0) {
-          const candidateIndex = resolveSearchPanelStepCandidateIndex(
-            currentFilterMatchIndexRef.current,
-            filterMatches.length,
-            step
-          );
           const appendedMatches =
-            candidateIndex >= filterMatches.length && !loadMoreLockRef.current
+            !loadMoreLockRef.current &&
+            shouldLoadMoreForSearchPanelStep(
+              currentFilterMatchIndexRef.current,
+              filterMatches.length,
+              step
+            )
               ? await loadMoreFilterMatches()
               : null;
-          const { nextMatches, targetIndex } = resolveSearchPanelLocalNavigationSelection({
+          const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
             appendedMatches,
-            candidateIndex,
+            currentIndex: currentFilterMatchIndexRef.current,
             matches: filterMatches,
+            step,
           });
 
           applyFilterNavigationSelection({
@@ -1436,14 +1437,10 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const candidateIndex = resolveSearchPanelStepCandidateIndex(
-          currentFilterMatchIndexRef.current,
-          filterResult.matches.length,
-          step
-        );
-        const { nextMatches, targetIndex } = resolveSearchPanelLocalNavigationSelection({
-          candidateIndex,
+        const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
+          currentIndex: currentFilterMatchIndexRef.current,
           matches: filterResult.matches,
+          step,
         });
 
         applyFilterNavigationSelection({
@@ -1521,19 +1518,20 @@ export function SearchReplacePanel() {
       }
 
       if (keyword && matches.length > 0) {
-        const candidateIndex = resolveSearchPanelStepCandidateIndex(
-          currentMatchIndexRef.current,
-          matches.length,
-          step
-        );
         const appendedMatches =
-          candidateIndex >= matches.length && !loadMoreLockRef.current
+          !loadMoreLockRef.current &&
+          shouldLoadMoreForSearchPanelStep(
+            currentMatchIndexRef.current,
+            matches.length,
+            step
+          )
             ? await loadMoreMatches()
             : null;
-        const { nextMatches, targetIndex } = resolveSearchPanelLocalNavigationSelection({
+        const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
           appendedMatches,
-          candidateIndex,
+          currentIndex: currentMatchIndexRef.current,
           matches,
+          step,
         });
 
         applySearchNavigationSelection({
@@ -1554,14 +1552,10 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const candidateIndex = resolveSearchPanelStepCandidateIndex(
-        currentMatchIndexRef.current,
-        searchResult.matches.length,
-        step
-      );
-      const { nextMatches, targetIndex } = resolveSearchPanelLocalNavigationSelection({
-        candidateIndex,
+      const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
+        currentIndex: currentMatchIndexRef.current,
         matches: searchResult.matches,
+        step,
       });
 
       applySearchNavigationSelection({

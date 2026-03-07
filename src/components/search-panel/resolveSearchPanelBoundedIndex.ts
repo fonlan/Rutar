@@ -27,3 +27,11 @@ export function resolveSearchPanelStepCandidateIndex(
 ): number {
   return resolveSearchPanelBoundedIndex(currentIndex, matchCount) + step;
 }
+
+export function shouldLoadMoreForSearchPanelStep(
+  currentIndex: number,
+  matchCount: number,
+  step: number
+): boolean {
+  return resolveSearchPanelStepCandidateIndex(currentIndex, matchCount, step) >= matchCount;
+}
