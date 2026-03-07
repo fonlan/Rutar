@@ -23,13 +23,12 @@ import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchA
 import { useSearchResultFilterStepNavigation } from '@/components/search-panel/useSearchResultFilterStepNavigation';
 import { useSearchStepNavigation } from '@/components/search-panel/useSearchStepNavigation';
 import { useSearchReplaceHandlers } from '@/components/search-panel/useSearchReplaceHandlers';
+import { useSearchFirstMatchSearch } from '@/components/search-panel/useSearchFirstMatchSearch';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
-import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
-import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
@@ -40,7 +39,6 @@ import { applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResul
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterCountRequest, buildSearchCountRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
-import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -735,98 +733,29 @@ export function SearchReplacePanel() {
     startTransition,
   });
 
-  const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
-    cancelPendingBatchLoad();
-    if (!activeTab || !keyword || isFilterMode) {
-      return null;
-    }
-
-    const runVersion = runVersionRef.current + 1;
-    runVersionRef.current = runVersion;
-    setIsSearching(true);
-
-    try {
-      const {
-        documentVersion,
-        firstMatch,
-      } = await resolveSearchFirstMatchState({
-        activeTabId: activeTab.id,
-        caseSensitive,
-        effectiveSearchKeyword,
-        reverse,
-        searchMode,
-      });
-
-      if (runVersionRef.current !== runVersion) {
-        return null;
-      }
-
-      const immediateResult = applyResolvedSearchFirstMatchResult({
-        activeTabId: activeTab.id,
-        cachedSearchRef,
-        caseSensitive,
-        chunkCursorRef,
-        documentVersion,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        effectiveSearchKeyword,
-        firstMatch,
-        parseEscapeSequences,
-        resetSearchState,
-        searchMode,
-        setCurrentMatchIndex,
-        setErrorMessage,
-        setIsSearching,
-        setMatches,
-        setSearchSessionId,
-        startTransition,
-      });
-
-      if (!firstMatch) {
-        return immediateResult;
-      }
-
-      void (async () => {
-        const chunkResult = await executeSearch(true, false);
-        if (!chunkResult) {
-          return;
-        }
-      })();
-
-      return immediateResult;
-    } catch (error) {
-      if (runVersionRef.current !== runVersion) {
-        return null;
-      }
-
-      const readableError = applySearchPanelErrorMessage({
-        error,
-        prefix: messages.searchFailed,
-        setErrorMessage,
-      });
-      resetSearchState();
-      setIsSearching(false);
-
-      return {
-        matches: [],
-        documentVersion: 0,
-        errorMessage: readableError,
-        nextOffset: null,
-      };
-    }
-  }, [
-    activeTab,
+  const executeFirstMatchSearch = useSearchFirstMatchSearch({
+    activeTabId: activeTab?.id ?? null,
     backendResultFilterKeyword,
+    cachedSearchRef,
     cancelPendingBatchLoad,
     caseSensitive,
+    chunkCursorRef,
     effectiveSearchKeyword,
     executeSearch,
     isFilterMode,
     keyword,
-    messages.searchFailed,
     parseEscapeSequences,
     resetSearchState,
+    runVersionRef,
+    searchFailedLabel: messages.searchFailed,
     searchMode,
-  ]);
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setIsSearching,
+    setMatches,
+    setSearchSessionId,
+    startTransition,
+  });
 
   const {
     handleSelectMatch,
