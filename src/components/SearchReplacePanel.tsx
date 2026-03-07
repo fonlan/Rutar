@@ -34,8 +34,7 @@ import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult 
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
-import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
-import { resolveFilterStepAnchor, resolveSearchCursorStepAnchor, resolveSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
+import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { resolveSearchPanelBoundedIndex, resolveSearchPanelStepCandidateIndex, resolveSearchPanelWrappedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1325,11 +1324,10 @@ export function SearchReplacePanel() {
 
       if (activeTab && isFilterMode && !filterStepCommandUnsupportedRef.current) {
         try {
-          const currentFilterMatch = resolveCurrentFilterMatch(
+          const filterStepAnchor = resolveCurrentFilterStepAnchor(
             filterMatches,
             currentFilterMatchIndexRef.current
           );
-          const filterStepAnchor = resolveFilterStepAnchor(currentFilterMatch);
           const stepResultValue = await invoke<unknown>(
             'step_result_filter_search_in_filter_document',
             buildFilterStepRequest({
@@ -1484,13 +1482,10 @@ export function SearchReplacePanel() {
 
       if (activeTab && keyword && !searchCursorStepCommandUnsupportedRef.current) {
         try {
-          const currentSearchMatch = resolveCurrentSearchMatch(
-            matches,
-            currentMatchIndexRef.current
-          );
-          const searchCursorStepAnchor = resolveSearchCursorStepAnchor({
+          const searchCursorStepAnchor = resolveCurrentSearchCursorStepAnchor({
             activeCursorPosition,
-            currentSearchMatch,
+            currentIndex: currentMatchIndexRef.current,
+            matches,
           });
           const stepResultValue = await invoke<unknown>(
             'search_step_from_cursor_in_document',
@@ -2206,11 +2201,10 @@ export function SearchReplacePanel() {
 
       try {
         if (isFilterMode) {
-          const currentFilterMatch = resolveCurrentFilterMatch(
+          const filterStepAnchor = resolveCurrentFilterStepAnchor(
             filterMatches,
             currentFilterMatchIndexRef.current
           );
-          const filterStepAnchor = resolveFilterStepAnchor(currentFilterMatch);
 
           const stepResult = await invoke<FilterResultFilterStepBackendResult>(
             'step_result_filter_search_in_filter_document',
@@ -2280,11 +2274,10 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const currentSearchMatch = resolveCurrentSearchMatch(
+        const searchResultFilterStepAnchor = resolveCurrentSearchResultFilterStepAnchor(
           matches,
           currentMatchIndexRef.current
         );
-        const searchResultFilterStepAnchor = resolveSearchResultFilterStepAnchor(currentSearchMatch);
 
         const stepResult = await invoke<SearchResultFilterStepBackendResult>(
           'step_result_filter_search_in_document',
