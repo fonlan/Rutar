@@ -18,7 +18,7 @@ import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMat
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
-import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
+import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
@@ -58,7 +58,6 @@ import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
-  getDisplayCountText,
   getSearchModeValue,
   normalizeFilterRuleGroups,
   resolveSearchKeyword,
@@ -2630,8 +2629,6 @@ export function SearchReplacePanel() {
     resultFilterKeyword,
   ]);
 
-  const hasAppliedResultFilterKeyword = resultFilterKeyword.trim().length > 0;
-
   const navigateResultFilterByStep = useCallback(
     async (step: number) => {
       if (!activeTab || isSearching || isResultFilterSearching) {
@@ -2870,18 +2867,13 @@ export function SearchReplacePanel() {
       searchMode,
     ]
   );
-
-  const displayTotalMatchCount = totalMatchCount;
-  const displayTotalMatchedLineCount = totalMatchedLineCount;
-  const displayTotalFilterMatchedLineCount = totalFilterMatchedLineCount;
-  const displayTotalMatchCountText = getDisplayCountText(displayTotalMatchCount, messages.counting);
-  const displayTotalMatchedLineCountText = getDisplayCountText(displayTotalMatchedLineCount, messages.counting);
-  const displayTotalFilterMatchedLineCountText = getDisplayCountText(
-    displayTotalFilterMatchedLineCount,
-    messages.counting
-  );
   const {
     copyPlainTextResults,
+    displayTotalFilterMatchedLineCount,
+    displayTotalFilterMatchedLineCountText,
+    displayTotalMatchCount,
+    displayTotalMatchCountText,
+    displayTotalMatchedLineCountText,
     filterToggleLabel,
     handleClearResultFilter,
     handleCloseResultPanel,
@@ -2891,10 +2883,11 @@ export function SearchReplacePanel() {
     handleResultFilterNext,
     handleResultFilterPrev,
     handleResultPanelResizeMouseDown,
+    hasAppliedResultFilterKeyword,
     plainTextResultEntries,
     resultToggleTitle,
     toggleResultPanelAndRefresh,
-  } = useSearchResultPanelControls({
+  } = useSearchResultPanelState({
     cancelPendingBatchLoad,
     executeFilter,
     executeSearch,
@@ -2908,6 +2901,7 @@ export function SearchReplacePanel() {
     onApplyResultFilter: handleApplyResultFilter,
     rememberSearchKeyword,
     requestStopResultFilterSearch,
+    resultFilterKeyword,
     resultFilterStepLoadingDirection,
     resultPanelHeight,
     resultPanelState,
@@ -2917,10 +2911,12 @@ export function SearchReplacePanel() {
     setResultFilterKeyword,
     setResultPanelHeight,
     setResultPanelState,
+    totalFilterMatchedLineCount,
+    totalMatchCount,
+    totalMatchedLineCount,
     visibleFilterMatches,
     visibleMatches,
   });
-
 
   const { searchSidebarBodyProps, searchSidebarChromeProps, searchPanelOverlaysProps } = useSearchPanelViewProps({
     hasActiveTab: !!activeTab,
@@ -3093,4 +3089,5 @@ export function SearchReplacePanel() {
     </>
   );
 }
+
 
