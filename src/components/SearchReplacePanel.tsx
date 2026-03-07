@@ -38,7 +38,6 @@ import { resolveFilterLoadMoreFallbackState, resolveSearchLoadMoreFallbackState 
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
-import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
@@ -55,6 +54,7 @@ import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountReques
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
 import { resolveReplaceAllSearchState, resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
+import { resolveReplaceCurrentTargetState } from '@/components/search-panel/resolveSearchPanelReplaceCurrentTargetState';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -1380,8 +1380,10 @@ export function SearchReplacePanel() {
       return;
     }
 
-    const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentMatchIndexRef.current, searchResult.matches.length);
-    const targetMatch = searchResult.matches[boundedCurrentIndex];
+    const { boundedCurrentIndex, targetMatch } = resolveReplaceCurrentTargetState({
+      currentMatchIndex: currentMatchIndexRef.current,
+      matches: searchResult.matches,
+    });
 
     try {
       const result = await resolveReplaceCurrentSearchState({
