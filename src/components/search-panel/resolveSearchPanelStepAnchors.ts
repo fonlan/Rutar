@@ -1,3 +1,4 @@
+import type { CursorPosition } from '@/store/useStore';
 import type {
   FilterMatch,
   SearchMatch,
@@ -20,5 +21,21 @@ export function resolveSearchResultFilterStepAnchor(currentSearchMatch: SearchMa
   return {
     currentEnd: currentSearchMatch?.end ?? null,
     currentStart: currentSearchMatch?.start ?? null,
+  };
+}
+
+export function resolveSearchCursorStepAnchor({
+  activeCursorPosition,
+  currentSearchMatch,
+}: {
+  activeCursorPosition: CursorPosition | null;
+  currentSearchMatch: SearchMatch | null;
+}): {
+  cursorColumn: number | null;
+  cursorLine: number | null;
+} {
+  return {
+    cursorColumn: activeCursorPosition?.column ?? currentSearchMatch?.column ?? null,
+    cursorLine: activeCursorPosition?.line ?? currentSearchMatch?.line ?? null,
   };
 }

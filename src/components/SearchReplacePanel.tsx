@@ -35,7 +35,7 @@ import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilte
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
-import { resolveFilterStepAnchor, resolveSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
+import { resolveFilterStepAnchor, resolveSearchCursorStepAnchor, resolveSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1481,8 +1481,10 @@ export function SearchReplacePanel() {
             matches,
             currentMatchIndexRef.current
           );
-          const anchorLine = activeCursorPosition?.line ?? currentSearchMatch?.line ?? null;
-          const anchorColumn = activeCursorPosition?.column ?? currentSearchMatch?.column ?? null;
+          const searchCursorStepAnchor = resolveSearchCursorStepAnchor({
+            activeCursorPosition,
+            currentSearchMatch,
+          });
           const stepResultValue = await invoke<unknown>(
             'search_step_from_cursor_in_document',
             buildSearchCursorStepRequest({
@@ -1491,8 +1493,7 @@ export function SearchReplacePanel() {
               searchMode,
               caseSensitive,
               effectiveResultFilterKeyword: backendResultFilterKeyword,
-              cursorLine: anchorLine,
-              cursorColumn: anchorColumn,
+              ...searchCursorStepAnchor,
               step: normalizedStep,
             })
           );
