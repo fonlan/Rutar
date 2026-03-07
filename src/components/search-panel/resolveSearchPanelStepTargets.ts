@@ -1,3 +1,4 @@
+import { resolveSearchPanelWrappedIndex } from './resolveSearchPanelBoundedIndex';
 import type {
   FilterMatch,
   SearchMatch,
@@ -43,6 +44,13 @@ interface ResolveSearchPanelResultFilterStepSelectionOptions<TMatch> {
     options: ResolveStepTargetOptions<TMatch>
   ) => ResolvedStepTarget<TMatch> | null;
 }
+
+interface ResolveSearchPanelLocalNavigationSelectionOptions<TMatch> {
+  appendedMatches?: TMatch[] | null;
+  candidateIndex: number;
+  matches: TMatch[];
+}
+
 
 
 export function resolveFilterStepTarget({
@@ -132,5 +140,23 @@ export function resolveSearchPanelResultFilterStepSelection<TMatch>({
   return {
     kind: 'resolved',
     ...resolvedTarget,
+  };
+}
+
+export function resolveSearchPanelLocalNavigationSelection<TMatch>({
+  appendedMatches,
+  candidateIndex,
+  matches,
+}: ResolveSearchPanelLocalNavigationSelectionOptions<TMatch>): ResolvedStepTarget<TMatch> {
+  if (candidateIndex >= matches.length && appendedMatches && appendedMatches.length > 0) {
+    return {
+      nextMatches: [...matches, ...appendedMatches],
+      targetIndex: candidateIndex,
+    };
+  }
+
+  return {
+    nextMatches: matches,
+    targetIndex: resolveSearchPanelWrappedIndex(candidateIndex, matches.length),
   };
 }
