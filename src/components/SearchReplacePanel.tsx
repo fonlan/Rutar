@@ -28,6 +28,7 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
+import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -1317,24 +1318,15 @@ export function SearchReplacePanel() {
               return;
             }
 
-            const stepBatchMatches =
-              Array.isArray(stepResultValue.batchMatches) && stepResultValue.batchMatches.length > 0
-                ? stepResultValue.batchMatches
-                : filterMatches;
-            const targetIndex =
-              stepBatchMatches === filterMatches
-                ? stepBatchMatches.findIndex(
-                    (item) =>
-                      item.line === targetMatch.line &&
-                      item.column === targetMatch.column &&
-                      item.ruleIndex === targetMatch.ruleIndex
-                  )
-                : Math.min(
-                    Math.max(0, stepResultValue.targetIndexInBatch ?? 0),
-                    Math.max(0, stepBatchMatches.length - 1)
-                  );
+            const resolvedFilterStepTarget = resolveFilterStepTarget({
+              batchMatches: stepResultValue.batchMatches,
+              matches: filterMatches,
+              targetIndexInBatch: stepResultValue.targetIndexInBatch,
+              targetMatch,
+            });
 
-            if (targetIndex >= 0 && targetIndex < stepBatchMatches.length) {
+            if (resolvedFilterStepTarget) {
+              const { nextMatches: stepBatchMatches, targetIndex } = resolvedFilterStepTarget;
               const documentVersion = stepResultValue.documentVersion ?? 0;
               const totalMatchedLines = stepResultValue.totalMatchedLines ?? 0;
               filterLineCursorRef.current = stepResultValue.nextLine ?? null;
@@ -2173,25 +2165,15 @@ export function SearchReplacePanel() {
           }
           const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
           setTotalFilterMatchedLineCount(totalMatchedLines);
-          const stepBatchMatches =
-            Array.isArray(stepResult.batchMatches) && stepResult.batchMatches.length > 0
-              ? stepResult.batchMatches
-              : null;
+          const resolvedFilterStepTarget = resolveFilterStepTarget({
+            batchMatches: stepResult.batchMatches,
+            matches: filterMatches,
+            targetIndexInBatch: stepResult.targetIndexInBatch,
+            targetMatch,
+          });
 
-          const nextMatches = stepBatchMatches ?? filterMatches;
-          const targetIndex = stepBatchMatches
-            ? Math.min(
-                Math.max(0, stepResult.targetIndexInBatch ?? 0),
-                Math.max(0, nextMatches.length - 1)
-              )
-            : nextMatches.findIndex(
-                (item) =>
-                  item.line === targetMatch.line &&
-                  item.column === targetMatch.column &&
-                  item.ruleIndex === targetMatch.ruleIndex
-              );
-
-          if (targetIndex >= 0 && targetIndex < nextMatches.length) {
+          if (resolvedFilterStepTarget) {
+            const { nextMatches, targetIndex } = resolvedFilterStepTarget;
             const documentVersion = stepResult.documentVersion ?? 0;
             filterLineCursorRef.current = stepResult.nextLine ?? null;
             setFilterSessionId(null);
@@ -2264,22 +2246,15 @@ export function SearchReplacePanel() {
         const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
         setTotalMatchCount(totalMatches);
         setTotalMatchedLineCount(totalMatchedLines);
-        const stepBatchMatches =
-          Array.isArray(stepResult.batchMatches) && stepResult.batchMatches.length > 0
-            ? stepResult.batchMatches
-            : null;
+        const resolvedSearchStepTarget = resolveSearchStepTarget({
+          batchMatches: stepResult.batchMatches,
+          matches,
+          targetIndexInBatch: stepResult.targetIndexInBatch,
+          targetMatch,
+        });
 
-        const nextMatches = stepBatchMatches ?? matches;
-        const targetIndex = stepBatchMatches
-          ? Math.min(
-              Math.max(0, stepResult.targetIndexInBatch ?? 0),
-              Math.max(0, nextMatches.length - 1)
-            )
-          : nextMatches.findIndex(
-              (item) => item.start === targetMatch.start && item.end === targetMatch.end
-            );
-
-        if (targetIndex >= 0 && targetIndex < nextMatches.length) {
+        if (resolvedSearchStepTarget) {
+          const { nextMatches, targetIndex } = resolvedSearchStepTarget;
           const documentVersion = stepResult.documentVersion ?? 0;
           chunkCursorRef.current = stepResult.nextOffset ?? null;
           setSearchSessionId(null);
