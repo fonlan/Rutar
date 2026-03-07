@@ -33,8 +33,8 @@ import { applyFilterResultFilterSelection, applySearchResultFilterSelection } fr
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
+import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
-import { resolveSearchPanelErrorMessage } from '@/components/search-panel/resolveSearchPanelErrorMessage';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1003,8 +1003,11 @@ export function SearchReplacePanel() {
       if (sessionId !== loadMoreSessionRef.current) {
         return null;
       }
-      const readableError = resolveSearchPanelErrorMessage(error);
-      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+      applySearchPanelErrorMessage({
+        error,
+        prefix: messages.searchFailed,
+        setErrorMessage,
+      });
       return null;
     } finally {
       loadMoreLockRef.current = false;
@@ -1142,8 +1145,11 @@ export function SearchReplacePanel() {
       if (sessionId !== loadMoreSessionRef.current) {
         return null;
       }
-      const readableError = resolveSearchPanelErrorMessage(error);
-      setErrorMessage(`${messages.filterFailed}: ${readableError}`);
+      applySearchPanelErrorMessage({
+        error,
+        prefix: messages.filterFailed,
+        setErrorMessage,
+      });
       return null;
     } finally {
       loadMoreLockRef.current = false;
@@ -1240,8 +1246,11 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      const readableError = resolveSearchPanelErrorMessage(error);
-      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+      const readableError = applySearchPanelErrorMessage({
+        error,
+        prefix: messages.searchFailed,
+        setErrorMessage,
+      });
       resetSearchState();
       setIsSearching(false);
 
@@ -1384,8 +1393,11 @@ export function SearchReplacePanel() {
           if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_filter_document')) {
             filterStepCommandUnsupportedRef.current = true;
           } else {
-            const readableError = resolveSearchPanelErrorMessage(error);
-            setErrorMessage(`${messages.filterFailed}: ${readableError}`);
+            applySearchPanelErrorMessage({
+              error,
+              prefix: messages.filterFailed,
+              setErrorMessage,
+            });
             return;
           }
         }
@@ -1511,8 +1523,11 @@ export function SearchReplacePanel() {
           if (isMissingInvokeCommandError(error, 'search_step_from_cursor_in_document')) {
             searchCursorStepCommandUnsupportedRef.current = true;
           } else {
-            const readableError = resolveSearchPanelErrorMessage(error);
-            setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+            applySearchPanelErrorMessage({
+              error,
+              prefix: messages.searchFailed,
+              setErrorMessage,
+            });
             return;
           }
         }
@@ -1698,8 +1713,11 @@ export function SearchReplacePanel() {
         navigateToMatch(nextMatch);
       }
     } catch (error) {
-      const readableError = resolveSearchPanelErrorMessage(error);
-      setErrorMessage(`${messages.replaceFailed}: ${readableError}`);
+      applySearchPanelErrorMessage({
+        error,
+        prefix: messages.replaceFailed,
+        setErrorMessage,
+      });
     }
   }, [
     activeTab,
@@ -1793,8 +1811,11 @@ export function SearchReplacePanel() {
         navigateToMatch(nextMatch);
       }
     } catch (error) {
-      const readableError = resolveSearchPanelErrorMessage(error);
-      setErrorMessage(`${messages.replaceAllFailed}: ${readableError}`);
+      applySearchPanelErrorMessage({
+        error,
+        prefix: messages.replaceAllFailed,
+        setErrorMessage,
+      });
     }
   }, [
     activeTab,
@@ -2312,8 +2333,11 @@ export function SearchReplacePanel() {
         if (runVersion !== resultFilterStepRunVersionRef.current) {
           return;
         }
-        const readableError = resolveSearchPanelErrorMessage(error);
-        setErrorMessage(`${messages.searchFailed}: ${readableError}`);
+        applySearchPanelErrorMessage({
+          error,
+          prefix: messages.searchFailed,
+          setErrorMessage,
+        });
       } finally {
         if (runVersion === resultFilterStepRunVersionRef.current) {
           loadMoreLockRef.current = false;
