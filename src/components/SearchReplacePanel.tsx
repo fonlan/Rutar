@@ -40,6 +40,7 @@ import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/s
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
+import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -2114,16 +2115,19 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const keywordForJump = resultFilterKeyword.trim();
+      const {
+        normalizedKeyword: effectiveResultFilterKeyword,
+        trimmedKeyword: keywordForJump,
+      } = resolveSearchPanelResultFilterKeyword({
+        caseSensitive,
+        resultFilterKeyword,
+      });
       if (!keywordForJump) {
         return;
       }
 
       const normalizedStep = step < 0 ? -1 : 1;
       const direction = normalizedStep > 0 ? 'next' : 'prev';
-      const effectiveResultFilterKeyword = caseSensitive
-        ? keywordForJump
-        : keywordForJump.toLowerCase();
       const runVersion = beginResultFilterStepRun({
         direction,
         loadMoreLockRef,

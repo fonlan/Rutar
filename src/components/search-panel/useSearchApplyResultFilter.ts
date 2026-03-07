@@ -1,4 +1,5 @@
 import { useCallback, type MutableRefObject } from 'react';
+import { resolveSearchPanelResultFilterKeyword } from './resolveSearchPanelResultFilterKeyword';
 import type { FilterRunResult, SearchRunResult } from './types';
 
 interface UseSearchApplyResultFilterOptions {
@@ -42,12 +43,13 @@ export function useSearchApplyResultFilter({
 }: UseSearchApplyResultFilterOptions) {
   return useCallback(async () => {
     cancelPendingBatchLoad();
-    const nextKeyword = resultFilterKeyword.trim();
-    const nextResultFilterKeyword = nextKeyword
-      ? caseSensitive
-        ? nextKeyword
-        : nextKeyword.toLowerCase()
-      : '';
+    const {
+      normalizedKeyword: nextResultFilterKeyword,
+      trimmedKeyword: nextKeyword,
+    } = resolveSearchPanelResultFilterKeyword({
+      caseSensitive,
+      resultFilterKeyword,
+    });
 
     if (nextKeyword.length === 0) {
       requestStopResultFilterSearch();
