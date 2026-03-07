@@ -26,6 +26,7 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
+import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -72,7 +73,6 @@ import type {
   SearchRunResult,
 } from '@/components/search-panel/types';
 import {
-  dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
   getSearchModeValue,
   RESULT_PANEL_DEFAULT_HEIGHT,
@@ -1591,12 +1591,17 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const safeLineCount = Math.max(1, result.lineCount ?? activeTab.lineCount);
-      updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
-      dispatchEditorForceRefresh(activeTab.id, safeLineCount);
-      setFeedbackMessage(messages.replacedCurrent);
-      setErrorMessage(null);
-      rememberReplaceValue(replaceValue);
+      applyReplaceSuccessEffects({
+        activeTabId: activeTab.id,
+        feedbackMessage: messages.replacedCurrent,
+        fallbackLineCount: activeTab.lineCount,
+        nextLineCount: result.lineCount,
+        rememberReplaceValue,
+        replaceValue,
+        setErrorMessage,
+        setFeedbackMessage,
+        updateTab,
+      });
 
       const nextMatch = applyReplaceCurrentSearchResult({
         activeTabId: activeTab.id,
@@ -1673,19 +1678,23 @@ export function SearchReplacePanel() {
       );
 
       const replacedCount = result.replacedCount ?? 0;
-      const safeLineCount = Math.max(1, result.lineCount ?? activeTab.lineCount);
 
       if (replacedCount === 0) {
         setFeedbackMessage(messages.noReplaceMatches);
         return;
       }
 
-      updateTab(activeTab.id, { lineCount: safeLineCount, isDirty: true });
-      dispatchEditorForceRefresh(activeTab.id, safeLineCount);
-
-      setFeedbackMessage(messages.replacedAll(replacedCount));
-      setErrorMessage(null);
-      rememberReplaceValue(replaceValue);
+      applyReplaceSuccessEffects({
+        activeTabId: activeTab.id,
+        feedbackMessage: messages.replacedAll(replacedCount),
+        fallbackLineCount: activeTab.lineCount,
+        nextLineCount: result.lineCount,
+        rememberReplaceValue,
+        replaceValue,
+        setErrorMessage,
+        setFeedbackMessage,
+        updateTab,
+      });
 
       const nextMatch = applyReplaceAllSearchResult({
         activeTabId: activeTab.id,
