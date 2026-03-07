@@ -29,7 +29,7 @@ import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
-import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
+import { applyFilterResultFilterSelection, applySearchPanelResultFilterStepGuard, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -2188,16 +2188,16 @@ export function SearchReplacePanel() {
             resolveTarget: resolveFilterStepTarget,
           });
 
-          if (filterStepSelection.kind === 'missing-target') {
+          const resolvedFilterStepSelection = applySearchPanelResultFilterStepGuard({
+            noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
+            selection: filterStepSelection,
+            setFeedbackMessage,
+          });
+          if (!resolvedFilterStepSelection) {
             return;
           }
 
-          if (filterStepSelection.kind === 'no-match') {
-            setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
-            return;
-          }
-
-          const { nextMatches, targetIndex } = filterStepSelection;
+          const { nextMatches, targetIndex } = resolvedFilterStepSelection;
           const documentVersion = stepResult.documentVersion ?? 0;
           applyFilterResultFilterStepResult({
             activeTabId: activeTab.id,
@@ -2264,16 +2264,16 @@ export function SearchReplacePanel() {
           resolveTarget: resolveSearchStepTarget,
         });
 
-        if (searchStepSelection.kind === 'missing-target') {
+        const resolvedSearchStepSelection = applySearchPanelResultFilterStepGuard({
+          noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
+          selection: searchStepSelection,
+          setFeedbackMessage,
+        });
+        if (!resolvedSearchStepSelection) {
           return;
         }
 
-        if (searchStepSelection.kind === 'no-match') {
-          setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
-          return;
-        }
-
-        const { nextMatches, targetIndex } = searchStepSelection;
+        const { nextMatches, targetIndex } = resolvedSearchStepSelection;
         const documentVersion = stepResult.documentVersion ?? 0;
         applySearchResultFilterStepResult({
           activeTabId: activeTab.id,
