@@ -27,6 +27,7 @@ import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
+import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -367,28 +368,28 @@ export function SearchReplacePanel() {
         return;
       }
 
-      setTotalMatchCount(result.totalMatches ?? 0);
-      setTotalMatchedLineCount(result.matchedLines ?? 0);
-
-      countCacheRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
+      applySearchCountResult({
+        activeTabId: activeTab.id,
         caseSensitive,
+        countCacheRef,
+        effectiveResultFilterKeyword,
+        effectiveSearchKeyword,
         parseEscapeSequences,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        documentVersion: result.documentVersion ?? 0,
-        totalMatches: result.totalMatches ?? 0,
-        matchedLines: result.matchedLines ?? 0,
-      };
+        result,
+        searchMode,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+      });
     } catch (error) {
       if (countRunVersionRef.current !== runId) {
         return;
       }
 
-      console.warn('Count search failed:', error);
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
+      handleSearchCountFailure({
+        error,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+      });
     }
   }, [
     activeTab,
@@ -452,21 +453,23 @@ export function SearchReplacePanel() {
         return;
       }
 
-      setTotalFilterMatchedLineCount(result.matchedLines ?? 0);
-      filterCountCacheRef.current = {
-        tabId: activeTab.id,
-        rulesKey: filterRulesKey,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        documentVersion: result.documentVersion ?? 0,
-        matchedLines: result.matchedLines ?? 0,
-      };
+      applyFilterCountResult({
+        activeTabId: activeTab.id,
+        effectiveResultFilterKeyword,
+        filterCountCacheRef,
+        filterRulesKey,
+        result,
+        setTotalFilterMatchedLineCount,
+      });
     } catch (error) {
       if (filterCountRunVersionRef.current !== runId) {
         return;
       }
 
-      console.warn('Filter count failed:', error);
-      setTotalFilterMatchedLineCount(null);
+      handleFilterCountFailure({
+        error,
+        setTotalFilterMatchedLineCount,
+      });
     }
   }, [activeTab, backendResultFilterKeyword, caseSensitive, filterRulesKey, filterRulesPayload]);
 
