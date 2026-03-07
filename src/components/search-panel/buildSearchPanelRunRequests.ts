@@ -57,6 +57,25 @@ interface BuildReplaceAllRequestOptions {
   searchMode: SearchMode;
 }
 
+interface BuildDocumentVersionRequestOptions {
+  activeTabId: string;
+}
+
+interface BuildSearchCountRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  searchMode: SearchMode;
+}
+
+interface BuildFilterCountRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveResultFilterKeyword: string;
+  rules: FilterRuleInputPayload[];
+}
+
 interface BuildFilterSessionStartRequestOptions {
   activeTabId: string;
   caseSensitive: boolean;
@@ -225,6 +244,44 @@ export function buildReplaceAllRequest({
     resultFilterKeyword: effectiveResultFilterKeyword,
     resultFilterCaseSensitive: caseSensitive,
     maxResults,
+  };
+}
+
+export function buildDocumentVersionRequest({
+  activeTabId,
+}: BuildDocumentVersionRequestOptions) {
+  return {
+    id: activeTabId,
+  };
+}
+
+export function buildSearchCountRequest({
+  activeTabId,
+  caseSensitive,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  searchMode,
+}: BuildSearchCountRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+  };
+}
+
+export function buildFilterCountRequest({
+  activeTabId,
+  caseSensitive,
+  effectiveResultFilterKeyword,
+  rules,
+}: BuildFilterCountRequestOptions) {
+  return {
+    id: activeTabId,
+    rules,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
   };
 }
 

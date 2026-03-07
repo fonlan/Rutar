@@ -36,7 +36,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildDocumentVersionRequest, buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -74,7 +74,6 @@ import type {
 } from '@/components/search-panel/types';
 import {
   FILTER_CHUNK_SIZE,
-  getSearchModeValue,
   RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
@@ -343,9 +342,12 @@ export function SearchReplacePanel() {
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
-          const currentDocumentVersion = await invoke<number>('get_document_version', {
-            id: activeTab.id,
-          });
+          const currentDocumentVersion = await invoke<number>(
+            'get_document_version',
+            buildDocumentVersionRequest({
+              activeTabId: activeTab.id,
+            })
+          );
 
           if (currentDocumentVersion === cached.documentVersion) {
             setTotalMatchCount(cached.totalMatches);
@@ -362,13 +364,16 @@ export function SearchReplacePanel() {
     countRunVersionRef.current = runId;
 
     try {
-      const result = await invoke<SearchCountBackendResult>('search_count_in_document', {
-        id: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-      });
+      const result = await invoke<SearchCountBackendResult>(
+        'search_count_in_document',
+        buildSearchCountRequest({
+          activeTabId: activeTab.id,
+          effectiveSearchKeyword,
+          searchMode,
+          caseSensitive,
+          effectiveResultFilterKeyword,
+        })
+      );
 
       if (countRunVersionRef.current !== runId) {
         return;
@@ -430,9 +435,12 @@ export function SearchReplacePanel() {
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
-          const currentDocumentVersion = await invoke<number>('get_document_version', {
-            id: activeTab.id,
-          });
+          const currentDocumentVersion = await invoke<number>(
+            'get_document_version',
+            buildDocumentVersionRequest({
+              activeTabId: activeTab.id,
+            })
+          );
 
           if (currentDocumentVersion === cached.documentVersion) {
             setTotalFilterMatchedLineCount(cached.matchedLines);
@@ -448,12 +456,15 @@ export function SearchReplacePanel() {
     filterCountRunVersionRef.current = runId;
 
     try {
-      const result = await invoke<FilterCountBackendResult>('filter_count_in_document', {
-        id: activeTab.id,
-        rules: filterRulesPayload,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-        resultFilterCaseSensitive: caseSensitive,
-      });
+      const result = await invoke<FilterCountBackendResult>(
+        'filter_count_in_document',
+        buildFilterCountRequest({
+          activeTabId: activeTab.id,
+          rules: filterRulesPayload,
+          effectiveResultFilterKeyword,
+          caseSensitive,
+        })
+      );
 
       if (filterCountRunVersionRef.current !== runId) {
         return;
@@ -509,9 +520,12 @@ export function SearchReplacePanel() {
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
-          const currentDocumentVersion = await invoke<number>('get_document_version', {
-            id: activeTab.id,
-          });
+          const currentDocumentVersion = await invoke<number>(
+            'get_document_version',
+            buildDocumentVersionRequest({
+              activeTabId: activeTab.id,
+            })
+          );
 
           if (currentDocumentVersion === cached.documentVersion) {
             applyCachedSearchRunResult({
@@ -701,9 +715,12 @@ export function SearchReplacePanel() {
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
         try {
-          const currentDocumentVersion = await invoke<number>('get_document_version', {
-            id: activeTab.id,
-          });
+          const currentDocumentVersion = await invoke<number>(
+            'get_document_version',
+            buildDocumentVersionRequest({
+              activeTabId: activeTab.id,
+            })
+          );
 
           if (currentDocumentVersion === cached.documentVersion) {
             applyCachedFilterRunResult({
