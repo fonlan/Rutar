@@ -29,7 +29,8 @@ import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
-import { applyFilterResultFilterSelection, applySearchResultFilterSelection, resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
+import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
+import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -43,7 +44,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildDocumentVersionRequest, buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
@@ -2170,9 +2171,10 @@ export function SearchReplacePanel() {
 
           const { nextMatches, targetIndex } = resolvedFilterStepSelection;
           const documentVersion = stepResult.documentVersion ?? 0;
-          applyFilterResultFilterStepResult({
+          applyFilterResultFilterStepSuccess({
             activeTabId: activeTab.id,
             cachedFilterRef,
+            currentFilterMatchIndexRef,
             documentVersion,
             filterCountCacheRef,
             filterLineCursorRef,
@@ -2180,19 +2182,16 @@ export function SearchReplacePanel() {
             nextLine: stepResult.nextLine ?? null,
             nextMatches,
             resultFilterKeyword: effectiveResultFilterKeyword,
-            setFilterMatches,
-            setFilterSessionId,
-            setTotalFilterMatchedLineCount,
-            startTransition,
-            totalMatchedLines,
-          });
-          applyFilterResultFilterSelection({
-            currentFilterMatchIndexRef,
             scrollResultItemIntoView,
             setCurrentFilterMatchIndex,
             setErrorMessage,
             setFeedbackMessage,
+            setFilterMatches,
+            setFilterSessionId,
+            setTotalFilterMatchedLineCount,
+            startTransition,
             targetIndex,
+            totalMatchedLines,
           });
           return;
         }
@@ -2241,34 +2240,32 @@ export function SearchReplacePanel() {
 
         const { nextMatches, targetIndex } = resolvedSearchStepSelection;
         const documentVersion = stepResult.documentVersion ?? 0;
-        applySearchResultFilterStepResult({
+        applySearchResultFilterStepSuccess({
           activeTabId: activeTab.id,
           cachedSearchRef,
           caseSensitive,
           chunkCursorRef,
           countCacheRef,
+          currentMatchIndexRef,
           documentVersion,
           effectiveResultFilterKeyword,
           effectiveSearchKeyword,
           nextMatches,
           nextOffset: stepResult.nextOffset ?? null,
           parseEscapeSequences,
+          scrollResultItemIntoView,
           searchMode,
+          setCurrentMatchIndex,
+          setErrorMessage,
+          setFeedbackMessage,
           setMatches,
           setSearchSessionId,
           setTotalMatchCount,
           setTotalMatchedLineCount,
           startTransition,
+          targetIndex,
           totalMatchedLines,
           totalMatches,
-        });
-        applySearchResultFilterSelection({
-          currentMatchIndexRef,
-          scrollResultItemIntoView,
-          setCurrentMatchIndex,
-          setErrorMessage,
-          setFeedbackMessage,
-          targetIndex,
         });
         return;
       } catch (error) {
