@@ -48,7 +48,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -635,12 +635,11 @@ export function SearchReplacePanel() {
         void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
       }
 
-      return {
+      return createSearchRunSuccessResult({
         matches: nextMatches,
         documentVersion,
-        errorMessage: null,
         nextOffset,
-      };
+      });
     } catch (error) {
       if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
         return null;
@@ -804,12 +803,11 @@ export function SearchReplacePanel() {
         void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
       }
 
-      return {
+      return createFilterRunSuccessResult({
         matches: nextMatches,
         documentVersion,
-        errorMessage: null,
         nextLine,
-      };
+      });
     } catch (error) {
       if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
         return null;

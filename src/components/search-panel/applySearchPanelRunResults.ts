@@ -230,6 +230,44 @@ interface ApplyFilterLoadMoreResultOptions {
   startTransition: TransitionStartFunction;
 }
 
+interface CreateSearchRunSuccessResultOptions {
+  documentVersion: number;
+  matches: SearchMatch[];
+  nextOffset: number | null;
+}
+
+interface CreateFilterRunSuccessResultOptions {
+  documentVersion: number;
+  matches: FilterMatch[];
+  nextLine: number | null;
+}
+
+export function createSearchRunSuccessResult({
+  documentVersion,
+  matches,
+  nextOffset,
+}: CreateSearchRunSuccessResultOptions): SearchRunResult {
+  return {
+    matches,
+    documentVersion,
+    errorMessage: null,
+    nextOffset,
+  };
+}
+
+export function createFilterRunSuccessResult({
+  documentVersion,
+  matches,
+  nextLine,
+}: CreateFilterRunSuccessResultOptions): FilterRunResult {
+  return {
+    matches,
+    documentVersion,
+    errorMessage: null,
+    nextLine,
+  };
+}
+
 export function applyCachedSearchRunResult({
   cached,
   chunkCursorRef,
@@ -260,12 +298,11 @@ export function applyCachedSearchRunHit(
 ): SearchRunResult {
   applyCachedSearchRunResult(options);
 
-  return {
+  return createSearchRunSuccessResult({
     matches: options.cached.matches,
     documentVersion: options.cached.documentVersion,
-    errorMessage: null,
     nextOffset: options.cached.nextOffset,
-  };
+  });
 }
 
 export function applySearchRunResult({
@@ -459,12 +496,11 @@ export function applyCachedFilterRunHit(
 ): FilterRunResult {
   applyCachedFilterRunResult(options);
 
-  return {
+  return createFilterRunSuccessResult({
     matches: options.cached.matches,
     documentVersion: options.cached.documentVersion,
-    errorMessage: null,
     nextLine: options.cached.nextLine,
-  };
+  });
 }
 
 export function applyFilterLoadMoreResult({
