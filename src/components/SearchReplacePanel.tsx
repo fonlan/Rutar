@@ -20,6 +20,7 @@ import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelU
 import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
 import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
+import { useSearchResultFilterStepNavigation } from '@/components/search-panel/useSearchResultFilterStepNavigation';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
@@ -30,25 +31,21 @@ import { resolvePreparedReplaceSearchResult } from '@/components/search-panel/ap
 import { applyResolvedReplaceAllResult } from '@/components/search-panel/applySearchPanelResolvedReplaceAllResult';
 import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
-import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
-import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
 import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
-import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
+import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
-import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
-import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyFilterResultFilterStepResult, applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
 import { resolveReplaceAllSearchState, resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
@@ -76,9 +73,7 @@ import {
 import type {
   FilterCountBackendResult,
   FilterRunResult,
-  FilterResultFilterStepBackendResult,
   SearchCountBackendResult,
-  SearchResultFilterStepBackendResult,
   SearchRunResult,
 } from '@/components/search-panel/types';
 import {
@@ -1635,210 +1630,50 @@ export function SearchReplacePanel() {
     stopResultFilterSearchRef,
   });
 
-  const navigateResultFilterByStep = useCallback(
-    async (step: number) => {
-      if (!activeTab || isSearching || isResultFilterSearching) {
-        return;
-      }
+  const navigateResultFilterByStep = useSearchResultFilterStepNavigation({
+    activeTabId: activeTab?.id ?? null,
+    cachedFilterRef,
+    cachedSearchRef,
+    caseSensitive,
+    chunkCursorRef,
+    countCacheRef,
+    currentFilterMatchIndexRef,
+    currentMatchIndexRef,
+    effectiveSearchKeyword,
+    filterCountCacheRef,
+    filterLineCursorRef,
+    filterMatches,
+    filterRulesKey,
+    filterRulesPayload,
+    isFilterMode,
+    isResultFilterSearching,
+    isSearching,
+    keyword,
+    loadMoreLockRef,
+    matches,
+    parseEscapeSequences,
+    resultFilterKeyword,
+    resultFilterStepNoMatch: messages.resultFilterStepNoMatch,
+    resultFilterStepRunVersionRef,
+    scrollResultItemIntoView,
+    searchFailedLabel: messages.searchFailed,
+    searchMode,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setFeedbackMessage,
+    setFilterMatches,
+    setFilterSessionId,
+    setIsSearching,
+    setMatches,
+    setResultFilterStepLoadingDirection,
+    setSearchSessionId,
+    setTotalFilterMatchedLineCount,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+    startTransition,
+  });
 
-      const {
-        normalizedKeyword: effectiveResultFilterKeyword,
-        trimmedKeyword: keywordForJump,
-      } = resolveSearchPanelResultFilterKeyword({
-        caseSensitive,
-        resultFilterKeyword,
-      });
-      if (!keywordForJump) {
-        return;
-      }
-
-      const normalizedStep = step < 0 ? -1 : 1;
-      const direction = normalizedStep > 0 ? 'next' : 'prev';
-      const runVersion = beginResultFilterStepRun({
-        direction,
-        loadMoreLockRef,
-        resultFilterStepRunVersionRef,
-        setIsSearching,
-        setResultFilterStepLoadingDirection,
-      });
-
-      try {
-        if (isFilterMode) {
-          const filterStepAnchor = resolveCurrentFilterStepAnchor(
-            filterMatches,
-            currentFilterMatchIndexRef.current
-          );
-
-          const stepResult = await invoke<FilterResultFilterStepBackendResult>(
-            'step_result_filter_search_in_filter_document',
-            buildFilterStepRequest({
-              activeTabId: activeTab.id,
-              rules: filterRulesPayload,
-              resultFilterKeyword: keywordForJump,
-              caseSensitive,
-              ...filterStepAnchor,
-              step: normalizedStep,
-              maxResults: FILTER_CHUNK_SIZE,
-            })
-          );
-          if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
-            return;
-          }
-
-          const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
-          setTotalFilterMatchedLineCount(totalMatchedLines);
-          const resolvedFilterStepSelection = resolveGuardedFilterResultFilterStepSelection({
-            batchMatches: stepResult.batchMatches,
-            matches: filterMatches,
-            noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
-            setFeedbackMessage,
-            targetIndexInBatch: stepResult.targetIndexInBatch,
-            targetMatch: stepResult.targetMatch,
-          });
-          if (!resolvedFilterStepSelection) {
-            return;
-          }
-
-          const { nextMatches, targetIndex } = resolvedFilterStepSelection;
-          const documentVersion = stepResult.documentVersion ?? 0;
-          applyFilterResultFilterStepSuccess({
-            activeTabId: activeTab.id,
-            cachedFilterRef,
-            currentFilterMatchIndexRef,
-            documentVersion,
-            filterCountCacheRef,
-            filterLineCursorRef,
-            filterRulesKey,
-            nextLine: stepResult.nextLine ?? null,
-            nextMatches,
-            resultFilterKeyword: effectiveResultFilterKeyword,
-            scrollResultItemIntoView,
-            setCurrentFilterMatchIndex,
-            setErrorMessage,
-            setFeedbackMessage,
-            setFilterMatches,
-            setFilterSessionId,
-            setTotalFilterMatchedLineCount,
-            startTransition,
-            targetIndex,
-            totalMatchedLines,
-          });
-          return;
-        }
-
-        if (!keyword) {
-          return;
-        }
-
-        const searchResultFilterStepAnchor = resolveCurrentSearchResultFilterStepAnchor(
-          matches,
-          currentMatchIndexRef.current
-        );
-
-        const stepResult = await invoke<SearchResultFilterStepBackendResult>(
-          'step_result_filter_search_in_document',
-          buildSearchResultFilterStepRequest({
-            activeTabId: activeTab.id,
-            effectiveSearchKeyword,
-            searchMode,
-            caseSensitive,
-            effectiveResultFilterKeyword: keywordForJump,
-            ...searchResultFilterStepAnchor,
-            step: normalizedStep,
-            maxResults: SEARCH_CHUNK_SIZE,
-          })
-        );
-        if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
-          return;
-        }
-
-        const totalMatches = stepResult.totalMatches ?? 0;
-        const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
-        setTotalMatchCount(totalMatches);
-        setTotalMatchedLineCount(totalMatchedLines);
-        const resolvedSearchStepSelection = resolveGuardedSearchResultFilterStepSelection({
-          batchMatches: stepResult.batchMatches,
-          matches,
-          noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
-          setFeedbackMessage,
-          targetIndexInBatch: stepResult.targetIndexInBatch,
-          targetMatch: stepResult.targetMatch,
-        });
-        if (!resolvedSearchStepSelection) {
-          return;
-        }
-
-        const { nextMatches, targetIndex } = resolvedSearchStepSelection;
-        const documentVersion = stepResult.documentVersion ?? 0;
-        applySearchResultFilterStepSuccess({
-          activeTabId: activeTab.id,
-          cachedSearchRef,
-          caseSensitive,
-          chunkCursorRef,
-          countCacheRef,
-          currentMatchIndexRef,
-          documentVersion,
-          effectiveResultFilterKeyword,
-          effectiveSearchKeyword,
-          nextMatches,
-          nextOffset: stepResult.nextOffset ?? null,
-          parseEscapeSequences,
-          scrollResultItemIntoView,
-          searchMode,
-          setCurrentMatchIndex,
-          setErrorMessage,
-          setFeedbackMessage,
-          setMatches,
-          setSearchSessionId,
-          setTotalMatchCount,
-          setTotalMatchedLineCount,
-          startTransition,
-          targetIndex,
-          totalMatchedLines,
-          totalMatches,
-        });
-        return;
-      } catch (error) {
-        if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
-          return;
-        }
-        applySearchPanelErrorMessage({
-          error,
-          prefix: messages.searchFailed,
-          setErrorMessage,
-        });
-      } finally {
-        finalizeResultFilterStepRun({
-          loadMoreLockRef,
-          resultFilterStepRunVersionRef,
-          runVersion,
-          setIsSearching,
-          setResultFilterStepLoadingDirection,
-        });
-      }
-    },
-    [
-      activeTab,
-      caseSensitive,
-      filterMatches,
-      filterRulesKey,
-      filterRulesPayload,
-      effectiveSearchKeyword,
-      isFilterMode,
-      isResultFilterSearching,
-      isSearching,
-      keyword,
-      matches,
-      messages.searchFailed,
-      messages.resultFilterStepNoMatch,
-      parseEscapeSequences,
-      resultFilterKeyword,
-      scrollResultItemIntoView,
-      setFilterSessionId,
-      setSearchSessionId,
-      searchMode,
-    ]
-  );
   const {
     copyPlainTextResults,
     displayTotalFilterMatchedLineCount,
