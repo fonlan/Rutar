@@ -7,13 +7,13 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
+import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
@@ -52,7 +52,6 @@ import type {
   TabSearchPanelSnapshot,
 } from '@/components/search-panel/types';
 import { getSearchPanelMessages, t } from '@/i18n';
-import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
@@ -162,23 +161,15 @@ export function SearchReplacePanel() {
     inputContextMenuRef,
   } = useSearchInputContextMenu({ isOpen });
 
-  const rememberSearchKeyword = useCallback((value: string) => {
-    if (value.length === 0) {
-      return;
-    }
 
-    const nextKeywords = appendRecentTextHistoryEntry(recentSearchKeywords, value);
-    if (nextKeywords !== recentSearchKeywords) {
-      updateSettings({ recentSearchKeywords: nextKeywords });
-    }
-  }, [recentSearchKeywords, updateSettings]);
-
-  const rememberReplaceValue = useCallback((value: string) => {
-    const nextValues = appendRecentTextHistoryEntry(recentReplaceValues, value);
-    if (nextValues !== recentReplaceValues) {
-      updateSettings({ recentReplaceValues: nextValues });
-    }
-  }, [recentReplaceValues, updateSettings]);
+  const {
+    rememberReplaceValue,
+    rememberSearchKeyword,
+  } = useSearchInputHistory({
+    recentReplaceValues,
+    recentSearchKeywords,
+    updateSettings,
+  });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resultListRef = useRef<HTMLDivElement>(null);
@@ -1982,39 +1973,19 @@ export function SearchReplacePanel() {
     updateTab,
   ]);
 
-  const handleKeywordKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setIsOpen(false);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        if (isFilterMode) {
-          if (!isSearching) {
-            void executeFilter(true);
-          }
-          return;
-        }
-
-        if (event.currentTarget === searchInputRef.current) {
-          setResultPanelState('open');
-          rememberSearchKeyword(keyword);
-          if (!isSearching) {
-            void executeSearch(true);
-          }
-          return;
-        }
-
-        const primaryStep = reverseSearch ? -1 : 1;
-        const step = event.shiftKey ? -primaryStep : primaryStep;
-        void navigateByStep(step);
-      }
-    },
-    [executeFilter, executeSearch, isFilterMode, isSearching, keyword, navigateByStep, rememberSearchKeyword, reverseSearch]
-  );
+  const handleKeywordKeyDown = useSearchKeywordKeyDown({
+    executeFilter,
+    executeSearch,
+    isFilterMode,
+    isSearching,
+    keyword,
+    navigateByStep,
+    rememberSearchKeyword,
+    reverseSearch,
+    searchInputRef,
+    setIsOpen,
+    setResultPanelState,
+  });
 
 
   const persistFilterRuleGroups = useCallback(
