@@ -55,6 +55,40 @@ interface BuildFilterSessionNextRequestOptions {
   sessionId: string;
 }
 
+interface BuildFilterStepRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  currentColumn: number | null;
+  currentLine: number | null;
+  maxResults: number;
+  resultFilterKeyword: string;
+  rules: FilterRuleInputPayload[];
+  step: number;
+}
+
+interface BuildSearchCursorStepRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  cursorColumn: number | null;
+  cursorLine: number | null;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  searchMode: SearchMode;
+  step: number;
+}
+
+interface BuildSearchResultFilterStepRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  currentEnd: number | null;
+  currentStart: number | null;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  maxResults: number;
+  searchMode: SearchMode;
+  step: number;
+}
+
 export function buildSearchSessionStartRequest({
   activeTabId,
   caseSensitive,
@@ -142,6 +176,76 @@ export function buildFilterSessionNextRequest({
 }: BuildFilterSessionNextRequestOptions) {
   return {
     sessionId,
+    maxResults,
+  };
+}
+
+export function buildFilterStepRequest({
+  activeTabId,
+  caseSensitive,
+  currentColumn,
+  currentLine,
+  maxResults,
+  resultFilterKeyword,
+  rules,
+  step,
+}: BuildFilterStepRequestOptions) {
+  return {
+    id: activeTabId,
+    rules,
+    resultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
+    currentLine,
+    currentColumn,
+    step,
+    maxResults,
+  };
+}
+
+export function buildSearchCursorStepRequest({
+  activeTabId,
+  caseSensitive,
+  cursorColumn,
+  cursorLine,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  searchMode,
+  step,
+}: BuildSearchCursorStepRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
+    cursorLine,
+    cursorColumn,
+    step,
+  };
+}
+
+export function buildSearchResultFilterStepRequest({
+  activeTabId,
+  caseSensitive,
+  currentEnd,
+  currentStart,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  maxResults,
+  searchMode,
+  step,
+}: BuildSearchResultFilterStepRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
+    currentStart,
+    currentEnd,
+    step,
     maxResults,
   };
 }

@@ -33,7 +33,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchFirstRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -1295,16 +1295,19 @@ export function SearchReplacePanel() {
             currentFilterMatchIndexRef.current < filterMatches.length
               ? filterMatches[currentFilterMatchIndexRef.current]
               : null;
-          const stepResultValue = await invoke<unknown>('step_result_filter_search_in_filter_document', {
-            id: activeTab.id,
-            rules: filterRulesPayload,
-            resultFilterKeyword: backendResultFilterKeyword,
-            resultFilterCaseSensitive: caseSensitive,
-            currentLine: currentFilterMatch?.line ?? null,
-            currentColumn: currentFilterMatch?.column ?? null,
-            step: normalizedStep,
-            maxResults: FILTER_CHUNK_SIZE,
-          });
+          const stepResultValue = await invoke<unknown>(
+            'step_result_filter_search_in_filter_document',
+            buildFilterStepRequest({
+              activeTabId: activeTab.id,
+              rules: filterRulesPayload,
+              resultFilterKeyword: backendResultFilterKeyword,
+              caseSensitive,
+              currentLine: currentFilterMatch?.line ?? null,
+              currentColumn: currentFilterMatch?.column ?? null,
+              step: normalizedStep,
+              maxResults: FILTER_CHUNK_SIZE,
+            })
+          );
 
           if (isFilterResultFilterStepBackendResult(stepResultValue)) {
             filterStepCommandUnsupportedRef.current = false;
@@ -1433,17 +1436,19 @@ export function SearchReplacePanel() {
               : null;
           const anchorLine = activeCursorPosition?.line ?? currentSearchMatch?.line ?? null;
           const anchorColumn = activeCursorPosition?.column ?? currentSearchMatch?.column ?? null;
-          const stepResultValue = await invoke<unknown>('search_step_from_cursor_in_document', {
-            id: activeTab.id,
-            keyword: effectiveSearchKeyword,
-            mode: getSearchModeValue(searchMode),
-            caseSensitive,
-            resultFilterKeyword: backendResultFilterKeyword,
-            resultFilterCaseSensitive: caseSensitive,
-            cursorLine: anchorLine,
-            cursorColumn: anchorColumn,
-            step: normalizedStep,
-          });
+          const stepResultValue = await invoke<unknown>(
+            'search_step_from_cursor_in_document',
+            buildSearchCursorStepRequest({
+              activeTabId: activeTab.id,
+              effectiveSearchKeyword,
+              searchMode,
+              caseSensitive,
+              effectiveResultFilterKeyword: backendResultFilterKeyword,
+              cursorLine: anchorLine,
+              cursorColumn: anchorColumn,
+              step: normalizedStep,
+            })
+          );
 
           if (isSearchCursorStepBackendResult(stepResultValue)) {
             searchCursorStepCommandUnsupportedRef.current = false;
@@ -2147,16 +2152,16 @@ export function SearchReplacePanel() {
 
           const stepResult = await invoke<FilterResultFilterStepBackendResult>(
             'step_result_filter_search_in_filter_document',
-            {
-              id: activeTab.id,
+            buildFilterStepRequest({
+              activeTabId: activeTab.id,
               rules: filterRulesPayload,
               resultFilterKeyword: keywordForJump,
-              resultFilterCaseSensitive: caseSensitive,
+              caseSensitive,
               currentLine: currentFilterMatch?.line ?? null,
               currentColumn: currentFilterMatch?.column ?? null,
               step: normalizedStep,
               maxResults: FILTER_CHUNK_SIZE,
-            }
+            })
           );
           if (runVersion !== resultFilterStepRunVersionRef.current) {
             return;
@@ -2235,18 +2240,17 @@ export function SearchReplacePanel() {
 
         const stepResult = await invoke<SearchResultFilterStepBackendResult>(
           'step_result_filter_search_in_document',
-          {
-            id: activeTab.id,
-            keyword: effectiveSearchKeyword,
-            mode: getSearchModeValue(searchMode),
+          buildSearchResultFilterStepRequest({
+            activeTabId: activeTab.id,
+            effectiveSearchKeyword,
+            searchMode,
             caseSensitive,
-            resultFilterKeyword: keywordForJump,
-            resultFilterCaseSensitive: caseSensitive,
+            effectiveResultFilterKeyword: keywordForJump,
             currentStart: currentSearchMatch?.start ?? null,
             currentEnd: currentSearchMatch?.end ?? null,
             step: normalizedStep,
             maxResults: SEARCH_CHUNK_SIZE,
-          }
+          })
         );
         if (runVersion !== resultFilterStepRunVersionRef.current) {
           return;
