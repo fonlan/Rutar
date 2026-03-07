@@ -53,3 +53,35 @@ export function finalizeSearchPanelRun({
 
   setIsSearching(false);
 }
+
+interface RunSearchPanelAsyncOperationOptions<TResult> extends BeginSearchPanelRunOptions {
+  handleError: (error: unknown, runVersion: number) => TResult;
+  run: (runVersion: number) => Promise<TResult>;
+}
+
+export async function runSearchPanelAsyncOperation<TResult>({
+  handleError,
+  run,
+  runVersionRef,
+  setIsSearching,
+  silent = false,
+}: RunSearchPanelAsyncOperationOptions<TResult>): Promise<TResult> {
+  const runVersion = beginSearchPanelRun({
+    runVersionRef,
+    setIsSearching,
+    silent,
+  });
+
+  try {
+    return await run(runVersion);
+  } catch (error) {
+    return handleError(error, runVersion);
+  } finally {
+    finalizeSearchPanelRun({
+      runVersion,
+      runVersionRef,
+      setIsSearching,
+      silent,
+    });
+  }
+}
