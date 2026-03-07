@@ -47,7 +47,7 @@ import { resolveFilterChunkState, resolveSearchChunkState } from '@/components/s
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
-import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
+import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
@@ -363,8 +363,11 @@ export function SearchReplacePanel() {
         });
 
         if (currentDocumentVersion === cached.documentVersion) {
-          setTotalMatchCount(cached.totalMatches);
-          setTotalMatchedLineCount(cached.matchedLines);
+          applyCachedSearchCountHit({
+            cached,
+            setTotalMatchCount,
+            setTotalMatchedLineCount,
+          });
           return;
         }
       }
@@ -448,7 +451,10 @@ export function SearchReplacePanel() {
         });
 
         if (currentDocumentVersion === cached.documentVersion) {
-          setTotalFilterMatchedLineCount(cached.matchedLines);
+          applyCachedFilterCountHit({
+            cached,
+            setTotalFilterMatchedLineCount,
+          });
           return;
         }
       }

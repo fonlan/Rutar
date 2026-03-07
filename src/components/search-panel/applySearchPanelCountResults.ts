@@ -38,10 +38,21 @@ interface ApplySearchCountResultOptions {
   setTotalMatchedLineCount: (value: number) => void;
 }
 
+interface ApplyCachedSearchCountHitOptions {
+  cached: SearchCountCacheSnapshot;
+  setTotalMatchCount: (value: number) => void;
+  setTotalMatchedLineCount: (value: number) => void;
+}
+
 interface HandleSearchCountFailureOptions {
   error: unknown;
   setTotalMatchCount: (value: number | null) => void;
   setTotalMatchedLineCount: (value: number | null) => void;
+}
+
+interface ApplyCachedFilterCountHitOptions {
+  cached: FilterCountCacheSnapshot;
+  setTotalFilterMatchedLineCount: (value: number) => void;
 }
 
 interface ApplyFilterCountResultOptions {
@@ -56,6 +67,15 @@ interface ApplyFilterCountResultOptions {
 interface HandleFilterCountFailureOptions {
   error: unknown;
   setTotalFilterMatchedLineCount: (value: number | null) => void;
+}
+
+export function applyCachedSearchCountHit({
+  cached,
+  setTotalMatchCount,
+  setTotalMatchedLineCount,
+}: ApplyCachedSearchCountHitOptions) {
+  setTotalMatchCount(cached.totalMatches);
+  setTotalMatchedLineCount(cached.matchedLines);
 }
 
 export function applySearchCountResult({
@@ -94,6 +114,13 @@ export function handleSearchCountFailure({
   console.warn('Count search failed:', error);
   setTotalMatchCount(null);
   setTotalMatchedLineCount(null);
+}
+
+export function applyCachedFilterCountHit({
+  cached,
+  setTotalFilterMatchedLineCount,
+}: ApplyCachedFilterCountHitOptions) {
+  setTotalFilterMatchedLineCount(cached.matchedLines);
 }
 
 export function applyFilterCountResult({
