@@ -43,11 +43,12 @@ import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMo
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginSearchPanelRun, beginSearchPanelVersionRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
+import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -510,30 +511,23 @@ export function SearchReplacePanel() {
     }
 
     if (!forceRefresh) {
-      const cached = cachedSearchRef.current;
-      if (matchesSearchPanelSearchCacheIdentity(cached, {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
+      const cachedResult = await resolveCachedSearchRunHit({
+        activeTabId: activeTab.id,
+        cached: cachedSearchRef.current,
         caseSensitive,
+        chunkCursorRef,
+        effectiveResultFilterKeyword,
+        effectiveSearchKeyword,
         parseEscapeSequences,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-      })) {
-        if (await matchesSearchPanelDocumentVersion({
-          activeTabId: activeTab.id,
-          cachedDocumentVersion: cached.documentVersion,
-          warnLabel: 'Failed to read document version:',
-        })) {
-          return applyCachedSearchRunHit({
-            cached,
-            chunkCursorRef,
-            setCurrentMatchIndex,
-            setErrorMessage,
-            setMatches,
-            setSearchSessionId,
-            startTransition,
-          });
-        }
+        searchMode,
+        setCurrentMatchIndex,
+        setErrorMessage,
+        setMatches,
+        setSearchSessionId,
+        startTransition,
+      });
+      if (cachedResult) {
+        return cachedResult;
       }
     }
 
@@ -654,27 +648,20 @@ export function SearchReplacePanel() {
     }
 
     if (!forceRefresh) {
-      const cached = cachedFilterRef.current;
-      if (matchesSearchPanelFilterCacheIdentity(cached, {
-        tabId: activeTab.id,
-        rulesKey: filterRulesKey,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-      })) {
-        if (await matchesSearchPanelDocumentVersion({
-          activeTabId: activeTab.id,
-          cachedDocumentVersion: cached.documentVersion,
-          warnLabel: 'Failed to read document version for filter:',
-        })) {
-          return applyCachedFilterRunHit({
-            cached,
-            filterLineCursorRef,
-            setCurrentFilterMatchIndex,
-            setErrorMessage,
-            setFilterMatches,
-            setFilterSessionId,
-            startTransition,
-          });
-        }
+      const cachedResult = await resolveCachedFilterRunHit({
+        activeTabId: activeTab.id,
+        cached: cachedFilterRef.current,
+        effectiveResultFilterKeyword,
+        filterLineCursorRef,
+        filterRulesKey,
+        setCurrentFilterMatchIndex,
+        setErrorMessage,
+        setFilterMatches,
+        setFilterSessionId,
+        startTransition,
+      });
+      if (cachedResult) {
+        return cachedResult;
       }
     }
 
