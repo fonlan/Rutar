@@ -28,7 +28,7 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
-import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
+import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyFilterResultFilterSelection, applySearchPanelResultFilterStepGuard, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
@@ -37,7 +37,7 @@ import { applySearchPanelErrorMessage } from '@/components/search-panel/applySea
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
-import { resolveFilterStepTarget, resolveSearchPanelLocalStepSelection, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
+import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -1413,21 +1413,15 @@ export function SearchReplacePanel() {
             matchCount: filterMatches.length,
             step,
           });
-          const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
+          applyFilterLocalStepSelection({
             appendedMatches,
-            currentIndex: currentFilterMatchIndexRef.current,
-            matches: filterMatches,
-            step,
-          });
-
-          applyFilterNavigationSelection({
             currentFilterMatchIndexRef,
-            matches: nextMatches,
+            matches: filterMatches,
             navigationFeedback,
             navigateToFilterMatch,
-            nextIndex: targetIndex,
             setCurrentFilterMatchIndex,
             setFeedbackMessage,
+            step,
           });
           return;
         }
@@ -1437,20 +1431,14 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
-          currentIndex: currentFilterMatchIndexRef.current,
-          matches: filterResult.matches,
-          step,
-        });
-
-        applyFilterNavigationSelection({
+        applyFilterLocalStepSelection({
           currentFilterMatchIndexRef,
-          matches: nextMatches,
+          matches: filterResult.matches,
           navigationFeedback,
           navigateToFilterMatch,
-          nextIndex: targetIndex,
           setCurrentFilterMatchIndex,
           setFeedbackMessage,
+          step,
         });
 
         return;
@@ -1525,21 +1513,15 @@ export function SearchReplacePanel() {
           matchCount: matches.length,
           step,
         });
-        const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
+        applySearchLocalStepSelection({
           appendedMatches,
-          currentIndex: currentMatchIndexRef.current,
-          matches,
-          step,
-        });
-
-        applySearchNavigationSelection({
           currentMatchIndexRef,
-          matches: nextMatches,
+          matches,
           navigationFeedback,
           navigateToMatch,
-          nextIndex: targetIndex,
           setCurrentMatchIndex,
           setFeedbackMessage,
+          step,
         });
         return;
       }
@@ -1550,20 +1532,14 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const { nextMatches, targetIndex } = resolveSearchPanelLocalStepSelection({
-        currentIndex: currentMatchIndexRef.current,
-        matches: searchResult.matches,
-        step,
-      });
-
-      applySearchNavigationSelection({
+      applySearchLocalStepSelection({
         currentMatchIndexRef,
-        matches: nextMatches,
+        matches: searchResult.matches,
         navigationFeedback,
         navigateToMatch,
-        nextIndex: targetIndex,
         setCurrentMatchIndex,
         setFeedbackMessage,
+        step,
       });
 
     },
