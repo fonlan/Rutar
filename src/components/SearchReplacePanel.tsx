@@ -29,6 +29,7 @@ import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/final
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterRunResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -485,15 +486,11 @@ export function SearchReplacePanel() {
     }
 
     if (!keyword) {
-      setErrorMessage(null);
-      resetSearchState();
-      setIsSearching(false);
-      return {
-        matches: [],
-        documentVersion: 0,
-        errorMessage: null,
-        nextOffset: null,
-      };
+      return createEmptySearchRunResult({
+        resetSearchState,
+        setErrorMessage,
+        setIsSearching,
+      });
     }
 
     if (!forceRefresh) {
@@ -641,16 +638,12 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`${messages.searchFailed}: ${readableError}`);
-      resetSearchState();
-
-      return {
-        matches: [],
-        documentVersion: 0,
-        errorMessage: readableError,
-        nextOffset: null,
-      };
+      return createSearchRunFailureResult({
+        error,
+        resetSearchState,
+        searchFailedLabel: messages.searchFailed,
+        setErrorMessage,
+      });
     } finally {
       if (runVersionRef.current === runVersion && !silent) {
         setIsSearching(false);
@@ -682,16 +675,12 @@ export function SearchReplacePanel() {
   }
 
     if (filterRulesPayload.length === 0) {
-      setErrorMessage(null);
-      resetFilterState(false);
-      setTotalFilterMatchedLineCount(0);
-      setIsSearching(false);
-      return {
-        matches: [],
-        documentVersion: 0,
-        errorMessage: null,
-        nextLine: null,
-      };
+      return createEmptyFilterRunResult({
+        resetFilterState,
+        setErrorMessage,
+        setIsSearching,
+        setTotalFilterMatchedLineCount,
+      });
     }
 
     if (!forceRefresh) {
@@ -826,16 +815,12 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      const readableError = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`${messages.filterFailed}: ${readableError}`);
-      resetFilterState();
-
-      return {
-        matches: [],
-        documentVersion: 0,
-        errorMessage: readableError,
-        nextLine: null,
-      };
+      return createFilterRunFailureResult({
+        error,
+        filterFailedLabel: messages.filterFailed,
+        resetFilterState,
+        setErrorMessage,
+      });
     } finally {
       if (filterRunVersionRef.current === runVersion && !silent) {
         setIsSearching(false);
