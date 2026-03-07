@@ -51,6 +51,7 @@ import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoad
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { readSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
+import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -346,15 +347,14 @@ export function SearchReplacePanel() {
 
     if (!forceRefresh) {
       const cached = countCacheRef.current;
-      if (
-        cached &&
-        cached.tabId === activeTab.id &&
-        cached.keyword === effectiveSearchKeyword &&
-        cached.searchMode === searchMode &&
-        cached.caseSensitive === caseSensitive &&
-        cached.parseEscapeSequences === parseEscapeSequences &&
-        cached.resultFilterKeyword === effectiveResultFilterKeyword
-      ) {
+      if (matchesSearchPanelSearchCacheIdentity(cached, {
+        tabId: activeTab.id,
+        keyword: effectiveSearchKeyword,
+        searchMode,
+        caseSensitive,
+        parseEscapeSequences,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+      })) {
         const currentDocumentVersion = await readSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
           warnLabel: 'Failed to read document version for count:',
@@ -436,12 +436,11 @@ export function SearchReplacePanel() {
 
     if (!forceRefresh) {
       const cached = filterCountCacheRef.current;
-      if (
-        cached &&
-        cached.tabId === activeTab.id &&
-        cached.rulesKey === filterRulesKey &&
-        cached.resultFilterKeyword === effectiveResultFilterKeyword
-      ) {
+      if (matchesSearchPanelFilterCacheIdentity(cached, {
+        tabId: activeTab.id,
+        rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+      })) {
         const currentDocumentVersion = await readSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
           warnLabel: 'Failed to read document version for filter count:',
@@ -512,15 +511,14 @@ export function SearchReplacePanel() {
 
     if (!forceRefresh) {
       const cached = cachedSearchRef.current;
-      if (
-        cached &&
-        cached.tabId === activeTab.id &&
-        cached.keyword === effectiveSearchKeyword &&
-        cached.searchMode === searchMode &&
-        cached.caseSensitive === caseSensitive &&
-        cached.parseEscapeSequences === parseEscapeSequences &&
-        cached.resultFilterKeyword === effectiveResultFilterKeyword
-      ) {
+      if (matchesSearchPanelSearchCacheIdentity(cached, {
+        tabId: activeTab.id,
+        keyword: effectiveSearchKeyword,
+        searchMode,
+        caseSensitive,
+        parseEscapeSequences,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+      })) {
         const currentDocumentVersion = await readSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
           warnLabel: 'Failed to read document version:',
@@ -709,12 +707,11 @@ export function SearchReplacePanel() {
 
     if (!forceRefresh) {
       const cached = cachedFilterRef.current;
-      if (
-        cached &&
-        cached.tabId === activeTab.id &&
-        cached.rulesKey === filterRulesKey &&
-        cached.resultFilterKeyword === effectiveResultFilterKeyword
-      ) {
+      if (matchesSearchPanelFilterCacheIdentity(cached, {
+        tabId: activeTab.id,
+        rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+      })) {
         const currentDocumentVersion = await readSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
           warnLabel: 'Failed to read document version for filter:',
