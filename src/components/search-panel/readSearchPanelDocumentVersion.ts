@@ -6,6 +6,11 @@ interface ReadSearchPanelDocumentVersionOptions {
   warnLabel: string;
 }
 
+interface MatchesSearchPanelDocumentVersionOptions
+  extends ReadSearchPanelDocumentVersionOptions {
+  cachedDocumentVersion: number;
+}
+
 export async function readSearchPanelDocumentVersion({
   activeTabId,
   warnLabel,
@@ -22,3 +27,16 @@ export async function readSearchPanelDocumentVersion({
     return null;
   }
 }
+export async function matchesSearchPanelDocumentVersion({
+  activeTabId,
+  cachedDocumentVersion,
+  warnLabel,
+}: MatchesSearchPanelDocumentVersionOptions): Promise<boolean> {
+  const currentDocumentVersion = await readSearchPanelDocumentVersion({
+    activeTabId,
+    warnLabel,
+  });
+
+  return currentDocumentVersion === cachedDocumentVersion;
+}
+

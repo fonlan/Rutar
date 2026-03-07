@@ -51,7 +51,7 @@ import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountR
 import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
-import { readSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
+import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { attemptSearchPanelSessionStart } from '@/components/search-panel/attemptSearchPanelSessionStart';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
@@ -357,12 +357,11 @@ export function SearchReplacePanel() {
         parseEscapeSequences,
         resultFilterKeyword: effectiveResultFilterKeyword,
       })) {
-        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+        if (await matchesSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
+          cachedDocumentVersion: cached.documentVersion,
           warnLabel: 'Failed to read document version for count:',
-        });
-
-        if (currentDocumentVersion === cached.documentVersion) {
+        })) {
           applyCachedSearchCountHit({
             cached,
             setTotalMatchCount,
@@ -445,12 +444,11 @@ export function SearchReplacePanel() {
         rulesKey: filterRulesKey,
         resultFilterKeyword: effectiveResultFilterKeyword,
       })) {
-        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+        if (await matchesSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
+          cachedDocumentVersion: cached.documentVersion,
           warnLabel: 'Failed to read document version for filter count:',
-        });
-
-        if (currentDocumentVersion === cached.documentVersion) {
+        })) {
           applyCachedFilterCountHit({
             cached,
             setTotalFilterMatchedLineCount,
@@ -525,12 +523,11 @@ export function SearchReplacePanel() {
         parseEscapeSequences,
         resultFilterKeyword: effectiveResultFilterKeyword,
       })) {
-        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+        if (await matchesSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
+          cachedDocumentVersion: cached.documentVersion,
           warnLabel: 'Failed to read document version:',
-        });
-
-        if (currentDocumentVersion === cached.documentVersion) {
+        })) {
           return applyCachedSearchRunHit({
             cached,
             chunkCursorRef,
@@ -704,12 +701,11 @@ export function SearchReplacePanel() {
         rulesKey: filterRulesKey,
         resultFilterKeyword: effectiveResultFilterKeyword,
       })) {
-        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+        if (await matchesSearchPanelDocumentVersion({
           activeTabId: activeTab.id,
+          cachedDocumentVersion: cached.documentVersion,
           warnLabel: 'Failed to read document version for filter:',
-        });
-
-        if (currentDocumentVersion === cached.documentVersion) {
+        })) {
           return applyCachedFilterRunHit({
             cached,
             filterLineCursorRef,
