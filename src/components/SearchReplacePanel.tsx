@@ -26,6 +26,7 @@ import { restoreSearchPanelSnapshotState } from '@/components/search-panel/resto
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
+import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2138,11 +2139,14 @@ export function SearchReplacePanel() {
       });
     }
 
-    setIsResultFilterSearching(false);
-    stopResultFilterSearchRef.current = true;
-    setErrorMessage(null);
-    setFeedbackMessage(null);
-    previousActiveTabIdRef.current = activeTab.id;
+    finalizeSearchPanelRestoreCycle({
+      activeTabId: activeTab.id,
+      previousActiveTabIdRef,
+      setErrorMessage,
+      setFeedbackMessage,
+      setIsResultFilterSearching,
+      stopResultFilterSearchRef,
+    });
   }, [activeTab?.id, resetFilterState, resetSearchState, setFilterSessionId, setSearchSessionId]);
 
   useSearchPanelSnapshotPersistence({
