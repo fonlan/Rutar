@@ -27,7 +27,7 @@ import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
-import { applyReplaceOperationGuard, applyReplaceSearchResultGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
@@ -1643,9 +1643,10 @@ export function SearchReplacePanel() {
       return;
     }
 
-    rememberSearchKeyword(keyword);
-    const searchResult = applyReplaceSearchResultGuard({
+    const searchResult = applyPreparedReplaceSearchResult({
+      keyword,
       noReplaceMatchesMessage: messages.noReplaceMatches,
+      rememberSearchKeyword,
       searchResult: await executeSearch(),
       setFeedbackMessage,
     });
@@ -1749,9 +1750,10 @@ export function SearchReplacePanel() {
       return;
     }
 
-    rememberSearchKeyword(keyword);
-    const searchResult = applyReplaceSearchResultGuard({
+    const searchResult = applyPreparedReplaceSearchResult({
+      keyword,
       noReplaceMatchesMessage: messages.noReplaceMatches,
+      rememberSearchKeyword,
       searchResult: await executeSearch(),
       setFeedbackMessage,
     });

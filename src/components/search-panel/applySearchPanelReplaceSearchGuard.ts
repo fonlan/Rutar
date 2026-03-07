@@ -6,6 +6,11 @@ interface ApplyReplaceSearchResultGuardOptions {
   setFeedbackMessage: (value: string | null) => void;
 }
 
+interface ApplyPreparedReplaceSearchResultOptions extends ApplyReplaceSearchResultGuardOptions {
+  keyword: string;
+  rememberSearchKeyword: (value: string) => void;
+}
+
 interface ApplyReplaceOperationGuardOptions {
   hasReplacement: boolean;
   noReplaceMatchesMessage: string;
@@ -23,6 +28,22 @@ export function applyReplaceSearchResultGuard({
   }
 
   return searchResult;
+}
+
+
+export function applyPreparedReplaceSearchResult({
+  keyword,
+  noReplaceMatchesMessage,
+  rememberSearchKeyword,
+  searchResult,
+  setFeedbackMessage,
+}: ApplyPreparedReplaceSearchResultOptions): SearchRunResult | null {
+  rememberSearchKeyword(keyword);
+  return applyReplaceSearchResultGuard({
+    noReplaceMatchesMessage,
+    searchResult,
+    setFeedbackMessage,
+  });
 }
 
 export function applyReplaceOperationGuard({
