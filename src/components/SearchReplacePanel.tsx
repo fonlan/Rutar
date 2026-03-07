@@ -14,6 +14,7 @@ import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverla
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
+import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
@@ -59,8 +60,6 @@ import {
   DEFAULT_FILTER_RULE_BACKGROUND,
   DEFAULT_FILTER_RULE_TEXT,
   dispatchEditorForceRefresh,
-  dispatchNavigateToLine,
-  dispatchNavigateToMatch,
   FILTER_CHUNK_SIZE,
   getDisplayCountText,
   getSearchModeValue,
@@ -1432,39 +1431,21 @@ export function SearchReplacePanel() {
     searchMode,
   ]);
 
-  const navigateToMatch = useCallback(
-    (targetMatch: SearchMatch) => {
-      if (!activeTab) {
-        return;
-      }
-
-      const occludedRightPx = getSearchSidebarOccludedRightPx();
-
-      setCursorPosition(activeTab.id, targetMatch.line, Math.max(1, targetMatch.column || 1));
-      dispatchNavigateToMatch(activeTab.id, targetMatch, occludedRightPx);
-    },
-    [activeTab, getSearchSidebarOccludedRightPx, setCursorPosition]
-  );
-
-  const navigateToFilterMatch = useCallback(
-    (targetMatch: FilterMatch) => {
-      if (!activeTab) {
-        return;
-      }
-
-      const occludedRightPx = getSearchSidebarOccludedRightPx();
-
-      dispatchNavigateToLine(
-        activeTab.id,
-        targetMatch.line,
-        Math.max(1, targetMatch.column || 1),
-        Math.max(0, targetMatch.length || 0),
-        targetMatch.lineText || '',
-        occludedRightPx
-      );
-    },
-    [activeTab, getSearchSidebarOccludedRightPx]
-  );
+  const {
+    handleSelectMatch,
+    navigateToFilterMatch,
+    navigateToMatch,
+  } = useSearchMatchNavigation({
+    activeTabId: activeTab?.id ?? null,
+    filterMatches,
+    getSearchSidebarOccludedRightPx,
+    isFilterMode,
+    matches,
+    setCursorPosition,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setFeedbackMessage,
+  });
 
   const hasMoreMatches = chunkCursorRef.current !== null;
   const hasMoreFilterMatches = filterLineCursorRef.current !== null;
@@ -2035,29 +2016,6 @@ export function SearchReplacePanel() {
     [executeFilter, executeSearch, isFilterMode, isSearching, keyword, navigateByStep, rememberSearchKeyword, reverseSearch]
   );
 
-  const handleSelectMatch = useCallback(
-    (targetIndex: number) => {
-      if (isFilterMode) {
-        if (targetIndex < 0 || targetIndex >= filterMatches.length) {
-          return;
-        }
-
-        setCurrentFilterMatchIndex(targetIndex);
-        setFeedbackMessage(null);
-        navigateToFilterMatch(filterMatches[targetIndex]);
-        return;
-      }
-
-      if (targetIndex < 0 || targetIndex >= matches.length) {
-        return;
-      }
-
-      setCurrentMatchIndex(targetIndex);
-      setFeedbackMessage(null);
-      navigateToMatch(matches[targetIndex]);
-    },
-    [filterMatches, isFilterMode, matches, navigateToFilterMatch, navigateToMatch]
-  );
 
   const persistFilterRuleGroups = useCallback(
     async (groups: FilterRuleGroupPayload[]) => {
