@@ -42,15 +42,16 @@ import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearch
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginSearchPanelRun, beginSearchPanelVersionRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
-import { resolveFilterSessionStartState, resolveSearchSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
-import { resolveFilterChunkState, resolveSearchChunkState } from '@/components/search-panel/resolveSearchPanelChunkState';
+import { resolveFilterSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
+import { resolveFilterChunkState } from '@/components/search-panel/resolveSearchPanelChunkState';
+import { resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { attemptSearchPanelSessionStart } from '@/components/search-panel/attemptSearchPanelSessionStart';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
@@ -72,7 +73,6 @@ import {
   isMissingInvokeCommandError,
   isSearchCursorStepBackendResult,
   isSearchSessionRestoreBackendResult,
-  isSearchSessionStartBackendResult,
 } from '@/components/search-panel/backendGuards';
 import type {
   FilterChunkBackendResult,
@@ -548,59 +548,23 @@ export function SearchReplacePanel() {
     });
 
     try {
-      let nextMatches: SearchMatch[] = [];
-      let documentVersion = 0;
-      let nextOffset: number | null = null;
-      let sessionId: string | null = null;
-      let totalMatches: number | null = null;
-      let totalMatchedLines: number | null = null;
-      let shouldRunCountFallback = true;
-
-      const sessionStartResult = await attemptSearchPanelSessionStart({
-        commandName: 'search_session_start_in_document',
-        isExpectedResult: isSearchSessionStartBackendResult,
-        request: buildSearchSessionStartRequest({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          effectiveResultFilterKeyword,
-          effectiveSearchKeyword,
-          maxResults: SEARCH_CHUNK_SIZE,
-          searchMode,
-        }),
-        sessionCommandUnsupportedRef: searchSessionCommandUnsupportedRef,
+      const {
+        documentVersion,
+        nextMatches,
+        nextOffset,
+        sessionId,
+        shouldRunCountFallback,
+        totalMatchedLines,
+        totalMatches,
+      } = await resolveSearchRunStartState({
+        activeTabId: activeTab.id,
+        caseSensitive,
+        effectiveResultFilterKeyword,
+        effectiveSearchKeyword,
+        maxResults: SEARCH_CHUNK_SIZE,
+        searchMode,
+        searchSessionCommandUnsupportedRef,
       });
-
-      if (sessionStartResult) {
-        ({
-          documentVersion,
-          nextMatches,
-          nextOffset,
-          sessionId,
-          totalMatchedLines,
-          totalMatches,
-        } = resolveSearchSessionStartState(sessionStartResult));
-        shouldRunCountFallback = false;
-        searchSessionCommandUnsupportedRef.current = false;
-      } else {
-        const backendResult = await invoke<SearchChunkBackendResult>(
-          'search_in_document_chunk',
-          buildSearchChunkRequest({
-            activeTabId: activeTab.id,
-            caseSensitive,
-            effectiveResultFilterKeyword,
-            effectiveSearchKeyword,
-            maxResults: SEARCH_CHUNK_SIZE,
-            searchMode,
-            startOffset: 0,
-          })
-        );
-
-        ({
-          documentVersion,
-          nextMatches,
-          nextOffset,
-        } = resolveSearchChunkState(backendResult));
-      }
 
       if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
         return null;
