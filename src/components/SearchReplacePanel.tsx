@@ -11,8 +11,8 @@ import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChro
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useFilterRulesEditorOptions } from '@/components/search-panel/useFilterRulesEditorOptions';
 import { useFilterRuleGroupPersistence } from '@/components/search-panel/useFilterRuleGroupPersistence';
-import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
-import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
+import { useSearchPanelInputSupport } from '@/components/search-panel/useSearchPanelInputSupport';
+import { useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
@@ -168,22 +168,6 @@ export function SearchReplacePanel() {
     searchSidebarWidth,
     setSearchSidebarWidth,
   });
-  const {
-    handleInputContextMenuAction,
-    handleSearchSidebarContextMenu,
-    inputContextMenu,
-    inputContextMenuRef,
-  } = useSearchInputContextMenu({ isOpen });
-
-
-  const {
-    rememberReplaceValue,
-    rememberSearchKeyword,
-  } = useSearchInputHistory({
-    recentReplaceValues,
-    recentSearchKeywords,
-    updateSettings,
-  });
 
   const {
     cachedFilterRef,
@@ -219,6 +203,22 @@ export function SearchReplacePanel() {
     stopResultFilterSearchRef,
     tabSearchPanelStateRef,
   } = useSearchPanelRuntimeRefs();
+
+  const {
+    focusSearchInput,
+    handleInputContextMenuAction,
+    handleSearchSidebarContextMenu,
+    inputContextMenu,
+    inputContextMenuRef,
+    rememberReplaceValue,
+    rememberSearchKeyword,
+  } = useSearchPanelInputSupport({
+    isOpen,
+    recentReplaceValues,
+    recentSearchKeywords,
+    searchInputRef,
+    updateSettings,
+  });
 
   const { cancelPendingBatchLoad, requestStopResultFilterSearch } = useSearchBatchControl({
     countRunVersionRef,
@@ -466,12 +466,6 @@ export function SearchReplacePanel() {
     }
   }, [activeTab, backendResultFilterKeyword, caseSensitive, filterRulesKey, filterRulesPayload]);
 
-  const focusSearchInput = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, []);
 
   const executeSearch = useCallback(
     async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<SearchRunResult | null> => {
