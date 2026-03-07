@@ -28,6 +28,7 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
+import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -2206,12 +2207,13 @@ export function SearchReplacePanel() {
               startTransition,
               totalMatchedLines,
             });
-            currentFilterMatchIndexRef.current = targetIndex;
-            setCurrentFilterMatchIndex(targetIndex);
-            setErrorMessage(null);
-            setFeedbackMessage(null);
-            window.requestAnimationFrame(() => {
-              scrollResultItemIntoView(targetIndex);
+            applyFilterResultFilterSelection({
+              currentFilterMatchIndexRef,
+              scrollResultItemIntoView,
+              setCurrentFilterMatchIndex,
+              setErrorMessage,
+              setFeedbackMessage,
+              targetIndex,
             });
             return;
           }
@@ -2286,12 +2288,13 @@ export function SearchReplacePanel() {
             totalMatchedLines,
             totalMatches,
           });
-          currentMatchIndexRef.current = targetIndex;
-          setCurrentMatchIndex(targetIndex);
-          setErrorMessage(null);
-          setFeedbackMessage(null);
-          window.requestAnimationFrame(() => {
-            scrollResultItemIntoView(targetIndex);
+          applySearchResultFilterSelection({
+            currentMatchIndexRef,
+            scrollResultItemIntoView,
+            setCurrentMatchIndex,
+            setErrorMessage,
+            setFeedbackMessage,
+            targetIndex,
           });
           return;
         }
