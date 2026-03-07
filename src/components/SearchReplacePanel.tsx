@@ -35,6 +35,7 @@ import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilte
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
+import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
 import { resolveSearchPanelBoundedIndex, shouldLoadMoreForSearchPanelStep } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchPanelLocalStepSelection, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1345,7 +1346,7 @@ export function SearchReplacePanel() {
             filterStepCommandUnsupportedRef.current = false;
 
             const targetMatch = stepResultValue.targetMatch;
-            if (!targetMatch) {
+            if (!hasSearchPanelTargetMatch(targetMatch)) {
               return;
             }
 
@@ -1433,7 +1434,7 @@ export function SearchReplacePanel() {
         }
 
         const filterResult = await executeFilter();
-        if (!filterResult || filterResult.matches.length === 0) {
+        if (!hasSearchPanelMatches(filterResult)) {
           return;
         }
 
@@ -1480,7 +1481,7 @@ export function SearchReplacePanel() {
             searchCursorStepCommandUnsupportedRef.current = false;
 
             const targetMatch = stepResultValue.targetMatch;
-            if (!targetMatch) {
+            if (!hasSearchPanelTargetMatch(targetMatch)) {
               return;
             }
             applySearchCursorStepResult({
@@ -1548,7 +1549,7 @@ export function SearchReplacePanel() {
 
       const shouldReverse = step < 0;
       const searchResult = await executeFirstMatchSearch(shouldReverse);
-      if (!searchResult || searchResult.matches.length === 0) {
+      if (!hasSearchPanelMatches(searchResult)) {
         return;
       }
 
