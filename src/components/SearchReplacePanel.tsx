@@ -19,6 +19,7 @@ import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMat
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
+import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
@@ -226,26 +227,19 @@ export function SearchReplacePanel() {
     matchedLines: number;
   } | null>(null);
 
-  const requestStopResultFilterSearch = useCallback(() => {
-    stopResultFilterSearchRef.current = true;
-    runVersionRef.current += 1;
-    filterRunVersionRef.current += 1;
-    countRunVersionRef.current += 1;
-    filterCountRunVersionRef.current += 1;
-  }, []);
-  const cancelPendingBatchLoad = useCallback(() => {
-    loadMoreSessionRef.current += 1;
-    resultFilterStepRunVersionRef.current += 1;
-    if (loadMoreDebounceRef.current !== null) {
-      window.clearTimeout(loadMoreDebounceRef.current);
-      loadMoreDebounceRef.current = null;
-    }
-    setResultFilterStepLoadingDirection(null);
-    if (loadMoreLockRef.current) {
-      loadMoreLockRef.current = false;
-      setIsSearching(false);
-    }
-  }, []);
+  const { cancelPendingBatchLoad, requestStopResultFilterSearch } = useSearchBatchControl({
+    countRunVersionRef,
+    filterCountRunVersionRef,
+    filterRunVersionRef,
+    loadMoreDebounceRef,
+    loadMoreLockRef,
+    loadMoreSessionRef,
+    resultFilterStepRunVersionRef,
+    runVersionRef,
+    setIsSearching,
+    setResultFilterStepLoadingDirection,
+    stopResultFilterSearchRef,
+  });
   const filterCountCacheRef = useRef<{
     tabId: string;
     rulesKey: string;
