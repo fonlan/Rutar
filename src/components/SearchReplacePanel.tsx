@@ -3,7 +3,6 @@ import {
   startTransition,
   useCallback,
   useEffect,
-  useMemo,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
@@ -38,6 +37,7 @@ import { useSearchResultPanelState } from '@/components/search-panel/useSearchRe
 import { useSearchSessionLifecycle } from '@/components/search-panel/useSearchSessionLifecycle';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
 import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
+import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -64,7 +64,6 @@ import type {
   SearchResultFilterStepBackendResult,
   SearchRunResult,
 } from '@/components/search-panel/types';
-import { useStore } from '@/store/useStore';
 import {
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
@@ -74,22 +73,19 @@ import {
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
 } from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
-  const tabs = useStore((state) => state.tabs);
-  const activeTabId = useStore((state) => state.activeTabId);
-  const cursorPositionByTab = useStore((state) => state.cursorPositionByTab);
-  const setCursorPosition = useStore((state) => state.setCursorPosition);
-  const updateTab = useStore((state) => state.updateTab);
-  const updateSettings = useStore((state) => state.updateSettings);
-  const language = useStore((state) => state.settings.language);
-  const fontFamily = useStore((state) => state.settings.fontFamily);
-  const fontSize = useStore((state) => state.settings.fontSize);
-  const recentSearchKeywords = useStore((state) => state.settings.recentSearchKeywords);
-  const recentReplaceValues = useStore((state) => state.settings.recentReplaceValues);
-  const activeTab = useMemo(
-    () => tabs.find((tab) => tab.id === activeTabId && tab.tabType !== 'diff') ?? null,
-    [tabs, activeTabId]
-  );
-  const activeCursorPosition = activeTab ? cursorPositionByTab[activeTab.id] : null;
+  const {
+    activeCursorPosition,
+    activeTab,
+    activeTabId,
+    fontFamily,
+    fontSize,
+    language,
+    recentReplaceValues,
+    recentSearchKeywords,
+    setCursorPosition,
+    updateSettings,
+    updateTab,
+  } = useSearchPanelStoreState();
 
   const {
     appliedResultFilterKeyword,
