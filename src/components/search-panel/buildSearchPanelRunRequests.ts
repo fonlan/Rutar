@@ -25,6 +25,14 @@ interface BuildSearchSessionNextRequestOptions {
   sessionId: string;
 }
 
+interface BuildSearchFirstRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveSearchKeyword: string;
+  reverse: boolean;
+  searchMode: SearchMode;
+}
+
 interface BuildFilterSessionStartRequestOptions {
   activeTabId: string;
   caseSensitive: boolean;
@@ -73,6 +81,22 @@ export function buildSearchSessionNextRequest({
   return {
     sessionId,
     maxResults,
+  };
+}
+
+export function buildSearchFirstRequest({
+  activeTabId,
+  caseSensitive,
+  effectiveSearchKeyword,
+  reverse,
+  searchMode,
+}: BuildSearchFirstRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    reverse,
   };
 }
 

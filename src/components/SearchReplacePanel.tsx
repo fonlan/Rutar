@@ -25,6 +25,7 @@ import { restoreSearchPanelSnapshotState } from '@/components/search-panel/resto
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
+import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -32,7 +33,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchFirstRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -1147,13 +1148,16 @@ export function SearchReplacePanel() {
     setIsSearching(true);
 
     try {
-      const firstResult = await invoke<SearchFirstBackendResult>('search_first_in_document', {
-        id: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        reverse,
-      });
+      const firstResult = await invoke<SearchFirstBackendResult>(
+        'search_first_in_document',
+        buildSearchFirstRequest({
+          activeTabId: activeTab.id,
+          effectiveSearchKeyword,
+          searchMode,
+          caseSensitive,
+          reverse,
+        })
+      );
 
       if (runVersionRef.current !== runVersion) {
         return null;
@@ -1163,54 +1167,40 @@ export function SearchReplacePanel() {
       const firstMatch = firstResult.firstMatch;
 
       if (!firstMatch) {
-        setErrorMessage(null);
-        resetSearchState(false);
-
-        cachedSearchRef.current = {
-          tabId: activeTab.id,
-          keyword: effectiveSearchKeyword,
-          searchMode,
+        return applyEmptySearchFirstMatchResult({
+          activeTabId: activeTab.id,
+          cachedSearchRef,
           caseSensitive,
+          chunkCursorRef,
+          documentVersion,
+          effectiveResultFilterKeyword: backendResultFilterKeyword,
+          effectiveSearchKeyword,
           parseEscapeSequences,
-          resultFilterKeyword: backendResultFilterKeyword,
-          documentVersion,
-          matches: [],
-          nextOffset: null,
-          sessionId: null,
-        };
-        setSearchSessionId(null);
-        chunkCursorRef.current = null;
-        setIsSearching(false);
-
-        return {
-          matches: [],
-          documentVersion,
-          errorMessage: null,
-          nextOffset: null,
-        };
+          resetSearchState,
+          searchMode,
+          setErrorMessage,
+          setIsSearching,
+          setSearchSessionId,
+        });
       }
 
-      const immediateMatches = [firstMatch];
-      setErrorMessage(null);
-      startTransition(() => {
-        setMatches(immediateMatches);
-        setCurrentMatchIndex(0);
-      });
-
-      cachedSearchRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
+      const immediateResult = applyImmediateSearchFirstMatchResult({
+        activeTabId: activeTab.id,
+        cachedSearchRef,
         caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
+        chunkCursorRef,
         documentVersion,
-        matches: immediateMatches,
-        nextOffset: 0,
-        sessionId: null,
-      };
-      setSearchSessionId(null);
-      chunkCursorRef.current = 0;
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        effectiveSearchKeyword,
+        firstMatch,
+        parseEscapeSequences,
+        searchMode,
+        setCurrentMatchIndex,
+        setErrorMessage,
+        setMatches,
+        setSearchSessionId,
+        startTransition,
+      });
 
       void (async () => {
         const chunkResult = await executeSearch(true, false);
@@ -1219,12 +1209,7 @@ export function SearchReplacePanel() {
         }
       })();
 
-      return {
-        matches: immediateMatches,
-        documentVersion,
-        errorMessage: null,
-        nextOffset: 0,
-      };
+      return immediateResult;
     } catch (error) {
       if (runVersionRef.current !== runVersion) {
         return null;
