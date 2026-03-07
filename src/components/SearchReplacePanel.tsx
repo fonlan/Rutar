@@ -32,6 +32,7 @@ import { applyFilterResultFilterSelection, applySearchResultFilterSelection } fr
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
+import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
 import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -1311,11 +1312,10 @@ export function SearchReplacePanel() {
 
       if (activeTab && isFilterMode && !filterStepCommandUnsupportedRef.current) {
         try {
-          const currentFilterMatch =
-            currentFilterMatchIndexRef.current >= 0 &&
-            currentFilterMatchIndexRef.current < filterMatches.length
-              ? filterMatches[currentFilterMatchIndexRef.current]
-              : null;
+          const currentFilterMatch = resolveCurrentFilterMatch(
+            filterMatches,
+            currentFilterMatchIndexRef.current
+          );
           const stepResultValue = await invoke<unknown>(
             'step_result_filter_search_in_filter_document',
             buildFilterStepRequest({
@@ -1461,10 +1461,10 @@ export function SearchReplacePanel() {
 
       if (activeTab && keyword && !searchCursorStepCommandUnsupportedRef.current) {
         try {
-          const currentSearchMatch =
-            currentMatchIndexRef.current >= 0 && currentMatchIndexRef.current < matches.length
-              ? matches[currentMatchIndexRef.current]
-              : null;
+          const currentSearchMatch = resolveCurrentSearchMatch(
+            matches,
+            currentMatchIndexRef.current
+          );
           const anchorLine = activeCursorPosition?.line ?? currentSearchMatch?.line ?? null;
           const anchorColumn = activeCursorPosition?.column ?? currentSearchMatch?.column ?? null;
           const stepResultValue = await invoke<unknown>(
@@ -2152,11 +2152,10 @@ export function SearchReplacePanel() {
 
       try {
         if (isFilterMode) {
-          const currentFilterMatch =
-            currentFilterMatchIndexRef.current >= 0 &&
-            currentFilterMatchIndexRef.current < filterMatches.length
-              ? filterMatches[currentFilterMatchIndexRef.current]
-              : null;
+          const currentFilterMatch = resolveCurrentFilterMatch(
+            filterMatches,
+            currentFilterMatchIndexRef.current
+          );
 
           const stepResult = await invoke<FilterResultFilterStepBackendResult>(
             'step_result_filter_search_in_filter_document',
@@ -2226,10 +2225,10 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const currentSearchMatch =
-          currentMatchIndexRef.current >= 0 && currentMatchIndexRef.current < matches.length
-            ? matches[currentMatchIndexRef.current]
-            : null;
+        const currentSearchMatch = resolveCurrentSearchMatch(
+          matches,
+          currentMatchIndexRef.current
+        );
 
         const stepResult = await invoke<SearchResultFilterStepBackendResult>(
           'step_result_filter_search_in_document',
