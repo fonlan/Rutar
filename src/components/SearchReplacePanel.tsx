@@ -28,6 +28,7 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
@@ -48,7 +49,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -1396,27 +1397,7 @@ export function SearchReplacePanel() {
         maxResults: SEARCH_CHUNK_SIZE,
       });
 
-      if (applyReplaceOperationGuard({
-        hasReplacement: result.replaced,
-        noReplaceMatchesMessage: messages.noReplaceMatches,
-        setFeedbackMessage,
-      })) {
-        return;
-      }
-
-      applyReplaceSuccessEffects({
-        activeTabId: activeTab.id,
-        feedbackMessage: messages.replacedCurrent,
-        fallbackLineCount: activeTab.lineCount,
-        nextLineCount: result.lineCount,
-        rememberReplaceValue,
-        replaceValue,
-        setErrorMessage,
-        setFeedbackMessage,
-        updateTab,
-      });
-
-      const nextMatch = applyReplaceCurrentSearchResult({
+      applyResolvedReplaceCurrentResult({
         activeTabId: activeTab.id,
         boundedCurrentIndex,
         cachedSearchRef,
@@ -1426,20 +1407,24 @@ export function SearchReplacePanel() {
         chunkCursorRef,
         effectiveResultFilterKeyword: backendResultFilterKeyword,
         effectiveSearchKeyword,
+        fallbackLineCount: activeTab.lineCount,
+        feedbackMessage: messages.replacedCurrent,
+        navigateToMatch,
+        noReplaceMatchesMessage: messages.noReplaceMatches,
         parseEscapeSequences,
+        rememberReplaceValue,
+        replaceValue,
         result,
         searchMode,
         setCurrentMatchIndex,
+        setErrorMessage,
+        setFeedbackMessage,
         setMatches,
         setSearchSessionId,
         setTotalMatchCount,
         setTotalMatchedLineCount,
         startTransition,
-      });
-
-      applyReplaceNextMatchNavigation({
-        navigateToMatch,
-        nextMatch,
+        updateTab,
       });
     } catch (error) {
       applySearchPanelErrorMessage({
