@@ -20,6 +20,7 @@ import { useSearchPanelLocalState } from '@/components/search-panel/useSearchPan
 import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelUiState';
 import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
 import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
+import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2283,56 +2284,7 @@ export function SearchReplacePanel() {
     totalMatchedLineCount,
   });
 
-  const handleApplyResultFilter = useCallback(async () => {
-    cancelPendingBatchLoad();
-    const nextKeyword = resultFilterKeyword.trim();
-    const nextResultFilterKeyword = nextKeyword
-      ? caseSensitive
-        ? nextKeyword
-        : nextKeyword.toLowerCase()
-      : '';
-
-    if (nextKeyword.length === 0) {
-      requestStopResultFilterSearch();
-      setAppliedResultFilterKeyword('');
-      void executeSearch(true, true, '');
-      if (isFilterMode) {
-        void executeFilter(true, true, '');
-      }
-      setIsResultFilterSearching(false);
-      return;
-    }
-
-    if (isResultFilterSearching) {
-      return;
-    }
-
-    if (
-      nextKeyword === appliedResultFilterKeyword.trim() &&
-      true
-    ) {
-      return;
-    }
-
-    stopResultFilterSearchRef.current = false;
-    setIsResultFilterSearching(true);
-    setAppliedResultFilterKeyword('');
-
-    try {
-      if (isFilterMode) {
-        await executeFilter(true, true, nextResultFilterKeyword);
-      } else if (keyword) {
-        await executeSearch(true, true, nextResultFilterKeyword);
-      }
-
-      if (!stopResultFilterSearchRef.current) {
-        setAppliedResultFilterKeyword(nextKeyword);
-      }
-    } finally {
-      setIsResultFilterSearching(false);
-      stopResultFilterSearchRef.current = false;
-    }
-  }, [
+  const handleApplyResultFilter = useSearchApplyResultFilter({
     appliedResultFilterKeyword,
     cancelPendingBatchLoad,
     caseSensitive,
@@ -2343,7 +2295,10 @@ export function SearchReplacePanel() {
     keyword,
     requestStopResultFilterSearch,
     resultFilterKeyword,
-  ]);
+    setAppliedResultFilterKeyword,
+    setIsResultFilterSearching,
+    stopResultFilterSearchRef,
+  });
 
   const navigateResultFilterByStep = useCallback(
     async (step: number) => {
