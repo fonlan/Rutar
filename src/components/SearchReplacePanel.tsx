@@ -22,6 +22,7 @@ import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPa
 import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
+import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -1952,123 +1953,40 @@ export function SearchReplacePanel() {
 
     const nextSnapshot = tabSearchPanelStateRef.current[activeTab.id];
     if (nextSnapshot) {
-      setIsOpen(nextSnapshot.isOpen);
-      setPanelMode(nextSnapshot.panelMode);
-      setResultPanelState(nextSnapshot.resultPanelState);
-      setResultPanelHeight(nextSnapshot.resultPanelHeight ?? RESULT_PANEL_DEFAULT_HEIGHT);
-      setSearchSidebarWidth(nextSnapshot.searchSidebarWidth ?? SEARCH_SIDEBAR_DEFAULT_WIDTH);
-      setKeyword(nextSnapshot.keyword);
-      setReplaceValue(nextSnapshot.replaceValue);
-      setSearchMode(nextSnapshot.searchMode);
-      setCaseSensitive(nextSnapshot.caseSensitive);
-      setParseEscapeSequences(nextSnapshot.parseEscapeSequences ?? false);
-      setReverseSearch(nextSnapshot.reverseSearch);
-      setResultFilterKeyword(nextSnapshot.resultFilterKeyword);
-      setAppliedResultFilterKeyword(nextSnapshot.appliedResultFilterKeyword);
-
-      const restoredMatches = nextSnapshot.matches || [];
-      const restoredFilterMatches = nextSnapshot.filterMatches || [];
-
-      setMatches(restoredMatches);
-      setFilterMatches(restoredFilterMatches);
-      setCurrentMatchIndex(() => {
-        if (restoredMatches.length === 0) {
-          return 0;
-        }
-
-        return Math.min(nextSnapshot.currentMatchIndex, restoredMatches.length - 1);
+      const { restoredResultFilterKeyword } = restoreSearchPanelSnapshotState({
+        activeTabId: activeTab.id,
+        cachedFilterRef,
+        cachedSearchRef,
+        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
+        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
+        chunkCursorRef,
+        countCacheRef,
+        filterCountCacheRef,
+        filterLineCursorRef,
+        setAppliedResultFilterKeyword,
+        setCaseSensitive,
+        setCurrentFilterMatchIndex,
+        setCurrentMatchIndex,
+        setFilterMatches,
+        setFilterSessionId,
+        setIsOpen,
+        setKeyword,
+        setMatches,
+        setPanelMode,
+        setParseEscapeSequences,
+        setReplaceValue,
+        setResultFilterKeyword,
+        setResultPanelHeight,
+        setResultPanelState,
+        setReverseSearch,
+        setSearchMode,
+        setSearchSessionId,
+        setSearchSidebarWidth,
+        setTotalFilterMatchedLineCount,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+        snapshot: nextSnapshot,
       });
-      setCurrentFilterMatchIndex(() => {
-        if (restoredFilterMatches.length === 0) {
-          return 0;
-        }
-
-        return Math.min(nextSnapshot.currentFilterMatchIndex, restoredFilterMatches.length - 1);
-      });
-
-      setTotalMatchCount(nextSnapshot.totalMatchCount);
-      setTotalMatchedLineCount(nextSnapshot.totalMatchedLineCount);
-      setTotalFilterMatchedLineCount(nextSnapshot.totalFilterMatchedLineCount);
-
-      setSearchSessionId(nextSnapshot.searchSessionId ?? null);
-      setFilterSessionId(nextSnapshot.filterSessionId ?? null);
-      chunkCursorRef.current = nextSnapshot.searchNextOffset;
-      filterLineCursorRef.current = nextSnapshot.filterNextLine;
-
-      const restoredNormalizedResultFilterKeyword = nextSnapshot.appliedResultFilterKeyword.trim().toLowerCase();
-      const restoredResultFilterKeyword = restoredNormalizedResultFilterKeyword.length
-        ? nextSnapshot.caseSensitive
-          ? nextSnapshot.appliedResultFilterKeyword.trim()
-          : restoredNormalizedResultFilterKeyword
-        : '';
-
-      if (nextSnapshot.searchDocumentVersion !== null && nextSnapshot.keyword) {
-        const snapshotParseEscapeSequences = nextSnapshot.parseEscapeSequences ?? false;
-        const snapshotEffectiveKeyword = resolveSearchKeyword(
-          nextSnapshot.keyword,
-          snapshotParseEscapeSequences
-        );
-        cachedSearchRef.current = {
-          tabId: activeTab.id,
-          keyword: snapshotEffectiveKeyword,
-          searchMode: nextSnapshot.searchMode,
-          caseSensitive: nextSnapshot.caseSensitive,
-          parseEscapeSequences: snapshotParseEscapeSequences,
-          resultFilterKeyword: restoredResultFilterKeyword,
-          documentVersion: nextSnapshot.searchDocumentVersion,
-          matches: restoredMatches,
-          nextOffset: nextSnapshot.searchNextOffset,
-          sessionId: nextSnapshot.searchSessionId ?? null,
-        };
-
-        if (nextSnapshot.totalMatchCount !== null && nextSnapshot.totalMatchedLineCount !== null) {
-          countCacheRef.current = {
-            tabId: activeTab.id,
-            keyword: snapshotEffectiveKeyword,
-            searchMode: nextSnapshot.searchMode,
-            caseSensitive: nextSnapshot.caseSensitive,
-            parseEscapeSequences: snapshotParseEscapeSequences,
-            resultFilterKeyword: restoredResultFilterKeyword,
-            documentVersion: nextSnapshot.searchDocumentVersion,
-            totalMatches: nextSnapshot.totalMatchCount,
-            matchedLines: nextSnapshot.totalMatchedLineCount,
-          };
-        } else {
-          countCacheRef.current = null;
-        }
-      } else {
-        setSearchSessionId(null);
-        cachedSearchRef.current = null;
-        countCacheRef.current = null;
-      }
-
-      if (nextSnapshot.filterDocumentVersion !== null && nextSnapshot.filterRulesKey) {
-        cachedFilterRef.current = {
-          tabId: activeTab.id,
-          rulesKey: nextSnapshot.filterRulesKey,
-          resultFilterKeyword: restoredResultFilterKeyword,
-          documentVersion: nextSnapshot.filterDocumentVersion,
-          matches: restoredFilterMatches,
-          nextLine: nextSnapshot.filterNextLine,
-          sessionId: nextSnapshot.filterSessionId ?? null,
-        };
-
-        if (nextSnapshot.totalFilterMatchedLineCount !== null) {
-          filterCountCacheRef.current = {
-            tabId: activeTab.id,
-            rulesKey: nextSnapshot.filterRulesKey,
-            resultFilterKeyword: restoredResultFilterKeyword,
-            documentVersion: nextSnapshot.filterDocumentVersion,
-            matchedLines: nextSnapshot.totalFilterMatchedLineCount,
-          };
-        } else {
-          filterCountCacheRef.current = null;
-        }
-      } else {
-        setFilterSessionId(null);
-        cachedFilterRef.current = null;
-        filterCountCacheRef.current = null;
-      }
 
       if (
         nextSnapshot.searchDocumentVersion !== null &&
