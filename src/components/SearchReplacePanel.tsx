@@ -31,7 +31,7 @@ import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
-import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
+import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { resolveFilterLoadMoreSessionState, resolveSearchLoadMoreSessionState } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { resolveFilterLoadMoreFallbackState, resolveSearchLoadMoreFallbackState } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
@@ -1001,25 +1001,7 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      if (!firstMatch) {
-        return applyEmptySearchFirstMatchResult({
-          activeTabId: activeTab.id,
-          cachedSearchRef,
-          caseSensitive,
-          chunkCursorRef,
-          documentVersion,
-          effectiveResultFilterKeyword: backendResultFilterKeyword,
-          effectiveSearchKeyword,
-          parseEscapeSequences,
-          resetSearchState,
-          searchMode,
-          setErrorMessage,
-          setIsSearching,
-          setSearchSessionId,
-        });
-      }
-
-      const immediateResult = applyImmediateSearchFirstMatchResult({
+      const immediateResult = applyResolvedSearchFirstMatchResult({
         activeTabId: activeTab.id,
         cachedSearchRef,
         caseSensitive,
@@ -1029,13 +1011,19 @@ export function SearchReplacePanel() {
         effectiveSearchKeyword,
         firstMatch,
         parseEscapeSequences,
+        resetSearchState,
         searchMode,
         setCurrentMatchIndex,
         setErrorMessage,
+        setIsSearching,
         setMatches,
         setSearchSessionId,
         startTransition,
       });
+
+      if (!firstMatch) {
+        return immediateResult;
+      }
 
       void (async () => {
         const chunkResult = await executeSearch(true, false);

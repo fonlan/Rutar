@@ -34,6 +34,26 @@ interface ApplyEmptySearchFirstMatchResultOptions {
   setSearchSessionId: (value: string | null) => void;
 }
 
+interface ApplyResolvedSearchFirstMatchResultOptions {
+  activeTabId: string;
+  cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
+  caseSensitive: boolean;
+  chunkCursorRef: MutableRefObject<number | null>;
+  documentVersion: number;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  firstMatch: SearchMatch | null;
+  parseEscapeSequences: boolean;
+  resetSearchState: (clearTotals?: boolean) => void;
+  searchMode: SearchMode;
+  setCurrentMatchIndex: Dispatch<SetStateAction<number>>;
+  setErrorMessage: (value: string | null) => void;
+  setIsSearching: (value: boolean) => void;
+  setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
+  setSearchSessionId: (value: string | null) => void;
+  startTransition: TransitionStartFunction;
+}
+
 interface ApplyImmediateSearchFirstMatchResultOptions {
   activeTabId: string;
   cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
@@ -50,6 +70,19 @@ interface ApplyImmediateSearchFirstMatchResultOptions {
   setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
   setSearchSessionId: (value: string | null) => void;
   startTransition: TransitionStartFunction;
+}
+
+export function applyResolvedSearchFirstMatchResult(
+  options: ApplyResolvedSearchFirstMatchResultOptions,
+): SearchRunResult {
+  if (!options.firstMatch) {
+    return applyEmptySearchFirstMatchResult(options);
+  }
+
+  return applyImmediateSearchFirstMatchResult({
+    ...options,
+    firstMatch: options.firstMatch,
+  });
 }
 
 export function applyEmptySearchFirstMatchResult({
