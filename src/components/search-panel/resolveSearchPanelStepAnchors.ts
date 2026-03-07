@@ -1,9 +1,29 @@
 import type { CursorPosition } from '@/store/useStore';
-import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from './resolveSearchPanelCurrentMatch';
 import type {
   FilterMatch,
   SearchMatch,
 } from './types';
+
+function resolveCurrentMatch<T>(matches: T[], currentIndex: number): T | null {
+  return currentIndex >= 0 && currentIndex < matches.length
+    ? matches[currentIndex]
+    : null;
+}
+
+function resolveCurrentFilterMatch(
+  matches: FilterMatch[],
+  currentIndex: number
+): FilterMatch | null {
+  return resolveCurrentMatch(matches, currentIndex);
+}
+
+function resolveCurrentSearchMatch(
+  matches: SearchMatch[],
+  currentIndex: number
+): SearchMatch | null {
+  return resolveCurrentMatch(matches, currentIndex);
+}
+
 
 export function resolveFilterStepAnchor(currentFilterMatch: FilterMatch | null): {
   currentColumn: number | null;
