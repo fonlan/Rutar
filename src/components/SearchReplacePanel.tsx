@@ -42,6 +42,7 @@ import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearch
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginSearchPanelRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
+import { resolveFilterSessionStartState, resolveSearchSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -602,12 +603,14 @@ export function SearchReplacePanel() {
       }
 
       if (usedSessionStart && isSearchSessionStartBackendResult(sessionStartResult)) {
-        nextMatches = sessionStartResult.matches || [];
-        documentVersion = sessionStartResult.documentVersion ?? 0;
-        nextOffset = sessionStartResult.nextOffset ?? null;
-        sessionId = sessionStartResult.sessionId ?? null;
-        totalMatches = sessionStartResult.totalMatches ?? nextMatches.length;
-        totalMatchedLines = sessionStartResult.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+        ({
+          documentVersion,
+          nextMatches,
+          nextOffset,
+          sessionId,
+          totalMatchedLines,
+          totalMatches,
+        } = resolveSearchSessionStartState(sessionStartResult));
         shouldRunCountFallback = false;
         searchSessionCommandUnsupportedRef.current = false;
       } else {
@@ -798,11 +801,13 @@ export function SearchReplacePanel() {
       }
 
       if (usedSessionStart && isFilterSessionStartBackendResult(sessionStartResult)) {
-        nextMatches = sessionStartResult.matches || [];
-        documentVersion = sessionStartResult.documentVersion ?? 0;
-        nextLine = sessionStartResult.nextLine ?? null;
-        sessionId = sessionStartResult.sessionId ?? null;
-        totalMatchedLines = sessionStartResult.totalMatchedLines ?? nextMatches.length;
+        ({
+          documentVersion,
+          nextLine,
+          nextMatches,
+          sessionId,
+          totalMatchedLines,
+        } = resolveFilterSessionStartState(sessionStartResult));
         shouldRunCountFallback = false;
         filterSessionCommandUnsupportedRef.current = false;
       } else {
