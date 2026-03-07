@@ -29,6 +29,14 @@ interface ApplySearchCursorStepResultOptions {
   targetMatch: SearchMatch;
 }
 
+interface ApplySearchCursorStepSuccessEffectsOptions {
+  navigateToMatch: (match: SearchMatch) => void;
+  navigationFeedback: string;
+  setErrorMessage: (value: string | null) => void;
+  setFeedbackMessage: (value: string | null) => void;
+  targetMatch: SearchMatch;
+}
+
 export function applySearchCursorStepResult({
   cachedSearchRef,
   chunkCursorRef,
@@ -60,4 +68,15 @@ export function applySearchCursorStepResult({
   chunkCursorRef.current = null;
   cachedSearchRef.current = null;
   return 0;
+}
+export function applySearchCursorStepSuccessEffects({
+  navigateToMatch,
+  navigationFeedback,
+  setErrorMessage,
+  setFeedbackMessage,
+  targetMatch,
+}: ApplySearchCursorStepSuccessEffectsOptions) {
+  setErrorMessage(null);
+  setFeedbackMessage(navigationFeedback);
+  navigateToMatch(targetMatch);
 }
