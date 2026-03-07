@@ -28,7 +28,7 @@ import { useSearchQueryOptions } from '@/components/search-panel/useSearchQueryO
 import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
 import { useSearchSessionLifecycle } from '@/components/search-panel/useSearchSessionLifecycle';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
-import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
+import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionNextBackendResult,
@@ -56,7 +56,6 @@ import type {
   SearchRunResult,
 } from '@/components/search-panel/types';
 import { useStore } from '@/store/useStore';
-import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
@@ -65,8 +64,6 @@ import {
   RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
-  SEARCH_SIDEBAR_MAX_WIDTH,
-  SEARCH_SIDEBAR_MIN_WIDTH,
 } from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
   const tabs = useStore((state) => state.tabs);
@@ -158,25 +155,18 @@ export function SearchReplacePanel() {
     panelMode,
   });
   const {
-    containerRef: searchSidebarContainerRef,
-    isResizing: isSearchSidebarResizing,
-    startResize: startSearchSidebarResize,
-  } = useResizableSidebarWidth({
-    width: searchSidebarWidth,
-    minWidth: SEARCH_SIDEBAR_MIN_WIDTH,
-    maxWidth: SEARCH_SIDEBAR_MAX_WIDTH,
-    onWidthChange: setSearchSidebarWidth,
-    resizeEdge: 'left',
-  });
-  const {
     getSearchSidebarOccludedRightPx,
     handleSearchUiBlurCapture,
     handleSearchUiFocusCapture,
     handleSearchUiPointerDownCapture,
+    isSearchSidebarResizing,
     isSearchUiActive,
-  } = useSearchSidebarInteraction({
-    isOpen,
     searchSidebarContainerRef,
+    startSearchSidebarResize,
+  } = useSearchSidebarFrame({
+    isOpen,
+    searchSidebarWidth,
+    setSearchSidebarWidth,
   });
   const {
     handleInputContextMenuAction,
