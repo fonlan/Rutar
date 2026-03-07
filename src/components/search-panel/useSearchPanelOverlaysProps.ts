@@ -1,15 +1,17 @@
-import { useMemo, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
+import { createElement, useMemo, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
 import { SearchInputContextMenu } from './SearchInputContextMenu';
 import { SearchPanelOverlays } from './SearchPanelOverlays';
+import { SearchResultItems } from './SearchResultItems';
 import { SearchResultsPanel } from './SearchResultsPanel';
 
 type SearchPanelOverlaysProps = ComponentProps<typeof SearchPanelOverlays>;
 type SearchInputContextMenuProps = ComponentProps<typeof SearchInputContextMenu>;
+type SearchResultItemsProps = ComponentProps<typeof SearchResultItems>;
 type SearchResultsPanelProps = ComponentProps<typeof SearchResultsPanel>;
 type SearchResultsPanelState = SearchResultsPanelProps['resultPanelState'];
 
 interface UseSearchPanelOverlaysPropsOptions
-  extends Omit<SearchResultsPanelProps, 'onCopy' | 'onMinimize'>,
+  extends Omit<SearchResultsPanelProps, 'onCopy' | 'onMinimize' | 'renderedResultItems'>,
     Pick<SearchPanelOverlaysProps, 'inputContextMenu'>,
     Pick<
       SearchInputContextMenuProps,
@@ -17,6 +19,7 @@ interface UseSearchPanelOverlaysPropsOptions
     > {
   copyPlainTextResults: () => Promise<void>;
   handleInputContextMenuAction: SearchInputContextMenuProps['onAction'];
+  searchResultItemsProps: SearchResultItemsProps;
   setResultPanelState: Dispatch<SetStateAction<SearchResultsPanelState>>;
 }
 
@@ -29,9 +32,15 @@ export function useSearchPanelOverlaysProps({
   handleInputContextMenuAction,
   copyPlainTextResults,
   inputContextMenu,
+  searchResultItemsProps,
   setResultPanelState,
   ...resultsPanelProps
 }: UseSearchPanelOverlaysPropsOptions): SearchPanelOverlaysProps {
+  const renderedResultItems = useMemo(
+    () => createElement(SearchResultItems, searchResultItemsProps),
+    [searchResultItemsProps]
+  );
+
   return useMemo(
     () => ({
       inputContextMenu,
@@ -45,6 +54,7 @@ export function useSearchPanelOverlaysProps({
       },
       resultsPanelProps: {
         ...resultsPanelProps,
+        renderedResultItems,
         onCopy: () => void copyPlainTextResults(),
         onMinimize: () => setResultPanelState('minimized'),
       },
@@ -58,6 +68,7 @@ export function useSearchPanelOverlaysProps({
       inputContextMenu,
       menuRef,
       pasteLabel,
+      renderedResultItems,
       resultsPanelProps,
       setResultPanelState,
     ]

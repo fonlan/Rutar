@@ -12,7 +12,6 @@ import {
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
-import { SearchResultItems } from '@/components/search-panel/SearchResultItems';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
 import { useFilterRulesEditorProps } from '@/components/search-panel/useFilterRulesEditorProps';
@@ -3161,24 +3160,7 @@ export function SearchReplacePanel() {
     visibleMatches,
   });
 
-  const renderedResultItems = (
-    <SearchResultItems
-      filterMatches={filterMatches}
-      filterRulesPayloadLength={filterRulesPayload.length}
-      fontFamily={fontFamily}
-      handleSelectMatch={handleSelectMatch}
-      isFilterMode={isFilterMode}
-      keyword={keyword}
-      matches={matches}
-      messages={messages}
-      resultListTextStyle={resultListTextStyle}
-      resultPanelState={resultPanelState}
-      visibleCurrentFilterMatchIndex={visibleCurrentFilterMatchIndex}
-      visibleCurrentMatchIndex={visibleCurrentMatchIndex}
-      visibleFilterMatches={visibleFilterMatches}
-      visibleMatches={visibleMatches}
-    />
-  );
+
   const canReplace = !!activeTab;
   const searchQuerySectionProps = useSearchQuerySectionProps({
     canReplace,
@@ -3302,7 +3284,22 @@ export function SearchReplacePanel() {
     messages,
     minimizedResultWrapperRef,
     plainTextResultEntryCount: plainTextResultEntries.length,
-    renderedResultItems,
+    searchResultItemsProps: {
+      filterMatches,
+      filterRulesPayloadLength: filterRulesPayload.length,
+      fontFamily,
+      handleSelectMatch,
+      isFilterMode,
+      keyword,
+      matches,
+      messages,
+      resultListTextStyle,
+      resultPanelState,
+      visibleCurrentFilterMatchIndex,
+      visibleCurrentMatchIndex,
+      visibleFilterMatches,
+      visibleMatches,
+    },
     resultFilterKeyword,
     resultFilterStepLoadingDirection,
     resultListRef,
