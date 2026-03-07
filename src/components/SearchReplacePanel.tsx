@@ -23,6 +23,7 @@ import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/use
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
+import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2127,34 +2128,38 @@ export function SearchReplacePanel() {
           });
       }
     } else {
-      setIsOpen(false);
-      setPanelMode('find');
-      setResultPanelState('closed');
-      setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
-      setSearchSidebarWidth(SEARCH_SIDEBAR_DEFAULT_WIDTH);
-      setKeyword('');
-      setReplaceValue('');
-      setSearchMode('literal');
-      setCaseSensitive(false);
-      setParseEscapeSequences(false);
-      setReverseSearch(false);
-      setResultFilterKeyword('');
-      setAppliedResultFilterKeyword('');
-      setMatches([]);
-      setFilterMatches([]);
-      setCurrentMatchIndex(0);
-      setCurrentFilterMatchIndex(0);
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
-      setTotalFilterMatchedLineCount(null);
-      chunkCursorRef.current = null;
-      filterLineCursorRef.current = null;
-      setSearchSessionId(null);
-      setFilterSessionId(null);
-      cachedSearchRef.current = null;
-      cachedFilterRef.current = null;
-      countCacheRef.current = null;
-      filterCountCacheRef.current = null;
+      resetSearchPanelForMissingSnapshot({
+        cachedFilterRef,
+        cachedSearchRef,
+        chunkCursorRef,
+        countCacheRef,
+        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
+        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
+        filterCountCacheRef,
+        filterLineCursorRef,
+        setAppliedResultFilterKeyword,
+        setCaseSensitive,
+        setCurrentFilterMatchIndex,
+        setCurrentMatchIndex,
+        setFilterMatches,
+        setFilterSessionId,
+        setIsOpen,
+        setKeyword,
+        setMatches,
+        setPanelMode,
+        setParseEscapeSequences,
+        setReplaceValue,
+        setResultFilterKeyword,
+        setResultPanelHeight,
+        setResultPanelState,
+        setReverseSearch,
+        setSearchMode,
+        setSearchSessionId,
+        setSearchSidebarWidth,
+        setTotalFilterMatchedLineCount,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+      });
     }
 
     setIsResultFilterSearching(false);
