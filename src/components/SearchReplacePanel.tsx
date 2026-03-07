@@ -30,6 +30,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterRunResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
+import { buildFilterChunkRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -552,15 +553,17 @@ export function SearchReplacePanel() {
       let usedSessionStart = false;
       if (!searchSessionCommandUnsupportedRef.current) {
         try {
-          sessionStartResult = await invoke<unknown>('search_session_start_in_document', {
-            id: activeTab.id,
-            keyword: effectiveSearchKeyword,
-            mode: getSearchModeValue(searchMode),
-            caseSensitive,
-            resultFilterKeyword: effectiveResultFilterKeyword,
-            resultFilterCaseSensitive: caseSensitive,
-            maxResults: SEARCH_CHUNK_SIZE,
-          });
+          sessionStartResult = await invoke<unknown>(
+            'search_session_start_in_document',
+            buildSearchSessionStartRequest({
+              activeTabId: activeTab.id,
+              caseSensitive,
+              effectiveResultFilterKeyword,
+              effectiveSearchKeyword,
+              maxResults: SEARCH_CHUNK_SIZE,
+              searchMode,
+            })
+          );
           usedSessionStart = isSearchSessionStartBackendResult(sessionStartResult);
         } catch (error) {
           if (isMissingInvokeCommandError(error, 'search_session_start_in_document')) {
@@ -579,15 +582,18 @@ export function SearchReplacePanel() {
         shouldRunCountFallback = false;
         searchSessionCommandUnsupportedRef.current = false;
       } else {
-        const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
-          id: activeTab.id,
-          keyword: effectiveSearchKeyword,
-          mode: getSearchModeValue(searchMode),
-          caseSensitive,
-          resultFilterKeyword: effectiveResultFilterKeyword,
-          startOffset: 0,
-          maxResults: SEARCH_CHUNK_SIZE,
-        });
+        const backendResult = await invoke<SearchChunkBackendResult>(
+          'search_in_document_chunk',
+          buildSearchChunkRequest({
+            activeTabId: activeTab.id,
+            caseSensitive,
+            effectiveResultFilterKeyword,
+            effectiveSearchKeyword,
+            maxResults: SEARCH_CHUNK_SIZE,
+            searchMode,
+            startOffset: 0,
+          })
+        );
 
         nextMatches = backendResult.matches || [];
         documentVersion = backendResult.documentVersion ?? 0;
@@ -738,13 +744,16 @@ export function SearchReplacePanel() {
       let usedSessionStart = false;
       if (!filterSessionCommandUnsupportedRef.current) {
         try {
-          sessionStartResult = await invoke<unknown>('filter_session_start_in_document', {
-            id: activeTab.id,
-            rules: filterRulesPayload,
-            resultFilterKeyword: effectiveResultFilterKeyword,
-            resultFilterCaseSensitive: caseSensitive,
-            maxResults: FILTER_CHUNK_SIZE,
-          });
+          sessionStartResult = await invoke<unknown>(
+            'filter_session_start_in_document',
+            buildFilterSessionStartRequest({
+              activeTabId: activeTab.id,
+              caseSensitive,
+              effectiveResultFilterKeyword,
+              maxResults: FILTER_CHUNK_SIZE,
+              rules: filterRulesPayload,
+            })
+          );
           usedSessionStart = isFilterSessionStartBackendResult(sessionStartResult);
         } catch (error) {
           if (isMissingInvokeCommandError(error, 'filter_session_start_in_document')) {
@@ -762,14 +771,17 @@ export function SearchReplacePanel() {
         shouldRunCountFallback = false;
         filterSessionCommandUnsupportedRef.current = false;
       } else {
-        const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
-          id: activeTab.id,
-          rules: filterRulesPayload,
-          resultFilterKeyword: effectiveResultFilterKeyword,
-          resultFilterCaseSensitive: caseSensitive,
-          startLine: 0,
-          maxResults: FILTER_CHUNK_SIZE,
-        });
+        const backendResult = await invoke<FilterChunkBackendResult>(
+          'filter_in_document_chunk',
+          buildFilterChunkRequest({
+            activeTabId: activeTab.id,
+            caseSensitive,
+            effectiveResultFilterKeyword,
+            maxResults: FILTER_CHUNK_SIZE,
+            rules: filterRulesPayload,
+            startLine: 0,
+          })
+        );
 
         nextMatches = backendResult.matches || [];
         documentVersion = backendResult.documentVersion ?? 0;
