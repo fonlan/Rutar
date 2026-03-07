@@ -28,9 +28,9 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterRunResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildSearchChunkRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -878,10 +878,13 @@ export function SearchReplacePanel() {
       const activeSearchSessionId = searchSessionIdRef.current;
       if (activeSearchSessionId && !searchSessionCommandUnsupportedRef.current) {
         try {
-          const sessionNextResult = await invoke<unknown>('search_session_next_in_document', {
-            sessionId: activeSearchSessionId,
-            maxResults: SEARCH_CHUNK_SIZE,
-          });
+          const sessionNextResult = await invoke<unknown>(
+            'search_session_next_in_document',
+            buildSearchSessionNextRequest({
+              sessionId: activeSearchSessionId,
+              maxResults: SEARCH_CHUNK_SIZE,
+            })
+          );
           if (sessionId !== loadMoreSessionRef.current) {
             return null;
           }
@@ -920,15 +923,18 @@ export function SearchReplacePanel() {
           return null;
         }
 
-        const backendResult = await invoke<SearchChunkBackendResult>('search_in_document_chunk', {
-          id: activeTab.id,
-          keyword: effectiveSearchKeyword,
-          mode: getSearchModeValue(searchMode),
-          caseSensitive,
-          resultFilterKeyword: backendResultFilterKeyword,
-          startOffset,
-          maxResults: SEARCH_CHUNK_SIZE,
-        });
+        const backendResult = await invoke<SearchChunkBackendResult>(
+          'search_in_document_chunk',
+          buildSearchChunkRequest({
+            activeTabId: activeTab.id,
+            effectiveSearchKeyword,
+            searchMode,
+            caseSensitive,
+            effectiveResultFilterKeyword: backendResultFilterKeyword,
+            startOffset,
+            maxResults: SEARCH_CHUNK_SIZE,
+          })
+        );
 
         if (sessionId !== loadMoreSessionRef.current) {
           return null;
@@ -946,35 +952,21 @@ export function SearchReplacePanel() {
         documentVersion = params.documentVersion;
       }
 
-      chunkCursorRef.current = nextOffset;
-
-      if (appendedMatches.length === 0) {
-        if (cachedSearchRef.current) {
-          cachedSearchRef.current.nextOffset = nextOffset;
-          cachedSearchRef.current.sessionId = searchSessionIdRef.current;
-        }
-        return [];
-      }
-
-      startTransition(() => {
-        setMatches((previousMatches) => {
-          const mergedMatches = [...previousMatches, ...appendedMatches];
-
-          cachedSearchRef.current = {
-            tabId: activeTab.id,
-            keyword: effectiveSearchKeyword,
-            searchMode,
-            caseSensitive,
-            parseEscapeSequences,
-            resultFilterKeyword: backendResultFilterKeyword,
-            documentVersion,
-            matches: mergedMatches,
-            nextOffset,
-            sessionId: searchSessionIdRef.current,
-          };
-
-          return mergedMatches;
-        });
+      applySearchLoadMoreResult({
+        activeTabId: activeTab.id,
+        appendedMatches,
+        cachedSearchRef,
+        caseSensitive,
+        chunkCursorRef,
+        documentVersion,
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        effectiveSearchKeyword,
+        nextOffset,
+        parseEscapeSequences,
+        searchMode,
+        sessionId: searchSessionIdRef.current,
+        setMatches,
+        startTransition,
       });
 
       return appendedMatches;
@@ -1029,10 +1021,13 @@ export function SearchReplacePanel() {
       const activeFilterSessionId = filterSessionIdRef.current;
       if (activeFilterSessionId && !filterSessionCommandUnsupportedRef.current) {
         try {
-          const sessionNextResult = await invoke<unknown>('filter_session_next_in_document', {
-            sessionId: activeFilterSessionId,
-            maxResults: FILTER_CHUNK_SIZE,
-          });
+          const sessionNextResult = await invoke<unknown>(
+            'filter_session_next_in_document',
+            buildFilterSessionNextRequest({
+              sessionId: activeFilterSessionId,
+              maxResults: FILTER_CHUNK_SIZE,
+            })
+          );
           if (sessionId !== loadMoreSessionRef.current) {
             return null;
           }
@@ -1068,14 +1063,17 @@ export function SearchReplacePanel() {
           return null;
         }
 
-        const backendResult = await invoke<FilterChunkBackendResult>('filter_in_document_chunk', {
-          id: activeTab.id,
-          rules: filterRulesPayload,
-          resultFilterKeyword: backendResultFilterKeyword,
-          resultFilterCaseSensitive: caseSensitive,
-          startLine,
-          maxResults: FILTER_CHUNK_SIZE,
-        });
+        const backendResult = await invoke<FilterChunkBackendResult>(
+          'filter_in_document_chunk',
+          buildFilterChunkRequest({
+            activeTabId: activeTab.id,
+            rules: filterRulesPayload,
+            effectiveResultFilterKeyword: backendResultFilterKeyword,
+            caseSensitive,
+            startLine,
+            maxResults: FILTER_CHUNK_SIZE,
+          })
+        );
 
         if (sessionId !== loadMoreSessionRef.current) {
           return null;
@@ -1093,32 +1091,18 @@ export function SearchReplacePanel() {
         documentVersion = params.documentVersion;
       }
 
-      filterLineCursorRef.current = nextLine;
-
-      if (appendedMatches.length === 0) {
-        if (cachedFilterRef.current) {
-          cachedFilterRef.current.nextLine = nextLine;
-          cachedFilterRef.current.sessionId = filterSessionIdRef.current;
-        }
-        return [];
-      }
-
-      startTransition(() => {
-        setFilterMatches((previousMatches) => {
-          const mergedMatches = [...previousMatches, ...appendedMatches];
-
-          cachedFilterRef.current = {
-            tabId: activeTab.id,
-            rulesKey: filterRulesKey,
-            resultFilterKeyword: backendResultFilterKeyword,
-            documentVersion,
-            matches: mergedMatches,
-            nextLine,
-            sessionId: filterSessionIdRef.current,
-          };
-
-          return mergedMatches;
-        });
+      applyFilterLoadMoreResult({
+        activeTabId: activeTab.id,
+        appendedMatches,
+        cachedFilterRef,
+        documentVersion,
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        filterLineCursorRef,
+        filterRulesKey,
+        nextLine,
+        sessionId: filterSessionIdRef.current,
+        setFilterMatches,
+        startTransition,
       });
 
       return appendedMatches;

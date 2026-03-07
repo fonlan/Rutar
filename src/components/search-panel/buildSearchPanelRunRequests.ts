@@ -20,6 +20,11 @@ interface BuildSearchChunkRequestOptions {
   startOffset: number;
 }
 
+interface BuildSearchSessionNextRequestOptions {
+  maxResults: number;
+  sessionId: string;
+}
+
 interface BuildFilterSessionStartRequestOptions {
   activeTabId: string;
   caseSensitive: boolean;
@@ -37,6 +42,11 @@ interface BuildFilterChunkRequestOptions {
   startLine: number;
 }
 
+interface BuildFilterSessionNextRequestOptions {
+  maxResults: number;
+  sessionId: string;
+}
+
 export function buildSearchSessionStartRequest({
   activeTabId,
   caseSensitive,
@@ -52,6 +62,16 @@ export function buildSearchSessionStartRequest({
     caseSensitive,
     resultFilterKeyword: effectiveResultFilterKeyword,
     resultFilterCaseSensitive: caseSensitive,
+    maxResults,
+  };
+}
+
+export function buildSearchSessionNextRequest({
+  maxResults,
+  sessionId,
+}: BuildSearchSessionNextRequestOptions) {
+  return {
+    sessionId,
     maxResults,
   };
 }
@@ -88,6 +108,16 @@ export function buildFilterSessionStartRequest({
     rules,
     resultFilterKeyword: effectiveResultFilterKeyword,
     resultFilterCaseSensitive: caseSensitive,
+    maxResults,
+  };
+}
+
+export function buildFilterSessionNextRequest({
+  maxResults,
+  sessionId,
+}: BuildFilterSessionNextRequestOptions) {
+  return {
+    sessionId,
     maxResults,
   };
 }

@@ -84,6 +84,23 @@ interface ApplySearchRunResultOptions {
   totalMatches: number | null;
 }
 
+interface ApplySearchLoadMoreResultOptions {
+  activeTabId: string;
+  appendedMatches: SearchMatch[];
+  cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
+  caseSensitive: boolean;
+  chunkCursorRef: MutableRefObject<number | null>;
+  documentVersion: number;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  nextOffset: number | null;
+  parseEscapeSequences: boolean;
+  searchMode: SearchMode;
+  sessionId: string | null;
+  setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
+  startTransition: TransitionStartFunction;
+}
+
 interface ApplyCachedFilterRunResultOptions {
   cached: CachedFilterSnapshot;
   filterLineCursorRef: MutableRefObject<number | null>;
@@ -113,6 +130,20 @@ interface ApplyFilterRunResultOptions {
   shouldRunCountFallback: boolean;
   startTransition: TransitionStartFunction;
   totalMatchedLines: number | null;
+}
+
+interface ApplyFilterLoadMoreResultOptions {
+  activeTabId: string;
+  appendedMatches: FilterMatch[];
+  cachedFilterRef: MutableRefObject<CachedFilterSnapshot | null>;
+  documentVersion: number;
+  effectiveResultFilterKeyword: string;
+  filterLineCursorRef: MutableRefObject<number | null>;
+  filterRulesKey: string;
+  nextLine: number | null;
+  sessionId: string | null;
+  setFilterMatches: Dispatch<SetStateAction<FilterMatch[]>>;
+  startTransition: TransitionStartFunction;
 }
 
 export function applyCachedSearchRunResult({
@@ -213,6 +244,54 @@ export function applySearchRunResult({
   }
 }
 
+export function applySearchLoadMoreResult({
+  activeTabId,
+  appendedMatches,
+  cachedSearchRef,
+  caseSensitive,
+  chunkCursorRef,
+  documentVersion,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  nextOffset,
+  parseEscapeSequences,
+  searchMode,
+  sessionId,
+  setMatches,
+  startTransition,
+}: ApplySearchLoadMoreResultOptions) {
+  chunkCursorRef.current = nextOffset;
+
+  if (appendedMatches.length === 0) {
+    if (cachedSearchRef.current) {
+      cachedSearchRef.current.nextOffset = nextOffset;
+      cachedSearchRef.current.sessionId = sessionId;
+    }
+    return;
+  }
+
+  startTransition(() => {
+    setMatches((previousMatches) => {
+      const mergedMatches = [...previousMatches, ...appendedMatches];
+
+      cachedSearchRef.current = {
+        tabId: activeTabId,
+        keyword: effectiveSearchKeyword,
+        searchMode,
+        caseSensitive,
+        parseEscapeSequences,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+        documentVersion,
+        matches: mergedMatches,
+        nextOffset,
+        sessionId,
+      };
+
+      return mergedMatches;
+    });
+  });
+}
+
 export function applyCachedFilterRunResult({
   cached,
   filterLineCursorRef,
@@ -236,6 +315,48 @@ export function applyCachedFilterRunResult({
 
   filterLineCursorRef.current = cached.nextLine;
   setFilterSessionId(cached.sessionId);
+}
+
+export function applyFilterLoadMoreResult({
+  activeTabId,
+  appendedMatches,
+  cachedFilterRef,
+  documentVersion,
+  effectiveResultFilterKeyword,
+  filterLineCursorRef,
+  filterRulesKey,
+  nextLine,
+  sessionId,
+  setFilterMatches,
+  startTransition,
+}: ApplyFilterLoadMoreResultOptions) {
+  filterLineCursorRef.current = nextLine;
+
+  if (appendedMatches.length === 0) {
+    if (cachedFilterRef.current) {
+      cachedFilterRef.current.nextLine = nextLine;
+      cachedFilterRef.current.sessionId = sessionId;
+    }
+    return;
+  }
+
+  startTransition(() => {
+    setFilterMatches((previousMatches) => {
+      const mergedMatches = [...previousMatches, ...appendedMatches];
+
+      cachedFilterRef.current = {
+        tabId: activeTabId,
+        rulesKey: filterRulesKey,
+        resultFilterKeyword: effectiveResultFilterKeyword,
+        documentVersion,
+        matches: mergedMatches,
+        nextLine,
+        sessionId,
+      };
+
+      return mergedMatches;
+    });
+  });
 }
 
 export function applyFilterRunResult({
