@@ -1425,10 +1425,15 @@ export function SearchReplacePanel() {
           }
 
           const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
-          currentFilterMatchIndexRef.current = nextIndex;
-          setCurrentFilterMatchIndex(nextIndex);
-          setFeedbackMessage(navigationFeedback);
-          navigateToFilterMatch(filterMatches[nextIndex]);
+          applyFilterNavigationSelection({
+            currentFilterMatchIndexRef,
+            matches: filterMatches,
+            navigationFeedback,
+            navigateToFilterMatch,
+            nextIndex,
+            setCurrentFilterMatchIndex,
+            setFeedbackMessage,
+          });
           return;
         }
 
@@ -1547,10 +1552,15 @@ export function SearchReplacePanel() {
 
         const nextIndex = (candidateIndex + matches.length) % matches.length;
 
-        currentMatchIndexRef.current = nextIndex;
-        setCurrentMatchIndex(nextIndex);
-        setFeedbackMessage(navigationFeedback);
-        navigateToMatch(matches[nextIndex]);
+        applySearchNavigationSelection({
+          currentMatchIndexRef,
+          matches,
+          navigationFeedback,
+          navigateToMatch,
+          nextIndex,
+          setCurrentMatchIndex,
+          setFeedbackMessage,
+        });
         return;
       }
 
