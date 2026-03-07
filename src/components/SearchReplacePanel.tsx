@@ -26,7 +26,7 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from '@/components/search-panel/applySearchPanelCursorStepResult';
-import { applyPreparedReplaceSearchResult } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { resolvePreparedReplaceSearchResult } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyResolvedReplaceAllResult } from '@/components/search-panel/applySearchPanelResolvedReplaceAllResult';
 import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
@@ -1369,11 +1369,11 @@ export function SearchReplacePanel() {
       return;
     }
 
-    const searchResult = applyPreparedReplaceSearchResult({
+    const searchResult = await resolvePreparedReplaceSearchResult({
+      executeSearch,
       keyword,
       noReplaceMatchesMessage: messages.noReplaceMatches,
       rememberSearchKeyword,
-      searchResult: await executeSearch(),
       setFeedbackMessage,
     });
     if (!searchResult) {
@@ -1457,11 +1457,11 @@ export function SearchReplacePanel() {
       return;
     }
 
-    const searchResult = applyPreparedReplaceSearchResult({
+    const searchResult = await resolvePreparedReplaceSearchResult({
+      executeSearch,
       keyword,
       noReplaceMatchesMessage: messages.noReplaceMatches,
       rememberSearchKeyword,
-      searchResult: await executeSearch(),
       setFeedbackMessage,
     });
     if (!searchResult) {

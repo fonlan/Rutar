@@ -11,6 +11,14 @@ interface ApplyPreparedReplaceSearchResultOptions extends ApplyReplaceSearchResu
   rememberSearchKeyword: (value: string) => void;
 }
 
+interface ResolvePreparedReplaceSearchResultOptions {
+  executeSearch: () => Promise<SearchRunResult | null>;
+  keyword: string;
+  noReplaceMatchesMessage: string;
+  rememberSearchKeyword: (value: string) => void;
+  setFeedbackMessage: (value: string | null) => void;
+}
+
 interface ApplyReplaceOperationGuardOptions {
   hasReplacement: boolean;
   noReplaceMatchesMessage: string;
@@ -30,7 +38,6 @@ export function applyReplaceSearchResultGuard({
   return searchResult;
 }
 
-
 export function applyPreparedReplaceSearchResult({
   keyword,
   noReplaceMatchesMessage,
@@ -42,6 +49,22 @@ export function applyPreparedReplaceSearchResult({
   return applyReplaceSearchResultGuard({
     noReplaceMatchesMessage,
     searchResult,
+    setFeedbackMessage,
+  });
+}
+
+export async function resolvePreparedReplaceSearchResult({
+  executeSearch,
+  keyword,
+  noReplaceMatchesMessage,
+  rememberSearchKeyword,
+  setFeedbackMessage,
+}: ResolvePreparedReplaceSearchResultOptions): Promise<SearchRunResult | null> {
+  return applyPreparedReplaceSearchResult({
+    keyword,
+    noReplaceMatchesMessage,
+    rememberSearchKeyword,
+    searchResult: await executeSearch(),
     setFeedbackMessage,
   });
 }
