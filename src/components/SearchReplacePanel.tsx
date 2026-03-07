@@ -18,6 +18,7 @@ import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/sea
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
+import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
@@ -266,40 +267,27 @@ export function SearchReplacePanel() {
     searchSessionIdRef,
   });
 
-  useEffect(() => {
-    currentMatchIndexRef.current = currentMatchIndex;
-  }, [currentMatchIndex]);
-
-  useEffect(() => {
-    currentFilterMatchIndexRef.current = currentFilterMatchIndex;
-  }, [currentFilterMatchIndex]);
-
-  const resetSearchState = useCallback((clearTotals = true) => {
-    setMatches([]);
-    setCurrentMatchIndex(0);
-    setSearchSessionId(null);
-    cachedSearchRef.current = null;
-    chunkCursorRef.current = null;
-    countCacheRef.current = null;
-
-    if (clearTotals) {
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
-    }
-  }, [setSearchSessionId]);
-
-  const resetFilterState = useCallback((clearTotals = true) => {
-    setFilterMatches([]);
-    setCurrentFilterMatchIndex(0);
-    setFilterSessionId(null);
-    cachedFilterRef.current = null;
-    filterLineCursorRef.current = null;
-    filterCountCacheRef.current = null;
-
-    if (clearTotals) {
-      setTotalFilterMatchedLineCount(null);
-    }
-  }, [setFilterSessionId]);
+  const { resetFilterState, resetSearchState } = useSearchPanelResetState({
+    cachedFilterRef,
+    cachedSearchRef,
+    chunkCursorRef,
+    countCacheRef,
+    currentFilterMatchIndex,
+    currentFilterMatchIndexRef,
+    currentMatchIndex,
+    currentMatchIndexRef,
+    filterCountCacheRef,
+    filterLineCursorRef,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setFilterMatches,
+    setFilterSessionId,
+    setMatches,
+    setSearchSessionId,
+    setTotalFilterMatchedLineCount,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+  });
 
   const {
     addFilterRule,
