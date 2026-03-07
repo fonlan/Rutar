@@ -33,7 +33,7 @@ import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/s
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
@@ -1598,58 +1598,29 @@ export function SearchReplacePanel() {
       setErrorMessage(null);
       rememberReplaceValue(replaceValue);
 
-      const documentVersion = result.documentVersion ?? 0;
-      const nextMatches = result.matches || [];
-      const nextOffset = result.nextOffset ?? null;
-      const totalMatches = result.totalMatches ?? nextMatches.length;
-      const totalMatchedLines =
-        result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
-      const preferredMatch = result.preferredMatch ?? null;
-      const preferredIndex = preferredMatch
-        ? nextMatches.findIndex((item) => item.start === preferredMatch.start && item.end === preferredMatch.end)
-        : -1;
-      const nextIndex =
-        nextMatches.length === 0
-          ? 0
-          : preferredIndex >= 0
-            ? preferredIndex
-            : Math.min(boundedCurrentIndex, nextMatches.length - 1);
-
-      startTransition(() => {
-        setMatches(nextMatches);
-        setCurrentMatchIndex(nextIndex);
-        setTotalMatchCount(totalMatches);
-        setTotalMatchedLineCount(totalMatchedLines);
+      const nextMatch = applyReplaceCurrentSearchResult({
+        activeTabId: activeTab.id,
+        boundedCurrentIndex,
+        cachedSearchRef,
+        caseSensitive,
+        countCacheRef,
+        currentMatchIndexRef,
+        chunkCursorRef,
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        effectiveSearchKeyword,
+        parseEscapeSequences,
+        result,
+        searchMode,
+        setCurrentMatchIndex,
+        setMatches,
+        setSearchSessionId,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+        startTransition,
       });
-      currentMatchIndexRef.current = nextIndex;
-      chunkCursorRef.current = nextOffset;
-      cachedSearchRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-        matches: nextMatches,
-        nextOffset,
-        sessionId: null,
-      };
-      setSearchSessionId(null);
-      countCacheRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-        totalMatches,
-        matchedLines: totalMatchedLines,
-      };
 
-      if (nextMatches.length > 0) {
-        navigateToMatch(nextMatches[nextIndex]);
+      if (nextMatch) {
+        navigateToMatch(nextMatch);
       }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);
@@ -1716,49 +1687,28 @@ export function SearchReplacePanel() {
       setErrorMessage(null);
       rememberReplaceValue(replaceValue);
 
-      const documentVersion = result.documentVersion ?? 0;
-      const nextMatches = result.matches || [];
-      const nextOffset = result.nextOffset ?? null;
-      const totalMatches = result.totalMatches ?? nextMatches.length;
-      const totalMatchedLines =
-        result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
-      const nextIndex = 0;
-
-      startTransition(() => {
-        setMatches(nextMatches);
-        setCurrentMatchIndex(nextIndex);
-        setTotalMatchCount(totalMatches);
-        setTotalMatchedLineCount(totalMatchedLines);
+      const nextMatch = applyReplaceAllSearchResult({
+        activeTabId: activeTab.id,
+        cachedSearchRef,
+        caseSensitive,
+        countCacheRef,
+        currentMatchIndexRef,
+        chunkCursorRef,
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        effectiveSearchKeyword,
+        parseEscapeSequences,
+        result,
+        searchMode,
+        setCurrentMatchIndex,
+        setMatches,
+        setSearchSessionId,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+        startTransition,
       });
-      currentMatchIndexRef.current = nextIndex;
-      chunkCursorRef.current = nextOffset;
-      cachedSearchRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-        matches: nextMatches,
-        nextOffset,
-        sessionId: null,
-      };
-      setSearchSessionId(null);
-      countCacheRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
-        documentVersion,
-        totalMatches,
-        matchedLines: totalMatchedLines,
-      };
 
-      if (nextMatches.length > 0) {
-        navigateToMatch(nextMatches[nextIndex]);
+      if (nextMatch) {
+        navigateToMatch(nextMatch);
       }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : String(error);

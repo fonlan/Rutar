@@ -1,6 +1,8 @@
 import type { Dispatch, MutableRefObject, SetStateAction, TransitionStartFunction } from 'react';
 import type {
   FilterMatch,
+  ReplaceAllAndSearchChunkBackendResult,
+  ReplaceCurrentAndSearchChunkBackendResult,
   SearchMatch,
   SearchMode,
 } from './types';
@@ -169,6 +171,47 @@ interface ApplySearchResultFilterStepResultOptions {
   startTransition: TransitionStartFunction;
   totalMatchedLines: number;
   totalMatches: number;
+}
+
+interface ApplyReplaceCurrentSearchResultOptions {
+  activeTabId: string;
+  boundedCurrentIndex: number;
+  cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
+  caseSensitive: boolean;
+  countCacheRef: MutableRefObject<SearchCountCacheSnapshot | null>;
+  currentMatchIndexRef: MutableRefObject<number>;
+  chunkCursorRef: MutableRefObject<number | null>;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  parseEscapeSequences: boolean;
+  result: ReplaceCurrentAndSearchChunkBackendResult;
+  searchMode: SearchMode;
+  setCurrentMatchIndex: Dispatch<SetStateAction<number>>;
+  setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
+  setSearchSessionId: (value: string | null) => void;
+  setTotalMatchCount: (value: number) => void;
+  setTotalMatchedLineCount: (value: number) => void;
+  startTransition: TransitionStartFunction;
+}
+
+interface ApplyReplaceAllSearchResultOptions {
+  activeTabId: string;
+  cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
+  caseSensitive: boolean;
+  countCacheRef: MutableRefObject<SearchCountCacheSnapshot | null>;
+  currentMatchIndexRef: MutableRefObject<number>;
+  chunkCursorRef: MutableRefObject<number | null>;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  parseEscapeSequences: boolean;
+  result: ReplaceAllAndSearchChunkBackendResult;
+  searchMode: SearchMode;
+  setCurrentMatchIndex: Dispatch<SetStateAction<number>>;
+  setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
+  setSearchSessionId: (value: string | null) => void;
+  setTotalMatchCount: (value: number) => void;
+  setTotalMatchedLineCount: (value: number) => void;
+  startTransition: TransitionStartFunction;
 }
 
 interface ApplyFilterLoadMoreResultOptions {
@@ -490,6 +533,142 @@ export function applySearchResultFilterStepResult({
   startTransition(() => {
     setMatches(nextMatches);
   });
+}
+
+export function applyReplaceCurrentSearchResult({
+  activeTabId,
+  boundedCurrentIndex,
+  cachedSearchRef,
+  caseSensitive,
+  countCacheRef,
+  currentMatchIndexRef,
+  chunkCursorRef,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  parseEscapeSequences,
+  result,
+  searchMode,
+  setCurrentMatchIndex,
+  setMatches,
+  setSearchSessionId,
+  setTotalMatchCount,
+  setTotalMatchedLineCount,
+  startTransition,
+}: ApplyReplaceCurrentSearchResultOptions): SearchMatch | null {
+  const documentVersion = result.documentVersion ?? 0;
+  const nextMatches = result.matches || [];
+  const nextOffset = result.nextOffset ?? null;
+  const totalMatches = result.totalMatches ?? nextMatches.length;
+  const totalMatchedLines =
+    result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+  const preferredMatch = result.preferredMatch ?? null;
+  const preferredIndex = preferredMatch
+    ? nextMatches.findIndex((item) => item.start === preferredMatch.start && item.end === preferredMatch.end)
+    : -1;
+  const nextIndex =
+    nextMatches.length === 0
+      ? 0
+      : preferredIndex >= 0
+        ? preferredIndex
+        : Math.min(boundedCurrentIndex, nextMatches.length - 1);
+
+  startTransition(() => {
+    setMatches(nextMatches);
+    setCurrentMatchIndex(nextIndex);
+    setTotalMatchCount(totalMatches);
+    setTotalMatchedLineCount(totalMatchedLines);
+  });
+  currentMatchIndexRef.current = nextIndex;
+  chunkCursorRef.current = nextOffset;
+  cachedSearchRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    matches: nextMatches,
+    nextOffset,
+    sessionId: null,
+  };
+  setSearchSessionId(null);
+  countCacheRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    totalMatches,
+    matchedLines: totalMatchedLines,
+  };
+
+  return nextMatches[nextIndex] ?? null;
+}
+
+export function applyReplaceAllSearchResult({
+  activeTabId,
+  cachedSearchRef,
+  caseSensitive,
+  countCacheRef,
+  currentMatchIndexRef,
+  chunkCursorRef,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  parseEscapeSequences,
+  result,
+  searchMode,
+  setCurrentMatchIndex,
+  setMatches,
+  setSearchSessionId,
+  setTotalMatchCount,
+  setTotalMatchedLineCount,
+  startTransition,
+}: ApplyReplaceAllSearchResultOptions): SearchMatch | null {
+  const documentVersion = result.documentVersion ?? 0;
+  const nextMatches = result.matches || [];
+  const nextOffset = result.nextOffset ?? null;
+  const totalMatches = result.totalMatches ?? nextMatches.length;
+  const totalMatchedLines =
+    result.totalMatchedLines ?? new Set(nextMatches.map((item) => item.line)).size;
+  const nextIndex = 0;
+
+  startTransition(() => {
+    setMatches(nextMatches);
+    setCurrentMatchIndex(nextIndex);
+    setTotalMatchCount(totalMatches);
+    setTotalMatchedLineCount(totalMatchedLines);
+  });
+  currentMatchIndexRef.current = nextIndex;
+  chunkCursorRef.current = nextOffset;
+  cachedSearchRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    matches: nextMatches,
+    nextOffset,
+    sessionId: null,
+  };
+  setSearchSessionId(null);
+  countCacheRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    totalMatches,
+    matchedLines: totalMatchedLines,
+  };
+
+  return nextMatches[nextIndex] ?? null;
 }
 
 export function applyFilterRunResult({
