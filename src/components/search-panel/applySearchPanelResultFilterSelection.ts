@@ -1,5 +1,7 @@
 import type { MutableRefObject } from 'react';
+import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from './resolveSearchPanelStepTargets';
 import type { SearchPanelResultFilterStepSelection } from './resolveSearchPanelStepTargets';
+import type { FilterMatch, SearchMatch } from './types';
 
 interface ApplySearchPanelResultFilterStepGuardOptions<TMatch> {
   noMatchMessage: string;
@@ -27,6 +29,68 @@ export function applySearchPanelResultFilterStepGuard<TMatch>({
   }
 
   return selection;
+}
+interface ResolveGuardedFilterResultFilterStepSelectionOptions {
+  batchMatches?: FilterMatch[];
+  matches: FilterMatch[];
+  noMatchMessage: string;
+  setFeedbackMessage: (value: string | null) => void;
+  targetIndexInBatch?: number | null;
+  targetMatch?: FilterMatch | null;
+}
+
+export function resolveGuardedFilterResultFilterStepSelection({
+  batchMatches,
+  matches,
+  noMatchMessage,
+  setFeedbackMessage,
+  targetIndexInBatch,
+  targetMatch,
+}: ResolveGuardedFilterResultFilterStepSelectionOptions): ResolvedSearchPanelResultFilterStepSelection<FilterMatch> | null {
+  const selection = resolveSearchPanelResultFilterStepSelection({
+    batchMatches,
+    matches,
+    targetIndexInBatch,
+    targetMatch,
+    resolveTarget: resolveFilterStepTarget,
+  });
+
+  return applySearchPanelResultFilterStepGuard({
+    noMatchMessage,
+    selection,
+    setFeedbackMessage,
+  });
+}
+interface ResolveGuardedSearchResultFilterStepSelectionOptions {
+  batchMatches?: SearchMatch[];
+  matches: SearchMatch[];
+  noMatchMessage: string;
+  setFeedbackMessage: (value: string | null) => void;
+  targetIndexInBatch?: number | null;
+  targetMatch?: SearchMatch | null;
+}
+
+export function resolveGuardedSearchResultFilterStepSelection({
+  batchMatches,
+  matches,
+  noMatchMessage,
+  setFeedbackMessage,
+  targetIndexInBatch,
+  targetMatch,
+}: ResolveGuardedSearchResultFilterStepSelectionOptions): ResolvedSearchPanelResultFilterStepSelection<SearchMatch> | null {
+  const selection = resolveSearchPanelResultFilterStepSelection({
+    batchMatches,
+    matches,
+    targetIndexInBatch,
+    targetMatch,
+    resolveTarget: resolveSearchStepTarget,
+  });
+
+  return applySearchPanelResultFilterStepGuard({
+    noMatchMessage,
+    selection,
+    setFeedbackMessage,
+  });
 }
 interface ApplyFilterResultFilterSelectionOptions {
   currentFilterMatchIndexRef: MutableRefObject<number>;

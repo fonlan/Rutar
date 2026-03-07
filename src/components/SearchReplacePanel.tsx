@@ -29,7 +29,7 @@ import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from
 import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
-import { applyFilterResultFilterSelection, applySearchPanelResultFilterStepGuard, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
+import { applyFilterResultFilterSelection, applySearchResultFilterSelection, resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -37,7 +37,7 @@ import { applySearchPanelErrorMessage } from '@/components/search-panel/applySea
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
-import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
+import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -2153,18 +2153,13 @@ export function SearchReplacePanel() {
 
           const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
           setTotalFilterMatchedLineCount(totalMatchedLines);
-          const filterStepSelection = resolveSearchPanelResultFilterStepSelection({
+          const resolvedFilterStepSelection = resolveGuardedFilterResultFilterStepSelection({
             batchMatches: stepResult.batchMatches,
             matches: filterMatches,
+            noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
+            setFeedbackMessage,
             targetIndexInBatch: stepResult.targetIndexInBatch,
             targetMatch: stepResult.targetMatch,
-            resolveTarget: resolveFilterStepTarget,
-          });
-
-          const resolvedFilterStepSelection = applySearchPanelResultFilterStepGuard({
-            noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
-            selection: filterStepSelection,
-            setFeedbackMessage,
           });
           if (!resolvedFilterStepSelection) {
             return;
@@ -2229,18 +2224,13 @@ export function SearchReplacePanel() {
         const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
         setTotalMatchCount(totalMatches);
         setTotalMatchedLineCount(totalMatchedLines);
-        const searchStepSelection = resolveSearchPanelResultFilterStepSelection({
+        const resolvedSearchStepSelection = resolveGuardedSearchResultFilterStepSelection({
           batchMatches: stepResult.batchMatches,
           matches,
+          noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
+          setFeedbackMessage,
           targetIndexInBatch: stepResult.targetIndexInBatch,
           targetMatch: stepResult.targetMatch,
-          resolveTarget: resolveSearchStepTarget,
-        });
-
-        const resolvedSearchStepSelection = applySearchPanelResultFilterStepGuard({
-          noMatchMessage: messages.resultFilterStepNoMatch(keywordForJump),
-          selection: searchStepSelection,
-          setFeedbackMessage,
         });
         if (!resolvedSearchStepSelection) {
           return;
