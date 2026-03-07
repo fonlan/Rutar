@@ -28,6 +28,7 @@ import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
+import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterRunResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -512,20 +513,15 @@ export function SearchReplacePanel() {
           });
 
           if (currentDocumentVersion === cached.documentVersion) {
-            setErrorMessage(null);
-            startTransition(() => {
-              setMatches(cached.matches);
-              setCurrentMatchIndex((previousIndex) => {
-                if (cached.matches.length === 0) {
-                  return 0;
-                }
-
-                return Math.min(previousIndex, cached.matches.length - 1);
-              });
+            applyCachedSearchRunResult({
+              cached,
+              chunkCursorRef,
+              setCurrentMatchIndex,
+              setErrorMessage,
+              setMatches,
+              setSearchSessionId,
+              startTransition,
             });
-
-            chunkCursorRef.current = cached.nextOffset;
-            setSearchSessionId(cached.sessionId);
 
             return {
               matches: cached.matches,
@@ -605,53 +601,33 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      setErrorMessage(null);
-      startTransition(() => {
-        setMatches(nextMatches);
-        setCurrentMatchIndex((previousIndex) => {
-          if (nextMatches.length === 0) {
-            return 0;
-          }
-
-          return Math.min(previousIndex, nextMatches.length - 1);
-        });
-      });
-      if (totalMatches !== null) {
-        setTotalMatchCount(totalMatches);
-      }
-      if (totalMatchedLines !== null) {
-        setTotalMatchedLineCount(totalMatchedLines);
-      }
-
-      cachedSearchRef.current = {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
+      applySearchRunResult({
+        activeTabId: activeTab.id,
         caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: effectiveResultFilterKeyword,
+        chunkCursorRef,
+        countCacheRef,
         documentVersion,
-        matches: nextMatches,
+        effectiveResultFilterKeyword,
+        effectiveSearchKeyword,
+        nextMatches,
         nextOffset,
+        parseEscapeSequences,
+        cachedSearchRef,
+        searchMode,
         sessionId,
-      };
-
-      chunkCursorRef.current = nextOffset;
-      setSearchSessionId(sessionId);
+        setCurrentMatchIndex,
+        setErrorMessage,
+        setMatches,
+        setSearchSessionId,
+        setTotalMatchCount,
+        setTotalMatchedLineCount,
+        shouldRunCountFallback,
+        startTransition,
+        totalMatchedLines,
+        totalMatches,
+      });
       if (shouldRunCountFallback) {
         void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
-      } else if (totalMatches !== null && totalMatchedLines !== null) {
-        countCacheRef.current = {
-          tabId: activeTab.id,
-          keyword: effectiveSearchKeyword,
-          searchMode,
-          caseSensitive,
-          parseEscapeSequences,
-          resultFilterKeyword: effectiveResultFilterKeyword,
-          documentVersion,
-          totalMatches,
-          matchedLines: totalMatchedLines,
-        };
       }
 
       return {
@@ -732,20 +708,15 @@ export function SearchReplacePanel() {
           });
 
           if (currentDocumentVersion === cached.documentVersion) {
-            setErrorMessage(null);
-            startTransition(() => {
-              setFilterMatches(cached.matches);
-              setCurrentFilterMatchIndex((previousIndex) => {
-                if (cached.matches.length === 0) {
-                  return 0;
-                }
-
-                return Math.min(previousIndex, cached.matches.length - 1);
-              });
+            applyCachedFilterRunResult({
+              cached,
+              filterLineCursorRef,
+              setCurrentFilterMatchIndex,
+              setErrorMessage,
+              setFilterMatches,
+              setFilterSessionId,
+              startTransition,
             });
-
-            filterLineCursorRef.current = cached.nextLine;
-            setFilterSessionId(cached.sessionId);
 
             return {
               matches: cached.matches,
@@ -820,43 +791,28 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      setErrorMessage(null);
-      startTransition(() => {
-        setFilterMatches(nextMatches);
-        setCurrentFilterMatchIndex((previousIndex) => {
-          if (nextMatches.length === 0) {
-            return 0;
-          }
-
-          return Math.min(previousIndex, nextMatches.length - 1);
-        });
-      });
-      if (totalMatchedLines !== null) {
-        setTotalFilterMatchedLineCount(totalMatchedLines);
-      }
-
-      cachedFilterRef.current = {
-        tabId: activeTab.id,
-        rulesKey: filterRulesKey,
-        resultFilterKeyword: effectiveResultFilterKeyword,
+      applyFilterRunResult({
+        activeTabId: activeTab.id,
+        cachedFilterRef,
         documentVersion,
-        matches: nextMatches,
+        effectiveResultFilterKeyword,
+        filterCountCacheRef,
+        filterLineCursorRef,
+        filterRulesKey,
         nextLine,
+        nextMatches,
         sessionId,
-      };
-
-      filterLineCursorRef.current = nextLine;
-      setFilterSessionId(sessionId);
+        setCurrentFilterMatchIndex,
+        setErrorMessage,
+        setFilterMatches,
+        setFilterSessionId,
+        setTotalFilterMatchedLineCount,
+        shouldRunCountFallback,
+        startTransition,
+        totalMatchedLines,
+      });
       if (shouldRunCountFallback) {
         void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
-      } else if (totalMatchedLines !== null) {
-        filterCountCacheRef.current = {
-          tabId: activeTab.id,
-          rulesKey: filterRulesKey,
-          resultFilterKeyword: effectiveResultFilterKeyword,
-          documentVersion,
-          matchedLines: totalMatchedLines,
-        };
       }
 
       return {
