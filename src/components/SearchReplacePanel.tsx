@@ -22,14 +22,12 @@ import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/use
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
 import { useSearchResultFilterStepNavigation } from '@/components/search-panel/useSearchResultFilterStepNavigation';
 import { useSearchStepNavigation } from '@/components/search-panel/useSearchStepNavigation';
+import { useSearchReplaceHandlers } from '@/components/search-panel/useSearchReplaceHandlers';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
-import { resolvePreparedReplaceSearchResult } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
-import { applyResolvedReplaceAllResult } from '@/components/search-panel/applySearchPanelResolvedReplaceAllResult';
-import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
 import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
@@ -43,8 +41,6 @@ import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRun
 import { buildFilterCountRequest, buildSearchCountRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
-import { resolveReplaceAllSearchState, resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
-import { resolveReplaceCurrentTargetState } from '@/components/search-panel/resolveSearchPanelReplaceCurrentTargetState';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -915,177 +911,39 @@ export function SearchReplacePanel() {
     startTransition,
   });
 
-  const handleReplaceCurrent = useCallback(async () => {
-    if (!activeTab) {
-      return;
-    }
-
-    const searchResult = await resolvePreparedReplaceSearchResult({
-      executeSearch,
-      keyword,
-      noReplaceMatchesMessage: messages.noReplaceMatches,
-      rememberSearchKeyword,
-      setFeedbackMessage,
-    });
-    if (!searchResult) {
-      return;
-    }
-
-    const { boundedCurrentIndex, targetMatch } = resolveReplaceCurrentTargetState({
-      currentMatchIndex: currentMatchIndexRef.current,
-      matches: searchResult.matches,
-    });
-
-    try {
-      const result = await resolveReplaceCurrentSearchState({
-        activeTabId: activeTab.id,
-        effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        replaceValue,
-        parseEscapeSequences,
-        targetStart: targetMatch.start,
-        targetEnd: targetMatch.end,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
-
-      applyResolvedReplaceCurrentResult({
-        activeTabId: activeTab.id,
-        boundedCurrentIndex,
-        cachedSearchRef,
-        caseSensitive,
-        countCacheRef,
-        currentMatchIndexRef,
-        chunkCursorRef,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        effectiveSearchKeyword,
-        fallbackLineCount: activeTab.lineCount,
-        feedbackMessage: messages.replacedCurrent,
-        navigateToMatch,
-        noReplaceMatchesMessage: messages.noReplaceMatches,
-        parseEscapeSequences,
-        rememberReplaceValue,
-        replaceValue,
-        result,
-        searchMode,
-        setCurrentMatchIndex,
-        setErrorMessage,
-        setFeedbackMessage,
-        setMatches,
-        setSearchSessionId,
-        setTotalMatchCount,
-        setTotalMatchedLineCount,
-        startTransition,
-        updateTab,
-      });
-    } catch (error) {
-      applySearchPanelErrorMessage({
-        error,
-        prefix: messages.replaceFailed,
-        setErrorMessage,
-      });
-    }
-  }, [
-    activeTab,
+  const { handleReplaceAll, handleReplaceCurrent } = useSearchReplaceHandlers({
+    activeTabId: activeTab?.id ?? null,
+    activeTabLineCount: activeTab?.lineCount ?? null,
     backendResultFilterKeyword,
+    cachedSearchRef,
     caseSensitive,
+    chunkCursorRef,
+    countCacheRef,
+    currentMatchIndexRef,
     effectiveSearchKeyword,
     executeSearch,
     keyword,
-    messages.noReplaceMatches,
-    messages.replaceFailed,
-    messages.replacedCurrent,
     navigateToMatch,
+    noReplaceMatchesMessage: messages.noReplaceMatches,
     parseEscapeSequences,
     rememberReplaceValue,
     rememberSearchKeyword,
+    replaceAllFailedLabel: messages.replaceAllFailed,
+    replaceCurrentFeedback: messages.replacedCurrent,
+    replaceFailedLabel: messages.replaceFailed,
+    replacedAllFeedback: messages.replacedAll,
     replaceValue,
     searchMode,
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setFeedbackMessage,
+    setMatches,
+    setSearchSessionId,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+    startTransition,
     updateTab,
-  ]);
-
-  const handleReplaceAll = useCallback(async () => {
-    if (!activeTab) {
-      return;
-    }
-
-    const searchResult = await resolvePreparedReplaceSearchResult({
-      executeSearch,
-      keyword,
-      noReplaceMatchesMessage: messages.noReplaceMatches,
-      rememberSearchKeyword,
-      setFeedbackMessage,
-    });
-    if (!searchResult) {
-      return;
-    }
-
-    try {
-      const result = await resolveReplaceAllSearchState({
-        activeTabId: activeTab.id,
-        effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        replaceValue,
-        parseEscapeSequences,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
-
-      applyResolvedReplaceAllResult({
-        activeTabId: activeTab.id,
-        cachedSearchRef,
-        caseSensitive,
-        countCacheRef,
-        currentMatchIndexRef,
-        chunkCursorRef,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        effectiveSearchKeyword,
-        fallbackLineCount: activeTab.lineCount,
-        formatFeedbackMessage: messages.replacedAll,
-        navigateToMatch,
-        noReplaceMatchesMessage: messages.noReplaceMatches,
-        parseEscapeSequences,
-        rememberReplaceValue,
-        replaceValue,
-        result,
-        searchMode,
-        setCurrentMatchIndex,
-        setErrorMessage,
-        setFeedbackMessage,
-        setMatches,
-        setSearchSessionId,
-        setTotalMatchCount,
-        setTotalMatchedLineCount,
-        startTransition,
-        updateTab,
-      });
-    } catch (error) {
-      applySearchPanelErrorMessage({
-        error,
-        prefix: messages.replaceAllFailed,
-        setErrorMessage,
-      });
-    }
-  }, [
-    activeTab,
-    backendResultFilterKeyword,
-    caseSensitive,
-    effectiveSearchKeyword,
-    executeSearch,
-    keyword,
-    messages.noReplaceMatches,
-    messages.replaceAllFailed,
-    messages.replacedAll,
-    navigateToMatch,
-    parseEscapeSequences,
-    rememberReplaceValue,
-    rememberSearchKeyword,
-    replaceValue,
-    searchMode,
-    updateTab,
-  ]);
+  });
 
   const handleKeywordKeyDown = useSearchKeywordKeyDown({
     executeFilter,
