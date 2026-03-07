@@ -17,6 +17,7 @@ import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/sea
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
+import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
 import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
@@ -2795,6 +2796,38 @@ export function SearchReplacePanel() {
     visibleMatches,
   });
 
+  const searchSidebarShellOptions = useSearchSidebarShellOptions({
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    displayTotalFilterMatchedLineCount,
+    displayTotalMatchCount,
+    errorMessage,
+    feedbackMessage,
+    filterMatches,
+    focusSearchInput,
+    hasConfiguredFilterRules: effectiveFilterRules.length > 0,
+    isFilterMode,
+    isOpen,
+    isSearchSidebarResizing,
+    isSearchUiActive,
+    isSearching,
+    keyword,
+    matches,
+    messages,
+    panelMode,
+    searchSidebarBottomOffset,
+    searchSidebarContainerRef,
+    searchSidebarTopOffset,
+    searchSidebarWidth,
+    setIsOpen,
+    setPanelMode,
+    onBlurCapture: handleSearchUiBlurCapture,
+    onContextMenu: handleSearchSidebarContextMenu,
+    onFocusCapture: handleSearchUiFocusCapture,
+    onPointerDownCapture: handleSearchUiPointerDownCapture,
+    onResizePointerDown: startSearchSidebarResize,
+  });
+
   const { searchSidebarBodyProps, searchSidebarChromeProps, searchPanelOverlaysProps } = useSearchPanelViewProps({
     hasActiveTab: !!activeTab,
     searchQueryOptions: {
@@ -2855,37 +2888,7 @@ export function SearchReplacePanel() {
       selectedFilterGroupName,
       setFilterGroupNameInput,
     },
-    searchSidebarShellOptions: {
-      currentFilterMatchIndex,
-      currentMatchIndex,
-      displayTotalFilterMatchedLineCount,
-      displayTotalMatchCount,
-      errorMessage,
-      feedbackMessage,
-      filterMatchCount: filterMatches.length,
-      focusSearchInput,
-      hasConfiguredFilterRules: effectiveFilterRules.length > 0,
-      isFilterMode,
-      isOpen,
-      isSearchSidebarResizing,
-      isSearchUiActive,
-      isSearching,
-      keyword,
-      matchCount: matches.length,
-      messages,
-      panelMode,
-      searchSidebarBottomOffset,
-      searchSidebarContainerRef,
-      searchSidebarTopOffset,
-      searchSidebarWidth,
-      setIsOpen,
-      setPanelMode,
-      onBlurCapture: handleSearchUiBlurCapture,
-      onContextMenu: handleSearchSidebarContextMenu,
-      onFocusCapture: handleSearchUiFocusCapture,
-      onPointerDownCapture: handleSearchUiPointerDownCapture,
-      onResizePointerDown: startSearchSidebarResize,
-    },
+    searchSidebarShellOptions,
     searchPanelOverlaysOptions,
   });
   if (!activeTab) {
