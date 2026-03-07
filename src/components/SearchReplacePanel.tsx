@@ -36,7 +36,7 @@ import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handl
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
 import { resolveFilterStepAnchor, resolveSearchCursorStepAnchor, resolveSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
-import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
+import { resolveSearchPanelBoundedIndex, resolveSearchPanelWrappedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -1410,7 +1410,7 @@ export function SearchReplacePanel() {
           const candidateIndex = boundedCurrentIndex + step;
 
           if (candidateIndex < 0) {
-            const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+            const nextIndex = resolveSearchPanelWrappedIndex(candidateIndex, filterMatches.length);
             applyFilterNavigationSelection({
               currentFilterMatchIndexRef,
               matches: filterMatches,
@@ -1441,7 +1441,7 @@ export function SearchReplacePanel() {
             }
           }
 
-          const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
+          const nextIndex = resolveSearchPanelWrappedIndex(candidateIndex, filterMatches.length);
           applyFilterNavigationSelection({
             currentFilterMatchIndexRef,
             matches: filterMatches,
@@ -1460,7 +1460,7 @@ export function SearchReplacePanel() {
         }
 
         const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentFilterMatchIndexRef.current, filterResult.matches.length);
-        const nextIndex = (boundedCurrentIndex + step + filterResult.matches.length) % filterResult.matches.length;
+        const nextIndex = resolveSearchPanelWrappedIndex(boundedCurrentIndex + step, filterResult.matches.length);
 
         applyFilterNavigationSelection({
           currentFilterMatchIndexRef,
@@ -1540,7 +1540,7 @@ export function SearchReplacePanel() {
         const candidateIndex = boundedCurrentIndex + step;
 
         if (candidateIndex < 0) {
-          const nextIndex = (candidateIndex + matches.length) % matches.length;
+          const nextIndex = resolveSearchPanelWrappedIndex(candidateIndex, matches.length);
           applySearchNavigationSelection({
             currentMatchIndexRef,
             matches,
@@ -1571,7 +1571,7 @@ export function SearchReplacePanel() {
           }
         }
 
-        const nextIndex = (candidateIndex + matches.length) % matches.length;
+        const nextIndex = resolveSearchPanelWrappedIndex(candidateIndex, matches.length);
 
         applySearchNavigationSelection({
           currentMatchIndexRef,
