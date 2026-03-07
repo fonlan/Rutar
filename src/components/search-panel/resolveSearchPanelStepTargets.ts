@@ -17,6 +17,34 @@ interface ResolveSearchStepTargetOptions {
   targetMatch: SearchMatch;
 }
 
+interface ResolveStepTargetOptions<TMatch> {
+  batchMatches?: TMatch[];
+  matches: TMatch[];
+  targetIndexInBatch?: number | null;
+  targetMatch: TMatch;
+}
+
+interface ResolvedStepTarget<TMatch> {
+  nextMatches: TMatch[];
+  targetIndex: number;
+}
+
+export type SearchPanelResultFilterStepSelection<TMatch> =
+  | { kind: 'missing-target' }
+  | { kind: 'no-match' }
+  | ({ kind: 'resolved' } & ResolvedStepTarget<TMatch>);
+
+interface ResolveSearchPanelResultFilterStepSelectionOptions<TMatch> {
+  batchMatches?: TMatch[];
+  matches: TMatch[];
+  targetIndexInBatch?: number | null;
+  targetMatch?: TMatch | null;
+  resolveTarget: (
+    options: ResolveStepTargetOptions<TMatch>
+  ) => ResolvedStepTarget<TMatch> | null;
+}
+
+
 export function resolveFilterStepTarget({
   batchMatches,
   matches,
@@ -77,5 +105,32 @@ export function resolveSearchStepTarget({
   return {
     nextMatches,
     targetIndex,
+  };
+}
+export function resolveSearchPanelResultFilterStepSelection<TMatch>({
+  batchMatches,
+  matches,
+  targetIndexInBatch,
+  targetMatch,
+  resolveTarget,
+}: ResolveSearchPanelResultFilterStepSelectionOptions<TMatch>): SearchPanelResultFilterStepSelection<TMatch> {
+  if (!targetMatch) {
+    return { kind: 'missing-target' };
+  }
+
+  const resolvedTarget = resolveTarget({
+    batchMatches,
+    matches,
+    targetIndexInBatch,
+    targetMatch,
+  });
+
+  if (!resolvedTarget) {
+    return { kind: 'no-match' };
+  }
+
+  return {
+    kind: 'resolved',
+    ...resolvedTarget,
   };
 }

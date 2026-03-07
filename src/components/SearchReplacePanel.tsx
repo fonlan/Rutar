@@ -36,7 +36,7 @@ import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handl
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
-import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
+import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -2204,50 +2204,51 @@ export function SearchReplacePanel() {
             return;
           }
 
-          const targetMatch = stepResult.targetMatch;
-          if (!targetMatch) {
-            return;
-          }
           const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
           setTotalFilterMatchedLineCount(totalMatchedLines);
-          const resolvedFilterStepTarget = resolveFilterStepTarget({
+          const filterStepSelection = resolveSearchPanelResultFilterStepSelection({
             batchMatches: stepResult.batchMatches,
             matches: filterMatches,
             targetIndexInBatch: stepResult.targetIndexInBatch,
-            targetMatch,
+            targetMatch: stepResult.targetMatch,
+            resolveTarget: resolveFilterStepTarget,
           });
 
-          if (resolvedFilterStepTarget) {
-            const { nextMatches, targetIndex } = resolvedFilterStepTarget;
-            const documentVersion = stepResult.documentVersion ?? 0;
-            applyFilterResultFilterStepResult({
-              activeTabId: activeTab.id,
-              cachedFilterRef,
-              documentVersion,
-              filterCountCacheRef,
-              filterLineCursorRef,
-              filterRulesKey,
-              nextLine: stepResult.nextLine ?? null,
-              nextMatches,
-              resultFilterKeyword: effectiveResultFilterKeyword,
-              setFilterMatches,
-              setFilterSessionId,
-              setTotalFilterMatchedLineCount,
-              startTransition,
-              totalMatchedLines,
-            });
-            applyFilterResultFilterSelection({
-              currentFilterMatchIndexRef,
-              scrollResultItemIntoView,
-              setCurrentFilterMatchIndex,
-              setErrorMessage,
-              setFeedbackMessage,
-              targetIndex,
-            });
+          if (filterStepSelection.kind === 'missing-target') {
             return;
           }
 
-          setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+          if (filterStepSelection.kind === 'no-match') {
+            setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+            return;
+          }
+
+          const { nextMatches, targetIndex } = filterStepSelection;
+          const documentVersion = stepResult.documentVersion ?? 0;
+          applyFilterResultFilterStepResult({
+            activeTabId: activeTab.id,
+            cachedFilterRef,
+            documentVersion,
+            filterCountCacheRef,
+            filterLineCursorRef,
+            filterRulesKey,
+            nextLine: stepResult.nextLine ?? null,
+            nextMatches,
+            resultFilterKeyword: effectiveResultFilterKeyword,
+            setFilterMatches,
+            setFilterSessionId,
+            setTotalFilterMatchedLineCount,
+            startTransition,
+            totalMatchedLines,
+          });
+          applyFilterResultFilterSelection({
+            currentFilterMatchIndexRef,
+            scrollResultItemIntoView,
+            setCurrentFilterMatchIndex,
+            setErrorMessage,
+            setFeedbackMessage,
+            targetIndex,
+          });
           return;
         }
 
@@ -2278,57 +2279,59 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const targetMatch = stepResult.targetMatch;
-        if (!targetMatch) {
-          return;
-        }
         const totalMatches = stepResult.totalMatches ?? 0;
         const totalMatchedLines = stepResult.totalMatchedLines ?? 0;
         setTotalMatchCount(totalMatches);
         setTotalMatchedLineCount(totalMatchedLines);
-        const resolvedSearchStepTarget = resolveSearchStepTarget({
+        const searchStepSelection = resolveSearchPanelResultFilterStepSelection({
           batchMatches: stepResult.batchMatches,
           matches,
           targetIndexInBatch: stepResult.targetIndexInBatch,
-          targetMatch,
+          targetMatch: stepResult.targetMatch,
+          resolveTarget: resolveSearchStepTarget,
         });
 
-        if (resolvedSearchStepTarget) {
-          const { nextMatches, targetIndex } = resolvedSearchStepTarget;
-          const documentVersion = stepResult.documentVersion ?? 0;
-          applySearchResultFilterStepResult({
-            activeTabId: activeTab.id,
-            cachedSearchRef,
-            caseSensitive,
-            chunkCursorRef,
-            countCacheRef,
-            documentVersion,
-            effectiveResultFilterKeyword,
-            effectiveSearchKeyword,
-            nextMatches,
-            nextOffset: stepResult.nextOffset ?? null,
-            parseEscapeSequences,
-            searchMode,
-            setMatches,
-            setSearchSessionId,
-            setTotalMatchCount,
-            setTotalMatchedLineCount,
-            startTransition,
-            totalMatchedLines,
-            totalMatches,
-          });
-          applySearchResultFilterSelection({
-            currentMatchIndexRef,
-            scrollResultItemIntoView,
-            setCurrentMatchIndex,
-            setErrorMessage,
-            setFeedbackMessage,
-            targetIndex,
-          });
+        if (searchStepSelection.kind === 'missing-target') {
           return;
         }
 
-        setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+        if (searchStepSelection.kind === 'no-match') {
+          setFeedbackMessage(messages.resultFilterStepNoMatch(keywordForJump));
+          return;
+        }
+
+        const { nextMatches, targetIndex } = searchStepSelection;
+        const documentVersion = stepResult.documentVersion ?? 0;
+        applySearchResultFilterStepResult({
+          activeTabId: activeTab.id,
+          cachedSearchRef,
+          caseSensitive,
+          chunkCursorRef,
+          countCacheRef,
+          documentVersion,
+          effectiveResultFilterKeyword,
+          effectiveSearchKeyword,
+          nextMatches,
+          nextOffset: stepResult.nextOffset ?? null,
+          parseEscapeSequences,
+          searchMode,
+          setMatches,
+          setSearchSessionId,
+          setTotalMatchCount,
+          setTotalMatchedLineCount,
+          startTransition,
+          totalMatchedLines,
+          totalMatches,
+        });
+        applySearchResultFilterSelection({
+          currentMatchIndexRef,
+          scrollResultItemIntoView,
+          setCurrentMatchIndex,
+          setErrorMessage,
+          setFeedbackMessage,
+          targetIndex,
+        });
+        return;
       } catch (error) {
         if (runVersion !== resultFilterStepRunVersionRef.current) {
           return;
