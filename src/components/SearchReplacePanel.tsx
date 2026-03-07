@@ -27,6 +27,7 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
+import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -68,7 +69,6 @@ import {
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
   getSearchModeValue,
-  resolveSearchKeyword,
   RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
   SEARCH_SIDEBAR_DEFAULT_WIDTH,
@@ -1992,32 +1992,24 @@ export function SearchReplacePanel() {
         snapshot: nextSnapshot,
       });
 
-      if (
-        nextSnapshot.searchDocumentVersion !== null &&
-        nextSnapshot.keyword &&
-        !searchSessionRestoreCommandUnsupportedRef.current
-      ) {
-        const snapshotKeyword = nextSnapshot.keyword;
-        const snapshotParseEscapeSequences = nextSnapshot.parseEscapeSequences ?? false;
-        const snapshotEffectiveKeyword = resolveSearchKeyword(
-          snapshotKeyword,
-          snapshotParseEscapeSequences
-        );
-        const snapshotSearchMode = nextSnapshot.searchMode;
-        const snapshotCaseSensitive = nextSnapshot.caseSensitive;
-        const snapshotDocumentVersion = nextSnapshot.searchDocumentVersion;
-        const snapshotNextOffset = nextSnapshot.searchNextOffset;
+      const searchSessionRestoreRequest = buildSearchSessionRestoreRequest({
+        activeTabId: activeTab.id,
+        restoredResultFilterKeyword,
+        searchSessionRestoreCommandUnsupported: searchSessionRestoreCommandUnsupportedRef.current,
+        snapshot: nextSnapshot,
+      });
 
-        void invoke<unknown>('search_session_restore_in_document', {
-          id: activeTab.id,
-          keyword: snapshotEffectiveKeyword,
-          mode: getSearchModeValue(snapshotSearchMode),
-          caseSensitive: snapshotCaseSensitive,
-          resultFilterKeyword: restoredResultFilterKeyword,
-          resultFilterCaseSensitive: snapshotCaseSensitive,
-          expectedDocumentVersion: snapshotDocumentVersion,
-          nextOffset: snapshotNextOffset,
-        })
+      if (searchSessionRestoreRequest) {
+        const {
+          invokeArgs,
+          snapshotCaseSensitive,
+          snapshotDocumentVersion,
+          snapshotEffectiveKeyword,
+          snapshotParseEscapeSequences,
+          snapshotSearchMode,
+        } = searchSessionRestoreRequest;
+
+        void invoke<unknown>('search_session_restore_in_document', invokeArgs)
           .then((restoreResultValue) => {
             if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
               return;
@@ -2055,23 +2047,22 @@ export function SearchReplacePanel() {
           });
       }
 
-      if (
-        nextSnapshot.filterDocumentVersion !== null &&
-        nextSnapshot.filterRulesKey === filterRulesKey &&
-        !filterSessionRestoreCommandUnsupportedRef.current
-      ) {
-        const snapshotCaseSensitive = nextSnapshot.caseSensitive;
-        const snapshotFilterDocumentVersion = nextSnapshot.filterDocumentVersion;
-        const snapshotFilterNextLine = nextSnapshot.filterNextLine;
+      const filterSessionRestoreRequest = buildFilterSessionRestoreRequest({
+        activeTabId: activeTab.id,
+        filterRulesKey,
+        filterRulesPayload,
+        filterSessionRestoreCommandUnsupported: filterSessionRestoreCommandUnsupportedRef.current,
+        restoredResultFilterKeyword,
+        snapshot: nextSnapshot,
+      });
 
-        void invoke<unknown>('filter_session_restore_in_document', {
-          id: activeTab.id,
-          rules: filterRulesPayload,
-          resultFilterKeyword: restoredResultFilterKeyword,
-          resultFilterCaseSensitive: snapshotCaseSensitive,
-          expectedDocumentVersion: snapshotFilterDocumentVersion,
-          nextLine: snapshotFilterNextLine,
-        })
+      if (filterSessionRestoreRequest) {
+        const {
+          invokeArgs,
+          snapshotFilterDocumentVersion,
+        } = filterSessionRestoreRequest;
+
+        void invoke<unknown>('filter_session_restore_in_document', invokeArgs)
           .then((restoreResultValue) => {
             if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
               return;
