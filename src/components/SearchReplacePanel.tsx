@@ -11,6 +11,7 @@ import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
 import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
 import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
+import { useFilterRulesEditorOptions } from '@/components/search-panel/useFilterRulesEditorOptions';
 import { useFilterRuleGroupPersistence } from '@/components/search-panel/useFilterRuleGroupPersistence';
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
 import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
@@ -2828,6 +2829,37 @@ export function SearchReplacePanel() {
     onResizePointerDown: startSearchSidebarResize,
   });
 
+  const filterRulesEditorOptions = useFilterRulesEditorOptions({
+    effectiveFilterRules,
+    filterGroupNameInput,
+    filterRuleDragState,
+    filterRules,
+    filterToggleLabel,
+    handleDeleteFilterRuleGroup,
+    handleExportFilterRuleGroups,
+    handleImportFilterRuleGroups,
+    handleSaveFilterRuleGroup,
+    hasAnyConfiguredFilterRule,
+    messages,
+    normalizedFilterRuleGroups,
+    onAddFilterRule: addFilterRule,
+    onFilterGroupNameInputChange: setFilterGroupNameInput,
+    onKeywordKeyDown: handleKeywordKeyDown,
+    onLoadFilterRuleGroup: handleLoadFilterRuleGroup,
+    onMoveFilterRule: moveFilterRule,
+    onRemoveFilterRule: removeFilterRule,
+    onRuleDragEnd: onFilterRuleDragEnd,
+    onRuleDragOver: onFilterRuleDragOver,
+    onRuleDragStart: onFilterRuleDragStart,
+    onRuleDrop: onFilterRuleDrop,
+    onSelectedFilterGroupChange: handleSelectedFilterGroupChange,
+    onToggleResultPanelAndRefresh: toggleResultPanelAndRefresh,
+    onUpdateFilterRule: updateFilterRule,
+    onClearFilterRules: clearFilterRules,
+    selectedFilterGroupName,
+    setFilterGroupNameInput,
+  });
+
   const { searchSidebarBodyProps, searchSidebarChromeProps, searchPanelOverlaysProps } = useSearchPanelViewProps({
     hasActiveTab: !!activeTab,
     searchQueryOptions: {
@@ -2858,36 +2890,7 @@ export function SearchReplacePanel() {
       setSearchMode,
       toggleResultPanelAndRefresh,
     },
-    filterRulesEditorOptions: {
-      effectiveFilterRules,
-      filterGroupNameInput,
-      filterRuleDragState,
-      filterRules,
-      filterToggleLabel,
-      handleDeleteFilterRuleGroup,
-      handleExportFilterRuleGroups,
-      handleImportFilterRuleGroups,
-      handleSaveFilterRuleGroup,
-      hasAnyConfiguredFilterRule,
-      messages,
-      normalizedFilterRuleGroups,
-      onAddFilterRule: addFilterRule,
-      onFilterGroupNameInputChange: setFilterGroupNameInput,
-      onKeywordKeyDown: handleKeywordKeyDown,
-      onLoadFilterRuleGroup: handleLoadFilterRuleGroup,
-      onMoveFilterRule: moveFilterRule,
-      onRemoveFilterRule: removeFilterRule,
-      onRuleDragEnd: onFilterRuleDragEnd,
-      onRuleDragOver: onFilterRuleDragOver,
-      onRuleDragStart: onFilterRuleDragStart,
-      onRuleDrop: onFilterRuleDrop,
-      onSelectedFilterGroupChange: handleSelectedFilterGroupChange,
-      onToggleResultPanelAndRefresh: toggleResultPanelAndRefresh,
-      onUpdateFilterRule: updateFilterRule,
-      onClearFilterRules: clearFilterRules,
-      selectedFilterGroupName,
-      setFilterGroupNameInput,
-    },
+    filterRulesEditorOptions,
     searchSidebarShellOptions,
     searchPanelOverlaysOptions,
   });
