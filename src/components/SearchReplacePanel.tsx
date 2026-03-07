@@ -26,6 +26,7 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
+import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -910,16 +911,16 @@ export function SearchReplacePanel() {
       }
 
       if (!usedSessionMode) {
-        const params = cachedSearchRef.current;
-        if (
-          !params ||
-          params.tabId !== activeTab.id ||
-          params.keyword !== effectiveSearchKeyword ||
-          params.searchMode !== searchMode ||
-          params.caseSensitive !== caseSensitive ||
-          params.parseEscapeSequences !== parseEscapeSequences ||
-          params.resultFilterKeyword !== backendResultFilterKeyword
-        ) {
+        const params = getSearchLoadMoreFallbackParams({
+          activeTabId: activeTab.id,
+          cachedSearch: cachedSearchRef.current,
+          caseSensitive,
+          effectiveResultFilterKeyword: backendResultFilterKeyword,
+          effectiveSearchKeyword,
+          parseEscapeSequences,
+          searchMode,
+        });
+        if (!params) {
           return null;
         }
 
@@ -941,9 +942,11 @@ export function SearchReplacePanel() {
         }
 
         if (backendResult.documentVersion !== params.documentVersion) {
-          cachedSearchRef.current = null;
-          chunkCursorRef.current = null;
-          setSearchSessionId(null);
+          handleSearchLoadMoreVersionMismatch({
+            cachedSearchRef,
+            chunkCursorRef,
+            setSearchSessionId,
+          });
           return null;
         }
 
@@ -1054,13 +1057,13 @@ export function SearchReplacePanel() {
       }
 
       if (!usedSessionMode) {
-        const params = cachedFilterRef.current;
-        if (
-          !params ||
-          params.tabId !== activeTab.id ||
-          params.rulesKey !== filterRulesKey ||
-          params.resultFilterKeyword !== backendResultFilterKeyword
-        ) {
+        const params = getFilterLoadMoreFallbackParams({
+          activeTabId: activeTab.id,
+          cachedFilter: cachedFilterRef.current,
+          filterRulesKey,
+          effectiveResultFilterKeyword: backendResultFilterKeyword,
+        });
+        if (!params) {
           return null;
         }
 
@@ -1081,9 +1084,11 @@ export function SearchReplacePanel() {
         }
 
         if (backendResult.documentVersion !== params.documentVersion) {
-          cachedFilterRef.current = null;
-          filterLineCursorRef.current = null;
-          setFilterSessionId(null);
+          handleFilterLoadMoreVersionMismatch({
+            cachedFilterRef,
+            filterLineCursorRef,
+            setFilterSessionId,
+          });
           return null;
         }
 
