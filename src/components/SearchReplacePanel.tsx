@@ -33,6 +33,7 @@ import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult 
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
+import { resolveSearchPanelErrorMessage } from '@/components/search-panel/resolveSearchPanelErrorMessage';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1001,7 +1002,7 @@ export function SearchReplacePanel() {
       if (sessionId !== loadMoreSessionRef.current) {
         return null;
       }
-      const readableError = error instanceof Error ? error.message : String(error);
+      const readableError = resolveSearchPanelErrorMessage(error);
       setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       return null;
     } finally {
@@ -1140,7 +1141,7 @@ export function SearchReplacePanel() {
       if (sessionId !== loadMoreSessionRef.current) {
         return null;
       }
-      const readableError = error instanceof Error ? error.message : String(error);
+      const readableError = resolveSearchPanelErrorMessage(error);
       setErrorMessage(`${messages.filterFailed}: ${readableError}`);
       return null;
     } finally {
@@ -1238,7 +1239,7 @@ export function SearchReplacePanel() {
         return null;
       }
 
-      const readableError = error instanceof Error ? error.message : String(error);
+      const readableError = resolveSearchPanelErrorMessage(error);
       setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       resetSearchState();
       setIsSearching(false);
@@ -1382,7 +1383,7 @@ export function SearchReplacePanel() {
           if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_filter_document')) {
             filterStepCommandUnsupportedRef.current = true;
           } else {
-            const readableError = error instanceof Error ? error.message : String(error);
+            const readableError = resolveSearchPanelErrorMessage(error);
             setErrorMessage(`${messages.filterFailed}: ${readableError}`);
             return;
           }
@@ -1509,7 +1510,7 @@ export function SearchReplacePanel() {
           if (isMissingInvokeCommandError(error, 'search_step_from_cursor_in_document')) {
             searchCursorStepCommandUnsupportedRef.current = true;
           } else {
-            const readableError = error instanceof Error ? error.message : String(error);
+            const readableError = resolveSearchPanelErrorMessage(error);
             setErrorMessage(`${messages.searchFailed}: ${readableError}`);
             return;
           }
@@ -1693,7 +1694,7 @@ export function SearchReplacePanel() {
         navigateToMatch(nextMatch);
       }
     } catch (error) {
-      const readableError = error instanceof Error ? error.message : String(error);
+      const readableError = resolveSearchPanelErrorMessage(error);
       setErrorMessage(`${messages.replaceFailed}: ${readableError}`);
     }
   }, [
@@ -1785,7 +1786,7 @@ export function SearchReplacePanel() {
         navigateToMatch(nextMatch);
       }
     } catch (error) {
-      const readableError = error instanceof Error ? error.message : String(error);
+      const readableError = resolveSearchPanelErrorMessage(error);
       setErrorMessage(`${messages.replaceAllFailed}: ${readableError}`);
     }
   }, [
@@ -2304,7 +2305,7 @@ export function SearchReplacePanel() {
         if (runVersion !== resultFilterStepRunVersionRef.current) {
           return;
         }
-        const readableError = error instanceof Error ? error.message : String(error);
+        const readableError = resolveSearchPanelErrorMessage(error);
         setErrorMessage(`${messages.searchFailed}: ${readableError}`);
       } finally {
         if (runVersion === resultFilterStepRunVersionRef.current) {
