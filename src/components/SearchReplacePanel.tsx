@@ -21,6 +21,7 @@ import { useSearchQuerySectionProps } from '@/components/search-panel/useSearchQ
 import { useSearchPanelOverlaysProps } from '@/components/search-panel/useSearchPanelOverlaysProps';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
+import { useSearchSidebarShellProps } from '@/components/search-panel/useSearchSidebarShellProps';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
   isFilterResultFilterStepBackendResult,
@@ -66,7 +67,6 @@ import {
   dispatchNavigateToMatch,
   FILTER_CHUNK_SIZE,
   getDisplayCountText,
-  getSearchStatusText,
   getSearchModeValue,
   normalizeFilterRuleGroups,
   normalizeFilterRules,
@@ -3179,37 +3179,6 @@ export function SearchReplacePanel() {
       visibleMatches={visibleMatches}
     />
   );
-  const statusText = useMemo(
-    () => getSearchStatusText({
-      currentFilterMatchIndex,
-      currentMatchIndex,
-      errorMessage,
-      filterMatchCount: filterMatches.length,
-      hasConfiguredFilterRules: effectiveFilterRules.length > 0,
-      isFilterMode,
-      isSearching,
-      keyword,
-      matchCount: matches.length,
-      messages,
-      totalFilterMatchedLineCount: displayTotalFilterMatchedLineCount,
-      totalMatchCount: displayTotalMatchCount,
-    }),
-    [
-      currentFilterMatchIndex,
-      currentMatchIndex,
-      displayTotalFilterMatchedLineCount,
-      displayTotalMatchCount,
-      effectiveFilterRules.length,
-      errorMessage,
-      filterMatches.length,
-      isFilterMode,
-      isSearching,
-      keyword,
-      matches.length,
-      messages,
-    ]
-  );
-
   const canReplace = !!activeTab;
   const searchQuerySectionProps = useSearchQuerySectionProps({
     canReplace,
@@ -3271,6 +3240,40 @@ export function SearchReplacePanel() {
     setFilterGroupNameInput,
   });
 
+  const { searchSidebarBodyProps, searchSidebarChromeProps } = useSearchSidebarShellProps({
+    canReplace,
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    displayTotalFilterMatchedLineCount,
+    displayTotalMatchCount,
+    errorMessage,
+    feedbackMessage,
+    filterMatchCount: filterMatches.length,
+    filterRulesEditorProps,
+    focusSearchInput,
+    hasConfiguredFilterRules: effectiveFilterRules.length > 0,
+    isFilterMode,
+    isOpen,
+    isSearchSidebarResizing,
+    isSearchUiActive,
+    isSearching,
+    keyword,
+    matchCount: matches.length,
+    messages,
+    panelMode,
+    searchQuerySectionProps,
+    searchSidebarBottomOffset,
+    searchSidebarContainerRef,
+    searchSidebarTopOffset,
+    searchSidebarWidth,
+    setIsOpen,
+    setPanelMode,
+    onBlurCapture: handleSearchUiBlurCapture,
+    onContextMenu: handleSearchSidebarContextMenu,
+    onFocusCapture: handleSearchUiFocusCapture,
+    onPointerDownCapture: handleSearchUiPointerDownCapture,
+    onResizePointerDown: startSearchSidebarResize,
+  });
   const searchPanelOverlaysProps = useSearchPanelOverlaysProps({
     copyLabel: inputContextCopyLabel,
     cutLabel: inputContextCutLabel,
@@ -3327,36 +3330,8 @@ export function SearchReplacePanel() {
 
   return (
     <>
-      <SearchSidebarChrome
-        canReplace={canReplace}
-        errorMessage={errorMessage}
-        feedbackMessage={feedbackMessage}
-        isOpen={isOpen}
-        isSearchUiActive={isSearchUiActive}
-        isSearchSidebarResizing={isSearchSidebarResizing}
-        messages={messages}
-        panelMode={panelMode}
-        searchSidebarBottomOffset={searchSidebarBottomOffset}
-        searchSidebarContainerRef={searchSidebarContainerRef}
-        searchSidebarTopOffset={searchSidebarTopOffset}
-        searchSidebarWidth={searchSidebarWidth}
-        statusText={statusText}
-        onBlurCapture={handleSearchUiBlurCapture}
-        onClose={() => setIsOpen(false)}
-        onContextMenu={handleSearchSidebarContextMenu}
-        onFocusCapture={handleSearchUiFocusCapture}
-        onModeChange={(mode) => {
-          setPanelMode(mode);
-          focusSearchInput();
-        }}
-        onPointerDownCapture={handleSearchUiPointerDownCapture}
-        onResizePointerDown={startSearchSidebarResize}
-      >
-        <SearchSidebarBody
-          isFilterMode={isFilterMode}
-          searchQuerySectionProps={searchQuerySectionProps}
-          filterRulesEditorProps={filterRulesEditorProps}
-        />
+      <SearchSidebarChrome {...searchSidebarChromeProps}>
+        <SearchSidebarBody {...searchSidebarBodyProps} />
       </SearchSidebarChrome>
 
       <SearchPanelOverlays {...searchPanelOverlaysProps} />
