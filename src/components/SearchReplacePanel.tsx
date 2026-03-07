@@ -26,7 +26,7 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
-import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
+import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
 import { applyReplaceOperationGuard, applyReplaceSearchResultGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
@@ -1712,9 +1712,10 @@ export function SearchReplacePanel() {
         startTransition,
       });
 
-      if (nextMatch) {
-        navigateToMatch(nextMatch);
-      }
+      applyReplaceNextMatchNavigation({
+        navigateToMatch,
+        nextMatch,
+      });
     } catch (error) {
       applySearchPanelErrorMessage({
         error,
@@ -1813,9 +1814,10 @@ export function SearchReplacePanel() {
         startTransition,
       });
 
-      if (nextMatch) {
-        navigateToMatch(nextMatch);
-      }
+      applyReplaceNextMatchNavigation({
+        navigateToMatch,
+        nextMatch,
+      });
     } catch (error) {
       applySearchPanelErrorMessage({
         error,

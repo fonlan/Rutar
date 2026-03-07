@@ -1,3 +1,4 @@
+import type { SearchMatch } from './types';
 import { dispatchEditorForceRefresh } from './utils';
 
 interface ApplyReplaceSuccessEffectsOptions {
@@ -30,4 +31,17 @@ export function applyReplaceSuccessEffects({
   setFeedbackMessage(feedbackMessage);
   setErrorMessage(null);
   rememberReplaceValue(replaceValue);
+}
+interface ApplyReplaceNextMatchNavigationOptions {
+  navigateToMatch: (match: SearchMatch) => void;
+  nextMatch: SearchMatch | null;
+}
+
+export function applyReplaceNextMatchNavigation({
+  navigateToMatch,
+  nextMatch,
+}: ApplyReplaceNextMatchNavigationOptions) {
+  if (nextMatch) {
+    navigateToMatch(nextMatch);
+  }
 }
