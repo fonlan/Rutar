@@ -48,7 +48,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { readSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -531,7 +531,7 @@ export function SearchReplacePanel() {
         });
 
         if (currentDocumentVersion === cached.documentVersion) {
-          applyCachedSearchRunResult({
+          return applyCachedSearchRunHit({
             cached,
             chunkCursorRef,
             setCurrentMatchIndex,
@@ -540,13 +540,6 @@ export function SearchReplacePanel() {
             setSearchSessionId,
             startTransition,
           });
-
-          return {
-            matches: cached.matches,
-            documentVersion: cached.documentVersion,
-            errorMessage: null,
-            nextOffset: cached.nextOffset,
-          };
         }
       }
     }
@@ -717,7 +710,7 @@ export function SearchReplacePanel() {
         });
 
         if (currentDocumentVersion === cached.documentVersion) {
-          applyCachedFilterRunResult({
+          return applyCachedFilterRunHit({
             cached,
             filterLineCursorRef,
             setCurrentFilterMatchIndex,
@@ -726,13 +719,6 @@ export function SearchReplacePanel() {
             setFilterSessionId,
             startTransition,
           });
-
-          return {
-            matches: cached.matches,
-            documentVersion: cached.documentVersion,
-            errorMessage: null,
-            nextLine: cached.nextLine,
-          };
         }
       }
     }

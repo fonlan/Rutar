@@ -1,10 +1,12 @@
 import type { Dispatch, MutableRefObject, SetStateAction, TransitionStartFunction } from 'react';
 import type {
   FilterMatch,
+  FilterRunResult,
   ReplaceAllAndSearchChunkBackendResult,
   ReplaceCurrentAndSearchChunkBackendResult,
   SearchMatch,
   SearchMode,
+  SearchRunResult,
 } from './types';
 
 interface CachedSearchSnapshot {
@@ -253,6 +255,19 @@ export function applyCachedSearchRunResult({
   setSearchSessionId(cached.sessionId);
 }
 
+export function applyCachedSearchRunHit(
+  options: ApplyCachedSearchRunResultOptions,
+): SearchRunResult {
+  applyCachedSearchRunResult(options);
+
+  return {
+    matches: options.cached.matches,
+    documentVersion: options.cached.documentVersion,
+    errorMessage: null,
+    nextOffset: options.cached.nextOffset,
+  };
+}
+
 export function applySearchRunResult({
   activeTabId,
   caseSensitive,
@@ -437,6 +452,19 @@ export function applyCachedFilterRunResult({
 
   filterLineCursorRef.current = cached.nextLine;
   setFilterSessionId(cached.sessionId);
+}
+
+export function applyCachedFilterRunHit(
+  options: ApplyCachedFilterRunResultOptions,
+): FilterRunResult {
+  applyCachedFilterRunResult(options);
+
+  return {
+    matches: options.cached.matches,
+    documentVersion: options.cached.documentVersion,
+    errorMessage: null,
+    nextLine: options.cached.nextLine,
+  };
 }
 
 export function applyFilterLoadMoreResult({
