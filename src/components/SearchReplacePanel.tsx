@@ -21,31 +21,26 @@ import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPa
 import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
 import { useSearchResultFilterStepNavigation } from '@/components/search-panel/useSearchResultFilterStepNavigation';
+import { useSearchStepNavigation } from '@/components/search-panel/useSearchStepNavigation';
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
-import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { resolvePreparedReplaceSearchResult } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyResolvedReplaceAllResult } from '@/components/search-panel/applySearchPanelResolvedReplaceAllResult';
 import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
-import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
-import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
-import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
-import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
-import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyFilterResultFilterStepResult, applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterCountRequest, buildSearchCountRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
 import { resolveReplaceAllSearchState, resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
@@ -64,10 +59,7 @@ import { useSearchPanelLoadMoreHandlers } from '@/components/search-panel/useSea
 import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
 import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
 import {
-  isFilterResultFilterStepBackendResult,
   isFilterSessionRestoreBackendResult,
-  isMissingInvokeCommandError,
-  isSearchCursorStepBackendResult,
   isSearchSessionRestoreBackendResult,
 } from '@/components/search-panel/backendGuards';
 import type {
@@ -877,264 +869,51 @@ export function SearchReplacePanel() {
     resultPanelState,
   });
 
-  const navigateByStep = useCallback(
-    async (step: number) => {
-      const normalizedStep = step < 0 ? -1 : 1;
-      const navigationFeedback = normalizedStep < 0 ? messages.prevMatch : messages.nextMatch;
-
-      if (!isFilterMode && keyword.length > 0) {
-        rememberSearchKeyword(keyword);
-      }
-
-      if (activeTab && isFilterMode && !filterStepCommandUnsupportedRef.current) {
-        try {
-          const filterStepAnchor = resolveCurrentFilterStepAnchor(
-            filterMatches,
-            currentFilterMatchIndexRef.current
-          );
-          const stepResultValue = await invoke<unknown>(
-            'step_result_filter_search_in_filter_document',
-            buildFilterStepRequest({
-              activeTabId: activeTab.id,
-              rules: filterRulesPayload,
-              resultFilterKeyword: backendResultFilterKeyword,
-              caseSensitive,
-              ...filterStepAnchor,
-              step: normalizedStep,
-              maxResults: FILTER_CHUNK_SIZE,
-            })
-          );
-
-          if (isFilterResultFilterStepBackendResult(stepResultValue)) {
-            filterStepCommandUnsupportedRef.current = false;
-
-            const targetMatch = stepResultValue.targetMatch;
-            if (!hasSearchPanelTargetMatch(targetMatch)) {
-              return;
-            }
-
-            const resolvedFilterStepTarget = resolveFilterStepTarget({
-              batchMatches: stepResultValue.batchMatches,
-              matches: filterMatches,
-              targetIndexInBatch: stepResultValue.targetIndexInBatch,
-              targetMatch,
-            });
-
-            if (resolvedFilterStepTarget) {
-              const { nextMatches: stepBatchMatches, targetIndex } = resolvedFilterStepTarget;
-              const documentVersion = stepResultValue.documentVersion ?? 0;
-              const totalMatchedLines = stepResultValue.totalMatchedLines ?? 0;
-              applyFilterResultFilterStepResult({
-                activeTabId: activeTab.id,
-                cachedFilterRef,
-                documentVersion,
-                filterCountCacheRef,
-                filterLineCursorRef,
-                filterRulesKey,
-                nextLine: stepResultValue.nextLine ?? null,
-                nextMatches: stepBatchMatches,
-                resultFilterKeyword: backendResultFilterKeyword,
-                setFilterMatches,
-                setFilterSessionId,
-                setTotalFilterMatchedLineCount,
-                startTransition,
-                totalMatchedLines,
-              });
-              applyFilterNavigationSelection({
-                currentFilterMatchIndexRef,
-                matches: stepBatchMatches,
-                navigationFeedback,
-                navigateToFilterMatch,
-                nextIndex: targetIndex,
-                setCurrentFilterMatchIndex,
-                setFeedbackMessage,
-              });
-              return;
-            }
-          }
-        } catch (error) {
-          if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_filter_document')) {
-            filterStepCommandUnsupportedRef.current = true;
-          } else {
-            applySearchPanelErrorMessage({
-              error,
-              prefix: messages.filterFailed,
-              setErrorMessage,
-            });
-            return;
-          }
-        }
-      }
-
-      if (isFilterMode) {
-        if (filterMatches.length > 0) {
-          const appendedMatches = await loadMoreSearchPanelStepMatches({
-            currentIndex: currentFilterMatchIndexRef.current,
-            loadMore: loadMoreFilterMatches,
-            loadMoreLocked: loadMoreLockRef.current,
-            matchCount: filterMatches.length,
-            step,
-          });
-          applyFilterLocalStepSelection({
-            appendedMatches,
-            currentFilterMatchIndexRef,
-            matches: filterMatches,
-            navigationFeedback,
-            navigateToFilterMatch,
-            setCurrentFilterMatchIndex,
-            setFeedbackMessage,
-            step,
-          });
-          return;
-        }
-
-        const filterResult = await executeFilter();
-        if (!hasSearchPanelMatches(filterResult)) {
-          return;
-        }
-
-        applyFilterLocalStepSelection({
-          currentFilterMatchIndexRef,
-          matches: filterResult.matches,
-          navigationFeedback,
-          navigateToFilterMatch,
-          setCurrentFilterMatchIndex,
-          setFeedbackMessage,
-          step,
-        });
-
-        return;
-      }
-
-      if (activeTab && keyword && !searchCursorStepCommandUnsupportedRef.current) {
-        try {
-          const searchCursorStepAnchor = resolveCurrentSearchCursorStepAnchor({
-            activeCursorPosition,
-            currentIndex: currentMatchIndexRef.current,
-            matches,
-          });
-          const stepResultValue = await invoke<unknown>(
-            'search_step_from_cursor_in_document',
-            buildSearchCursorStepRequest({
-              activeTabId: activeTab.id,
-              effectiveSearchKeyword,
-              searchMode,
-              caseSensitive,
-              effectiveResultFilterKeyword: backendResultFilterKeyword,
-              ...searchCursorStepAnchor,
-              step: normalizedStep,
-            })
-          );
-
-          if (isSearchCursorStepBackendResult(stepResultValue)) {
-            searchCursorStepCommandUnsupportedRef.current = false;
-
-            const targetMatch = stepResultValue.targetMatch;
-            if (!hasSearchPanelTargetMatch(targetMatch)) {
-              return;
-            }
-            applySearchCursorStepResult({
-              cachedSearchRef,
-              chunkCursorRef,
-              currentMatchIndexRef,
-              matches,
-              setCurrentMatchIndex,
-              setMatches,
-              setSearchSessionId,
-              startTransition,
-              targetMatch,
-            });
-            applySearchCursorStepSuccessEffects({
-              navigateToMatch,
-              navigationFeedback,
-              setErrorMessage,
-              setFeedbackMessage,
-              targetMatch,
-            });
-            return;
-          }
-        } catch (error) {
-          if (isMissingInvokeCommandError(error, 'search_step_from_cursor_in_document')) {
-            searchCursorStepCommandUnsupportedRef.current = true;
-          } else {
-            applySearchPanelErrorMessage({
-              error,
-              prefix: messages.searchFailed,
-              setErrorMessage,
-            });
-            return;
-          }
-        }
-      }
-
-      if (keyword && matches.length > 0) {
-        const appendedMatches = await loadMoreSearchPanelStepMatches({
-          currentIndex: currentMatchIndexRef.current,
-          loadMore: loadMoreMatches,
-          loadMoreLocked: loadMoreLockRef.current,
-          matchCount: matches.length,
-          step,
-        });
-        applySearchLocalStepSelection({
-          appendedMatches,
-          currentMatchIndexRef,
-          matches,
-          navigationFeedback,
-          navigateToMatch,
-          setCurrentMatchIndex,
-          setFeedbackMessage,
-          step,
-        });
-        return;
-      }
-
-      const shouldReverse = step < 0;
-      const searchResult = await executeFirstMatchSearch(shouldReverse);
-      if (!hasSearchPanelMatches(searchResult)) {
-        return;
-      }
-
-      applySearchLocalStepSelection({
-        currentMatchIndexRef,
-        matches: searchResult.matches,
-        navigationFeedback,
-        navigateToMatch,
-        setCurrentMatchIndex,
-        setFeedbackMessage,
-        step,
-      });
-
-    },
-    [
-      activeTab,
-      activeCursorPosition,
-      backendResultFilterKeyword,
-      caseSensitive,
-      effectiveSearchKeyword,
-      executeFilter,
-      executeFirstMatchSearch,
-      filterMatches,
-      filterRulesKey,
-      filterRulesPayload,
-      isFilterMode,
-      isSearching,
-      keyword,
-      loadMoreFilterMatches,
-      loadMoreMatches,
-      matches,
-      messages.filterFailed,
-      messages.nextMatch,
-      messages.prevMatch,
-      messages.searchFailed,
-      navigateToFilterMatch,
-      navigateToMatch,
-      parseEscapeSequences,
-      rememberSearchKeyword,
-      searchMode,
-      setFilterSessionId,
-      setSearchSessionId,
-    ]
-  );
+  const navigateByStep = useSearchStepNavigation({
+    activeCursorPosition,
+    activeTabId: activeTab?.id ?? null,
+    backendResultFilterKeyword,
+    cachedFilterRef,
+    cachedSearchRef,
+    caseSensitive,
+    chunkCursorRef,
+    currentFilterMatchIndexRef,
+    currentMatchIndexRef,
+    effectiveSearchKeyword,
+    executeFilter,
+    executeFirstMatchSearch,
+    filterCountCacheRef,
+    filterLineCursorRef,
+    filterMatches,
+    filterRulesKey,
+    filterRulesPayload,
+    filterStepCommandUnsupportedRef,
+    filterFailedLabel: messages.filterFailed,
+    isFilterMode,
+    keyword,
+    loadMoreFilterMatches,
+    loadMoreLockRef,
+    loadMoreMatches,
+    matches,
+    navigateToFilterMatch,
+    navigateToMatch,
+    nextMatchLabel: messages.nextMatch,
+    prevMatchLabel: messages.prevMatch,
+    rememberSearchKeyword,
+    searchCursorStepCommandUnsupportedRef,
+    searchFailedLabel: messages.searchFailed,
+    searchMode,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setFeedbackMessage,
+    setFilterMatches,
+    setFilterSessionId,
+    setMatches,
+    setSearchSessionId,
+    setTotalFilterMatchedLineCount,
+    startTransition,
+  });
 
   const handleReplaceCurrent = useCallback(async () => {
     if (!activeTab) {
