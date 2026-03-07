@@ -35,6 +35,7 @@ import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilte
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
+import { resolveFilterStepAnchor, resolveSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchPanelResultFilterStepSelection, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -1328,6 +1329,7 @@ export function SearchReplacePanel() {
             filterMatches,
             currentFilterMatchIndexRef.current
           );
+          const filterStepAnchor = resolveFilterStepAnchor(currentFilterMatch);
           const stepResultValue = await invoke<unknown>(
             'step_result_filter_search_in_filter_document',
             buildFilterStepRequest({
@@ -1335,8 +1337,7 @@ export function SearchReplacePanel() {
               rules: filterRulesPayload,
               resultFilterKeyword: backendResultFilterKeyword,
               caseSensitive,
-              currentLine: currentFilterMatch?.line ?? null,
-              currentColumn: currentFilterMatch?.column ?? null,
+              ...filterStepAnchor,
               step: normalizedStep,
               maxResults: FILTER_CHUNK_SIZE,
             })
@@ -2194,6 +2195,7 @@ export function SearchReplacePanel() {
             filterMatches,
             currentFilterMatchIndexRef.current
           );
+          const filterStepAnchor = resolveFilterStepAnchor(currentFilterMatch);
 
           const stepResult = await invoke<FilterResultFilterStepBackendResult>(
             'step_result_filter_search_in_filter_document',
@@ -2202,8 +2204,7 @@ export function SearchReplacePanel() {
               rules: filterRulesPayload,
               resultFilterKeyword: keywordForJump,
               caseSensitive,
-              currentLine: currentFilterMatch?.line ?? null,
-              currentColumn: currentFilterMatch?.column ?? null,
+              ...filterStepAnchor,
               step: normalizedStep,
               maxResults: FILTER_CHUNK_SIZE,
             })
@@ -2268,6 +2269,7 @@ export function SearchReplacePanel() {
           matches,
           currentMatchIndexRef.current
         );
+        const searchResultFilterStepAnchor = resolveSearchResultFilterStepAnchor(currentSearchMatch);
 
         const stepResult = await invoke<SearchResultFilterStepBackendResult>(
           'step_result_filter_search_in_document',
@@ -2277,8 +2279,7 @@ export function SearchReplacePanel() {
             searchMode,
             caseSensitive,
             effectiveResultFilterKeyword: keywordForJump,
-            currentStart: currentSearchMatch?.start ?? null,
-            currentEnd: currentSearchMatch?.end ?? null,
+            ...searchResultFilterStepAnchor,
             step: normalizedStep,
             maxResults: SEARCH_CHUNK_SIZE,
           })
