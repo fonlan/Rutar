@@ -21,6 +21,7 @@ import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelU
 import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
 import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
 import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
+import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -1922,37 +1923,30 @@ export function SearchReplacePanel() {
     sessionRestoreRunVersionRef.current = restoreRunVersion;
 
     if (!activeTab) {
-      setIsOpen(false);
-      setPanelMode('find');
-      setResultPanelState('closed');
-      setResultPanelHeight(RESULT_PANEL_DEFAULT_HEIGHT);
-      setSearchSidebarWidth(SEARCH_SIDEBAR_DEFAULT_WIDTH);
-      setKeyword('');
-      setReplaceValue('');
-      setSearchMode('literal');
-      setCaseSensitive(false);
-      setParseEscapeSequences(false);
-      setReverseSearch(false);
-      setResultFilterKeyword('');
-      setAppliedResultFilterKeyword('');
-      setMatches([]);
-      setFilterMatches([]);
-      setCurrentMatchIndex(0);
-      setCurrentFilterMatchIndex(0);
-      setTotalMatchCount(null);
-      setTotalMatchedLineCount(null);
-      setTotalFilterMatchedLineCount(null);
-      setIsResultFilterSearching(false);
-      stopResultFilterSearchRef.current = true;
-      resetSearchState();
-      resetFilterState();
-      cachedSearchRef.current = null;
-      cachedFilterRef.current = null;
-      countCacheRef.current = null;
-      filterCountCacheRef.current = null;
-      setErrorMessage(null);
-      setFeedbackMessage(null);
-      previousActiveTabIdRef.current = null;
+      resetSearchPanelForInactiveTab({
+        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
+        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
+        previousActiveTabIdRef,
+        resetFilterState,
+        resetSearchState,
+        setAppliedResultFilterKeyword,
+        setCaseSensitive,
+        setErrorMessage,
+        setFeedbackMessage,
+        setIsOpen,
+        setIsResultFilterSearching,
+        setKeyword,
+        setPanelMode,
+        setParseEscapeSequences,
+        setReplaceValue,
+        setResultFilterKeyword,
+        setResultPanelHeight,
+        setResultPanelState,
+        setReverseSearch,
+        setSearchMode,
+        setSearchSidebarWidth,
+        stopResultFilterSearchRef,
+      });
       return;
     }
 
