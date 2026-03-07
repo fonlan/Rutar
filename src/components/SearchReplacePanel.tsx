@@ -50,10 +50,10 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterCountRequest, buildFilterStepRequest, buildReplaceAllRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
-import { resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
+import { resolveReplaceAllSearchState, resolveReplaceCurrentSearchState } from '@/components/search-panel/resolveSearchPanelReplaceState';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -78,7 +78,6 @@ import type {
   FilterMatch,
   FilterRunResult,
   FilterResultFilterStepBackendResult,
-  ReplaceAllAndSearchChunkBackendResult,
   SearchCountBackendResult,
   SearchMatch,
   SearchResultFilterStepBackendResult,
@@ -1485,19 +1484,16 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const result = await invoke<ReplaceAllAndSearchChunkBackendResult>(
-        'replace_all_and_search_chunk_in_document',
-        buildReplaceAllRequest({
-          activeTabId: activeTab.id,
-          effectiveSearchKeyword,
-          searchMode,
-          caseSensitive,
-          replaceValue,
-          parseEscapeSequences,
-          effectiveResultFilterKeyword: backendResultFilterKeyword,
-          maxResults: SEARCH_CHUNK_SIZE,
-        })
-      );
+      const result = await resolveReplaceAllSearchState({
+        activeTabId: activeTab.id,
+        effectiveSearchKeyword,
+        searchMode,
+        caseSensitive,
+        replaceValue,
+        parseEscapeSequences,
+        effectiveResultFilterKeyword: backendResultFilterKeyword,
+        maxResults: SEARCH_CHUNK_SIZE,
+      });
 
       const replacedCount = result.replacedCount ?? 0;
 
