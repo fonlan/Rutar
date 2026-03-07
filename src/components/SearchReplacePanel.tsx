@@ -41,6 +41,7 @@ import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolv
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
+import { beginSearchPanelRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -562,11 +563,11 @@ export function SearchReplacePanel() {
       }
     }
 
-    const runVersion = runVersionRef.current + 1;
-    runVersionRef.current = runVersion;
-    if (!silent) {
-      setIsSearching(true);
-    }
+    const runVersion = beginSearchPanelRun({
+      runVersionRef,
+      setIsSearching,
+      silent,
+    });
 
     try {
       let nextMatches: SearchMatch[] = [];
@@ -628,7 +629,7 @@ export function SearchReplacePanel() {
         nextOffset = backendResult.nextOffset ?? null;
       }
 
-      if (runVersionRef.current !== runVersion) {
+      if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
         return null;
       }
 
@@ -668,7 +669,7 @@ export function SearchReplacePanel() {
         nextOffset,
       };
     } catch (error) {
-      if (runVersionRef.current !== runVersion) {
+      if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
         return null;
       }
 
@@ -679,9 +680,12 @@ export function SearchReplacePanel() {
         setErrorMessage,
       });
     } finally {
-      if (runVersionRef.current === runVersion && !silent) {
-        setIsSearching(false);
-      }
+      finalizeSearchPanelRun({
+        runVersion,
+        runVersionRef,
+        setIsSearching,
+        silent,
+      });
     }
   }, [
     activeTab,
@@ -757,11 +761,11 @@ export function SearchReplacePanel() {
       }
     }
 
-    const runVersion = filterRunVersionRef.current + 1;
-    filterRunVersionRef.current = runVersion;
-    if (!silent) {
-      setIsSearching(true);
-    }
+    const runVersion = beginSearchPanelRun({
+      runVersionRef: filterRunVersionRef,
+      setIsSearching,
+      silent,
+    });
 
     try {
       let nextMatches: FilterMatch[] = [];
@@ -819,7 +823,7 @@ export function SearchReplacePanel() {
         nextLine = backendResult.nextLine ?? null;
       }
 
-      if (filterRunVersionRef.current !== runVersion) {
+      if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
         return null;
       }
 
@@ -854,7 +858,7 @@ export function SearchReplacePanel() {
         nextLine,
       };
     } catch (error) {
-      if (filterRunVersionRef.current !== runVersion) {
+      if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
         return null;
       }
 
@@ -865,9 +869,12 @@ export function SearchReplacePanel() {
         setErrorMessage,
       });
     } finally {
-      if (filterRunVersionRef.current === runVersion && !silent) {
-        setIsSearching(false);
-      }
+      finalizeSearchPanelRun({
+        runVersion,
+        runVersionRef: filterRunVersionRef,
+        setIsSearching,
+        silent,
+      });
     }
   }, [
     activeTab,
