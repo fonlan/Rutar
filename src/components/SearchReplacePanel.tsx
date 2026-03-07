@@ -27,6 +27,7 @@ import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
+import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -1363,10 +1364,15 @@ export function SearchReplacePanel() {
                 startTransition,
                 totalMatchedLines,
               });
-              currentFilterMatchIndexRef.current = targetIndex;
-              setCurrentFilterMatchIndex(targetIndex);
-              setFeedbackMessage(navigationFeedback);
-              navigateToFilterMatch(stepBatchMatches[targetIndex]);
+              applyFilterNavigationSelection({
+                currentFilterMatchIndexRef,
+                matches: stepBatchMatches,
+                navigationFeedback,
+                navigateToFilterMatch,
+                nextIndex: targetIndex,
+                setCurrentFilterMatchIndex,
+                setFeedbackMessage,
+              });
               return;
             }
           }
@@ -1388,10 +1394,15 @@ export function SearchReplacePanel() {
 
           if (candidateIndex < 0) {
             const nextIndex = (candidateIndex + filterMatches.length) % filterMatches.length;
-            currentFilterMatchIndexRef.current = nextIndex;
-            setCurrentFilterMatchIndex(nextIndex);
-            setFeedbackMessage(navigationFeedback);
-            navigateToFilterMatch(filterMatches[nextIndex]);
+            applyFilterNavigationSelection({
+              currentFilterMatchIndexRef,
+              matches: filterMatches,
+              navigationFeedback,
+              navigateToFilterMatch,
+              nextIndex,
+              setCurrentFilterMatchIndex,
+              setFeedbackMessage,
+            });
             return;
           }
 
@@ -1400,10 +1411,15 @@ export function SearchReplacePanel() {
             if (appended && appended.length > 0) {
               const expandedMatches = [...filterMatches, ...appended];
               const nextIndex = candidateIndex;
-              currentFilterMatchIndexRef.current = nextIndex;
-              setCurrentFilterMatchIndex(nextIndex);
-              setFeedbackMessage(navigationFeedback);
-              navigateToFilterMatch(expandedMatches[nextIndex]);
+              applyFilterNavigationSelection({
+                currentFilterMatchIndexRef,
+                matches: expandedMatches,
+                navigationFeedback,
+                navigateToFilterMatch,
+                nextIndex,
+                setCurrentFilterMatchIndex,
+                setFeedbackMessage,
+              });
               return;
             }
           }
@@ -1424,10 +1440,15 @@ export function SearchReplacePanel() {
         const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterResult.matches.length - 1);
         const nextIndex = (boundedCurrentIndex + step + filterResult.matches.length) % filterResult.matches.length;
 
-        currentFilterMatchIndexRef.current = nextIndex;
-        setCurrentFilterMatchIndex(nextIndex);
-        setFeedbackMessage(navigationFeedback);
-        navigateToFilterMatch(filterResult.matches[nextIndex]);
+        applyFilterNavigationSelection({
+          currentFilterMatchIndexRef,
+          matches: filterResult.matches,
+          navigationFeedback,
+          navigateToFilterMatch,
+          nextIndex,
+          setCurrentFilterMatchIndex,
+          setFeedbackMessage,
+        });
 
         return;
       }
@@ -1494,10 +1515,15 @@ export function SearchReplacePanel() {
 
         if (candidateIndex < 0) {
           const nextIndex = (candidateIndex + matches.length) % matches.length;
-          currentMatchIndexRef.current = nextIndex;
-          setCurrentMatchIndex(nextIndex);
-          setFeedbackMessage(navigationFeedback);
-          navigateToMatch(matches[nextIndex]);
+          applySearchNavigationSelection({
+            currentMatchIndexRef,
+            matches,
+            navigationFeedback,
+            navigateToMatch,
+            nextIndex,
+            setCurrentMatchIndex,
+            setFeedbackMessage,
+          });
           return;
         }
 
@@ -1506,10 +1532,15 @@ export function SearchReplacePanel() {
           if (appended && appended.length > 0) {
             const expandedMatches = [...matches, ...appended];
             const nextIndex = candidateIndex;
-            currentMatchIndexRef.current = nextIndex;
-            setCurrentMatchIndex(nextIndex);
-            setFeedbackMessage(navigationFeedback);
-            navigateToMatch(expandedMatches[nextIndex]);
+            applySearchNavigationSelection({
+              currentMatchIndexRef,
+              matches: expandedMatches,
+              navigationFeedback,
+              navigateToMatch,
+              nextIndex,
+              setCurrentMatchIndex,
+              setFeedbackMessage,
+            });
             return;
           }
         }
@@ -1534,10 +1565,15 @@ export function SearchReplacePanel() {
         (boundedCurrentIndex + step + searchResult.matches.length) %
         searchResult.matches.length;
 
-      currentMatchIndexRef.current = nextIndex;
-      setCurrentMatchIndex(nextIndex);
-      setFeedbackMessage(navigationFeedback);
-      navigateToMatch(searchResult.matches[nextIndex]);
+      applySearchNavigationSelection({
+        currentMatchIndexRef,
+        matches: searchResult.matches,
+        navigationFeedback,
+        navigateToMatch,
+        nextIndex,
+        setCurrentMatchIndex,
+        setFeedbackMessage,
+      });
 
     },
     [
