@@ -33,6 +33,30 @@ interface BuildSearchFirstRequestOptions {
   searchMode: SearchMode;
 }
 
+interface BuildReplaceCurrentRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  maxResults: number;
+  parseEscapeSequences: boolean;
+  replaceValue: string;
+  searchMode: SearchMode;
+  targetEnd: number;
+  targetStart: number;
+}
+
+interface BuildReplaceAllRequestOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  maxResults: number;
+  parseEscapeSequences: boolean;
+  replaceValue: string;
+  searchMode: SearchMode;
+}
+
 interface BuildFilterSessionStartRequestOptions {
   activeTabId: string;
   caseSensitive: boolean;
@@ -150,6 +174,56 @@ export function buildSearchChunkRequest({
     caseSensitive,
     resultFilterKeyword: effectiveResultFilterKeyword,
     startOffset,
+    maxResults,
+  };
+}
+
+export function buildReplaceCurrentRequest({
+  activeTabId,
+  caseSensitive,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  maxResults,
+  parseEscapeSequences,
+  replaceValue,
+  searchMode,
+  targetEnd,
+  targetStart,
+}: BuildReplaceCurrentRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    replaceValue,
+    parseEscapeSequences,
+    targetStart,
+    targetEnd,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
+    maxResults,
+  };
+}
+
+export function buildReplaceAllRequest({
+  activeTabId,
+  caseSensitive,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  maxResults,
+  parseEscapeSequences,
+  replaceValue,
+  searchMode,
+}: BuildReplaceAllRequestOptions) {
+  return {
+    id: activeTabId,
+    keyword: effectiveSearchKeyword,
+    mode: getSearchModeValue(searchMode),
+    caseSensitive,
+    replaceValue,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    resultFilterCaseSensitive: caseSensitive,
     maxResults,
   };
 }

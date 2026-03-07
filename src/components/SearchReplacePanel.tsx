@@ -35,7 +35,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -1570,19 +1570,21 @@ export function SearchReplacePanel() {
     const targetMatch = searchResult.matches[boundedCurrentIndex];
 
     try {
-      const result = await invoke<ReplaceCurrentAndSearchChunkBackendResult>('replace_current_and_search_chunk_in_document', {
-        id: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        replaceValue,
-        parseEscapeSequences,
-        targetStart: targetMatch.start,
-        targetEnd: targetMatch.end,
-        resultFilterKeyword: backendResultFilterKeyword,
-        resultFilterCaseSensitive: caseSensitive,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
+      const result = await invoke<ReplaceCurrentAndSearchChunkBackendResult>(
+        'replace_current_and_search_chunk_in_document',
+        buildReplaceCurrentRequest({
+          activeTabId: activeTab.id,
+          effectiveSearchKeyword,
+          searchMode,
+          caseSensitive,
+          replaceValue,
+          parseEscapeSequences,
+          targetStart: targetMatch.start,
+          targetEnd: targetMatch.end,
+          effectiveResultFilterKeyword: backendResultFilterKeyword,
+          maxResults: SEARCH_CHUNK_SIZE,
+        })
+      );
 
       if (!result.replaced) {
         setFeedbackMessage(messages.noReplaceMatches);
@@ -1685,17 +1687,19 @@ export function SearchReplacePanel() {
     }
 
     try {
-      const result = await invoke<ReplaceAllAndSearchChunkBackendResult>('replace_all_and_search_chunk_in_document', {
-        id: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        mode: getSearchModeValue(searchMode),
-        caseSensitive,
-        replaceValue,
-        parseEscapeSequences,
-        resultFilterKeyword: backendResultFilterKeyword,
-        resultFilterCaseSensitive: caseSensitive,
-        maxResults: SEARCH_CHUNK_SIZE,
-      });
+      const result = await invoke<ReplaceAllAndSearchChunkBackendResult>(
+        'replace_all_and_search_chunk_in_document',
+        buildReplaceAllRequest({
+          activeTabId: activeTab.id,
+          effectiveSearchKeyword,
+          searchMode,
+          caseSensitive,
+          replaceValue,
+          parseEscapeSequences,
+          effectiveResultFilterKeyword: backendResultFilterKeyword,
+          maxResults: SEARCH_CHUNK_SIZE,
+        })
+      );
 
       const replacedCount = result.replacedCount ?? 0;
       const safeLineCount = Math.max(1, result.lineCount ?? activeTab.lineCount);
