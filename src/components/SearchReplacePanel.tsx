@@ -39,6 +39,7 @@ import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/s
 import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
+import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -2122,11 +2123,13 @@ export function SearchReplacePanel() {
       const effectiveResultFilterKeyword = caseSensitive
         ? keywordForJump
         : keywordForJump.toLowerCase();
-      const runVersion = resultFilterStepRunVersionRef.current + 1;
-      resultFilterStepRunVersionRef.current = runVersion;
-      loadMoreLockRef.current = true;
-      setIsSearching(true);
-      setResultFilterStepLoadingDirection(direction);
+      const runVersion = beginResultFilterStepRun({
+        direction,
+        loadMoreLockRef,
+        resultFilterStepRunVersionRef,
+        setIsSearching,
+        setResultFilterStepLoadingDirection,
+      });
 
       try {
         if (isFilterMode) {
@@ -2147,7 +2150,7 @@ export function SearchReplacePanel() {
               maxResults: FILTER_CHUNK_SIZE,
             })
           );
-          if (runVersion !== resultFilterStepRunVersionRef.current) {
+          if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
             return;
           }
 
@@ -2216,7 +2219,7 @@ export function SearchReplacePanel() {
             maxResults: SEARCH_CHUNK_SIZE,
           })
         );
-        if (runVersion !== resultFilterStepRunVersionRef.current) {
+        if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
           return;
         }
 
@@ -2269,7 +2272,7 @@ export function SearchReplacePanel() {
         });
         return;
       } catch (error) {
-        if (runVersion !== resultFilterStepRunVersionRef.current) {
+        if (isResultFilterStepRunStale({ resultFilterStepRunVersionRef, runVersion })) {
           return;
         }
         applySearchPanelErrorMessage({
@@ -2278,11 +2281,13 @@ export function SearchReplacePanel() {
           setErrorMessage,
         });
       } finally {
-        if (runVersion === resultFilterStepRunVersionRef.current) {
-          loadMoreLockRef.current = false;
-          setIsSearching(false);
-          setResultFilterStepLoadingDirection(null);
-        }
+        finalizeResultFilterStepRun({
+          loadMoreLockRef,
+          resultFilterStepRunVersionRef,
+          runVersion,
+          setIsSearching,
+          setResultFilterStepLoadingDirection,
+        });
       }
     },
     [
