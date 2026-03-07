@@ -101,6 +101,23 @@ interface ApplySearchLoadMoreResultOptions {
   startTransition: TransitionStartFunction;
 }
 
+interface ApplyFilterResultFilterStepResultOptions {
+  activeTabId: string;
+  cachedFilterRef: MutableRefObject<CachedFilterSnapshot | null>;
+  documentVersion: number;
+  filterCountCacheRef: MutableRefObject<FilterCountCacheSnapshot | null>;
+  filterLineCursorRef: MutableRefObject<number | null>;
+  filterRulesKey: string;
+  nextLine: number | null;
+  nextMatches: FilterMatch[];
+  resultFilterKeyword: string;
+  setFilterMatches: Dispatch<SetStateAction<FilterMatch[]>>;
+  setFilterSessionId: (value: string | null) => void;
+  setTotalFilterMatchedLineCount: (value: number) => void;
+  startTransition: TransitionStartFunction;
+  totalMatchedLines: number;
+}
+
 interface ApplyCachedFilterRunResultOptions {
   cached: CachedFilterSnapshot;
   filterLineCursorRef: MutableRefObject<number | null>;
@@ -130,6 +147,28 @@ interface ApplyFilterRunResultOptions {
   shouldRunCountFallback: boolean;
   startTransition: TransitionStartFunction;
   totalMatchedLines: number | null;
+}
+
+interface ApplySearchResultFilterStepResultOptions {
+  activeTabId: string;
+  cachedSearchRef: MutableRefObject<CachedSearchSnapshot | null>;
+  caseSensitive: boolean;
+  chunkCursorRef: MutableRefObject<number | null>;
+  countCacheRef: MutableRefObject<SearchCountCacheSnapshot | null>;
+  documentVersion: number;
+  effectiveResultFilterKeyword: string;
+  effectiveSearchKeyword: string;
+  nextMatches: SearchMatch[];
+  nextOffset: number | null;
+  parseEscapeSequences: boolean;
+  searchMode: SearchMode;
+  setMatches: Dispatch<SetStateAction<SearchMatch[]>>;
+  setSearchSessionId: (value: string | null) => void;
+  setTotalMatchCount: (value: number) => void;
+  setTotalMatchedLineCount: (value: number) => void;
+  startTransition: TransitionStartFunction;
+  totalMatchedLines: number;
+  totalMatches: number;
 }
 
 interface ApplyFilterLoadMoreResultOptions {
@@ -292,6 +331,46 @@ export function applySearchLoadMoreResult({
   });
 }
 
+export function applyFilterResultFilterStepResult({
+  activeTabId,
+  cachedFilterRef,
+  documentVersion,
+  filterCountCacheRef,
+  filterLineCursorRef,
+  filterRulesKey,
+  nextLine,
+  nextMatches,
+  resultFilterKeyword,
+  setFilterMatches,
+  setFilterSessionId,
+  setTotalFilterMatchedLineCount,
+  startTransition,
+  totalMatchedLines,
+}: ApplyFilterResultFilterStepResultOptions) {
+  filterLineCursorRef.current = nextLine;
+  setFilterSessionId(null);
+  cachedFilterRef.current = {
+    tabId: activeTabId,
+    rulesKey: filterRulesKey,
+    resultFilterKeyword,
+    documentVersion,
+    matches: nextMatches,
+    nextLine: filterLineCursorRef.current,
+    sessionId: null,
+  };
+  filterCountCacheRef.current = {
+    tabId: activeTabId,
+    rulesKey: filterRulesKey,
+    resultFilterKeyword,
+    documentVersion,
+    matchedLines: totalMatchedLines,
+  };
+  setTotalFilterMatchedLineCount(totalMatchedLines);
+  startTransition(() => {
+    setFilterMatches(nextMatches);
+  });
+}
+
 export function applyCachedFilterRunResult({
   cached,
   filterLineCursorRef,
@@ -356,6 +435,60 @@ export function applyFilterLoadMoreResult({
 
       return mergedMatches;
     });
+  });
+}
+
+export function applySearchResultFilterStepResult({
+  activeTabId,
+  cachedSearchRef,
+  caseSensitive,
+  chunkCursorRef,
+  countCacheRef,
+  documentVersion,
+  effectiveResultFilterKeyword,
+  effectiveSearchKeyword,
+  nextMatches,
+  nextOffset,
+  parseEscapeSequences,
+  searchMode,
+  setMatches,
+  setSearchSessionId,
+  setTotalMatchCount,
+  setTotalMatchedLineCount,
+  startTransition,
+  totalMatchedLines,
+  totalMatches,
+}: ApplySearchResultFilterStepResultOptions) {
+  setTotalMatchCount(totalMatches);
+  setTotalMatchedLineCount(totalMatchedLines);
+  chunkCursorRef.current = nextOffset;
+  setSearchSessionId(null);
+  cachedSearchRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    matches: nextMatches,
+    nextOffset: chunkCursorRef.current,
+    sessionId: null,
+  };
+  countCacheRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    totalMatches,
+    matchedLines: totalMatchedLines,
+  };
+
+  startTransition(() => {
+    setMatches(nextMatches);
   });
 }
 

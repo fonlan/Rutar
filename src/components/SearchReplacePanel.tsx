@@ -32,7 +32,7 @@ import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/s
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchResultFilterStepResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildSearchChunkRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
@@ -1329,27 +1329,21 @@ export function SearchReplacePanel() {
               const { nextMatches: stepBatchMatches, targetIndex } = resolvedFilterStepTarget;
               const documentVersion = stepResultValue.documentVersion ?? 0;
               const totalMatchedLines = stepResultValue.totalMatchedLines ?? 0;
-              filterLineCursorRef.current = stepResultValue.nextLine ?? null;
-              setFilterSessionId(null);
-              cachedFilterRef.current = {
-                tabId: activeTab.id,
-                rulesKey: filterRulesKey,
-                resultFilterKeyword: backendResultFilterKeyword,
+              applyFilterResultFilterStepResult({
+                activeTabId: activeTab.id,
+                cachedFilterRef,
                 documentVersion,
-                matches: stepBatchMatches,
-                nextLine: filterLineCursorRef.current,
-                sessionId: null,
-              };
-              filterCountCacheRef.current = {
-                tabId: activeTab.id,
-                rulesKey: filterRulesKey,
+                filterCountCacheRef,
+                filterLineCursorRef,
+                filterRulesKey,
+                nextLine: stepResultValue.nextLine ?? null,
+                nextMatches: stepBatchMatches,
                 resultFilterKeyword: backendResultFilterKeyword,
-                documentVersion,
-                matchedLines: totalMatchedLines,
-              };
-              setTotalFilterMatchedLineCount(totalMatchedLines);
-              startTransition(() => {
-                setFilterMatches(stepBatchMatches);
+                setFilterMatches,
+                setFilterSessionId,
+                setTotalFilterMatchedLineCount,
+                startTransition,
+                totalMatchedLines,
               });
               currentFilterMatchIndexRef.current = targetIndex;
               setCurrentFilterMatchIndex(targetIndex);
@@ -2175,27 +2169,21 @@ export function SearchReplacePanel() {
           if (resolvedFilterStepTarget) {
             const { nextMatches, targetIndex } = resolvedFilterStepTarget;
             const documentVersion = stepResult.documentVersion ?? 0;
-            filterLineCursorRef.current = stepResult.nextLine ?? null;
-            setFilterSessionId(null);
-            cachedFilterRef.current = {
-              tabId: activeTab.id,
-              rulesKey: filterRulesKey,
-              resultFilterKeyword: effectiveResultFilterKeyword,
+            applyFilterResultFilterStepResult({
+              activeTabId: activeTab.id,
+              cachedFilterRef,
               documentVersion,
-              matches: nextMatches,
-              nextLine: filterLineCursorRef.current,
-              sessionId: null,
-            };
-            filterCountCacheRef.current = {
-              tabId: activeTab.id,
-              rulesKey: filterRulesKey,
+              filterCountCacheRef,
+              filterLineCursorRef,
+              filterRulesKey,
+              nextLine: stepResult.nextLine ?? null,
+              nextMatches,
               resultFilterKeyword: effectiveResultFilterKeyword,
-              documentVersion,
-              matchedLines: totalMatchedLines,
-            };
-
-            startTransition(() => {
-              setFilterMatches(nextMatches);
+              setFilterMatches,
+              setFilterSessionId,
+              setTotalFilterMatchedLineCount,
+              startTransition,
+              totalMatchedLines,
             });
             currentFilterMatchIndexRef.current = targetIndex;
             setCurrentFilterMatchIndex(targetIndex);
@@ -2256,34 +2244,26 @@ export function SearchReplacePanel() {
         if (resolvedSearchStepTarget) {
           const { nextMatches, targetIndex } = resolvedSearchStepTarget;
           const documentVersion = stepResult.documentVersion ?? 0;
-          chunkCursorRef.current = stepResult.nextOffset ?? null;
-          setSearchSessionId(null);
-          cachedSearchRef.current = {
-            tabId: activeTab.id,
-            keyword: effectiveSearchKeyword,
-            searchMode,
+          applySearchResultFilterStepResult({
+            activeTabId: activeTab.id,
+            cachedSearchRef,
             caseSensitive,
-            parseEscapeSequences,
-            resultFilterKeyword: effectiveResultFilterKeyword,
+            chunkCursorRef,
+            countCacheRef,
             documentVersion,
-            matches: nextMatches,
-            nextOffset: chunkCursorRef.current,
-            sessionId: null,
-          };
-          countCacheRef.current = {
-            tabId: activeTab.id,
-            keyword: effectiveSearchKeyword,
+            effectiveResultFilterKeyword,
+            effectiveSearchKeyword,
+            nextMatches,
+            nextOffset: stepResult.nextOffset ?? null,
+            parseEscapeSequences,
             searchMode,
-            caseSensitive,
-            parseEscapeSequences,
-            resultFilterKeyword: effectiveResultFilterKeyword,
-            documentVersion,
+            setMatches,
+            setSearchSessionId,
+            setTotalMatchCount,
+            setTotalMatchedLineCount,
+            startTransition,
+            totalMatchedLines,
             totalMatches,
-            matchedLines: totalMatchedLines,
-          };
-
-          startTransition(() => {
-            setMatches(nextMatches);
           });
           currentMatchIndexRef.current = targetIndex;
           setCurrentMatchIndex(targetIndex);
