@@ -25,6 +25,7 @@ import { restoreSearchPanelSnapshotState } from '@/components/search-panel/resto
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
+import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
@@ -44,12 +45,10 @@ import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSideba
 import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
 import {
   isFilterResultFilterStepBackendResult,
-  isFilterSessionNextBackendResult,
   isFilterSessionRestoreBackendResult,
   isFilterSessionStartBackendResult,
   isMissingInvokeCommandError,
   isSearchCursorStepBackendResult,
-  isSearchSessionNextBackendResult,
   isSearchSessionRestoreBackendResult,
   isSearchSessionStartBackendResult,
 } from '@/components/search-panel/backendGuards';
@@ -889,23 +888,24 @@ export function SearchReplacePanel() {
             return null;
           }
 
-          if (isSearchSessionNextBackendResult(sessionNextResult)) {
+          const nextSearchSessionState = applySearchSessionNextResult({
+            documentVersion,
+            result: sessionNextResult,
+            searchSessionCommandUnsupportedRef,
+            setSearchSessionId,
+          });
+          if (nextSearchSessionState) {
             usedSessionMode = true;
-            appendedMatches = sessionNextResult.matches || [];
-            nextOffset = sessionNextResult.nextOffset ?? null;
-            documentVersion = sessionNextResult.documentVersion ?? documentVersion;
-            if (nextOffset === null) {
-              setSearchSessionId(null);
-            }
-            searchSessionCommandUnsupportedRef.current = false;
-          } else {
-            setSearchSessionId(null);
+            appendedMatches = nextSearchSessionState.matches;
+            nextOffset = nextSearchSessionState.nextOffset;
+            documentVersion = nextSearchSessionState.documentVersion;
           }
         } catch (error) {
-          if (isMissingInvokeCommandError(error, 'search_session_next_in_document')) {
-            searchSessionCommandUnsupportedRef.current = true;
-          }
-          setSearchSessionId(null);
+          handleSearchSessionNextError({
+            error,
+            searchSessionCommandUnsupportedRef,
+            setSearchSessionId,
+          });
         }
       }
 
@@ -1032,23 +1032,24 @@ export function SearchReplacePanel() {
             return null;
           }
 
-          if (isFilterSessionNextBackendResult(sessionNextResult)) {
+          const nextFilterSessionState = applyFilterSessionNextResult({
+            documentVersion,
+            filterSessionCommandUnsupportedRef,
+            result: sessionNextResult,
+            setFilterSessionId,
+          });
+          if (nextFilterSessionState) {
             usedSessionMode = true;
-            appendedMatches = sessionNextResult.matches || [];
-            nextLine = sessionNextResult.nextLine ?? null;
-            documentVersion = sessionNextResult.documentVersion ?? documentVersion;
-            if (nextLine === null) {
-              setFilterSessionId(null);
-            }
-            filterSessionCommandUnsupportedRef.current = false;
-          } else {
-            setFilterSessionId(null);
+            appendedMatches = nextFilterSessionState.matches;
+            nextLine = nextFilterSessionState.nextLine;
+            documentVersion = nextFilterSessionState.documentVersion;
           }
         } catch (error) {
-          if (isMissingInvokeCommandError(error, 'filter_session_next_in_document')) {
-            filterSessionCommandUnsupportedRef.current = true;
-          }
-          setFilterSessionId(null);
+          handleFilterSessionNextError({
+            error,
+            filterSessionCommandUnsupportedRef,
+            setFilterSessionId,
+          });
         }
       }
 
