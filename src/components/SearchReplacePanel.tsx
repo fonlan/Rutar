@@ -25,6 +25,7 @@ import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetS
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
+import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2079,40 +2080,27 @@ export function SearchReplacePanel() {
               return;
             }
 
-            filterSessionRestoreCommandUnsupportedRef.current = false;
-            setFilterSessionId(restoreResultValue.sessionId ?? null);
-            filterLineCursorRef.current = restoreResultValue.nextLine ?? null;
-            setTotalFilterMatchedLineCount(restoreResultValue.totalMatchedLines ?? 0);
-
-            filterCountCacheRef.current = {
-              tabId: activeTab.id,
-              rulesKey: filterRulesKey,
-              resultFilterKeyword: restoredResultFilterKeyword,
-              documentVersion: restoreResultValue.documentVersion ?? snapshotFilterDocumentVersion,
-              matchedLines: restoreResultValue.totalMatchedLines ?? 0,
-            };
-
-            if (cachedFilterRef.current?.tabId === activeTab.id) {
-              cachedFilterRef.current = {
-                ...cachedFilterRef.current,
-                rulesKey: filterRulesKey,
-                sessionId: restoreResultValue.sessionId ?? null,
-                nextLine: restoreResultValue.nextLine ?? null,
-                documentVersion: restoreResultValue.documentVersion ?? snapshotFilterDocumentVersion,
-              };
-            }
+            applyFilterSessionRestoreResult({
+              activeTabId: activeTab.id,
+              cachedFilterRef,
+              filterCountCacheRef,
+              filterLineCursorRef,
+              filterRulesKey,
+              filterSessionRestoreCommandUnsupportedRef,
+              restoreResult: restoreResultValue,
+              restoredResultFilterKeyword,
+              setFilterSessionId,
+              setTotalFilterMatchedLineCount,
+              snapshotFilterDocumentVersion,
+            });
           })
           .catch((error) => {
-            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-              return;
-            }
-
-            if (isMissingInvokeCommandError(error, 'filter_session_restore_in_document')) {
-              filterSessionRestoreCommandUnsupportedRef.current = true;
-              return;
-            }
-
-            console.warn('Failed to restore filter session:', error);
+            handleFilterSessionRestoreError({
+              error,
+              filterSessionRestoreCommandUnsupportedRef,
+              restoreRunVersion,
+              sessionRestoreRunVersionRef,
+            });
           });
       }
     } else {
