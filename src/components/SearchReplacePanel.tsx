@@ -21,6 +21,7 @@ import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearc
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
+import { useSearchQueryOptions } from '@/components/search-panel/useSearchQueryOptions';
 import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
@@ -2860,36 +2861,38 @@ export function SearchReplacePanel() {
     setFilterGroupNameInput,
   });
 
+  const searchQueryOptions = useSearchQueryOptions({
+    caseSensitive,
+    handleKeywordKeyDown,
+    handleReplaceAll,
+    handleReplaceCurrent,
+    isReplaceMode,
+    keyword,
+    messages,
+    navigateByStep,
+    parseEscapeSequences,
+    recentReplaceValues,
+    recentSearchKeywords,
+    replaceValue,
+    resetSearchState,
+    resultToggleTitle,
+    reverseSearch,
+    searchInputRef,
+    searchMode,
+    setCaseSensitive,
+    setErrorMessage,
+    setFeedbackMessage,
+    setKeyword,
+    setParseEscapeSequences,
+    setReplaceValue,
+    setReverseSearch,
+    setSearchMode,
+    toggleResultPanelAndRefresh,
+  });
+
   const { searchSidebarBodyProps, searchSidebarChromeProps, searchPanelOverlaysProps } = useSearchPanelViewProps({
     hasActiveTab: !!activeTab,
-    searchQueryOptions: {
-      caseSensitive,
-      handleKeywordKeyDown,
-      handleReplaceAll,
-      handleReplaceCurrent,
-      isReplaceMode,
-      keyword,
-      messages,
-      navigateByStep,
-      parseEscapeSequences,
-      recentReplaceValues,
-      recentSearchKeywords,
-      replaceValue,
-      resetSearchState,
-      resultToggleTitle,
-      reverseSearch,
-      searchInputRef,
-      searchMode,
-      setCaseSensitive,
-      setErrorMessage,
-      setFeedbackMessage,
-      setKeyword,
-      setParseEscapeSequences,
-      setReplaceValue,
-      setReverseSearch,
-      setSearchMode,
-      toggleResultPanelAndRefresh,
-    },
+    searchQueryOptions,
     filterRulesEditorOptions,
     searchSidebarShellOptions,
     searchPanelOverlaysOptions,
