@@ -50,8 +50,9 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterCountRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterCountRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
+import { resolveSearchFirstMatchState } from '@/components/search-panel/resolveSearchPanelFirstMatchState';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -79,7 +80,6 @@ import type {
   ReplaceAllAndSearchChunkBackendResult,
   ReplaceCurrentAndSearchChunkBackendResult,
   SearchCountBackendResult,
-  SearchFirstBackendResult,
   SearchMatch,
   SearchResultFilterStepBackendResult,
   SearchRunResult,
@@ -986,23 +986,20 @@ export function SearchReplacePanel() {
     setIsSearching(true);
 
     try {
-      const firstResult = await invoke<SearchFirstBackendResult>(
-        'search_first_in_document',
-        buildSearchFirstRequest({
-          activeTabId: activeTab.id,
-          effectiveSearchKeyword,
-          searchMode,
-          caseSensitive,
-          reverse,
-        })
-      );
+      const {
+        documentVersion,
+        firstMatch,
+      } = await resolveSearchFirstMatchState({
+        activeTabId: activeTab.id,
+        caseSensitive,
+        effectiveSearchKeyword,
+        reverse,
+        searchMode,
+      });
 
       if (runVersionRef.current !== runVersion) {
         return null;
       }
-
-      const documentVersion = firstResult.documentVersion ?? 0;
-      const firstMatch = firstResult.firstMatch;
 
       if (!firstMatch) {
         return applyEmptySearchFirstMatchResult({
