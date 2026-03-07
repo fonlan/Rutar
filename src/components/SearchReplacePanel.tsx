@@ -51,6 +51,7 @@ import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoad
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { readSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
+import { attemptSearchPanelSessionStart } from '@/components/search-panel/attemptSearchPanelSessionStart';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -558,30 +559,21 @@ export function SearchReplacePanel() {
       let totalMatchedLines: number | null = null;
       let shouldRunCountFallback = true;
 
-      let sessionStartResult: unknown = null;
-      let usedSessionStart = false;
-      if (!searchSessionCommandUnsupportedRef.current) {
-        try {
-          sessionStartResult = await invoke<unknown>(
-            'search_session_start_in_document',
-            buildSearchSessionStartRequest({
-              activeTabId: activeTab.id,
-              caseSensitive,
-              effectiveResultFilterKeyword,
-              effectiveSearchKeyword,
-              maxResults: SEARCH_CHUNK_SIZE,
-              searchMode,
-            })
-          );
-          usedSessionStart = isSearchSessionStartBackendResult(sessionStartResult);
-        } catch (error) {
-          if (isMissingInvokeCommandError(error, 'search_session_start_in_document')) {
-            searchSessionCommandUnsupportedRef.current = true;
-          }
-        }
-      }
+      const sessionStartResult = await attemptSearchPanelSessionStart({
+        commandName: 'search_session_start_in_document',
+        isExpectedResult: isSearchSessionStartBackendResult,
+        request: buildSearchSessionStartRequest({
+          activeTabId: activeTab.id,
+          caseSensitive,
+          effectiveResultFilterKeyword,
+          effectiveSearchKeyword,
+          maxResults: SEARCH_CHUNK_SIZE,
+          searchMode,
+        }),
+        sessionCommandUnsupportedRef: searchSessionCommandUnsupportedRef,
+      });
 
-      if (usedSessionStart && isSearchSessionStartBackendResult(sessionStartResult)) {
+      if (sessionStartResult) {
         ({
           documentVersion,
           nextMatches,
@@ -750,29 +742,20 @@ export function SearchReplacePanel() {
       let totalMatchedLines: number | null = null;
       let shouldRunCountFallback = true;
 
-      let sessionStartResult: unknown = null;
-      let usedSessionStart = false;
-      if (!filterSessionCommandUnsupportedRef.current) {
-        try {
-          sessionStartResult = await invoke<unknown>(
-            'filter_session_start_in_document',
-            buildFilterSessionStartRequest({
-              activeTabId: activeTab.id,
-              caseSensitive,
-              effectiveResultFilterKeyword,
-              maxResults: FILTER_CHUNK_SIZE,
-              rules: filterRulesPayload,
-            })
-          );
-          usedSessionStart = isFilterSessionStartBackendResult(sessionStartResult);
-        } catch (error) {
-          if (isMissingInvokeCommandError(error, 'filter_session_start_in_document')) {
-            filterSessionCommandUnsupportedRef.current = true;
-          }
-        }
-      }
+      const sessionStartResult = await attemptSearchPanelSessionStart({
+        commandName: 'filter_session_start_in_document',
+        isExpectedResult: isFilterSessionStartBackendResult,
+        request: buildFilterSessionStartRequest({
+          activeTabId: activeTab.id,
+          caseSensitive,
+          effectiveResultFilterKeyword,
+          maxResults: FILTER_CHUNK_SIZE,
+          rules: filterRulesPayload,
+        }),
+        sessionCommandUnsupportedRef: filterSessionCommandUnsupportedRef,
+      });
 
-      if (usedSessionStart && isFilterSessionStartBackendResult(sessionStartResult)) {
+      if (sessionStartResult) {
         ({
           documentVersion,
           nextLine,
