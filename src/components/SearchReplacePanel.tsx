@@ -25,6 +25,7 @@ import { restoreSearchPanelSnapshotState } from '@/components/search-panel/resto
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
+import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
@@ -1443,23 +1444,17 @@ export function SearchReplacePanel() {
             if (!targetMatch) {
               return;
             }
-            const targetIndex = matches.findIndex(
-              (item) => item.start === targetMatch.start && item.end === targetMatch.end
-            );
-            if (targetIndex >= 0) {
-              currentMatchIndexRef.current = targetIndex;
-              setCurrentMatchIndex(targetIndex);
-            } else {
-              currentMatchIndexRef.current = 0;
-              startTransition(() => {
-                setMatches([targetMatch]);
-                setCurrentMatchIndex(0);
-              });
-
-              setSearchSessionId(null);
-              chunkCursorRef.current = null;
-              cachedSearchRef.current = null;
-            }
+            applySearchCursorStepResult({
+              cachedSearchRef,
+              chunkCursorRef,
+              currentMatchIndexRef,
+              matches,
+              setCurrentMatchIndex,
+              setMatches,
+              setSearchSessionId,
+              startTransition,
+              targetMatch,
+            });
             setErrorMessage(null);
             setFeedbackMessage(navigationFeedback);
             navigateToMatch(targetMatch);
