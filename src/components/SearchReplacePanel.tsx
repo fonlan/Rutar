@@ -33,7 +33,7 @@ import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResu
 import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
-import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
+import { resolveFilterLoadMoreFallbackState, resolveSearchLoadMoreFallbackState } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
@@ -50,7 +50,7 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
@@ -72,14 +72,12 @@ import {
   isSearchSessionRestoreBackendResult,
 } from '@/components/search-panel/backendGuards';
 import type {
-  FilterChunkBackendResult,
   FilterCountBackendResult,
   FilterMatch,
   FilterRunResult,
   FilterResultFilterStepBackendResult,
   ReplaceAllAndSearchChunkBackendResult,
   ReplaceCurrentAndSearchChunkBackendResult,
-  SearchChunkBackendResult,
   SearchCountBackendResult,
   SearchFirstBackendResult,
   SearchMatch,
@@ -813,48 +811,29 @@ export function SearchReplacePanel() {
       }
 
       if (!usedSessionMode) {
-        const params = getSearchLoadMoreFallbackParams({
+        const fallbackState = await resolveSearchLoadMoreFallbackState({
           activeTabId: activeTab.id,
           cachedSearch: cachedSearchRef.current,
+          cachedSearchRef,
           caseSensitive,
+          chunkCursorRef,
           effectiveResultFilterKeyword: backendResultFilterKeyword,
           effectiveSearchKeyword,
+          loadMoreSessionId: sessionId,
+          loadMoreSessionRef,
           parseEscapeSequences,
           searchMode,
+          setSearchSessionId,
+          startOffset,
+          maxResults: SEARCH_CHUNK_SIZE,
         });
-        if (!params) {
+        if (!fallbackState) {
           return null;
         }
 
-        const backendResult = await invoke<SearchChunkBackendResult>(
-          'search_in_document_chunk',
-          buildSearchChunkRequest({
-            activeTabId: activeTab.id,
-            effectiveSearchKeyword,
-            searchMode,
-            caseSensitive,
-            effectiveResultFilterKeyword: backendResultFilterKeyword,
-            startOffset,
-            maxResults: SEARCH_CHUNK_SIZE,
-          })
-        );
-
-        if (sessionId !== loadMoreSessionRef.current) {
-          return null;
-        }
-
-        if (backendResult.documentVersion !== params.documentVersion) {
-          handleSearchLoadMoreVersionMismatch({
-            cachedSearchRef,
-            chunkCursorRef,
-            setSearchSessionId,
-          });
-          return null;
-        }
-
-        appendedMatches = backendResult.matches || [];
-        nextOffset = backendResult.nextOffset ?? null;
-        documentVersion = params.documentVersion;
+        appendedMatches = fallbackState.appendedMatches;
+        nextOffset = fallbackState.nextOffset;
+        documentVersion = fallbackState.documentVersion;
       }
 
       applySearchLoadMoreResult({
@@ -962,44 +941,28 @@ export function SearchReplacePanel() {
       }
 
       if (!usedSessionMode) {
-        const params = getFilterLoadMoreFallbackParams({
+        const fallbackState = await resolveFilterLoadMoreFallbackState({
           activeTabId: activeTab.id,
           cachedFilter: cachedFilterRef.current,
-          filterRulesKey,
+          cachedFilterRef,
+          caseSensitive,
           effectiveResultFilterKeyword: backendResultFilterKeyword,
+          filterLineCursorRef,
+          filterRulesKey,
+          loadMoreSessionId: sessionId,
+          loadMoreSessionRef,
+          rules: filterRulesPayload,
+          setFilterSessionId,
+          startLine,
+          maxResults: FILTER_CHUNK_SIZE,
         });
-        if (!params) {
+        if (!fallbackState) {
           return null;
         }
 
-        const backendResult = await invoke<FilterChunkBackendResult>(
-          'filter_in_document_chunk',
-          buildFilterChunkRequest({
-            activeTabId: activeTab.id,
-            rules: filterRulesPayload,
-            effectiveResultFilterKeyword: backendResultFilterKeyword,
-            caseSensitive,
-            startLine,
-            maxResults: FILTER_CHUNK_SIZE,
-          })
-        );
-
-        if (sessionId !== loadMoreSessionRef.current) {
-          return null;
-        }
-
-        if (backendResult.documentVersion !== params.documentVersion) {
-          handleFilterLoadMoreVersionMismatch({
-            cachedFilterRef,
-            filterLineCursorRef,
-            setFilterSessionId,
-          });
-          return null;
-        }
-
-        appendedMatches = backendResult.matches || [];
-        nextLine = backendResult.nextLine ?? null;
-        documentVersion = params.documentVersion;
+        appendedMatches = fallbackState.appendedMatches;
+        nextLine = fallbackState.nextLine;
+        documentVersion = fallbackState.documentVersion;
       }
 
       applyFilterLoadMoreResult({
