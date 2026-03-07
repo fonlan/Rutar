@@ -24,6 +24,7 @@ import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchA
 import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
 import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
 import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
+import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2024,44 +2025,31 @@ export function SearchReplacePanel() {
               return;
             }
 
-            searchSessionRestoreCommandUnsupportedRef.current = false;
-            setSearchSessionId(restoreResultValue.sessionId ?? null);
-            chunkCursorRef.current = restoreResultValue.nextOffset ?? null;
-
-            setTotalMatchCount(restoreResultValue.totalMatches ?? 0);
-            setTotalMatchedLineCount(restoreResultValue.totalMatchedLines ?? 0);
-            countCacheRef.current = {
-              tabId: activeTab.id,
-              keyword: snapshotEffectiveKeyword,
-              searchMode: snapshotSearchMode,
-              caseSensitive: snapshotCaseSensitive,
+            applySearchSessionRestoreResult({
+              activeTabId: activeTab.id,
+              cachedSearchRef,
+              chunkCursorRef,
+              countCacheRef,
               parseEscapeSequences: snapshotParseEscapeSequences,
-              resultFilterKeyword: restoredResultFilterKeyword,
-              documentVersion: restoreResultValue.documentVersion ?? snapshotDocumentVersion,
-              totalMatches: restoreResultValue.totalMatches ?? 0,
-              matchedLines: restoreResultValue.totalMatchedLines ?? 0,
-            };
-
-            if (cachedSearchRef.current?.tabId === activeTab.id) {
-              cachedSearchRef.current = {
-                ...cachedSearchRef.current,
-                sessionId: restoreResultValue.sessionId ?? null,
-                nextOffset: restoreResultValue.nextOffset ?? null,
-                documentVersion: restoreResultValue.documentVersion ?? snapshotDocumentVersion,
-              };
-            }
+              restoreResult: restoreResultValue,
+              restoredResultFilterKeyword,
+              searchMode: snapshotSearchMode,
+              searchSessionRestoreCommandUnsupportedRef,
+              setSearchSessionId,
+              setTotalMatchCount,
+              setTotalMatchedLineCount,
+              snapshotCaseSensitive,
+              snapshotDocumentVersion,
+              snapshotEffectiveKeyword,
+            });
           })
           .catch((error) => {
-            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-              return;
-            }
-
-            if (isMissingInvokeCommandError(error, 'search_session_restore_in_document')) {
-              searchSessionRestoreCommandUnsupportedRef.current = true;
-              return;
-            }
-
-            console.warn('Failed to restore search session:', error);
+            handleSearchSessionRestoreError({
+              error,
+              restoreRunVersion,
+              searchSessionRestoreCommandUnsupportedRef,
+              sessionRestoreRunVersionRef,
+            });
           });
       }
 
