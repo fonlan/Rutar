@@ -33,6 +33,7 @@ import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult 
 import { applyFilterSessionNextResult, applySearchSessionNextResult, handleFilterSessionNextError, handleSearchSessionNextError } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
 import { getFilterLoadMoreFallbackParams, getSearchLoadMoreFallbackParams, handleFilterLoadMoreVersionMismatch, handleSearchLoadMoreVersionMismatch } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { resolveCurrentFilterMatch, resolveCurrentSearchMatch } from '@/components/search-panel/resolveSearchPanelCurrentMatch';
+import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolveSearchPanelBoundedIndex';
 import { resolveFilterStepTarget, resolveSearchStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -1390,7 +1391,7 @@ export function SearchReplacePanel() {
 
       if (isFilterMode) {
         if (filterMatches.length > 0) {
-          const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterMatches.length - 1);
+          const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentFilterMatchIndexRef.current, filterMatches.length);
           const candidateIndex = boundedCurrentIndex + step;
 
           if (candidateIndex < 0) {
@@ -1443,7 +1444,7 @@ export function SearchReplacePanel() {
           return;
         }
 
-        const boundedCurrentIndex = Math.min(currentFilterMatchIndexRef.current, filterResult.matches.length - 1);
+        const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentFilterMatchIndexRef.current, filterResult.matches.length);
         const nextIndex = (boundedCurrentIndex + step + filterResult.matches.length) % filterResult.matches.length;
 
         applyFilterNavigationSelection({
@@ -1516,7 +1517,7 @@ export function SearchReplacePanel() {
       }
 
       if (keyword && matches.length > 0) {
-        const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, matches.length - 1);
+        const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentMatchIndexRef.current, matches.length);
         const candidateIndex = boundedCurrentIndex + step;
 
         if (candidateIndex < 0) {
@@ -1571,7 +1572,7 @@ export function SearchReplacePanel() {
         return;
       }
 
-      const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, searchResult.matches.length - 1);
+      const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentMatchIndexRef.current, searchResult.matches.length);
       const nextIndex =
         (boundedCurrentIndex + step + searchResult.matches.length) %
         searchResult.matches.length;
@@ -1630,7 +1631,7 @@ export function SearchReplacePanel() {
       return;
     }
 
-    const boundedCurrentIndex = Math.min(currentMatchIndexRef.current, searchResult.matches.length - 1);
+    const boundedCurrentIndex = resolveSearchPanelBoundedIndex(currentMatchIndexRef.current, searchResult.matches.length);
     const targetMatch = searchResult.matches[boundedCurrentIndex];
 
     try {
