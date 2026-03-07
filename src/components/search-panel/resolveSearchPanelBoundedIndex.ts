@@ -19,3 +19,11 @@ export function resolveSearchPanelWrappedIndex(
 
   return (candidateIndex + matchCount) % matchCount;
 }
+
+export function resolveSearchPanelStepCandidateIndex(
+  currentIndex: number,
+  matchCount: number,
+  step: number
+): number {
+  return resolveSearchPanelBoundedIndex(currentIndex, matchCount) + step;
+}
