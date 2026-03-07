@@ -26,8 +26,8 @@ import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/re
 import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult, applySearchCursorStepSuccessEffects } from '@/components/search-panel/applySearchPanelCursorStepResult';
-import { applyReplaceNextMatchNavigation, applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
-import { applyPreparedReplaceSearchResult, applyReplaceOperationGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { applyPreparedReplaceSearchResult } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { applyResolvedReplaceAllResult } from '@/components/search-panel/applySearchPanelResolvedReplaceAllResult';
 import { applyResolvedReplaceCurrentResult } from '@/components/search-panel/applySearchPanelResolvedReplaceCurrentResult';
 import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySearchLocalStepSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
@@ -49,7 +49,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -1480,29 +1480,7 @@ export function SearchReplacePanel() {
         maxResults: SEARCH_CHUNK_SIZE,
       });
 
-      const replacedCount = result.replacedCount ?? 0;
-
-      if (applyReplaceOperationGuard({
-        hasReplacement: replacedCount > 0,
-        noReplaceMatchesMessage: messages.noReplaceMatches,
-        setFeedbackMessage,
-      })) {
-        return;
-      }
-
-      applyReplaceSuccessEffects({
-        activeTabId: activeTab.id,
-        feedbackMessage: messages.replacedAll(replacedCount),
-        fallbackLineCount: activeTab.lineCount,
-        nextLineCount: result.lineCount,
-        rememberReplaceValue,
-        replaceValue,
-        setErrorMessage,
-        setFeedbackMessage,
-        updateTab,
-      });
-
-      const nextMatch = applyReplaceAllSearchResult({
+      applyResolvedReplaceAllResult({
         activeTabId: activeTab.id,
         cachedSearchRef,
         caseSensitive,
@@ -1511,20 +1489,24 @@ export function SearchReplacePanel() {
         chunkCursorRef,
         effectiveResultFilterKeyword: backendResultFilterKeyword,
         effectiveSearchKeyword,
+        fallbackLineCount: activeTab.lineCount,
+        formatFeedbackMessage: messages.replacedAll,
+        navigateToMatch,
+        noReplaceMatchesMessage: messages.noReplaceMatches,
         parseEscapeSequences,
+        rememberReplaceValue,
+        replaceValue,
         result,
         searchMode,
         setCurrentMatchIndex,
+        setErrorMessage,
+        setFeedbackMessage,
         setMatches,
         setSearchSessionId,
         setTotalMatchCount,
         setTotalMatchedLineCount,
         startTransition,
-      });
-
-      applyReplaceNextMatchNavigation({
-        navigateToMatch,
-        nextMatch,
+        updateTab,
       });
     } catch (error) {
       applySearchPanelErrorMessage({
