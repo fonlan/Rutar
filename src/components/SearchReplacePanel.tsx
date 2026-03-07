@@ -17,6 +17,7 @@ import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/sea
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
 import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
+import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelUiState';
 import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -58,14 +59,12 @@ import type {
   SearchResultPanelState,
   SearchRunResult,
 } from '@/components/search-panel/types';
-import { getSearchPanelMessages, t } from '@/i18n';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
   getSearchModeValue,
-  normalizeFilterRuleGroups,
   resolveSearchKeyword,
   RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
@@ -90,10 +89,6 @@ export function SearchReplacePanel() {
     [tabs, activeTabId]
   );
   const activeCursorPosition = activeTab ? cursorPositionByTab[activeTab.id] : null;
-  const messages = useMemo(
-    () => getSearchPanelMessages(language),
-    [language]
-  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>('find');
@@ -122,19 +117,22 @@ export function SearchReplacePanel() {
   const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
 
-  const isReplaceMode = panelMode === 'replace';
-  const isFilterMode = panelMode === 'filter';
-  const inputContextCopyLabel = useMemo(() => t(language, 'toolbar.copy'), [language]);
-  const inputContextCutLabel = useMemo(() => t(language, 'toolbar.cut'), [language]);
-  const inputContextPasteLabel = useMemo(() => t(language, 'toolbar.paste'), [language]);
-  const normalizedFilterRuleGroups = useMemo(
-    () => normalizeFilterRuleGroups(filterRuleGroups),
-    [filterRuleGroups]
-  );
-  const resultListTextStyle = useMemo(
-    () => ({ fontFamily, fontSize: `${Math.max(10, fontSize || 14)}px` }),
-    [fontFamily, fontSize]
-  );
+  const {
+    inputContextCopyLabel,
+    inputContextCutLabel,
+    inputContextPasteLabel,
+    isFilterMode,
+    isReplaceMode,
+    messages,
+    normalizedFilterRuleGroups,
+    resultListTextStyle,
+  } = useSearchPanelUiState({
+    filterRuleGroups,
+    fontFamily,
+    fontSize,
+    language,
+    panelMode,
+  });
   const {
     containerRef: searchSidebarContainerRef,
     isResizing: isSearchSidebarResizing,
