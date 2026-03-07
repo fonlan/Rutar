@@ -43,6 +43,7 @@ import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMo
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginSearchPanelRun, beginSearchPanelVersionRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterSessionStartState, resolveSearchSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
+import { resolveFilterChunkState, resolveSearchChunkState } from '@/components/search-panel/resolveSearchPanelChunkState';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
@@ -598,9 +599,11 @@ export function SearchReplacePanel() {
           })
         );
 
-        nextMatches = backendResult.matches || [];
-        documentVersion = backendResult.documentVersion ?? 0;
-        nextOffset = backendResult.nextOffset ?? null;
+        ({
+          documentVersion,
+          nextMatches,
+          nextOffset,
+        } = resolveSearchChunkState(backendResult));
       }
 
       if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
@@ -778,9 +781,11 @@ export function SearchReplacePanel() {
           })
         );
 
-        nextMatches = backendResult.matches || [];
-        documentVersion = backendResult.documentVersion ?? 0;
-        nextLine = backendResult.nextLine ?? null;
+        ({
+          documentVersion,
+          nextLine,
+          nextMatches,
+        } = resolveFilterChunkState(backendResult));
       }
 
       if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
