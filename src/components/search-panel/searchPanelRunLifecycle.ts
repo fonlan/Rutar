@@ -15,14 +15,18 @@ interface FinalizeSearchPanelRunOptions extends SearchPanelRunVersionOptions {
   setIsSearching: (value: boolean) => void;
   silent?: boolean;
 }
+export function beginSearchPanelVersionRun(runVersionRef: MutableRefObject<number>): number {
+  const runVersion = runVersionRef.current + 1;
+  runVersionRef.current = runVersion;
+  return runVersion;
+}
 
 export function beginSearchPanelRun({
   runVersionRef,
   setIsSearching,
   silent = false,
 }: BeginSearchPanelRunOptions): number {
-  const runVersion = runVersionRef.current + 1;
-  runVersionRef.current = runVersion;
+  const runVersion = beginSearchPanelVersionRun(runVersionRef);
   if (!silent) {
     setIsSearching(true);
   }

@@ -41,7 +41,7 @@ import { resolveSearchPanelBoundedIndex } from '@/components/search-panel/resolv
 import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearchPanelStepTargets';
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
-import { beginSearchPanelRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
+import { beginSearchPanelRun, beginSearchPanelVersionRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterSessionStartState, resolveSearchSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
@@ -368,8 +368,7 @@ export function SearchReplacePanel() {
       }
     }
 
-    const runId = countRunVersionRef.current + 1;
-    countRunVersionRef.current = runId;
+    const runId = beginSearchPanelVersionRun(countRunVersionRef);
 
     try {
       const result = await invoke<SearchCountBackendResult>(
@@ -383,7 +382,7 @@ export function SearchReplacePanel() {
         })
       );
 
-      if (countRunVersionRef.current !== runId) {
+      if (isSearchPanelRunStale({ runVersion: runId, runVersionRef: countRunVersionRef })) {
         return;
       }
 
@@ -400,7 +399,7 @@ export function SearchReplacePanel() {
         setTotalMatchedLineCount,
       });
     } catch (error) {
-      if (countRunVersionRef.current !== runId) {
+      if (isSearchPanelRunStale({ runVersion: runId, runVersionRef: countRunVersionRef })) {
         return;
       }
 
@@ -453,8 +452,7 @@ export function SearchReplacePanel() {
       }
     }
 
-    const runId = filterCountRunVersionRef.current + 1;
-    filterCountRunVersionRef.current = runId;
+    const runId = beginSearchPanelVersionRun(filterCountRunVersionRef);
 
     try {
       const result = await invoke<FilterCountBackendResult>(
@@ -467,7 +465,7 @@ export function SearchReplacePanel() {
         })
       );
 
-      if (filterCountRunVersionRef.current !== runId) {
+      if (isSearchPanelRunStale({ runVersion: runId, runVersionRef: filterCountRunVersionRef })) {
         return;
       }
 
@@ -480,7 +478,7 @@ export function SearchReplacePanel() {
         setTotalFilterMatchedLineCount,
       });
     } catch (error) {
-      if (filterCountRunVersionRef.current !== runId) {
+      if (isSearchPanelRunStale({ runVersion: runId, runVersionRef: filterCountRunVersionRef })) {
         return;
       }
 
