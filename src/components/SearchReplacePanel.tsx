@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type UIEvent as ReactUIEvent,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
@@ -18,6 +17,7 @@ import { useSearchInputContextMenu } from '@/components/search-panel/useSearchIn
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
+import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
 import { useSearchSidebarInteraction } from '@/components/search-panel/useSearchSidebarInteraction';
 import {
   isFilterResultFilterStepBackendResult,
@@ -1469,53 +1469,23 @@ export function SearchReplacePanel() {
   const hasMoreMatches = chunkCursorRef.current !== null;
   const hasMoreFilterMatches = filterLineCursorRef.current !== null;
 
-  const handleResultListScroll = useCallback(
-    (event: ReactUIEvent<HTMLDivElement>) => {
-      if (!isOpen || resultPanelState !== 'open') {
-        return;
-      }
-
-      if (isFilterMode) {
-        if (filterRulesPayload.length === 0 || !hasMoreFilterMatches || isSearching || loadMoreLockRef.current) {
-          return;
-        }
-      } else if (!keyword || !hasMoreMatches || isSearching || loadMoreLockRef.current) {
-        return;
-      }
-
-      const target = event.currentTarget;
-      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight;
-      if (remaining > 32) {
-        return;
-      }
-
-      if (loadMoreDebounceRef.current !== null) {
-        window.clearTimeout(loadMoreDebounceRef.current);
-      }
-
-      loadMoreDebounceRef.current = window.setTimeout(() => {
-        loadMoreDebounceRef.current = null;
-        if (isFilterMode) {
-          void loadMoreFilterMatches();
-          return;
-        }
-
-        void loadMoreMatches();
-      }, 40);
-    },
-    [
-      filterRulesPayload.length,
-      hasMoreFilterMatches,
-      hasMoreMatches,
-      isFilterMode,
-      isOpen,
-      isSearching,
-      keyword,
-      loadMoreFilterMatches,
-      loadMoreMatches,
-      resultPanelState,
-    ]
-  );
+  const { handleResultListScroll, scrollResultItemIntoView } = useSearchResultsViewport({
+    filterMatchesLength: filterMatches.length,
+    filterRulesPayloadLength: filterRulesPayload.length,
+    hasMoreFilterMatches,
+    hasMoreMatches,
+    isFilterMode,
+    isOpen,
+    isSearching,
+    keyword,
+    loadMoreDebounceRef,
+    loadMoreFilterMatches,
+    loadMoreLockRef,
+    loadMoreMatches,
+    matchesLength: matches.length,
+    resultListRef,
+    resultPanelState,
+  });
 
   const navigateByStep = useCallback(
     async (step: number) => {
@@ -2704,78 +2674,6 @@ export function SearchReplacePanel() {
   }, [messages.filterGroupLoadFailed]);
 
 
-  useEffect(() => {
-    return () => {
-      if (loadMoreDebounceRef.current !== null) {
-        window.clearTimeout(loadMoreDebounceRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (resultPanelState !== 'open') {
-      return;
-    }
-
-    if (isFilterMode) {
-      if (filterRulesPayload.length === 0 || filterMatches.length === 0 || !hasMoreFilterMatches || isSearching) {
-        return;
-      }
-    } else if (!keyword || matches.length === 0 || !hasMoreMatches || isSearching) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const fillVisibleResultViewport = async () => {
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        if (
-          cancelled ||
-          isSearching ||
-          loadMoreLockRef.current ||
-          (isFilterMode ? !hasMoreFilterMatches : !hasMoreMatches)
-        ) {
-          return;
-        }
-
-        const container = resultListRef.current;
-        if (!container) {
-          return;
-        }
-
-        if (container.scrollHeight > container.clientHeight + 1) {
-          return;
-        }
-
-        const appended = isFilterMode ? await loadMoreFilterMatches() : await loadMoreMatches();
-        if (!appended || appended.length === 0) {
-          return;
-        }
-      }
-    };
-
-    const rafId = window.requestAnimationFrame(() => {
-      void fillVisibleResultViewport();
-    });
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [
-    filterMatches.length,
-    filterRulesPayload.length,
-    hasMoreFilterMatches,
-    hasMoreMatches,
-    isFilterMode,
-    isSearching,
-    keyword,
-    loadMoreFilterMatches,
-    loadMoreMatches,
-    matches.length,
-    resultPanelState,
-  ]);
-
   const handleApplyResultFilter = useCallback(async () => {
     cancelPendingBatchLoad();
     const nextKeyword = resultFilterKeyword.trim();
@@ -2839,34 +2737,6 @@ export function SearchReplacePanel() {
   ]);
 
   const hasAppliedResultFilterKeyword = resultFilterKeyword.trim().length > 0;
-
-  const scrollResultItemIntoView = useCallback((itemIndex: number) => {
-    const container = resultListRef.current;
-    if (!container || itemIndex < 0) {
-      return;
-    }
-
-    const itemElements = container.querySelectorAll<HTMLButtonElement>('button[data-result-item="true"]');
-    const targetElement = itemElements.item(itemIndex);
-    if (!targetElement) {
-      return;
-    }
-
-    const targetTop = targetElement.offsetTop;
-    const targetBottom = targetTop + targetElement.offsetHeight;
-    const viewTop = container.scrollTop;
-    const viewBottom = viewTop + container.clientHeight;
-    const verticalPadding = Math.max(8, Math.floor(container.clientHeight * 0.2));
-
-    if (targetTop < viewTop) {
-      container.scrollTop = Math.max(0, targetTop - verticalPadding);
-      return;
-    }
-
-    if (targetBottom > viewBottom) {
-      container.scrollTop = Math.max(0, targetTop - verticalPadding);
-    }
-  }, []);
 
   const navigateResultFilterByStep = useCallback(
     async (step: number) => {
