@@ -19,6 +19,7 @@ import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearc
 import { useSearchPanelLocalState } from '@/components/search-panel/useSearchPanelLocalState';
 import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelUiState';
 import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
+import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -2250,65 +2251,37 @@ export function SearchReplacePanel() {
     previousActiveTabIdRef.current = activeTab.id;
   }, [activeTab?.id, resetFilterState, resetSearchState, setFilterSessionId, setSearchSessionId]);
 
-  useEffect(() => {
-    if (!activeTabId) {
-      return;
-    }
-
-    tabSearchPanelStateRef.current[activeTabId] = {
-      isOpen,
-      panelMode,
-      resultPanelState,
-      resultPanelHeight,
-      searchSidebarWidth,
-      keyword,
-      replaceValue,
-      searchMode,
-      caseSensitive,
-      parseEscapeSequences,
-      reverseSearch,
-      resultFilterKeyword,
-      appliedResultFilterKeyword,
-      matches,
-      filterMatches,
-      currentMatchIndex,
-      currentFilterMatchIndex,
-      totalMatchCount,
-      totalMatchedLineCount,
-      totalFilterMatchedLineCount,
-      searchSessionId: searchSessionIdRef.current,
-      filterSessionId: filterSessionIdRef.current,
-      searchNextOffset: chunkCursorRef.current,
-      filterNextLine: filterLineCursorRef.current,
-      searchDocumentVersion: cachedSearchRef.current?.documentVersion ?? null,
-      filterDocumentVersion: cachedFilterRef.current?.documentVersion ?? null,
-      filterRulesKey: cachedFilterRef.current?.rulesKey ?? filterRulesKey,
-    };
-  }, [
+  useSearchPanelSnapshotPersistence({
     activeTabId,
     appliedResultFilterKeyword,
+    cachedFilterRef,
+    cachedSearchRef,
     caseSensitive,
-    parseEscapeSequences,
+    chunkCursorRef,
     currentFilterMatchIndex,
     currentMatchIndex,
+    filterLineCursorRef,
     filterMatches,
     filterRulesKey,
+    filterSessionIdRef,
     isOpen,
     keyword,
     matches,
     panelMode,
+    parseEscapeSequences,
     replaceValue,
     resultFilterKeyword,
-    resultPanelState,
     resultPanelHeight,
-    searchSidebarWidth,
+    resultPanelState,
     reverseSearch,
     searchMode,
+    searchSessionIdRef,
+    searchSidebarWidth,
+    tabSearchPanelStateRef,
     totalFilterMatchedLineCount,
     totalMatchCount,
     totalMatchedLineCount,
-  ]);
-
+  });
 
   const handleApplyResultFilter = useCallback(async () => {
     cancelPendingBatchLoad();
