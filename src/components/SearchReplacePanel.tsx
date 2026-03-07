@@ -33,8 +33,6 @@ import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySea
 import { resolveGuardedFilterResultFilterStepSelection, resolveGuardedSearchResultFilterStepSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyFilterResultFilterStepSuccess, applySearchResultFilterStepSuccess } from '@/components/search-panel/applySearchPanelResultFilterStepSuccess';
 import { applyResolvedSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
-import { resolveFilterLoadMoreSessionState, resolveSearchLoadMoreSessionState } from '@/components/search-panel/applySearchPanelLoadMoreSessionResults';
-import { resolveFilterLoadMoreFallbackState, resolveSearchLoadMoreFallbackState } from '@/components/search-panel/resolveSearchPanelLoadMoreFallback';
 import { applySearchPanelErrorMessage } from '@/components/search-panel/applySearchPanelErrorMessage';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor, resolveCurrentSearchResultFilterStepAnchor } from '@/components/search-panel/resolveSearchPanelStepAnchors';
 import { hasSearchPanelMatches, hasSearchPanelTargetMatch } from '@/components/search-panel/searchPanelStepGuards';
@@ -48,7 +46,7 @@ import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterSt
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
+import { applyFilterResultFilterStepResult, applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
 import { buildFilterCountRequest, buildFilterStepRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchResultFilterStepRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
@@ -65,6 +63,7 @@ import { useSearchQueryOptions } from '@/components/search-panel/useSearchQueryO
 import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
 import { useSearchSessionLifecycle } from '@/components/search-panel/useSearchSessionLifecycle';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
+import { useSearchPanelLoadMoreHandlers } from '@/components/search-panel/useSearchPanelLoadMoreHandlers';
 import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
 import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
 import {
@@ -76,11 +75,9 @@ import {
 } from '@/components/search-panel/backendGuards';
 import type {
   FilterCountBackendResult,
-  FilterMatch,
   FilterRunResult,
   FilterResultFilterStepBackendResult,
   SearchCountBackendResult,
-  SearchMatch,
   SearchResultFilterStepBackendResult,
   SearchRunResult,
 } from '@/components/search-panel/types';
@@ -752,228 +749,39 @@ export function SearchReplacePanel() {
     setFilterSessionId,
   ]);
 
-  const loadMoreMatches = useCallback(async (): Promise<SearchMatch[] | null> => {
-    if (loadMoreLockRef.current) {
-      return null;
-    }
-
-    if (!activeTab || isFilterMode) {
-      return null;
-    }
-
-    const startOffset = chunkCursorRef.current;
-    if (startOffset === null) {
-      return null;
-    }
-
-    const sessionId = loadMoreSessionRef.current;
-    loadMoreLockRef.current = true;
-    setIsSearching(true);
-    try {
-      let appendedMatches: SearchMatch[] = [];
-      let nextOffset: number | null = null;
-      let documentVersion = cachedSearchRef.current?.documentVersion ?? 0;
-      let usedSessionMode = false;
-
-      const searchSessionState = await resolveSearchLoadMoreSessionState({
-        activeSearchSessionId: searchSessionIdRef.current,
-        documentVersion,
-        loadMoreSessionId: sessionId,
-        loadMoreSessionRef,
-        maxResults: SEARCH_CHUNK_SIZE,
-        searchSessionCommandUnsupportedRef,
-        setSearchSessionId,
-      });
-      if (searchSessionState.aborted) {
-        return null;
-      }
-      if (searchSessionState.nextState) {
-        usedSessionMode = true;
-        appendedMatches = searchSessionState.nextState.matches;
-        nextOffset = searchSessionState.nextState.nextOffset;
-        documentVersion = searchSessionState.nextState.documentVersion;
-      }
-
-      if (!usedSessionMode) {
-        const fallbackState = await resolveSearchLoadMoreFallbackState({
-          activeTabId: activeTab.id,
-          cachedSearch: cachedSearchRef.current,
-          cachedSearchRef,
-          caseSensitive,
-          chunkCursorRef,
-          effectiveResultFilterKeyword: backendResultFilterKeyword,
-          effectiveSearchKeyword,
-          loadMoreSessionId: sessionId,
-          loadMoreSessionRef,
-          parseEscapeSequences,
-          searchMode,
-          setSearchSessionId,
-          startOffset,
-          maxResults: SEARCH_CHUNK_SIZE,
-        });
-        if (!fallbackState) {
-          return null;
-        }
-
-        appendedMatches = fallbackState.appendedMatches;
-        nextOffset = fallbackState.nextOffset;
-        documentVersion = fallbackState.documentVersion;
-      }
-
-      applySearchLoadMoreResult({
-        activeTabId: activeTab.id,
-        appendedMatches,
-        cachedSearchRef,
-        caseSensitive,
-        chunkCursorRef,
-        documentVersion,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        effectiveSearchKeyword,
-        nextOffset,
-        parseEscapeSequences,
-        searchMode,
-        sessionId: searchSessionIdRef.current,
-        setMatches,
-        startTransition,
-      });
-
-      return appendedMatches;
-    } catch (error) {
-      if (sessionId !== loadMoreSessionRef.current) {
-        return null;
-      }
-      applySearchPanelErrorMessage({
-        error,
-        prefix: messages.searchFailed,
-        setErrorMessage,
-      });
-      return null;
-    } finally {
-      loadMoreLockRef.current = false;
-      if (sessionId === loadMoreSessionRef.current) {
-        setIsSearching(false);
-      }
-    }
-  }, [
-    activeTab,
+  const {
+    loadMoreMatches,
+    loadMoreFilterMatches,
+  } = useSearchPanelLoadMoreHandlers({
+    activeTabId,
     backendResultFilterKeyword,
+    cachedFilterRef,
+    cachedSearchRef,
     caseSensitive,
+    chunkCursorRef,
     effectiveSearchKeyword,
-    isFilterMode,
-    messages.searchFailed,
-    parseEscapeSequences,
-    searchMode,
-    setSearchSessionId,
-  ]);
-
-  const loadMoreFilterMatches = useCallback(async (): Promise<FilterMatch[] | null> => {
-    if (loadMoreLockRef.current) {
-      return null;
-    }
-
-    if (!activeTab) {
-      return null;
-    }
-
-    const startLine = filterLineCursorRef.current;
-    if (startLine === null) {
-      return null;
-    }
-
-    const sessionId = loadMoreSessionRef.current;
-    loadMoreLockRef.current = true;
-    setIsSearching(true);
-    try {
-      let appendedMatches: FilterMatch[] = [];
-      let nextLine: number | null = null;
-      let documentVersion = cachedFilterRef.current?.documentVersion ?? 0;
-      let usedSessionMode = false;
-
-      const filterSessionState = await resolveFilterLoadMoreSessionState({
-        activeFilterSessionId: filterSessionIdRef.current,
-        documentVersion,
-        filterSessionCommandUnsupportedRef,
-        loadMoreSessionId: sessionId,
-        loadMoreSessionRef,
-        maxResults: FILTER_CHUNK_SIZE,
-        setFilterSessionId,
-      });
-      if (filterSessionState.aborted) {
-        return null;
-      }
-      if (filterSessionState.nextState) {
-        usedSessionMode = true;
-        appendedMatches = filterSessionState.nextState.matches;
-        nextLine = filterSessionState.nextState.nextLine;
-        documentVersion = filterSessionState.nextState.documentVersion;
-      }
-
-      if (!usedSessionMode) {
-        const fallbackState = await resolveFilterLoadMoreFallbackState({
-          activeTabId: activeTab.id,
-          cachedFilter: cachedFilterRef.current,
-          cachedFilterRef,
-          caseSensitive,
-          effectiveResultFilterKeyword: backendResultFilterKeyword,
-          filterLineCursorRef,
-          filterRulesKey,
-          loadMoreSessionId: sessionId,
-          loadMoreSessionRef,
-          rules: filterRulesPayload,
-          setFilterSessionId,
-          startLine,
-          maxResults: FILTER_CHUNK_SIZE,
-        });
-        if (!fallbackState) {
-          return null;
-        }
-
-        appendedMatches = fallbackState.appendedMatches;
-        nextLine = fallbackState.nextLine;
-        documentVersion = fallbackState.documentVersion;
-      }
-
-      applyFilterLoadMoreResult({
-        activeTabId: activeTab.id,
-        appendedMatches,
-        cachedFilterRef,
-        documentVersion,
-        effectiveResultFilterKeyword: backendResultFilterKeyword,
-        filterLineCursorRef,
-        filterRulesKey,
-        nextLine,
-        sessionId: filterSessionIdRef.current,
-        setFilterMatches,
-        startTransition,
-      });
-
-      return appendedMatches;
-    } catch (error) {
-      if (sessionId !== loadMoreSessionRef.current) {
-        return null;
-      }
-      applySearchPanelErrorMessage({
-        error,
-        prefix: messages.filterFailed,
-        setErrorMessage,
-      });
-      return null;
-    } finally {
-      loadMoreLockRef.current = false;
-      if (sessionId === loadMoreSessionRef.current) {
-        setIsSearching(false);
-      }
-    }
-  }, [
-    activeTab,
-    backendResultFilterKeyword,
-    caseSensitive,
+    filterFailedLabel: messages.filterFailed,
+    filterLineCursorRef,
     filterRulesKey,
     filterRulesPayload,
+    filterSessionCommandUnsupportedRef,
+    filterSessionIdRef,
     isFilterMode,
-    messages.filterFailed,
+    loadMoreLockRef,
+    loadMoreSessionRef,
+    parseEscapeSequences,
+    searchFailedLabel: messages.searchFailed,
+    searchMode,
+    searchSessionCommandUnsupportedRef,
+    searchSessionIdRef,
+    setErrorMessage,
+    setFilterMatches,
     setFilterSessionId,
-  ]);
+    setIsSearching,
+    setMatches,
+    setSearchSessionId,
+    startTransition,
+  });
 
   const executeFirstMatchSearch = useCallback(async (reverse: boolean): Promise<SearchRunResult | null> => {
     cancelPendingBatchLoad();
