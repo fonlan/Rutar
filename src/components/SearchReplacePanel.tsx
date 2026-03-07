@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   startTransition,
   useCallback,
-  useEffect,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
@@ -24,16 +23,10 @@ import { useSearchResultFilterStepNavigation } from '@/components/search-panel/u
 import { useSearchStepNavigation } from '@/components/search-panel/useSearchStepNavigation';
 import { useSearchReplaceHandlers } from '@/components/search-panel/useSearchReplaceHandlers';
 import { useSearchFirstMatchSearch } from '@/components/search-panel/useSearchFirstMatchSearch';
-import { resetSearchPanelForInactiveTab } from '@/components/search-panel/resetSearchPanelForInactiveTab';
-import { restoreSearchPanelSnapshotState } from '@/components/search-panel/restoreSearchPanelSnapshotState';
-import { resetSearchPanelForMissingSnapshot } from '@/components/search-panel/resetSearchPanelForMissingSnapshot';
-import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from '@/components/search-panel/applySearchSessionRestoreResult';
-import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
+import { useSearchPanelRestoreEffect } from '@/components/search-panel/useSearchPanelRestoreEffect';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
-import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
-import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
@@ -52,10 +45,6 @@ import { useSearchResultsViewport } from '@/components/search-panel/useSearchRes
 import { useSearchPanelLoadMoreHandlers } from '@/components/search-panel/useSearchPanelLoadMoreHandlers';
 import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
 import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
-import {
-  isFilterSessionRestoreBackendResult,
-  isSearchSessionRestoreBackendResult,
-} from '@/components/search-panel/backendGuards';
 import type {
   FilterCountBackendResult,
   FilterRunResult,
@@ -64,9 +53,7 @@ import type {
 } from '@/components/search-panel/types';
 import {
   FILTER_CHUNK_SIZE,
-  RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
-  SEARCH_SIDEBAR_DEFAULT_WIDTH,
 } from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
   const {
@@ -931,222 +918,50 @@ export function SearchReplacePanel() {
     stopResultFilterSearchRef,
   });
 
-  useEffect(() => {
-    const restoreRunVersion = sessionRestoreRunVersionRef.current + 1;
-    sessionRestoreRunVersionRef.current = restoreRunVersion;
-
-    if (!activeTab) {
-      resetSearchPanelForInactiveTab({
-        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
-        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
-        previousActiveTabIdRef,
-        resetFilterState,
-        resetSearchState,
-        setAppliedResultFilterKeyword,
-        setCaseSensitive,
-        setErrorMessage,
-        setFeedbackMessage,
-        setIsOpen,
-        setIsResultFilterSearching,
-        setKeyword,
-        setPanelMode,
-        setParseEscapeSequences,
-        setReplaceValue,
-        setResultFilterKeyword,
-        setResultPanelHeight,
-        setResultPanelState,
-        setReverseSearch,
-        setSearchMode,
-        setSearchSidebarWidth,
-        stopResultFilterSearchRef,
-      });
-      return;
-    }
-
-    const nextSnapshot = tabSearchPanelStateRef.current[activeTab.id];
-    if (nextSnapshot) {
-      const { restoredResultFilterKeyword } = restoreSearchPanelSnapshotState({
-        activeTabId: activeTab.id,
-        cachedFilterRef,
-        cachedSearchRef,
-        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
-        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
-        chunkCursorRef,
-        countCacheRef,
-        filterCountCacheRef,
-        filterLineCursorRef,
-        setAppliedResultFilterKeyword,
-        setCaseSensitive,
-        setCurrentFilterMatchIndex,
-        setCurrentMatchIndex,
-        setFilterMatches,
-        setFilterSessionId,
-        setIsOpen,
-        setKeyword,
-        setMatches,
-        setPanelMode,
-        setParseEscapeSequences,
-        setReplaceValue,
-        setResultFilterKeyword,
-        setResultPanelHeight,
-        setResultPanelState,
-        setReverseSearch,
-        setSearchMode,
-        setSearchSessionId,
-        setSearchSidebarWidth,
-        setTotalFilterMatchedLineCount,
-        setTotalMatchCount,
-        setTotalMatchedLineCount,
-        snapshot: nextSnapshot,
-      });
-
-      const searchSessionRestoreRequest = buildSearchSessionRestoreRequest({
-        activeTabId: activeTab.id,
-        restoredResultFilterKeyword,
-        searchSessionRestoreCommandUnsupported: searchSessionRestoreCommandUnsupportedRef.current,
-        snapshot: nextSnapshot,
-      });
-
-      if (searchSessionRestoreRequest) {
-        const {
-          invokeArgs,
-          snapshotCaseSensitive,
-          snapshotDocumentVersion,
-          snapshotEffectiveKeyword,
-          snapshotParseEscapeSequences,
-          snapshotSearchMode,
-        } = searchSessionRestoreRequest;
-
-        void invoke<unknown>('search_session_restore_in_document', invokeArgs)
-          .then((restoreResultValue) => {
-            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-              return;
-            }
-
-            if (!isSearchSessionRestoreBackendResult(restoreResultValue)) {
-              return;
-            }
-
-            applySearchSessionRestoreResult({
-              activeTabId: activeTab.id,
-              cachedSearchRef,
-              chunkCursorRef,
-              countCacheRef,
-              parseEscapeSequences: snapshotParseEscapeSequences,
-              restoreResult: restoreResultValue,
-              restoredResultFilterKeyword,
-              searchMode: snapshotSearchMode,
-              searchSessionRestoreCommandUnsupportedRef,
-              setSearchSessionId,
-              setTotalMatchCount,
-              setTotalMatchedLineCount,
-              snapshotCaseSensitive,
-              snapshotDocumentVersion,
-              snapshotEffectiveKeyword,
-            });
-          })
-          .catch((error) => {
-            handleSearchSessionRestoreError({
-              error,
-              restoreRunVersion,
-              searchSessionRestoreCommandUnsupportedRef,
-              sessionRestoreRunVersionRef,
-            });
-          });
-      }
-
-      const filterSessionRestoreRequest = buildFilterSessionRestoreRequest({
-        activeTabId: activeTab.id,
-        filterRulesKey,
-        filterRulesPayload,
-        filterSessionRestoreCommandUnsupported: filterSessionRestoreCommandUnsupportedRef.current,
-        restoredResultFilterKeyword,
-        snapshot: nextSnapshot,
-      });
-
-      if (filterSessionRestoreRequest) {
-        const {
-          invokeArgs,
-          snapshotFilterDocumentVersion,
-        } = filterSessionRestoreRequest;
-
-        void invoke<unknown>('filter_session_restore_in_document', invokeArgs)
-          .then((restoreResultValue) => {
-            if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-              return;
-            }
-
-            if (!isFilterSessionRestoreBackendResult(restoreResultValue)) {
-              return;
-            }
-
-            applyFilterSessionRestoreResult({
-              activeTabId: activeTab.id,
-              cachedFilterRef,
-              filterCountCacheRef,
-              filterLineCursorRef,
-              filterRulesKey,
-              filterSessionRestoreCommandUnsupportedRef,
-              restoreResult: restoreResultValue,
-              restoredResultFilterKeyword,
-              setFilterSessionId,
-              setTotalFilterMatchedLineCount,
-              snapshotFilterDocumentVersion,
-            });
-          })
-          .catch((error) => {
-            handleFilterSessionRestoreError({
-              error,
-              filterSessionRestoreCommandUnsupportedRef,
-              restoreRunVersion,
-              sessionRestoreRunVersionRef,
-            });
-          });
-      }
-    } else {
-      resetSearchPanelForMissingSnapshot({
-        cachedFilterRef,
-        cachedSearchRef,
-        chunkCursorRef,
-        countCacheRef,
-        defaultResultPanelHeight: RESULT_PANEL_DEFAULT_HEIGHT,
-        defaultSidebarWidth: SEARCH_SIDEBAR_DEFAULT_WIDTH,
-        filterCountCacheRef,
-        filterLineCursorRef,
-        setAppliedResultFilterKeyword,
-        setCaseSensitive,
-        setCurrentFilterMatchIndex,
-        setCurrentMatchIndex,
-        setFilterMatches,
-        setFilterSessionId,
-        setIsOpen,
-        setKeyword,
-        setMatches,
-        setPanelMode,
-        setParseEscapeSequences,
-        setReplaceValue,
-        setResultFilterKeyword,
-        setResultPanelHeight,
-        setResultPanelState,
-        setReverseSearch,
-        setSearchMode,
-        setSearchSessionId,
-        setSearchSidebarWidth,
-        setTotalFilterMatchedLineCount,
-        setTotalMatchCount,
-        setTotalMatchedLineCount,
-      });
-    }
-
-    finalizeSearchPanelRestoreCycle({
-      activeTabId: activeTab.id,
-      previousActiveTabIdRef,
-      setErrorMessage,
-      setFeedbackMessage,
-      setIsResultFilterSearching,
-      stopResultFilterSearchRef,
-    });
-  }, [activeTab?.id, resetFilterState, resetSearchState, setFilterSessionId, setSearchSessionId]);
+  useSearchPanelRestoreEffect({
+    activeTabId: activeTab?.id ?? null,
+    cachedFilterRef,
+    cachedSearchRef,
+    chunkCursorRef,
+    countCacheRef,
+    filterCountCacheRef,
+    filterLineCursorRef,
+    filterRulesKey,
+    filterRulesPayload,
+    filterSessionRestoreCommandUnsupportedRef,
+    previousActiveTabIdRef,
+    resetFilterState,
+    resetSearchState,
+    searchSessionRestoreCommandUnsupportedRef,
+    sessionRestoreRunVersionRef,
+    setAppliedResultFilterKeyword,
+    setCaseSensitive,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setFeedbackMessage,
+    setFilterMatches,
+    setFilterSessionId,
+    setIsOpen,
+    setIsResultFilterSearching,
+    setKeyword,
+    setMatches,
+    setPanelMode,
+    setParseEscapeSequences,
+    setReplaceValue,
+    setResultFilterKeyword,
+    setResultPanelHeight,
+    setResultPanelState,
+    setReverseSearch,
+    setSearchMode,
+    setSearchSessionId,
+    setSearchSidebarWidth,
+    setTotalFilterMatchedLineCount,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+    stopResultFilterSearchRef,
+    tabSearchPanelStateRef,
+  });
 
   useSearchPanelSnapshotPersistence({
     activeTabId,
