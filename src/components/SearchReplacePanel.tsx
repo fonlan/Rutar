@@ -49,7 +49,8 @@ import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } fr
 import { applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunResult, applyCachedSearchRunResult, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildDocumentVersionRequest, buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest, buildSearchSessionStartRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { readSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -354,21 +355,15 @@ export function SearchReplacePanel() {
         cached.parseEscapeSequences === parseEscapeSequences &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
-        try {
-          const currentDocumentVersion = await invoke<number>(
-            'get_document_version',
-            buildDocumentVersionRequest({
-              activeTabId: activeTab.id,
-            })
-          );
+        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+          activeTabId: activeTab.id,
+          warnLabel: 'Failed to read document version for count:',
+        });
 
-          if (currentDocumentVersion === cached.documentVersion) {
-            setTotalMatchCount(cached.totalMatches);
-            setTotalMatchedLineCount(cached.matchedLines);
-            return;
-          }
-        } catch (error) {
-          console.warn('Failed to read document version for count:', error);
+        if (currentDocumentVersion === cached.documentVersion) {
+          setTotalMatchCount(cached.totalMatches);
+          setTotalMatchedLineCount(cached.matchedLines);
+          return;
         }
       }
     }
@@ -447,20 +442,14 @@ export function SearchReplacePanel() {
         cached.rulesKey === filterRulesKey &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
-        try {
-          const currentDocumentVersion = await invoke<number>(
-            'get_document_version',
-            buildDocumentVersionRequest({
-              activeTabId: activeTab.id,
-            })
-          );
+        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+          activeTabId: activeTab.id,
+          warnLabel: 'Failed to read document version for filter count:',
+        });
 
-          if (currentDocumentVersion === cached.documentVersion) {
-            setTotalFilterMatchedLineCount(cached.matchedLines);
-            return;
-          }
-        } catch (error) {
-          console.warn('Failed to read document version for filter count:', error);
+        if (currentDocumentVersion === cached.documentVersion) {
+          setTotalFilterMatchedLineCount(cached.matchedLines);
+          return;
         }
       }
     }
@@ -532,34 +521,28 @@ export function SearchReplacePanel() {
         cached.parseEscapeSequences === parseEscapeSequences &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
-        try {
-          const currentDocumentVersion = await invoke<number>(
-            'get_document_version',
-            buildDocumentVersionRequest({
-              activeTabId: activeTab.id,
-            })
-          );
+        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+          activeTabId: activeTab.id,
+          warnLabel: 'Failed to read document version:',
+        });
 
-          if (currentDocumentVersion === cached.documentVersion) {
-            applyCachedSearchRunResult({
-              cached,
-              chunkCursorRef,
-              setCurrentMatchIndex,
-              setErrorMessage,
-              setMatches,
-              setSearchSessionId,
-              startTransition,
-            });
+        if (currentDocumentVersion === cached.documentVersion) {
+          applyCachedSearchRunResult({
+            cached,
+            chunkCursorRef,
+            setCurrentMatchIndex,
+            setErrorMessage,
+            setMatches,
+            setSearchSessionId,
+            startTransition,
+          });
 
-            return {
-              matches: cached.matches,
-              documentVersion: cached.documentVersion,
-              errorMessage: null,
-              nextOffset: cached.nextOffset,
-            };
-          }
-        } catch (error) {
-          console.warn('Failed to read document version:', error);
+          return {
+            matches: cached.matches,
+            documentVersion: cached.documentVersion,
+            errorMessage: null,
+            nextOffset: cached.nextOffset,
+          };
         }
       }
     }
@@ -732,34 +715,28 @@ export function SearchReplacePanel() {
         cached.rulesKey === filterRulesKey &&
         cached.resultFilterKeyword === effectiveResultFilterKeyword
       ) {
-        try {
-          const currentDocumentVersion = await invoke<number>(
-            'get_document_version',
-            buildDocumentVersionRequest({
-              activeTabId: activeTab.id,
-            })
-          );
+        const currentDocumentVersion = await readSearchPanelDocumentVersion({
+          activeTabId: activeTab.id,
+          warnLabel: 'Failed to read document version for filter:',
+        });
 
-          if (currentDocumentVersion === cached.documentVersion) {
-            applyCachedFilterRunResult({
-              cached,
-              filterLineCursorRef,
-              setCurrentFilterMatchIndex,
-              setErrorMessage,
-              setFilterMatches,
-              setFilterSessionId,
-              startTransition,
-            });
+        if (currentDocumentVersion === cached.documentVersion) {
+          applyCachedFilterRunResult({
+            cached,
+            filterLineCursorRef,
+            setCurrentFilterMatchIndex,
+            setErrorMessage,
+            setFilterMatches,
+            setFilterSessionId,
+            startTransition,
+          });
 
-            return {
-              matches: cached.matches,
-              documentVersion: cached.documentVersion,
-              errorMessage: null,
-              nextLine: cached.nextLine,
-            };
-          }
-        } catch (error) {
-          console.warn('Failed to read document version for filter:', error);
+          return {
+            matches: cached.matches,
+            documentVersion: cached.documentVersion,
+            errorMessage: null,
+            nextLine: cached.nextLine,
+          };
         }
       }
     }
