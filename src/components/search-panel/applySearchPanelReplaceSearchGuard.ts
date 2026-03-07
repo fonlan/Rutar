@@ -6,6 +6,12 @@ interface ApplyReplaceSearchResultGuardOptions {
   setFeedbackMessage: (value: string | null) => void;
 }
 
+interface ApplyReplaceOperationGuardOptions {
+  hasReplacement: boolean;
+  noReplaceMatchesMessage: string;
+  setFeedbackMessage: (value: string | null) => void;
+}
+
 export function applyReplaceSearchResultGuard({
   noReplaceMatchesMessage,
   searchResult,
@@ -17,4 +23,17 @@ export function applyReplaceSearchResultGuard({
   }
 
   return searchResult;
+}
+
+export function applyReplaceOperationGuard({
+  hasReplacement,
+  noReplaceMatchesMessage,
+  setFeedbackMessage,
+}: ApplyReplaceOperationGuardOptions): boolean {
+  if (hasReplacement) {
+    return false;
+  }
+
+  setFeedbackMessage(noReplaceMatchesMessage);
+  return true;
 }

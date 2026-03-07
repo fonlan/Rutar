@@ -27,7 +27,7 @@ import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
-import { applyReplaceSearchResultGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
+import { applyReplaceOperationGuard, applyReplaceSearchResultGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
@@ -1671,8 +1671,11 @@ export function SearchReplacePanel() {
         })
       );
 
-      if (!result.replaced) {
-        setFeedbackMessage(messages.noReplaceMatches);
+      if (applyReplaceOperationGuard({
+        hasReplacement: result.replaced,
+        noReplaceMatchesMessage: messages.noReplaceMatches,
+        setFeedbackMessage,
+      })) {
         return;
       }
 
@@ -1770,8 +1773,11 @@ export function SearchReplacePanel() {
 
       const replacedCount = result.replacedCount ?? 0;
 
-      if (replacedCount === 0) {
-        setFeedbackMessage(messages.noReplaceMatches);
+      if (applyReplaceOperationGuard({
+        hasReplacement: replacedCount > 0,
+        noReplaceMatchesMessage: messages.noReplaceMatches,
+        setFeedbackMessage,
+      })) {
         return;
       }
 
