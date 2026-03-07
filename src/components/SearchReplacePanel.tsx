@@ -27,6 +27,7 @@ import { applySearchSessionRestoreResult, handleSearchSessionRestoreError } from
 import { applyFilterSessionRestoreResult, handleFilterSessionRestoreError } from '@/components/search-panel/applyFilterSessionRestoreResult';
 import { applySearchCursorStepResult } from '@/components/search-panel/applySearchPanelCursorStepResult';
 import { applyReplaceSuccessEffects } from '@/components/search-panel/applySearchPanelReplaceSuccessEffects';
+import { applyReplaceSearchResultGuard } from '@/components/search-panel/applySearchPanelReplaceSearchGuard';
 import { applyFilterNavigationSelection, applySearchNavigationSelection } from '@/components/search-panel/applySearchPanelNavigationSelection';
 import { applyFilterResultFilterSelection, applySearchResultFilterSelection } from '@/components/search-panel/applySearchPanelResultFilterSelection';
 import { applyEmptySearchFirstMatchResult, applyImmediateSearchFirstMatchResult } from '@/components/search-panel/applySearchPanelFirstMatchResult';
@@ -1626,9 +1627,12 @@ export function SearchReplacePanel() {
     }
 
     rememberSearchKeyword(keyword);
-    const searchResult = await executeSearch();
-    if (!searchResult || searchResult.matches.length === 0) {
-      setFeedbackMessage(messages.noReplaceMatches);
+    const searchResult = applyReplaceSearchResultGuard({
+      noReplaceMatchesMessage: messages.noReplaceMatches,
+      searchResult: await executeSearch(),
+      setFeedbackMessage,
+    });
+    if (!searchResult) {
       return;
     }
 
@@ -1722,9 +1726,12 @@ export function SearchReplacePanel() {
     }
 
     rememberSearchKeyword(keyword);
-    const searchResult = await executeSearch();
-    if (!searchResult || searchResult.matches.length === 0) {
-      setFeedbackMessage(messages.noReplaceMatches);
+    const searchResult = applyReplaceSearchResultGuard({
+      noReplaceMatchesMessage: messages.noReplaceMatches,
+      searchResult: await executeSearch(),
+      setFeedbackMessage,
+    });
+    if (!searchResult) {
       return;
     }
 
