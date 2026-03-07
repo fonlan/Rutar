@@ -15,6 +15,7 @@ import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRul
 import { useSearchInputContextMenu } from '@/components/search-panel/useSearchInputContextMenu';
 import { useSearchInputHistory, useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
 import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
+import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
 import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
 import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
 import { useSearchResultPanelControls } from '@/components/search-panel/useSearchResultPanelControls';
@@ -55,15 +56,11 @@ import { getSearchPanelMessages, t } from '@/i18n';
 import { useStore } from '@/store/useStore';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 import {
-  buildFilterRulesPayload,
-  DEFAULT_FILTER_RULE_BACKGROUND,
-  DEFAULT_FILTER_RULE_TEXT,
   dispatchEditorForceRefresh,
   FILTER_CHUNK_SIZE,
   getDisplayCountText,
   getSearchModeValue,
   normalizeFilterRuleGroups,
-  normalizeFilterRules,
   resolveSearchKeyword,
   RESULT_PANEL_DEFAULT_HEIGHT,
   SEARCH_CHUNK_SIZE,
@@ -364,61 +361,29 @@ export function SearchReplacePanel() {
     setFeedbackMessage,
   });
 
-  const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
-  const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
-  const hasAnyConfiguredFilterRule = useMemo(
-    () =>
-      filterRules.length > 1
-      || filterRules.some((rule) => {
-        const keyword = rule.keyword.trim();
-        return (
-          keyword.length > 0
-          || rule.matchMode !== 'contains'
-          || rule.backgroundColor !== DEFAULT_FILTER_RULE_BACKGROUND
-          || rule.textColor !== DEFAULT_FILTER_RULE_TEXT
-          || rule.bold
-          || rule.italic
-          || rule.applyTo !== 'line'
-        );
-      }),
-    [filterRules]
-  );
-  const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
-
-  const normalizedResultFilterKeyword = appliedResultFilterKeyword.trim().toLowerCase();
-  const isResultFilterActive = normalizedResultFilterKeyword.length > 0;
-
-  const backendResultFilterKeyword = useMemo(() => {
-    if (!isResultFilterActive) {
-      return '';
-    }
-
-    return caseSensitive ? appliedResultFilterKeyword.trim() : normalizedResultFilterKeyword;
-  }, [appliedResultFilterKeyword, caseSensitive, isResultFilterActive, normalizedResultFilterKeyword]);
-  const effectiveSearchKeyword = useMemo(
-    () => resolveSearchKeyword(keyword, parseEscapeSequences),
-    [keyword, parseEscapeSequences]
-  );
-
-  const visibleFilterMatches = useMemo(() => filterMatches, [filterMatches]);
-
-  const visibleMatches = useMemo(() => matches, [matches]);
-
-  const visibleCurrentFilterMatchIndex = useMemo(() => {
-    if (visibleFilterMatches.length === 0) {
-      return -1;
-    }
-
-    return Math.min(currentFilterMatchIndex, visibleFilterMatches.length - 1);
-  }, [currentFilterMatchIndex, visibleFilterMatches]);
-
-  const visibleCurrentMatchIndex = useMemo(() => {
-    if (visibleMatches.length === 0) {
-      return -1;
-    }
-
-    return Math.min(currentMatchIndex, visibleMatches.length - 1);
-  }, [currentMatchIndex, visibleMatches]);
+  const {
+    backendResultFilterKeyword,
+    effectiveFilterRules,
+    effectiveSearchKeyword,
+    filterRulesKey,
+    filterRulesPayload,
+    hasAnyConfiguredFilterRule,
+    isResultFilterActive,
+    visibleCurrentFilterMatchIndex,
+    visibleCurrentMatchIndex,
+    visibleFilterMatches,
+    visibleMatches,
+  } = useSearchPanelDerivedState({
+    appliedResultFilterKeyword,
+    caseSensitive,
+    currentFilterMatchIndex,
+    currentMatchIndex,
+    filterMatches,
+    filterRules,
+    keyword,
+    matches,
+    parseEscapeSequences,
+  });
 
   const executeCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
     const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
