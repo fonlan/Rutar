@@ -1,11 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { MutableRefObject } from 'react';
-import { isSearchSessionStartBackendResult } from './backendGuards';
-import { buildSearchChunkRequest, buildSearchSessionStartRequest } from './buildSearchPanelRunRequests';
+import {
+  isFilterSessionStartBackendResult,
+  isSearchSessionStartBackendResult,
+} from './backendGuards';
+import {
+  buildFilterChunkRequest,
+  buildFilterSessionStartRequest,
+  buildSearchChunkRequest,
+  buildSearchSessionStartRequest,
+} from './buildSearchPanelRunRequests';
 import { attemptSearchPanelSessionStart } from './attemptSearchPanelSessionStart';
-import { resolveSearchChunkState } from './resolveSearchPanelChunkState';
-import { resolveSearchSessionStartState } from './resolveSearchPanelSessionStartState';
-import type { SearchChunkBackendResult, SearchMode } from './types';
+import { resolveFilterChunkState, resolveSearchChunkState } from './resolveSearchPanelChunkState';
+import {
+  resolveFilterSessionStartState,
+  resolveSearchSessionStartState,
+} from './resolveSearchPanelSessionStartState';
+import type {
+  FilterChunkBackendResult,
+  FilterRuleInputPayload,
+  SearchChunkBackendResult,
+  SearchMode,
+} from './types';
 
 interface ResolveSearchRunStartStateOptions {
   activeTabId: string;
@@ -25,6 +41,24 @@ interface ResolvedSearchRunStartState {
   shouldRunCountFallback: boolean;
   totalMatchedLines: number | null;
   totalMatches: number | null;
+}
+
+interface ResolveFilterRunStartStateOptions {
+  activeTabId: string;
+  caseSensitive: boolean;
+  effectiveResultFilterKeyword: string;
+  filterSessionCommandUnsupportedRef: MutableRefObject<boolean>;
+  maxResults: number;
+  rules: FilterRuleInputPayload[];
+}
+
+interface ResolvedFilterRunStartState {
+  documentVersion: number;
+  nextLine: number | null;
+  nextMatches: FilterChunkBackendResult['matches'];
+  sessionId: string | null;
+  shouldRunCountFallback: boolean;
+  totalMatchedLines: number | null;
 }
 
 export async function resolveSearchRunStartState({
@@ -98,5 +132,73 @@ export async function resolveSearchRunStartState({
     shouldRunCountFallback: true,
     totalMatchedLines: null,
     totalMatches: null,
+  };
+}
+
+export async function resolveFilterRunStartState({
+  activeTabId,
+  caseSensitive,
+  effectiveResultFilterKeyword,
+  filterSessionCommandUnsupportedRef,
+  maxResults,
+  rules,
+}: ResolveFilterRunStartStateOptions): Promise<ResolvedFilterRunStartState> {
+  const sessionStartResult = await attemptSearchPanelSessionStart({
+    commandName: 'filter_session_start_in_document',
+    isExpectedResult: isFilterSessionStartBackendResult,
+    request: buildFilterSessionStartRequest({
+      activeTabId,
+      caseSensitive,
+      effectiveResultFilterKeyword,
+      maxResults,
+      rules,
+    }),
+    sessionCommandUnsupportedRef: filterSessionCommandUnsupportedRef,
+  });
+
+  if (sessionStartResult) {
+    filterSessionCommandUnsupportedRef.current = false;
+    const {
+      documentVersion,
+      nextLine,
+      nextMatches,
+      sessionId,
+      totalMatchedLines,
+    } = resolveFilterSessionStartState(sessionStartResult);
+
+    return {
+      documentVersion,
+      nextLine,
+      nextMatches,
+      sessionId,
+      shouldRunCountFallback: false,
+      totalMatchedLines,
+    };
+  }
+
+  const backendResult = await invoke<FilterChunkBackendResult>(
+    'filter_in_document_chunk',
+    buildFilterChunkRequest({
+      activeTabId,
+      caseSensitive,
+      effectiveResultFilterKeyword,
+      maxResults,
+      rules,
+      startLine: 0,
+    })
+  );
+  const {
+    documentVersion,
+    nextLine,
+    nextMatches,
+  } = resolveFilterChunkState(backendResult);
+
+  return {
+    documentVersion,
+    nextLine,
+    nextMatches,
+    sessionId: null,
+    shouldRunCountFallback: true,
+    totalMatchedLines: null,
   };
 }

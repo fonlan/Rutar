@@ -42,18 +42,15 @@ import { resolveFilterStepTarget } from '@/components/search-panel/resolveSearch
 import { loadMoreSearchPanelStepMatches } from '@/components/search-panel/loadMoreSearchPanelStepMatches';
 import { resolveSearchPanelResultFilterKeyword } from '@/components/search-panel/resolveSearchPanelResultFilterKeyword';
 import { beginSearchPanelRun, beginSearchPanelVersionRun, finalizeSearchPanelRun, isSearchPanelRunStale } from '@/components/search-panel/searchPanelRunLifecycle';
-import { resolveFilterSessionStartState } from '@/components/search-panel/resolveSearchPanelSessionStartState';
-import { resolveFilterChunkState } from '@/components/search-panel/resolveSearchPanelChunkState';
-import { resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
+import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
 import { beginResultFilterStepRun, finalizeResultFilterStepRun, isResultFilterStepRunStale } from '@/components/search-panel/resultFilterStepRunLifecycle';
 import { finalizeSearchPanelRestoreCycle } from '@/components/search-panel/finalizeSearchPanelRestoreCycle';
 import { buildFilterSessionRestoreRequest, buildSearchSessionRestoreRequest } from '@/components/search-panel/buildSearchPanelRestoreRequests';
 import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
 import { applyCachedFilterRunHit, applyCachedSearchRunHit, applyFilterLoadMoreResult, applyFilterResultFilterStepResult, applyFilterRunResult, applyReplaceAllSearchResult, applyReplaceCurrentSearchResult, applySearchLoadMoreResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
 import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterSessionStartRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
+import { buildFilterChunkRequest, buildFilterCountRequest, buildFilterSessionNextRequest, buildFilterStepRequest, buildReplaceAllRequest, buildReplaceCurrentRequest, buildSearchChunkRequest, buildSearchCountRequest, buildSearchCursorStepRequest, buildSearchFirstRequest, buildSearchResultFilterStepRequest, buildSearchSessionNextRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
 import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
-import { attemptSearchPanelSessionStart } from '@/components/search-panel/attemptSearchPanelSessionStart';
 import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
@@ -69,7 +66,6 @@ import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPan
 import {
   isFilterResultFilterStepBackendResult,
   isFilterSessionRestoreBackendResult,
-  isFilterSessionStartBackendResult,
   isMissingInvokeCommandError,
   isSearchCursorStepBackendResult,
   isSearchSessionRestoreBackendResult,
@@ -689,55 +685,21 @@ export function SearchReplacePanel() {
     });
 
     try {
-      let nextMatches: FilterMatch[] = [];
-      let documentVersion = 0;
-      let nextLine: number | null = null;
-      let sessionId: string | null = null;
-      let totalMatchedLines: number | null = null;
-      let shouldRunCountFallback = true;
-
-      const sessionStartResult = await attemptSearchPanelSessionStart({
-        commandName: 'filter_session_start_in_document',
-        isExpectedResult: isFilterSessionStartBackendResult,
-        request: buildFilterSessionStartRequest({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          effectiveResultFilterKeyword,
-          maxResults: FILTER_CHUNK_SIZE,
-          rules: filterRulesPayload,
-        }),
-        sessionCommandUnsupportedRef: filterSessionCommandUnsupportedRef,
+      const {
+        documentVersion,
+        nextLine,
+        nextMatches,
+        sessionId,
+        shouldRunCountFallback,
+        totalMatchedLines,
+      } = await resolveFilterRunStartState({
+        activeTabId: activeTab.id,
+        caseSensitive,
+        effectiveResultFilterKeyword,
+        filterSessionCommandUnsupportedRef,
+        maxResults: FILTER_CHUNK_SIZE,
+        rules: filterRulesPayload,
       });
-
-      if (sessionStartResult) {
-        ({
-          documentVersion,
-          nextLine,
-          nextMatches,
-          sessionId,
-          totalMatchedLines,
-        } = resolveFilterSessionStartState(sessionStartResult));
-        shouldRunCountFallback = false;
-        filterSessionCommandUnsupportedRef.current = false;
-      } else {
-        const backendResult = await invoke<FilterChunkBackendResult>(
-          'filter_in_document_chunk',
-          buildFilterChunkRequest({
-            activeTabId: activeTab.id,
-            caseSensitive,
-            effectiveResultFilterKeyword,
-            maxResults: FILTER_CHUNK_SIZE,
-            rules: filterRulesPayload,
-            startLine: 0,
-          })
-        );
-
-        ({
-          documentVersion,
-          nextLine,
-          nextMatches,
-        } = resolveFilterChunkState(backendResult));
-      }
 
       if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
         return null;
