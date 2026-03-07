@@ -15,6 +15,14 @@ interface FinalizeSearchPanelRunOptions extends SearchPanelRunVersionOptions {
   setIsSearching: (value: boolean) => void;
   silent?: boolean;
 }
+
+interface RunSearchPanelVersionedAsyncOperationOptions<TResult> {
+  applyResult: (result: TResult) => void;
+  handleError: (error: unknown) => void;
+  run: () => Promise<TResult>;
+  runVersionRef: MutableRefObject<number>;
+}
+
 export function beginSearchPanelVersionRun(runVersionRef: MutableRefObject<number>): number {
   const runVersion = runVersionRef.current + 1;
   runVersionRef.current = runVersion;
@@ -52,6 +60,30 @@ export function finalizeSearchPanelRun({
   }
 
   setIsSearching(false);
+}
+
+export async function runSearchPanelVersionedAsyncOperation<TResult>({
+  applyResult,
+  handleError,
+  run,
+  runVersionRef,
+}: RunSearchPanelVersionedAsyncOperationOptions<TResult>): Promise<void> {
+  const runVersion = beginSearchPanelVersionRun(runVersionRef);
+
+  try {
+    const result = await run();
+    if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
+      return;
+    }
+
+    applyResult(result);
+  } catch (error) {
+    if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
+      return;
+    }
+
+    handleError(error);
+  }
 }
 
 interface RunSearchPanelAsyncOperationOptions<TResult> extends BeginSearchPanelRunOptions {
