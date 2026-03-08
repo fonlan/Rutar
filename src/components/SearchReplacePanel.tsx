@@ -1,7 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
 import {
   startTransition,
-  useCallback,
 } from 'react';
 import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
 import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
@@ -24,15 +22,6 @@ import { useSearchStepNavigation } from '@/components/search-panel/useSearchStep
 import { useSearchReplaceHandlers } from '@/components/search-panel/useSearchReplaceHandlers';
 import { useSearchFirstMatchSearch } from '@/components/search-panel/useSearchFirstMatchSearch';
 import { useSearchPanelRestoreEffect } from '@/components/search-panel/useSearchPanelRestoreEffect';
-import { isSearchPanelRunStale, runSearchPanelAsyncOperation, runSearchPanelVersionedAsyncOperation } from '@/components/search-panel/searchPanelRunLifecycle';
-import { resolveFilterRunStartState, resolveSearchRunStartState } from '@/components/search-panel/resolveSearchPanelRunStartState';
-import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from '@/components/search-panel/resolveSearchPanelCachedRunHit';
-import { applyCachedFilterCountHit, applyCachedSearchCountHit, applyFilterCountResult, applySearchCountResult, handleFilterCountFailure, handleSearchCountFailure } from '@/components/search-panel/applySearchPanelCountResults';
-import { applyFilterRunResult, applySearchRunResult, createFilterRunSuccessResult, createSearchRunSuccessResult } from '@/components/search-panel/applySearchPanelRunResults';
-import { createEmptyFilterRunResult, createEmptySearchRunResult, createFilterRunFailureResult, createSearchRunFailureResult } from '@/components/search-panel/createSearchPanelRunFallbacks';
-import { buildFilterCountRequest, buildSearchCountRequest } from '@/components/search-panel/buildSearchPanelRunRequests';
-import { matchesSearchPanelDocumentVersion } from '@/components/search-panel/readSearchPanelDocumentVersion';
-import { matchesSearchPanelFilterCacheIdentity, matchesSearchPanelSearchCacheIdentity } from '@/components/search-panel/matchesSearchPanelCacheIdentity';
 import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
 import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
 import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
@@ -42,19 +31,11 @@ import { useSearchQueryOptions } from '@/components/search-panel/useSearchQueryO
 import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
 import { useSearchSessionLifecycle } from '@/components/search-panel/useSearchSessionLifecycle';
 import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
+import { useSearchPanelCountHandlers } from '@/components/search-panel/useSearchPanelCountHandlers';
 import { useSearchPanelLoadMoreHandlers } from '@/components/search-panel/useSearchPanelLoadMoreHandlers';
+import { useSearchPanelRunHandlers } from '@/components/search-panel/useSearchPanelRunHandlers';
 import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
 import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
-import type {
-  FilterCountBackendResult,
-  FilterRunResult,
-  SearchCountBackendResult,
-  SearchRunResult,
-} from '@/components/search-panel/types';
-import {
-  FILTER_CHUNK_SIZE,
-  SEARCH_CHUNK_SIZE,
-} from '@/components/search-panel/utils';
 export function SearchReplacePanel() {
   const {
     activeCursorPosition,
@@ -298,393 +279,66 @@ export function SearchReplacePanel() {
     parseEscapeSequences,
   });
 
-  const executeCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
-    const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
-
-    if (!activeTab || !keyword || isFilterMode) {
-      setTotalMatchCount(keyword ? 0 : null);
-      setTotalMatchedLineCount(keyword ? 0 : null);
-      return;
-    }
-
-    if (!forceRefresh) {
-      const cached = countCacheRef.current;
-      if (matchesSearchPanelSearchCacheIdentity(cached, {
-        tabId: activeTab.id,
-        keyword: effectiveSearchKeyword,
-        searchMode,
-        caseSensitive,
-        parseEscapeSequences,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-      })) {
-        if (await matchesSearchPanelDocumentVersion({
-          activeTabId: activeTab.id,
-          cachedDocumentVersion: cached.documentVersion,
-          warnLabel: 'Failed to read document version for count:',
-        })) {
-          applyCachedSearchCountHit({
-            cached,
-            setTotalMatchCount,
-            setTotalMatchedLineCount,
-          });
-          return;
-        }
-      }
-    }
-
-    return runSearchPanelVersionedAsyncOperation({
-      runVersionRef: countRunVersionRef,
-      run: () => invoke<SearchCountBackendResult>(
-        'search_count_in_document',
-        buildSearchCountRequest({
-          activeTabId: activeTab.id,
-          effectiveSearchKeyword,
-          searchMode,
-          caseSensitive,
-          effectiveResultFilterKeyword,
-        })
-      ),
-      applyResult: (result) => {
-        applySearchCountResult({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          countCacheRef,
-          effectiveResultFilterKeyword,
-          effectiveSearchKeyword,
-          parseEscapeSequences,
-          result,
-          searchMode,
-          setTotalMatchCount,
-          setTotalMatchedLineCount,
-        });
-      },
-      handleError: (error) => {
-        handleSearchCountFailure({
-          error,
-          setTotalMatchCount,
-          setTotalMatchedLineCount,
-        });
-      },
-    });
-  }, [
-    activeTab,
+  const { executeCountSearch, executeFilterCountSearch } = useSearchPanelCountHandlers({
+    activeTabId,
     backendResultFilterKeyword,
     caseSensitive,
+    countCacheRef,
+    countRunVersionRef,
     effectiveSearchKeyword,
-    isFilterMode,
-    keyword,
-    parseEscapeSequences,
-    searchMode,
-  ]);
-  const executeFilterCountSearch = useCallback(async (forceRefresh = false, resultFilterKeywordOverride?: string) => {
-    const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
-
-    if (!activeTab) {
-      setTotalFilterMatchedLineCount(null);
-      return;
-    }
-
-    if (filterRulesPayload.length === 0) {
-      setTotalFilterMatchedLineCount(0);
-      return;
-    }
-
-    if (!forceRefresh) {
-      const cached = filterCountCacheRef.current;
-      if (matchesSearchPanelFilterCacheIdentity(cached, {
-        tabId: activeTab.id,
-        rulesKey: filterRulesKey,
-        resultFilterKeyword: effectiveResultFilterKeyword,
-      })) {
-        if (await matchesSearchPanelDocumentVersion({
-          activeTabId: activeTab.id,
-          cachedDocumentVersion: cached.documentVersion,
-          warnLabel: 'Failed to read document version for filter count:',
-        })) {
-          applyCachedFilterCountHit({
-            cached,
-            setTotalFilterMatchedLineCount,
-          });
-          return;
-        }
-      }
-    }
-
-    return runSearchPanelVersionedAsyncOperation({
-      runVersionRef: filterCountRunVersionRef,
-      run: () => invoke<FilterCountBackendResult>(
-        'filter_count_in_document',
-        buildFilterCountRequest({
-          activeTabId: activeTab.id,
-          rules: filterRulesPayload,
-          effectiveResultFilterKeyword,
-          caseSensitive,
-        })
-      ),
-      applyResult: (result) => {
-        applyFilterCountResult({
-          activeTabId: activeTab.id,
-          effectiveResultFilterKeyword,
-          filterCountCacheRef,
-          filterRulesKey,
-          result,
-          setTotalFilterMatchedLineCount,
-        });
-      },
-      handleError: (error) => {
-        handleFilterCountFailure({
-          error,
-          setTotalFilterMatchedLineCount,
-        });
-      },
-    });
-  }, [activeTab, backendResultFilterKeyword, caseSensitive, filterRulesKey, filterRulesPayload]);
-  const executeSearch = useCallback(
-    async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<SearchRunResult | null> => {
-      const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
-      cancelPendingBatchLoad();
-
-    if (!activeTab || isFilterMode) {
-      return null;
-    }
-
-    if (!keyword) {
-      return createEmptySearchRunResult({
-        resetSearchState,
-        setErrorMessage,
-        setIsSearching,
-      });
-    }
-
-    if (!forceRefresh) {
-      const cachedResult = await resolveCachedSearchRunHit({
-        activeTabId: activeTab.id,
-        cached: cachedSearchRef.current,
-        caseSensitive,
-        chunkCursorRef,
-        effectiveResultFilterKeyword,
-        effectiveSearchKeyword,
-        parseEscapeSequences,
-        searchMode,
-        setCurrentMatchIndex,
-        setErrorMessage,
-        setMatches,
-        setSearchSessionId,
-        startTransition,
-      });
-      if (cachedResult) {
-        return cachedResult;
-      }
-    }
-
-    return runSearchPanelAsyncOperation({
-      runVersionRef,
-      setIsSearching,
-      silent,
-      run: async (runVersion) => {
-        const {
-          documentVersion,
-          nextMatches,
-          nextOffset,
-          sessionId,
-          shouldRunCountFallback,
-          totalMatchedLines,
-          totalMatches,
-        } = await resolveSearchRunStartState({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          effectiveResultFilterKeyword,
-          effectiveSearchKeyword,
-          maxResults: SEARCH_CHUNK_SIZE,
-          searchMode,
-          searchSessionCommandUnsupportedRef,
-        });
-
-        if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
-          return null;
-        }
-
-        applySearchRunResult({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          chunkCursorRef,
-          countCacheRef,
-          documentVersion,
-          effectiveResultFilterKeyword,
-          effectiveSearchKeyword,
-          nextMatches,
-          nextOffset,
-          parseEscapeSequences,
-          cachedSearchRef,
-          searchMode,
-          sessionId,
-          setCurrentMatchIndex,
-          setErrorMessage,
-          setMatches,
-          setSearchSessionId,
-          setTotalMatchCount,
-          setTotalMatchedLineCount,
-          shouldRunCountFallback,
-          startTransition,
-          totalMatchedLines,
-          totalMatches,
-        });
-        if (shouldRunCountFallback) {
-          void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
-        }
-
-        return createSearchRunSuccessResult({
-          matches: nextMatches,
-          documentVersion,
-          nextOffset,
-        });
-      },
-      handleError: (error, runVersion) => {
-        if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
-          return null;
-        }
-
-        return createSearchRunFailureResult({
-          error,
-          resetSearchState,
-          searchFailedLabel: messages.searchFailed,
-          setErrorMessage,
-        });
-      },
-    });
-  }, [
-    activeTab,
-    backendResultFilterKeyword,
-    cancelPendingBatchLoad,
-    caseSensitive,
-    effectiveSearchKeyword,
-    executeCountSearch,
-    isFilterMode,
-    keyword,
-    messages.searchFailed,
-    parseEscapeSequences,
-    resetSearchState,
-    setSearchSessionId,
-    searchMode,
-  ]);
-
-  const executeFilter = useCallback(
-    async (forceRefresh = false, silent = false, resultFilterKeywordOverride?: string): Promise<FilterRunResult | null> => {
-  const effectiveResultFilterKeyword = resultFilterKeywordOverride ?? backendResultFilterKeyword;
-  cancelPendingBatchLoad();
-
-  if (!activeTab) {
-    return null;
-  }
-
-    if (filterRulesPayload.length === 0) {
-      return createEmptyFilterRunResult({
-        resetFilterState,
-        setErrorMessage,
-        setIsSearching,
-        setTotalFilterMatchedLineCount,
-      });
-    }
-
-    if (!forceRefresh) {
-      const cachedResult = await resolveCachedFilterRunHit({
-        activeTabId: activeTab.id,
-        cached: cachedFilterRef.current,
-        effectiveResultFilterKeyword,
-        filterLineCursorRef,
-        filterRulesKey,
-        setCurrentFilterMatchIndex,
-        setErrorMessage,
-        setFilterMatches,
-        setFilterSessionId,
-        startTransition,
-      });
-      if (cachedResult) {
-        return cachedResult;
-      }
-    }
-
-    return runSearchPanelAsyncOperation({
-      runVersionRef: filterRunVersionRef,
-      setIsSearching,
-      silent,
-      run: async (runVersion) => {
-        const {
-          documentVersion,
-          nextLine,
-          nextMatches,
-          sessionId,
-          shouldRunCountFallback,
-          totalMatchedLines,
-        } = await resolveFilterRunStartState({
-          activeTabId: activeTab.id,
-          caseSensitive,
-          effectiveResultFilterKeyword,
-          filterSessionCommandUnsupportedRef,
-          maxResults: FILTER_CHUNK_SIZE,
-          rules: filterRulesPayload,
-        });
-
-        if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
-          return null;
-        }
-
-        applyFilterRunResult({
-          activeTabId: activeTab.id,
-          cachedFilterRef,
-          documentVersion,
-          effectiveResultFilterKeyword,
-          filterCountCacheRef,
-          filterLineCursorRef,
-          filterRulesKey,
-          nextLine,
-          nextMatches,
-          sessionId,
-          setCurrentFilterMatchIndex,
-          setErrorMessage,
-          setFilterMatches,
-          setFilterSessionId,
-          setTotalFilterMatchedLineCount,
-          shouldRunCountFallback,
-          startTransition,
-          totalMatchedLines,
-        });
-        if (shouldRunCountFallback) {
-          void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
-        }
-
-        return createFilterRunSuccessResult({
-          matches: nextMatches,
-          documentVersion,
-          nextLine,
-        });
-      },
-      handleError: (error, runVersion) => {
-        if (isSearchPanelRunStale({ runVersion, runVersionRef: filterRunVersionRef })) {
-          return null;
-        }
-
-        return createFilterRunFailureResult({
-          error,
-          filterFailedLabel: messages.filterFailed,
-          resetFilterState,
-          setErrorMessage,
-        });
-      },
-    });
-  }, [
-    activeTab,
-    backendResultFilterKeyword,
-    cancelPendingBatchLoad,
-    caseSensitive,
-    executeFilterCountSearch,
+    filterCountCacheRef,
+    filterCountRunVersionRef,
     filterRulesKey,
     filterRulesPayload,
     isFilterMode,
-    messages.filterFailed,
+    keyword,
+    parseEscapeSequences,
+    searchMode,
+    setTotalFilterMatchedLineCount,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+  });
+  const { executeFilter, executeSearch } = useSearchPanelRunHandlers({
+    activeTabId,
+    backendResultFilterKeyword,
+    cachedFilterRef,
+    cachedSearchRef,
+    cancelPendingBatchLoad,
+    caseSensitive,
+    chunkCursorRef,
+    countCacheRef,
+    effectiveSearchKeyword,
+    executeCountSearch,
+    executeFilterCountSearch,
+    filterCountCacheRef,
+    filterFailedLabel: messages.filterFailed,
+    filterLineCursorRef,
+    filterRulesKey,
+    filterRulesPayload,
+    filterRunVersionRef,
+    filterSessionCommandUnsupportedRef,
+    isFilterMode,
+    keyword,
+    parseEscapeSequences,
     resetFilterState,
+    resetSearchState,
+    runVersionRef,
+    searchFailedLabel: messages.searchFailed,
+    searchMode,
+    searchSessionCommandUnsupportedRef,
+    setCurrentFilterMatchIndex,
+    setCurrentMatchIndex,
+    setErrorMessage,
+    setFilterMatches,
     setFilterSessionId,
-  ]);
+    setIsSearching,
+    setMatches,
+    setSearchSessionId,
+    setTotalFilterMatchedLineCount,
+    setTotalMatchCount,
+    setTotalMatchedLineCount,
+    startTransition,
+  });
 
   const {
     loadMoreMatches,
@@ -1273,5 +927,3 @@ export function SearchReplacePanel() {
     </>
   );
 }
-
-
