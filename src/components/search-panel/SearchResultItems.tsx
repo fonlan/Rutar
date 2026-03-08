@@ -1,4 +1,4 @@
-import { Check, ChevronUp } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { type CSSProperties } from 'react';
 import { getSearchPanelMessages } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -125,7 +125,6 @@ export function SearchResultItems({
         >
           {renderMatchPreview(match)}
         </span>
-        {isActive ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
       </button>
     );
   });

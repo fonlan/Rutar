@@ -30,6 +30,13 @@ interface ResolvedStepTarget<TMatch> {
   targetIndex: number;
 }
 
+interface MergeResultFilterStepMatchesOptions<TMatch> {
+  batchMatches?: TMatch[];
+  compare: (left: TMatch, right: TMatch) => number;
+  getKey: (match: TMatch) => string;
+  matches: TMatch[];
+}
+
 export type SearchPanelResultFilterStepSelection<TMatch> =
   | { kind: 'missing-target' }
   | { kind: 'no-match' }
@@ -58,7 +65,43 @@ interface ResolveSearchPanelLocalStepSelectionOptions<TMatch> {
   step: number;
 }
 
+function mergeResultFilterStepMatches<TMatch>({
+  batchMatches,
+  compare,
+  getKey,
+  matches,
+}: MergeResultFilterStepMatchesOptions<TMatch>): TMatch[] {
+  if (!Array.isArray(batchMatches) || batchMatches.length === 0) {
+    return matches;
+  }
 
+  const mergedMatches = new Map<string, TMatch>();
+
+  matches.forEach((match) => {
+    mergedMatches.set(getKey(match), match);
+  });
+  batchMatches.forEach((match) => {
+    mergedMatches.set(getKey(match), match);
+  });
+
+  return Array.from(mergedMatches.values()).sort(compare);
+}
+
+function getFilterMatchKey(match: Pick<FilterMatch, 'line' | 'column' | 'ruleIndex'>) {
+  return [match.line, match.column, match.ruleIndex].join(':');
+}
+
+function compareFilterMatches(left: FilterMatch, right: FilterMatch) {
+  return left.line - right.line || left.column - right.column || left.ruleIndex - right.ruleIndex;
+}
+
+function getSearchMatchKey(match: Pick<SearchMatch, 'start' | 'end'>) {
+  return [match.start, match.end].join(':');
+}
+
+function compareSearchMatches(left: SearchMatch, right: SearchMatch) {
+  return left.start - right.start || left.end - right.end;
+}
 
 export function resolveFilterStepTarget({
   batchMatches,
@@ -70,18 +113,23 @@ export function resolveFilterStepTarget({
   targetIndex: number;
 } | null {
   const resolvedBatchMatches = Array.isArray(batchMatches) && batchMatches.length > 0 ? batchMatches : null;
-  const nextMatches = resolvedBatchMatches ?? matches;
-  const targetIndex = resolvedBatchMatches
-    ? Math.min(
-        Math.max(0, targetIndexInBatch ?? 0),
-        Math.max(0, nextMatches.length - 1)
-      )
-    : nextMatches.findIndex(
-        (item) =>
-          item.line === targetMatch.line &&
-          item.column === targetMatch.column &&
-          item.ruleIndex === targetMatch.ruleIndex
-      );
+  const nextMatches = mergeResultFilterStepMatches({
+    batchMatches: resolvedBatchMatches ?? undefined,
+    compare: compareFilterMatches,
+    getKey: getFilterMatchKey,
+    matches,
+  });
+  const resolvedTargetMatch = resolvedBatchMatches
+    ? resolvedBatchMatches[
+        Math.min(
+          Math.max(0, targetIndexInBatch ?? 0),
+          Math.max(0, resolvedBatchMatches.length - 1)
+        )
+      ] ?? targetMatch
+    : targetMatch;
+  const targetIndex = nextMatches.findIndex(
+    (item) => getFilterMatchKey(item) === getFilterMatchKey(resolvedTargetMatch)
+  );
 
   if (targetIndex < 0 || targetIndex >= nextMatches.length) {
     return null;
@@ -103,15 +151,23 @@ export function resolveSearchStepTarget({
   targetIndex: number;
 } | null {
   const resolvedBatchMatches = Array.isArray(batchMatches) && batchMatches.length > 0 ? batchMatches : null;
-  const nextMatches = resolvedBatchMatches ?? matches;
-  const targetIndex = resolvedBatchMatches
-    ? Math.min(
-        Math.max(0, targetIndexInBatch ?? 0),
-        Math.max(0, nextMatches.length - 1)
-      )
-    : nextMatches.findIndex(
-        (item) => item.start === targetMatch.start && item.end === targetMatch.end
-      );
+  const nextMatches = mergeResultFilterStepMatches({
+    batchMatches: resolvedBatchMatches ?? undefined,
+    compare: compareSearchMatches,
+    getKey: getSearchMatchKey,
+    matches,
+  });
+  const resolvedTargetMatch = resolvedBatchMatches
+    ? resolvedBatchMatches[
+        Math.min(
+          Math.max(0, targetIndexInBatch ?? 0),
+          Math.max(0, resolvedBatchMatches.length - 1)
+        )
+      ] ?? targetMatch
+    : targetMatch;
+  const targetIndex = nextMatches.findIndex(
+    (item) => getSearchMatchKey(item) === getSearchMatchKey(resolvedTargetMatch)
+  );
 
   if (targetIndex < 0 || targetIndex >= nextMatches.length) {
     return null;
@@ -122,6 +178,7 @@ export function resolveSearchStepTarget({
     targetIndex,
   };
 }
+
 export function resolveSearchPanelResultFilterStepSelection<TMatch>({
   batchMatches,
   matches,
