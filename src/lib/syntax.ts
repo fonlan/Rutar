@@ -10,10 +10,12 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'rust', label: 'Rust' },
   { value: 'python', label: 'Python' },
   { value: 'json', label: 'JSON' },
+  { value: 'jsonc', label: 'JSONC' },
   { value: 'ini', label: 'INI' },
   { value: 'html', label: 'HTML' },
   { value: 'css', label: 'CSS' },
   { value: 'bash', label: 'Bash' },
+  { value: 'zsh', label: 'Zsh' },
   { value: 'toml', label: 'TOML' },
   { value: 'yaml', label: 'YAML' },
   { value: 'xml', label: 'XML' },
@@ -40,10 +42,12 @@ const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   makefile: '#',
   python: '#',
   bash: '#',
+  zsh: '#',
   toml: '#',
   ini: '#',
   yaml: '#',
   json: '#',
+  jsonc: '//',
   javascript: '//',
   typescript: '//',
   rust: '//',
@@ -88,6 +92,10 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     return 'makefile';
   }
 
+  if (['.zshenv', '.zprofile', '.zshrc', '.zlogin', '.zlogout'].includes(fileName)) {
+    return 'zsh';
+  }
+
   if (fileName === 'gemfile' || fileName === 'rakefile') {
     return 'ruby';
   }
@@ -115,8 +123,9 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'pyw':
       return 'python';
     case 'json':
-    case 'jsonc':
       return 'json';
+    case 'jsonc':
+      return 'jsonc';
     case 'md':
     case 'markdown':
     case 'mdown':
@@ -148,8 +157,9 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
       return 'css';
     case 'sh':
     case 'bash':
-    case 'zsh':
       return 'bash';
+    case 'zsh':
+      return 'zsh';
     case 'mk':
     case 'mak':
       return 'makefile';

@@ -55,6 +55,9 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                     return Some(tree_sitter_dockerfile::language());
                 }
                 "makefile" | "gnumakefile" => return Some(tree_sitter_make::LANGUAGE.into()),
+                ".zshenv" | ".zprofile" | ".zshrc" | ".zlogin" | ".zlogout" => {
+                    return Some(tree_sitter_zsh::LANGUAGE.into());
+                }
                 "gemfile" | "rakefile" => return Some(tree_sitter_ruby::LANGUAGE.into()),
                 _ => {}
             }
@@ -73,7 +76,8 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 }
                 "html" | "htm" | "xhtml" => Some(tree_sitter_html::LANGUAGE.into()),
                 "css" | "scss" | "sass" | "less" => Some(tree_sitter_css::LANGUAGE.into()),
-                "sh" | "bash" | "zsh" => Some(tree_sitter_bash::LANGUAGE.into()),
+                "sh" | "bash" => Some(tree_sitter_bash::LANGUAGE.into()),
+                "zsh" => Some(tree_sitter_zsh::LANGUAGE.into()),
                 "mk" | "mak" => Some(tree_sitter_make::LANGUAGE.into()),
                 "toml" => Some(tree_sitter_toml_ng::LANGUAGE.into()),
                 "yaml" | "yml" => Some(tree_sitter_yaml::LANGUAGE.into()),
@@ -108,12 +112,14 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
         "json" => Some(tree_sitter_json::LANGUAGE.into()),
+        "jsonc" => Some(tree_sitter_json::LANGUAGE.into()),
         "dockerfile" => Some(tree_sitter_dockerfile::language()),
         "makefile" => Some(tree_sitter_make::LANGUAGE.into()),
         "ini" => Some(tree_sitter_ini::LANGUAGE.into()),
         "html" => Some(tree_sitter_html::LANGUAGE.into()),
         "css" => Some(tree_sitter_css::LANGUAGE.into()),
         "bash" => Some(tree_sitter_bash::LANGUAGE.into()),
+        "zsh" => Some(tree_sitter_zsh::LANGUAGE.into()),
         "toml" => Some(tree_sitter_toml_ng::LANGUAGE.into()),
         "yaml" => Some(tree_sitter_yaml::LANGUAGE.into()),
         "xml" => Some(tree_sitter_xml::LANGUAGE_XML.into()),
@@ -157,8 +163,30 @@ mod tests {
     }
 
     #[test]
+    fn zsh_special_names_should_resolve_language() {
+        for file_name in [".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout"] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
     fn dockerfile_and_makefile_extensions_should_resolve_languages() {
         for file_name in ["service.Dockerfile", "build.mk"] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn zsh_and_jsonc_extensions_should_resolve_languages() {
+        for file_name in ["shell.zsh", "settings.jsonc"] {
             let path = Some(PathBuf::from(file_name));
             assert!(
                 get_language_from_path(&path).is_some(),
@@ -176,6 +204,18 @@ mod tests {
     #[test]
     fn dockerfile_and_makefile_syntax_overrides_should_be_supported() {
         for syntax_key in ["dockerfile", "makefile"] {
+            let normalized = normalize_syntax_override(Some(syntax_key));
+            assert_eq!(
+                normalized.ok(),
+                Some(Some(syntax_key.to_string())),
+                "expected syntax override for {syntax_key}"
+            );
+        }
+    }
+
+    #[test]
+    fn zsh_and_jsonc_syntax_overrides_should_be_supported() {
+        for syntax_key in ["zsh", "jsonc"] {
             let normalized = normalize_syntax_override(Some(syntax_key));
             assert_eq!(
                 normalized.ok(),
@@ -264,6 +304,16 @@ mod tests {
     #[test]
     fn dockerfile_and_makefile_languages_should_create_parsers() {
         for file_name in ["service.Dockerfile", "build.mk"] {
+            let path = Some(PathBuf::from(file_name));
+            let language = get_language_from_path(&path);
+            let parser = create_parser(language);
+            assert!(parser.is_some(), "expected parser for {file_name}");
+        }
+    }
+
+    #[test]
+    fn zsh_and_jsonc_languages_should_create_parsers() {
+        for file_name in [".zshrc", "settings.jsonc"] {
             let path = Some(PathBuf::from(file_name));
             let language = get_language_from_path(&path);
             let parser = create_parser(language);

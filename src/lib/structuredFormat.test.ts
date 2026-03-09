@@ -23,10 +23,12 @@ describe("structuredFormat", () => {
 
   it("uses syntax override first", () => {
     expect(detectStructuredFormatSyntaxKey(createTab({ syntaxOverride: "json" }))).toBe("json");
+    expect(detectStructuredFormatSyntaxKey(createTab({ syntaxOverride: "jsonc" }))).toBe("jsonc");
     expect(detectStructuredFormatSyntaxKey(createTab({ syntaxOverride: "typescript" }))).toBe(null);
   });
 
   it("falls back to detected syntax from file extension", () => {
+    expect(detectStructuredFormatSyntaxKey(createTab({ path: "C:\\repo\\a.jsonc" }))).toBe("jsonc");
     expect(detectStructuredFormatSyntaxKey(createTab({ path: "C:\\repo\\a.yaml" }))).toBe("yaml");
     expect(detectStructuredFormatSyntaxKey(createTab({ path: "C:\\repo\\index.html" }))).toBe("html");
     expect(detectStructuredFormatSyntaxKey(createTab({ path: "C:\\repo\\main.ts" }))).toBe(null);

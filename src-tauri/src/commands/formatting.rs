@@ -16,7 +16,7 @@ enum StructuredFormat {
 
 fn parse_structured_format_from_syntax_key(syntax_key: &str) -> Option<StructuredFormat> {
     match syntax_key.trim().to_lowercase().as_str() {
-        "json" => Some(StructuredFormat::Json),
+        "json" | "jsonc" => Some(StructuredFormat::Json),
         "yaml" => Some(StructuredFormat::Yaml),
         "xml" => Some(StructuredFormat::Xml),
         "html" => Some(StructuredFormat::Html),
@@ -607,6 +607,16 @@ mod tests {
         let result = format_document_text(source, "beautify", Some("json"), None, None, &None, 2);
 
         let formatted = result.expect("expected JSON formatting via syntax key to succeed");
+        assert!(formatted.contains("\n"));
+        assert!(formatted.contains("\"a\": 1"));
+    }
+
+    #[test]
+    fn format_should_resolve_from_jsonc_syntax_key_when_name_missing() {
+        let source = "{\"b\":2,\"a\":1}";
+        let result = format_document_text(source, "beautify", Some("jsonc"), None, None, &None, 2);
+
+        let formatted = result.expect("expected JSONC formatting via syntax key to succeed");
         assert!(formatted.contains("\n"));
         assert!(formatted.contains("\"a\": 1"));
     }

@@ -1,5 +1,9 @@
 import type { SyntaxKey } from "@/store/useStore";
 
+function isJsonLikeSyntaxKey(syntaxKey: SyntaxKey | null | undefined) {
+  return syntaxKey === "json" || syntaxKey === "jsonc";
+}
+
 function getLineLeadingWhitespaceAtOffset(
   text: string,
   offset: number,
@@ -43,7 +47,7 @@ function shouldIncreaseIndent(
     return trimmedLinePrefix.endsWith(":");
   }
 
-  if (syntaxKey === "json") {
+  if (isJsonLikeSyntaxKey(syntaxKey)) {
     return trimmedLinePrefix.endsWith("{") || trimmedLinePrefix.endsWith("[");
   }
 
@@ -98,7 +102,7 @@ export function buildEnterAutoIndentEdit({
   const trimmedPrefix = linePrefix.trimEnd();
   const trimmedSuffix = lineSuffix.trimStart();
 
-  if (syntaxKey === "json") {
+  if (isJsonLikeSyntaxKey(syntaxKey)) {
     const expectedCloser = getJsonCloserForPrefix(trimmedPrefix);
     if (expectedCloser && trimmedSuffix.startsWith(expectedCloser)) {
       const insertedText = `\n${leadingWhitespace}${indentText}\n${leadingWhitespace}`;
@@ -156,7 +160,7 @@ export function buildAutoDedentInsertion({
     return null;
   }
 
-  if (syntaxKey === "json" && (key === "}" || key === "]")) {
+  if (isJsonLikeSyntaxKey(syntaxKey) && (key === "}" || key === "]")) {
     if (linePrefix.trim().length > 0 || lineSuffix.trim().length > 0) {
       return null;
     }

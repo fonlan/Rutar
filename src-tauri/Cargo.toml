@@ -48,6 +48,7 @@ tree-sitter-dockerfile = { package = "tree-sitter-dockerfile-updated", version =
 tree-sitter-make = "1.1.1"
 tree-sitter-toml-ng = "0.7.0"
 tree-sitter-yaml = "0.7.2"
+tree-sitter-zsh = "0.57.0"
 tree-sitter-xml = "0.7.0"
 tree-sitter-c = "0.24.1"
 tree-sitter-cpp = "0.23.4"

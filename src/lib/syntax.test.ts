@@ -26,7 +26,7 @@ describe("detectSyntaxKeyFromTab", () => {
         name: "settings.jsonc",
         path: "",
       })
-    ).toBe("json");
+    ).toBe("jsonc");
   });
 
   it("supports special filenames and windows paths", () => {
@@ -43,6 +43,13 @@ describe("detectSyntaxKeyFromTab", () => {
         path: "",
       })
     ).toBe("makefile");
+
+    expect(
+      detectSyntaxKeyFromTab({
+        name: ".zshrc",
+        path: "",
+      })
+    ).toBe("zsh");
 
     expect(
       detectSyntaxKeyFromTab({
@@ -82,12 +89,13 @@ describe("detectSyntaxKeyFromTab", () => {
       { fileName: "main.rs", expected: "rust" },
       { fileName: "main.pyw", expected: "python" },
       { fileName: "doc.mdx", expected: "markdown" },
+      { fileName: "settings.jsonc", expected: "jsonc" },
       { fileName: "service.Dockerfile", expected: "dockerfile" },
       { fileName: "build.mk", expected: "makefile" },
       { fileName: "app.properties", expected: "ini" },
       { fileName: "index.xhtml", expected: "html" },
       { fileName: "theme.scss", expected: "css" },
-      { fileName: "shell.zsh", expected: "bash" },
+      { fileName: "shell.zsh", expected: "zsh" },
       { fileName: "config.toml", expected: "toml" },
       { fileName: "config.yml", expected: "yaml" },
       { fileName: "icon.svg", expected: "xml" },
@@ -137,6 +145,7 @@ describe("syntax helpers", () => {
 
   it("returns label for syntax key", () => {
     expect(getSyntaxLabel("typescript")).toBe("TypeScript");
+    expect(getSyntaxLabel("jsonc")).toBe("JSONC");
     expect(getSyntaxLabel("dockerfile")).toBe("Dockerfile");
     expect(getSyntaxLabel("powershell")).toBe("PowerShell");
     expect(getSyntaxLabel("unknown" as never)).toBe("Plain Text");
@@ -145,6 +154,8 @@ describe("syntax helpers", () => {
   it("returns line comment prefix with fallback", () => {
     expect(getLineCommentPrefixForSyntaxKey("typescript")).toBe("//");
     expect(getLineCommentPrefixForSyntaxKey("dockerfile")).toBe("#");
+    expect(getLineCommentPrefixForSyntaxKey("jsonc")).toBe("//");
+    expect(getLineCommentPrefixForSyntaxKey("zsh")).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey("lua")).toBe("--");
     expect(getLineCommentPrefixForSyntaxKey("sql")).toBe("--");
     expect(getLineCommentPrefixForSyntaxKey(null)).toBe("#");

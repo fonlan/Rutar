@@ -341,6 +341,9 @@ option {
 .editor-syntax-json .token-string,
 .editor-syntax-json .token-string_content,
 .editor-syntax-json .token-escape_sequence,
+.editor-syntax-jsonc .token-string,
+.editor-syntax-jsonc .token-string_content,
+.editor-syntax-jsonc .token-escape_sequence,
 .editor-syntax-yaml .token-string,
 .editor-syntax-yaml .token-string_scalar,
 .editor-syntax-yaml .token-double_quote_scalar,
@@ -352,6 +355,9 @@ option {
 .editor-syntax-json .token-property,
 .editor-syntax-json .token-key_string_content,
 .editor-syntax-json .token-key_escape_sequence,
+.editor-syntax-jsonc .token-property,
+.editor-syntax-jsonc .token-key_string_content,
+.editor-syntax-jsonc .token-key_escape_sequence,
 .editor-syntax-yaml .token-property,
 .editor-syntax-yaml .token-key_string_scalar,
 .editor-syntax-yaml .token-key_double_quote_scalar,
@@ -368,12 +374,14 @@ option {
 }
 
 .editor-syntax-json .token-key_quote,
+.editor-syntax-jsonc .token-key_quote,
 .editor-syntax-yaml .token-key_quote {
   color: #4b5563 !important;
   font-weight: 400 !important;
 }
 
 .editor-syntax-json .token-pair_separator,
+.editor-syntax-jsonc .token-pair_separator,
 .editor-syntax-yaml .token-pair_separator,
 .editor-syntax-ini .token-operator {
   color: #6b7280 !important;
@@ -432,6 +440,9 @@ option {
 .dark .editor-syntax-json .token-string,
 .dark .editor-syntax-json .token-string_content,
 .dark .editor-syntax-json .token-escape_sequence,
+.dark .editor-syntax-jsonc .token-string,
+.dark .editor-syntax-jsonc .token-string_content,
+.dark .editor-syntax-jsonc .token-escape_sequence,
 .dark .editor-syntax-yaml .token-string,
 .dark .editor-syntax-yaml .token-string_scalar,
 .dark .editor-syntax-yaml .token-double_quote_scalar,
@@ -443,6 +454,9 @@ option {
 .dark .editor-syntax-json .token-property,
 .dark .editor-syntax-json .token-key_string_content,
 .dark .editor-syntax-json .token-key_escape_sequence,
+.dark .editor-syntax-jsonc .token-property,
+.dark .editor-syntax-jsonc .token-key_string_content,
+.dark .editor-syntax-jsonc .token-key_escape_sequence,
 .dark .editor-syntax-yaml .token-property,
 .dark .editor-syntax-yaml .token-key_string_scalar,
 .dark .editor-syntax-yaml .token-key_double_quote_scalar,
@@ -459,12 +473,14 @@ option {
 }
 
 .dark .editor-syntax-json .token-key_quote,
+.dark .editor-syntax-jsonc .token-key_quote,
 .dark .editor-syntax-yaml .token-key_quote {
   color: #93a4b8 !important;
   font-weight: 400 !important;
 }
 
 .dark .editor-syntax-json .token-pair_separator,
+.dark .editor-syntax-jsonc .token-pair_separator,
 .dark .editor-syntax-yaml .token-pair_separator,
 .dark .editor-syntax-ini .token-operator {
   color: #7f8ea3 !important;

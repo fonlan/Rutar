@@ -29,6 +29,7 @@ describe("outline", () => {
 
   it("detects outline type from syntax override first", () => {
     expect(detectOutlineType(createTab({ syntaxOverride: "yaml" }))).toBe("yaml");
+    expect(detectOutlineType(createTab({ syntaxOverride: "jsonc" }))).toBe("json");
     expect(
       detectOutlineType(
         createTab({ syntaxOverride: "  RUST  " as unknown as FileTab["syntaxOverride"] })
@@ -38,6 +39,7 @@ describe("outline", () => {
   });
 
   it("detects outline type from extension", () => {
+    expect(detectOutlineType(createTab({ path: "C:\\repo\\data.jsonc" }))).toBe("json");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\main.rs" }))).toBe("rust");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\a.yml" }))).toBe("yaml");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\a." }))).toBe(null);

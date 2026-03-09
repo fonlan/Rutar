@@ -3,6 +3,7 @@ import { FileTab, OutlineNode, OutlineType } from '@/store/useStore';
 
 const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
   json: 'json',
+  jsonc: 'json',
   yaml: 'yaml',
   xml: 'xml',
   toml: 'toml',
@@ -23,6 +24,7 @@ const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
 
 const OUTLINE_TYPE_BY_EXTENSION: Record<string, Exclude<OutlineType, null>> = {
   json: 'json',
+  jsonc: 'json',
   yaml: 'yaml',
   yml: 'yaml',
   xml: 'xml',

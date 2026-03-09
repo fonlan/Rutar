@@ -1,9 +1,9 @@
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { FileTab, SyntaxKey } from '@/store/useStore';
 
-export type StructuredFormatSyntaxKey = Extract<SyntaxKey, 'json' | 'yaml' | 'xml' | 'html' | 'toml'>;
+export type StructuredFormatSyntaxKey = Extract<SyntaxKey, 'json' | 'jsonc' | 'yaml' | 'xml' | 'html' | 'toml'>;
 
-const STRUCTURED_SYNTAX_KEYS = new Set<StructuredFormatSyntaxKey>(['json', 'yaml', 'xml', 'html', 'toml']);
+const STRUCTURED_SYNTAX_KEYS = new Set<StructuredFormatSyntaxKey>(['json', 'jsonc', 'yaml', 'xml', 'html', 'toml']);
 
 export function detectStructuredFormatSyntaxKey(tab?: FileTab | null): StructuredFormatSyntaxKey | null {
   if (!tab) {
