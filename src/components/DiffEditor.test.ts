@@ -2154,6 +2154,112 @@ describe("DiffEditor component", () => {
     });
   });
 
+  it("outdents selected diff lines on Shift+Tab and preserves the selection", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(targetTextarea, {
+      target: { value: "\tright-1\n\tright-2" },
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe("\tright-1\n\tright-2");
+    });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(3, 12);
+    });
+
+    fireEvent.keyDown(targetTextarea, {
+      key: "Tab",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe("right-1\nright-2");
+      expect(targetTextarea.selectionStart).toBe(2);
+      expect(targetTextarea.selectionEnd).toBe(10);
+    });
+  });
+
+  it("outdents only the current diff line on Shift+Tab with a collapsed caret", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    fireEvent.change(targetTextarea, {
+      target: { value: "\tright-1\n\tright-2" },
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe("\tright-1\n\tright-2");
+    });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(12, 12);
+    });
+
+    fireEvent.keyDown(targetTextarea, {
+      key: "Tab",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe("\tright-1\nright-2");
+      expect(targetTextarea.selectionStart).toBe(11);
+      expect(targetTextarea.selectionEnd).toBe(11);
+    });
+  });
+
   it("prefers detected indentation for python diff panel Tab insertions", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "tabs",

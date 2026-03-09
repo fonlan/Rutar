@@ -7,7 +7,11 @@ import {
   buildAutoDedentInsertion,
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
-import { buildIndentSelectedLinesEdit } from "./indentSelectedLines";
+import {
+  buildIndentSelectedLinesEdit,
+  buildOutdentCurrentLineEdit,
+  buildOutdentSelectedLinesEdit,
+} from "./indentSelectedLines";
 
 interface UseEditorKeyboardActionsParams {
   tabId: string;
@@ -20,7 +24,12 @@ interface UseEditorKeyboardActionsParams {
   rectangularSelectionRef: MutableRefObject<unknown>;
   lineNumberMultiSelection: number[];
   normalizedRectangularSelection: unknown;
-  replaceRectangularSelection: (insertText: string) => Promise<boolean>;
+  indentRectangularSelection: (indentText: string) => Promise<boolean>;
+  replaceRectangularSelection: (
+    insertText: string,
+    options?: { collapseToStart?: boolean; preserveSelection?: boolean },
+  ) => Promise<boolean>;
+  outdentRectangularSelection: (indentText: string) => Promise<boolean>;
   isVerticalSelectionShortcut: (
     event: KeyboardEvent<HTMLDivElement>,
   ) => boolean;
@@ -73,7 +82,9 @@ export function useEditorKeyboardActions({
   rectangularSelectionRef,
   lineNumberMultiSelection,
   normalizedRectangularSelection,
+  indentRectangularSelection,
   replaceRectangularSelection,
+  outdentRectangularSelection,
   isVerticalSelectionShortcut,
   beginRectangularSelectionFromCaret,
   nudgeRectangularSelectionByKey,
@@ -142,7 +153,11 @@ export function useEditorKeyboardActions({
       if (key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
-        void replaceRectangularSelection(indentText);
+        if (event.shiftKey) {
+          void outdentRectangularSelection(indentText);
+        } else {
+          void indentRectangularSelection(indentText);
+        }
         return true;
       }
 
@@ -162,8 +177,10 @@ export function useEditorKeyboardActions({
     },
     [
       clearRectangularSelection,
+      indentRectangularSelection,
       indentText,
       normalizedRectangularSelection,
+      outdentRectangularSelection,
       replaceRectangularSelection,
     ],
   );
@@ -237,7 +254,9 @@ export function useEditorKeyboardActions({
     [contentRef, getSelectionOffsetsInElement, replaceTextRange],
   );
 
-  const indentSelectedLinesAtSelection = useCallback(() => {
+  const applySelectedLinesEditAtSelection = useCallback((
+    buildEdit: typeof buildIndentSelectedLinesEdit,
+  ) => {
     const element = contentRef.current;
     if (!element) {
       return false;
@@ -249,10 +268,73 @@ export function useEditorKeyboardActions({
     }
 
     const text = getEditableText(element);
-    const edit = buildIndentSelectedLinesEdit({
+    const edit = buildEdit({
       text,
       selectionStart: selectionOffsets.start,
       selectionEnd: selectionOffsets.end,
+      indentText,
+    });
+    if (!edit) {
+      return false;
+    }
+
+    const safeStart = Math.max(0, Math.min(edit.start, edit.end));
+    const safeEnd = Math.max(safeStart, edit.end);
+
+    if (isTextareaInputElement(element)) {
+      const nextText = `${element.value.slice(0, safeStart)}${edit.newText}${element.value.slice(safeEnd)}`;
+      element.setRangeText(edit.newText, safeStart, safeEnd, "end");
+      if (element.value !== nextText) {
+        element.value = nextText;
+      }
+      element.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+      return true;
+    }
+
+    const currentText = getEditableText(element);
+    const nextText = `${currentText.slice(0, safeStart)}${edit.newText}${currentText.slice(safeEnd)}`;
+    setInputLayerText(element, nextText);
+    setSelectionToCodeUnitOffsets(
+      element,
+      edit.selectionStart,
+      edit.selectionEnd,
+    );
+    return true;
+  }, [
+    contentRef,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    indentText,
+    isTextareaInputElement,
+    setInputLayerText,
+    setSelectionToCodeUnitOffsets,
+  ]);
+
+  const indentSelectedLinesAtSelection = useCallback(
+    () => applySelectedLinesEditAtSelection(buildIndentSelectedLinesEdit),
+    [applySelectedLinesEditAtSelection],
+  );
+
+  const outdentSelectedLinesAtSelection = useCallback(
+    () => applySelectedLinesEditAtSelection(buildOutdentSelectedLinesEdit),
+    [applySelectedLinesEditAtSelection],
+  );
+
+  const outdentCurrentLineAtCaret = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets?.isCollapsed) {
+      return false;
+    }
+
+    const text = getEditableText(element);
+    const edit = buildOutdentCurrentLineEdit({
+      text,
+      offset: selectionOffsets.start,
       indentText,
     });
     if (!edit) {
@@ -479,7 +561,6 @@ export function useEditorKeyboardActions({
 
       if (
         event.key === "Tab" &&
-        !event.shiftKey &&
         !event.altKey &&
         !event.ctrlKey &&
         !event.metaKey &&
@@ -491,7 +572,11 @@ export function useEditorKeyboardActions({
         event.preventDefault();
         event.stopPropagation();
         capturePendingEditBeforeCursor();
-        if (indentSelectedLinesAtSelection() || insertTextAtSelection(indentText)) {
+        if (
+          event.shiftKey
+            ? outdentSelectedLinesAtSelection() || outdentCurrentLineAtCaret()
+            : indentSelectedLinesAtSelection() || insertTextAtSelection(indentText)
+        ) {
           handleInput();
         }
         return;
@@ -614,6 +699,8 @@ export function useEditorKeyboardActions({
       normalizedRectangularSelection,
       normalizeSegmentText,
       nudgeRectangularSelectionByKey,
+      outdentCurrentLineAtCaret,
+      outdentSelectedLinesAtSelection,
       rectangularSelectionRef,
       replaceTextRange,
       tabId,

@@ -18,7 +18,11 @@ import {
   buildAutoDedentInsertion,
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
-import { buildIndentSelectedLinesEdit } from "./indentSelectedLines";
+import {
+  buildIndentSelectedLinesEdit,
+  buildOutdentCurrentLineEdit,
+  buildOutdentSelectedLinesEdit,
+} from "./indentSelectedLines";
 
 interface ApplyAlignedDiffPanelCopyResult {
   lineDiff: LineDiffComparisonResult;
@@ -429,19 +433,41 @@ export function useDiffEditorEditActions({
         !isComposing
       ) {
         event.preventDefault();
-        const indentEdit = buildIndentSelectedLinesEdit({
+        const selectedLinesEdit = (event.shiftKey
+          ? buildOutdentSelectedLinesEdit
+          : buildIndentSelectedLinesEdit)({
           text: value,
           selectionStart: safeStart,
           selectionEnd: safeEnd,
           indentText,
         });
-        if (indentEdit) {
-          const nextValue = `${value.slice(0, indentEdit.start)}${indentEdit.newText}${value.slice(indentEdit.end)}`;
+        if (selectedLinesEdit) {
+          const nextValue = `${value.slice(0, selectedLinesEdit.start)}${selectedLinesEdit.newText}${value.slice(selectedLinesEdit.end)}`;
           handlePanelTextareaChange(
             side,
             nextValue,
-            indentEdit.selectionStart,
-            indentEdit.selectionEnd,
+            selectedLinesEdit.selectionStart,
+            selectedLinesEdit.selectionEnd,
+          );
+          return;
+        }
+
+        if (event.shiftKey) {
+          const currentLineEdit = buildOutdentCurrentLineEdit({
+            text: value,
+            offset: safeStart,
+            indentText,
+          });
+          if (!currentLineEdit) {
+            return;
+          }
+
+          const nextValue = `${value.slice(0, currentLineEdit.start)}${currentLineEdit.newText}${value.slice(currentLineEdit.end)}`;
+          handlePanelTextareaChange(
+            side,
+            nextValue,
+            currentLineEdit.selectionStart,
+            currentLineEdit.selectionEnd,
           );
           return;
         }

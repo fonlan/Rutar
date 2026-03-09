@@ -5428,6 +5428,311 @@ describe("Editor component", () => {
     });
   });
 
+  it("outdents selected lines on Shift+Tab and preserves the selection", async () => {
+    const tab = createTab({ id: "tab-outdent-selected-lines" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.value = "\talpha\n\tbeta\n";
+      textarea.setSelectionRange(3, 10);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "Tab",
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("alpha\nbeta\n");
+      expect(textarea.selectionStart).toBe(2);
+      expect(textarea.selectionEnd).toBe(8);
+    });
+  });
+
+  it("outdents only the current line on Shift+Tab with a collapsed caret", async () => {
+    const tab = createTab({ id: "tab-outdent-current-line-caret" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.value = "\talpha\n\tbeta\n";
+      textarea.setSelectionRange(9, 9);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "Tab",
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("\talpha\nbeta\n");
+      expect(textarea.selectionStart).toBe(8);
+      expect(textarea.selectionEnd).toBe(8);
+    });
+  });
+
+  it("snaps caret to the previous indent stop when Shift+Tab is pressed inside leading whitespace", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 4,
+    });
+
+    const tab = createTab({ id: "tab-outdent-current-line-whitespace-caret" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.value = "        alpha\n";
+      textarea.setSelectionRange(6, 6);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "Tab",
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("    alpha\n");
+      expect(textarea.selectionStart).toBe(4);
+      expect(textarea.selectionEnd).toBe(4);
+    });
+  });
+
+  it("renders collapsed rectangular selection markers at line start for Alt+Shift vertical selection", async () => {
+    const tab = createTab({ id: "tab-rectangular-selection-line-start" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "ArrowDown",
+      altKey: true,
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      const markers = Array.from(
+        container.querySelectorAll<HTMLElement>(".editor-rectangular-selection-marker"),
+      );
+      expect(markers).toHaveLength(2);
+      markers.forEach((marker) => {
+        expect(marker.closest("mark")?.className.includes("bg-violet-300/45")).toBe(true);
+      });
+    });
+  });
+
+  it("indents selected lines for non-collapsed rectangular selections on Tab", async () => {
+    const tab = createTab({ id: "tab-rectangular-selection-tab-indent-wide" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const getRectangularHighlights = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".editor-line mark")).filter(
+        (element) => element.className.includes("bg-violet-300/45"),
+      );
+
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(1, 1);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "ArrowDown",
+      altKey: true,
+      shiftKey: true,
+      isComposing: false,
+    });
+    fireEvent.keyDown(textarea, {
+      key: "ArrowRight",
+      altKey: true,
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".editor-rectangular-selection-marker")).toHaveLength(0);
+      expect(getRectangularHighlights().length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("\talpha\n\tbeta\n");
+      expect(container.querySelectorAll(".editor-rectangular-selection-marker")).toHaveLength(0);
+      expect(getRectangularHighlights().length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("\t\talpha\n\t\tbeta\n");
+      expect(container.querySelectorAll(".editor-rectangular-selection-marker")).toHaveLength(0);
+      expect(getRectangularHighlights().length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(textarea, {
+      key: "Tab",
+      shiftKey: true,
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("\talpha\n\tbeta\n");
+      expect(container.querySelectorAll(".editor-rectangular-selection-marker")).toHaveLength(0);
+      expect(getRectangularHighlights().length).toBeGreaterThan(0);
+    });
+  });
+
+  it("keeps rectangular selection active across repeated Tab indentation", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const previousImplementation = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "replace_rectangular_selection_text") {
+        throw new Error("force-local-rectangular-replace");
+      }
+
+      return previousImplementation
+        ? previousImplementation(command, payload)
+        : undefined;
+    });
+
+    try {
+      const tab = createTab({ id: "tab-rectangular-selection-tab-indent" });
+      const { container } = render(<Editor tab={tab} />);
+      const textarea = await waitForEditorTextarea(container);
+      await waitForEditorText(textarea);
+
+      act(() => {
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+      });
+
+      fireEvent.keyDown(textarea, {
+        key: "ArrowDown",
+        altKey: true,
+        shiftKey: true,
+        isComposing: false,
+      });
+
+      await waitFor(() => {
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+
+      fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe("\talpha\n\tbeta\n");
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+
+      fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe("\t\talpha\n\t\tbeta\n");
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("keeps rectangular selection active across repeated Shift+Tab outdent", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const previousImplementation = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "replace_rectangular_selection_text") {
+        throw new Error("force-local-rectangular-replace");
+      }
+
+      return previousImplementation
+        ? previousImplementation(command, payload)
+        : undefined;
+    });
+
+    try {
+      const tab = createTab({ id: "tab-rectangular-selection-shift-tab-outdent" });
+      const { container } = render(<Editor tab={tab} />);
+      const textarea = await waitForEditorTextarea(container);
+      await waitForEditorText(textarea);
+
+      act(() => {
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+      });
+
+      fireEvent.keyDown(textarea, {
+        key: "ArrowDown",
+        altKey: true,
+        shiftKey: true,
+        isComposing: false,
+      });
+
+      await waitFor(() => {
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+
+      fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+      fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe("\t\talpha\n\t\tbeta\n");
+      });
+
+      fireEvent.keyDown(textarea, {
+        key: "Tab",
+        shiftKey: true,
+        isComposing: false,
+      });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe("\talpha\n\tbeta\n");
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+
+      fireEvent.keyDown(textarea, {
+        key: "Tab",
+        shiftKey: true,
+        isComposing: false,
+      });
+
+      await waitFor(() => {
+        expect(textarea.value).toBe("alpha\nbeta\n");
+        expect(
+          container.querySelectorAll(".editor-rectangular-selection-marker"),
+        ).toHaveLength(2);
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("prefers detected indentation for python Tab insertions", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "tabs",

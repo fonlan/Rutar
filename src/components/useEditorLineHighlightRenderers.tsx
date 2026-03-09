@@ -144,14 +144,42 @@ export function useEditorLineHighlightRenderers({
         return null;
       }
 
-      const start = Math.max(0, Math.min(lineTextLength, normalizedRectangularSelection.startColumn - 1));
-      const end = Math.max(start, Math.min(lineTextLength, normalizedRectangularSelection.endColumn - 1));
+      const start = Math.max(
+        0,
+        Math.min(lineTextLength, normalizedRectangularSelection.startColumn - 1)
+      );
+      const end = Math.max(
+        start,
+        Math.min(lineTextLength, normalizedRectangularSelection.endColumn - 1)
+      );
 
       if (end <= start) {
         return null;
       }
 
       return { start, end };
+    },
+    [normalizedRectangularSelection]
+  );
+
+  const getCollapsedRectangularMarkerColumnForLine = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (!normalizedRectangularSelection) {
+        return null;
+      }
+
+      if (
+        normalizedRectangularSelection.endColumn !== normalizedRectangularSelection.startColumn ||
+        lineNumber < normalizedRectangularSelection.startLine ||
+        lineNumber > normalizedRectangularSelection.endLine
+      ) {
+        return null;
+      }
+
+      return Math.max(
+        0,
+        Math.min(lineTextLength, normalizedRectangularSelection.startColumn - 1)
+      );
     },
     [normalizedRectangularSelection]
   );
@@ -248,6 +276,7 @@ export function useEditorLineHighlightRenderers({
       searchRange: HighlightRange | null,
       pairColumns: number[],
       rectangularRange: HighlightRange | null,
+      collapsedRectangularMarkerColumn: number | null,
       textSelectionRange: HighlightRange | null,
       hyperlinkRanges: Array<{ start: number; end: number }>
     ) => {
@@ -266,6 +295,10 @@ export function useEditorLineHighlightRenderers({
       if (rectangularRange) {
         boundaries.add(rectangularRange.start);
         boundaries.add(rectangularRange.end);
+      }
+
+      if (collapsedRectangularMarkerColumn !== null) {
+        boundaries.add(collapsedRectangularMarkerColumn);
       }
 
       if (textSelectionRange) {
@@ -323,6 +356,18 @@ export function useEditorLineHighlightRenderers({
     [classNames.rectangular, classNames.textSelection, getInlineHighlightClass]
   );
 
+  const renderCollapsedRectangularMarker = useCallback(
+    (lineNumber: number, keySuffix: string) => (
+      <mark key={`rectangular-caret-${lineNumber}-${keySuffix}`} className={classNames.rectangular}>
+        <span
+          aria-hidden="true"
+          className="editor-rectangular-selection-marker inline-block h-[1em] w-px align-top"
+        />
+      </mark>
+    ),
+    [classNames.rectangular]
+  );
+
   const getCompositionDisplayForLine = useCallback(
     (lineNumber: number, lineTextLength: number) => {
       if (
@@ -365,47 +410,63 @@ export function useEditorLineHighlightRenderers({
   );
 
   const renderHighlightedPlainLine = useCallback(
-    (text: string, lineNumber: number) => {
-      const safeText = text || '';
-      const composition = getCompositionDisplayForLine(lineNumber, safeText.length);
-      const range = getLineHighlightRange(lineNumber, safeText.length);
-      const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
-      const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
-      const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, safeText.length);
-      const textSelectionRange = textSelectionInfo.range;
-      const hyperlinkRanges = getHttpUrlRangesInLine(safeText);
+   (text: string, lineNumber: number) => {
+     const safeText = text || '';
+     const composition = getCompositionDisplayForLine(lineNumber, safeText.length);
+     const range = getLineHighlightRange(lineNumber, safeText.length);
+     const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
+     const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
+      const collapsedRectangularMarkerColumn = getCollapsedRectangularMarkerColumnForLine(
+        lineNumber,
+        safeText.length
+      );
+     const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, safeText.length);
+     const textSelectionRange = textSelectionInfo.range;
+     const hyperlinkRanges = getHttpUrlRangesInLine(safeText);
 
       if (
-        !range
-        && pairColumns.length === 0
-        && !rectangularRange
-        && !textSelectionRange
-        && !textSelectionInfo.includeLineBreakHighlight
-        && hyperlinkRanges.length === 0
-        && !composition
+       !range
+       && pairColumns.length === 0
+       && !rectangularRange
+        && collapsedRectangularMarkerColumn === null
+       && !textSelectionRange
+       && !textSelectionInfo.includeLineBreakHighlight
+       && hyperlinkRanges.length === 0
+       && !composition
       ) {
         return renderPlainLine(safeText);
       }
 
       const segments = buildLineHighlightSegments(
-        safeText.length,
-        range,
-        pairColumns,
-        rectangularRange,
-        textSelectionRange,
-        hyperlinkRanges
-      );
+       safeText.length,
+       range,
+       pairColumns,
+       rectangularRange,
+        collapsedRectangularMarkerColumn,
+       textSelectionRange,
+       hyperlinkRanges
+     );
 
-      const rendered: ReactNode[] = [];
-      let compositionInserted = false;
+     const rendered: ReactNode[] = [];
+     let compositionInserted = false;
+      let collapsedRectangularMarkerInserted = false;
 
-      const pushComposition = (keySuffix: string) => {
-        if (!composition || compositionInserted) {
+     const pushComposition = (keySuffix: string) => {
+       if (!composition || compositionInserted) {
+         return;
+       }
+
+       compositionInserted = true;
+       rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+     };
+
+      const pushCollapsedRectangularMarker = (keySuffix: string) => {
+        if (collapsedRectangularMarkerColumn === null || collapsedRectangularMarkerInserted) {
           return;
         }
 
-        compositionInserted = true;
-        rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+        collapsedRectangularMarkerInserted = true;
+        rendered.push(renderCollapsedRectangularMarker(lineNumber, keySuffix));
       };
 
       const pushPlainSlice = (
@@ -436,10 +497,18 @@ export function useEditorLineHighlightRenderers({
         );
       };
 
-      segments.forEach((segment, segmentIndex) => {
-        if (composition && !compositionInserted && composition.start <= segment.start) {
-          pushComposition(`before-${segmentIndex}`);
+     segments.forEach((segment, segmentIndex) => {
+        if (
+          !collapsedRectangularMarkerInserted
+          && collapsedRectangularMarkerColumn !== null
+          && collapsedRectangularMarkerColumn <= segment.start
+        ) {
+          pushCollapsedRectangularMarker(`before-${segmentIndex}`);
         }
+
+       if (composition && !compositionInserted && composition.start <= segment.start) {
+         pushComposition(`before-${segmentIndex}`);
+       }
 
         const overlapsComposition = !!composition && segment.start < composition.end && segment.end > composition.start;
         if (!overlapsComposition) {
@@ -452,8 +521,12 @@ export function useEditorLineHighlightRenderers({
         pushPlainSlice(segment, Math.max(segment.start, composition.end), segment.end, `post-${segmentIndex}`);
       });
 
-      if (composition && !compositionInserted) {
-        pushComposition('tail');
+     if (composition && !compositionInserted) {
+       pushComposition('tail');
+     }
+
+      if (!collapsedRectangularMarkerInserted) {
+        pushCollapsedRectangularMarker('tail');
       }
 
       return (
@@ -467,65 +540,83 @@ export function useEditorLineHighlightRenderers({
         </span>
       );
     },
-    [
-      buildLineHighlightSegments,
-      classNames.hyperlinkUnderline,
-      getCompositionDisplayForLine,
-      getHttpUrlRangesInLine,
-      getLineHighlightRange,
-      getPairHighlightColumnsForLine,
-      getRectangularHighlightRangeForLine,
-      getTextSelectionHighlightInfoForLine,
-      renderCompositionFragment,
-      renderPlainLine,
-    ]
-  );
+   [
+     buildLineHighlightSegments,
+     classNames.hyperlinkUnderline,
+      getCollapsedRectangularMarkerColumnForLine,
+     getCompositionDisplayForLine,
+     getHttpUrlRangesInLine,
+     getLineHighlightRange,
+     getPairHighlightColumnsForLine,
+     getRectangularHighlightRangeForLine,
+     getTextSelectionHighlightInfoForLine,
+      renderCollapsedRectangularMarker,
+     renderCompositionFragment,
+     renderPlainLine,
+   ]
+ );
 
   const renderHighlightedTokens = useCallback(
-    (tokensArr: SyntaxToken[], lineNumber: number) => {
-      if (!tokensArr || tokensArr.length === 0) return null;
+   (tokensArr: SyntaxToken[], lineNumber: number) => {
+     if (!tokensArr || tokensArr.length === 0) return null;
 
-      const lineText = tokensArr.map((token) => token.text ?? '').join('');
-      const composition = getCompositionDisplayForLine(lineNumber, lineText.length);
-      const range = getLineHighlightRange(lineNumber, lineText.length);
-      const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
-      const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
-      const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, lineText.length);
-      const textSelectionRange = textSelectionInfo.range;
-      const hyperlinkRanges = getHttpUrlRangesInLine(lineText);
+     const lineText = tokensArr.map((token) => token.text ?? '').join('');
+     const composition = getCompositionDisplayForLine(lineNumber, lineText.length);
+     const range = getLineHighlightRange(lineNumber, lineText.length);
+     const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
+     const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
+      const collapsedRectangularMarkerColumn = getCollapsedRectangularMarkerColumnForLine(
+        lineNumber,
+        lineText.length
+      );
+     const textSelectionInfo = getTextSelectionHighlightInfoForLine(lineNumber, lineText.length);
+     const textSelectionRange = textSelectionInfo.range;
+     const hyperlinkRanges = getHttpUrlRangesInLine(lineText);
 
       if (
-        !range
-        && pairColumns.length === 0
-        && !rectangularRange
-        && !textSelectionRange
-        && !textSelectionInfo.includeLineBreakHighlight
-        && hyperlinkRanges.length === 0
-        && !composition
+       !range
+       && pairColumns.length === 0
+       && !rectangularRange
+        && collapsedRectangularMarkerColumn === null
+       && !textSelectionRange
+       && !textSelectionInfo.includeLineBreakHighlight
+       && hyperlinkRanges.length === 0
+       && !composition
       ) {
         return renderTokens(tokensArr);
       }
 
       const segments = buildLineHighlightSegments(
-        lineText.length,
-        range,
-        pairColumns,
-        rectangularRange,
-        textSelectionRange,
-        hyperlinkRanges
-      );
+       lineText.length,
+       range,
+       pairColumns,
+       rectangularRange,
+        collapsedRectangularMarkerColumn,
+       textSelectionRange,
+       hyperlinkRanges
+     );
 
-      const rendered: ReactNode[] = [];
-      let cursor = 0;
-      let compositionInserted = false;
+     const rendered: ReactNode[] = [];
+     let cursor = 0;
+     let compositionInserted = false;
+      let collapsedRectangularMarkerInserted = false;
 
-      const pushComposition = (keySuffix: string) => {
-        if (!composition || compositionInserted) {
+     const pushComposition = (keySuffix: string) => {
+       if (!composition || compositionInserted) {
+         return;
+       }
+
+       compositionInserted = true;
+       rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+     };
+
+      const pushCollapsedRectangularMarker = (keySuffix: string) => {
+        if (collapsedRectangularMarkerColumn === null || collapsedRectangularMarkerInserted) {
           return;
         }
 
-        compositionInserted = true;
-        rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+        collapsedRectangularMarkerInserted = true;
+        rendered.push(renderCollapsedRectangularMarker(lineNumber, keySuffix));
       };
 
       const pushTokenSlice = (
@@ -535,16 +626,32 @@ export function useEditorLineHighlightRenderers({
         sliceEnd: number,
         typeClass: string,
         keySuffix: string
-      ) => {
-        if (sliceEnd <= sliceStart) {
-          return;
+     ) => {
+       if (sliceEnd <= sliceStart) {
+         return;
+       }
+
+        if (
+          !collapsedRectangularMarkerInserted
+          && collapsedRectangularMarkerColumn !== null
+          && collapsedRectangularMarkerColumn === sliceStart
+        ) {
+          pushCollapsedRectangularMarker(`slice-${keySuffix}`);
         }
 
-        segments.forEach((segment, segmentIndex) => {
-          const partStart = Math.max(sliceStart, segment.start);
-          const partEnd = Math.min(sliceEnd, segment.end);
-          if (partEnd <= partStart) {
-            return;
+       segments.forEach((segment, segmentIndex) => {
+         const partStart = Math.max(sliceStart, segment.start);
+         const partEnd = Math.min(sliceEnd, segment.end);
+         if (partEnd <= partStart) {
+           return;
+         }
+
+          if (
+            !collapsedRectangularMarkerInserted
+            && collapsedRectangularMarkerColumn !== null
+            && collapsedRectangularMarkerColumn === partStart
+          ) {
+            pushCollapsedRectangularMarker(`part-${keySuffix}-${segmentIndex}`);
           }
 
           const tokenSliceStart = partStart - tokenStart;
@@ -579,13 +686,21 @@ export function useEditorLineHighlightRenderers({
 
         const tokenText = token.text;
         const tokenLength = tokenText.length;
-        const tokenStart = cursor;
-        const tokenEnd = tokenStart + tokenLength;
-        const typeClass = resolveTokenTypeClass(token);
+       const tokenStart = cursor;
+       const tokenEnd = tokenStart + tokenLength;
+       const typeClass = resolveTokenTypeClass(token);
 
-        if (composition && !compositionInserted && composition.start <= tokenStart) {
-          pushComposition(`before-${tokenIndex}`);
+        if (
+          !collapsedRectangularMarkerInserted
+          && collapsedRectangularMarkerColumn !== null
+          && collapsedRectangularMarkerColumn <= tokenStart
+        ) {
+          pushCollapsedRectangularMarker(`before-${tokenIndex}`);
         }
+
+       if (composition && !compositionInserted && composition.start <= tokenStart) {
+         pushComposition(`before-${tokenIndex}`);
+       }
 
         if (tokenLength === 0) {
           rendered.push(
@@ -623,8 +738,12 @@ export function useEditorLineHighlightRenderers({
         cursor = tokenEnd;
       });
 
-      if (composition && !compositionInserted) {
-        pushComposition('tail');
+     if (composition && !compositionInserted) {
+       pushComposition('tail');
+     }
+
+      if (!collapsedRectangularMarkerInserted) {
+        pushCollapsedRectangularMarker('tail');
       }
 
       if (textSelectionInfo.includeLineBreakHighlight) {
@@ -638,18 +757,20 @@ export function useEditorLineHighlightRenderers({
       return rendered;
     },
     [
-      appendClassName,
-      buildLineHighlightSegments,
-      classNames.hyperlinkUnderline,
-      getCompositionDisplayForLine,
-      getHttpUrlRangesInLine,
-      getLineHighlightRange,
-      getPairHighlightColumnsForLine,
-      getRectangularHighlightRangeForLine,
-      getTextSelectionHighlightInfoForLine,
-      renderCompositionFragment,
-      renderTokens,
-      resolveTokenTypeClass,
+     appendClassName,
+     buildLineHighlightSegments,
+     classNames.hyperlinkUnderline,
+      getCollapsedRectangularMarkerColumnForLine,
+     getCompositionDisplayForLine,
+     getHttpUrlRangesInLine,
+     getLineHighlightRange,
+     getPairHighlightColumnsForLine,
+     getRectangularHighlightRangeForLine,
+     getTextSelectionHighlightInfoForLine,
+      renderCollapsedRectangularMarker,
+     renderCompositionFragment,
+     renderTokens,
+     resolveTokenTypeClass,
     ]
   );
 
