@@ -11,6 +11,12 @@ interface BuildOutdentCurrentLineEditParams {
   indentText: string;
 }
 
+interface BuildIndentAtCaretEditParams {
+  text: string;
+  offset: number;
+  indentText: string;
+}
+
 export interface IndentSelectedLinesEdit {
   start: number;
   end: number;
@@ -200,5 +206,37 @@ export function buildOutdentCurrentLineEdit({
     newText: line.slice(removedCount),
     selectionStart: replaceStart + nextCaretOffsetInLine,
     selectionEnd: replaceStart + nextCaretOffsetInLine,
+  };
+}
+
+export function buildIndentAtCaretEdit({
+  text,
+  offset,
+  indentText,
+}: BuildIndentAtCaretEditParams): IndentSelectedLinesEdit | null {
+  const safeOffset = Math.max(0, Math.min(offset, text.length));
+  if (!indentText) {
+    return null;
+  }
+
+  const lineStart = getLineStartOffset(text, safeOffset);
+  const lineEnd = getLineEndOffset(text, safeOffset);
+  const line = text.slice(lineStart, lineEnd);
+  const caretOffsetInLine = safeOffset - lineStart;
+  const leadingWhitespaceLength = getLeadingWhitespaceLength(line);
+  const indentStepWidth = Math.max(1, getIndentStepWidth(indentText));
+  const remainder = caretOffsetInLine % indentStepWidth;
+  const insertText = caretOffsetInLine <= leadingWhitespaceLength
+    ? indentText === "\t"
+      ? "\t"
+      : " ".repeat(remainder === 0 ? indentStepWidth : indentStepWidth - remainder)
+    : indentText;
+
+  return {
+    start: safeOffset,
+    end: safeOffset,
+    newText: insertText,
+    selectionStart: safeOffset + insertText.length,
+    selectionEnd: safeOffset + insertText.length,
   };
 }

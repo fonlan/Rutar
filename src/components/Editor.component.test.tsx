@@ -5428,6 +5428,32 @@ describe("Editor component", () => {
     });
   });
 
+  it("pads to the next indent stop when Tab is pressed inside leading whitespace", async () => {
+    useStore.getState().updateSettings({
+      tabIndentMode: "spaces",
+      tabWidth: 4,
+    });
+
+    const tab = createTab({ id: "tab-indent-leading-whitespace-stop" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    act(() => {
+      textarea.focus();
+      textarea.value = "        alpha\n";
+      textarea.setSelectionRange(6, 6);
+    });
+
+    fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("          alpha\n");
+      expect(textarea.selectionStart).toBe(8);
+      expect(textarea.selectionEnd).toBe(8);
+    });
+  });
+
   it("outdents selected lines on Shift+Tab and preserves the selection", async () => {
     const tab = createTab({ id: "tab-outdent-selected-lines" });
     const { container } = render(<Editor tab={tab} />);

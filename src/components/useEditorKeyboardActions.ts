@@ -8,6 +8,7 @@ import {
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
 import {
+  buildIndentAtCaretEdit,
   buildIndentSelectedLinesEdit,
   buildOutdentCurrentLineEdit,
   buildOutdentSelectedLinesEdit,
@@ -253,6 +254,41 @@ export function useEditorKeyboardActions({
     },
     [contentRef, getSelectionOffsetsInElement, replaceTextRange],
   );
+
+  const indentAtCaret = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets?.isCollapsed) {
+      return false;
+    }
+
+    const text = getEditableText(element);
+    const edit = buildIndentAtCaretEdit({
+      text,
+      offset: selectionOffsets.start,
+      indentText,
+    });
+    if (!edit) {
+      return false;
+    }
+
+    return replaceTextRange(
+      edit.start,
+      edit.end,
+      edit.newText,
+      edit.newText.length,
+    );
+  }, [
+    contentRef,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    indentText,
+    replaceTextRange,
+  ]);
 
   const applySelectedLinesEditAtSelection = useCallback((
     buildEdit: typeof buildIndentSelectedLinesEdit,
@@ -575,7 +611,7 @@ export function useEditorKeyboardActions({
         if (
           event.shiftKey
             ? outdentSelectedLinesAtSelection() || outdentCurrentLineAtCaret()
-            : indentSelectedLinesAtSelection() || insertTextAtSelection(indentText)
+            : indentSelectedLinesAtSelection() || indentAtCaret() || insertTextAtSelection(indentText)
         ) {
           handleInput();
         }
@@ -690,6 +726,7 @@ export function useEditorKeyboardActions({
       getSelectionOffsetsInElement,
       handleInput,
       handleRectangularSelectionInputByKey,
+      indentAtCaret,
       indentSelectedLinesAtSelection,
       insertTextAtSelection,
       isToggleLineCommentShortcut,

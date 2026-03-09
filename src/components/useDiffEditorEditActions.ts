@@ -19,6 +19,7 @@ import {
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
 import {
+  buildIndentAtCaretEdit,
   buildIndentSelectedLinesEdit,
   buildOutdentCurrentLineEdit,
   buildOutdentSelectedLinesEdit,
@@ -472,9 +473,22 @@ export function useDiffEditorEditActions({
           return;
         }
 
-        const nextValue = `${value.slice(0, safeStart)}${indentText}${value.slice(safeEnd)}`;
-        const nextCaret = safeStart + indentText.length;
-        handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
+        const indentAtCaretEdit = buildIndentAtCaretEdit({
+          text: value,
+          offset: safeStart,
+          indentText,
+        });
+        if (!indentAtCaretEdit) {
+          return;
+        }
+
+        const nextValue = `${value.slice(0, indentAtCaretEdit.start)}${indentAtCaretEdit.newText}${value.slice(indentAtCaretEdit.end)}`;
+        handlePanelTextareaChange(
+          side,
+          nextValue,
+          indentAtCaretEdit.selectionStart,
+          indentAtCaretEdit.selectionEnd,
+        );
       }
     },
     [
