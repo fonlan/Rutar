@@ -35,7 +35,14 @@ describe("detectSyntaxKeyFromTab", () => {
         name: "Dockerfile",
         path: "",
       })
-    ).toBe("bash");
+    ).toBe("dockerfile");
+
+    expect(
+      detectSyntaxKeyFromTab({
+        name: "GNUmakefile",
+        path: "",
+      })
+    ).toBe("makefile");
 
     expect(
       detectSyntaxKeyFromTab({
@@ -75,6 +82,8 @@ describe("detectSyntaxKeyFromTab", () => {
       { fileName: "main.rs", expected: "rust" },
       { fileName: "main.pyw", expected: "python" },
       { fileName: "doc.mdx", expected: "markdown" },
+      { fileName: "service.Dockerfile", expected: "dockerfile" },
+      { fileName: "build.mk", expected: "makefile" },
       { fileName: "app.properties", expected: "ini" },
       { fileName: "index.xhtml", expected: "html" },
       { fileName: "theme.scss", expected: "css" },
@@ -123,11 +132,13 @@ describe("syntax helpers", () => {
 
   it("returns label for syntax key", () => {
     expect(getSyntaxLabel("typescript")).toBe("TypeScript");
+    expect(getSyntaxLabel("dockerfile")).toBe("Dockerfile");
     expect(getSyntaxLabel("unknown" as never)).toBe("Plain Text");
   });
 
   it("returns line comment prefix with fallback", () => {
     expect(getLineCommentPrefixForSyntaxKey("typescript")).toBe("//");
+    expect(getLineCommentPrefixForSyntaxKey("dockerfile")).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey(null)).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey(undefined)).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey("unknown" as never)).toBe("#");

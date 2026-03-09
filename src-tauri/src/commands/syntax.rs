@@ -51,7 +51,10 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
         if let Some(file_name) = path_value.file_name().and_then(|name| name.to_str()) {
             let lower_name = file_name.to_lowercase();
             match lower_name.as_str() {
-                "dockerfile" | "makefile" => return Some(tree_sitter_bash::LANGUAGE.into()),
+                "dockerfile" | "containerfile" => {
+                    return Some(tree_sitter_dockerfile::language());
+                }
+                "makefile" | "gnumakefile" => return Some(tree_sitter_make::LANGUAGE.into()),
                 _ => {}
             }
         }
@@ -63,12 +66,14 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
                 "py" | "pyw" => Some(tree_sitter_python::LANGUAGE.into()),
                 "json" | "jsonc" => Some(tree_sitter_json::LANGUAGE.into()),
+                "dockerfile" => Some(tree_sitter_dockerfile::language()),
                 "ini" | "cfg" | "conf" | "cnf" | "properties" => {
                     Some(tree_sitter_ini::LANGUAGE.into())
                 }
                 "html" | "htm" | "xhtml" => Some(tree_sitter_html::LANGUAGE.into()),
                 "css" | "scss" | "sass" | "less" => Some(tree_sitter_css::LANGUAGE.into()),
                 "sh" | "bash" | "zsh" => Some(tree_sitter_bash::LANGUAGE.into()),
+                "mk" | "mak" => Some(tree_sitter_make::LANGUAGE.into()),
                 "toml" => Some(tree_sitter_toml_ng::LANGUAGE.into()),
                 "yaml" | "yml" => Some(tree_sitter_yaml::LANGUAGE.into()),
                 "xml" | "svg" => Some(tree_sitter_xml::LANGUAGE_XML.into()),
@@ -97,6 +102,8 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
         "json" => Some(tree_sitter_json::LANGUAGE.into()),
+        "dockerfile" => Some(tree_sitter_dockerfile::language()),
+        "makefile" => Some(tree_sitter_make::LANGUAGE.into()),
         "ini" => Some(tree_sitter_ini::LANGUAGE.into()),
         "html" => Some(tree_sitter_html::LANGUAGE.into()),
         "css" => Some(tree_sitter_css::LANGUAGE.into()),
@@ -128,9 +135,43 @@ mod tests {
     }
 
     #[test]
+    fn dockerfile_and_makefile_special_names_should_resolve_languages() {
+        for file_name in ["Dockerfile", "Containerfile", "Makefile", "GNUmakefile"] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn dockerfile_and_makefile_extensions_should_resolve_languages() {
+        for file_name in ["service.Dockerfile", "build.mk"] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
     fn ini_syntax_override_should_be_supported() {
         let normalized = normalize_syntax_override(Some("INI"));
         assert_eq!(normalized.ok(), Some(Some("ini".to_string())));
+    }
+
+    #[test]
+    fn dockerfile_and_makefile_syntax_overrides_should_be_supported() {
+        for syntax_key in ["dockerfile", "makefile"] {
+            let normalized = normalize_syntax_override(Some(syntax_key));
+            assert_eq!(
+                normalized.ok(),
+                Some(Some(syntax_key.to_string())),
+                "expected syntax override for {syntax_key}"
+            );
+        }
     }
 
     #[test]
@@ -174,6 +215,16 @@ mod tests {
         let language = get_language_from_path(&path);
         let parser = create_parser(language);
         assert!(parser.is_some());
+    }
+
+    #[test]
+    fn dockerfile_and_makefile_languages_should_create_parsers() {
+        for file_name in ["service.Dockerfile", "build.mk"] {
+            let path = Some(PathBuf::from(file_name));
+            let language = get_language_from_path(&path);
+            let parser = create_parser(language);
+            assert!(parser.is_some(), "expected parser for {file_name}");
+        }
     }
 
     #[test]

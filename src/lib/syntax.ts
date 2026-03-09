@@ -3,6 +3,8 @@ import { FileTab, SyntaxKey } from '@/store/useStore';
 export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'plain_text', label: 'Plain Text' },
   { value: 'markdown', label: 'Markdown' },
+  { value: 'dockerfile', label: 'Dockerfile' },
+  { value: 'makefile', label: 'Makefile' },
   { value: 'javascript', label: 'JavaScript' },
   { value: 'typescript', label: 'TypeScript' },
   { value: 'rust', label: 'Rust' },
@@ -29,6 +31,8 @@ const syntaxLabelByValue = new Map(SYNTAX_OPTIONS.map((item) => [item.value, ite
 const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   plain_text: '#',
   markdown: '#',
+  dockerfile: '#',
+  makefile: '#',
   python: '#',
   bash: '#',
   toml: '#',
@@ -66,8 +70,12 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     return 'plain_text';
   }
 
-  if (fileName === 'dockerfile' || fileName === 'makefile') {
-    return 'bash';
+  if (fileName === 'dockerfile' || fileName === 'containerfile') {
+    return 'dockerfile';
+  }
+
+  if (fileName === 'makefile' || fileName === 'gnumakefile') {
+    return 'makefile';
   }
 
   const dotIndex = fileName.lastIndexOf('.');
@@ -107,6 +115,8 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'qmd':
     case 'mdx':
       return 'markdown';
+    case 'dockerfile':
+      return 'dockerfile';
     case 'ini':
     case 'cfg':
     case 'conf':
@@ -126,6 +136,9 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'bash':
     case 'zsh':
       return 'bash';
+    case 'mk':
+    case 'mak':
+      return 'makefile';
     case 'toml':
       return 'toml';
     case 'yaml':

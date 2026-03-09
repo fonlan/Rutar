@@ -100,6 +100,8 @@ const tabFileIconConfigBySyntaxKey: Partial<Record<SyntaxKey, TabFileIconConfig>
     javascript: { Icon: FileCode2, className: 'text-yellow-500' },
     typescript: { Icon: FileCode2, className: 'text-blue-500' },
     rust: { Icon: FileCode2, className: 'text-orange-500' },
+    dockerfile: { Icon: Terminal, className: 'text-sky-500' },
+    makefile: { Icon: Braces, className: 'text-lime-600' },
     python: { Icon: FileCode2, className: 'text-sky-500' },
     json: { Icon: FileJson, className: 'text-amber-500' },
     ini: { Icon: Braces, className: 'text-amber-600' },

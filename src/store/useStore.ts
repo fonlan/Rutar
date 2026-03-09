@@ -49,6 +49,8 @@ export type LineEnding = 'CRLF' | 'LF' | 'CR';
 export type SyntaxKey =
   | 'plain_text'
   | 'markdown'
+  | 'dockerfile'
+  | 'makefile'
   | 'javascript'
   | 'typescript'
   | 'rust'
