@@ -7,6 +7,7 @@ import {
   buildAutoDedentInsertion,
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
+import { buildIndentSelectedLinesEdit } from "./indentSelectedLines";
 
 interface UseEditorKeyboardActionsParams {
   tabId: string;
@@ -50,6 +51,11 @@ interface UseEditorKeyboardActionsParams {
   setInputLayerText: (element: any, text: string) => void;
   mapLogicalOffsetToInputLayerOffset: (text: string, offset: number) => number;
   setCaretToCodeUnitOffset: (element: any, offset: number) => void;
+  setSelectionToCodeUnitOffsets: (
+    element: any,
+    startOffset: number,
+    endOffset: number,
+  ) => void;
   clearRectangularSelection: () => void;
   clearLineNumberMultiSelection: () => void;
   handleInput: () => void;
@@ -83,6 +89,7 @@ export function useEditorKeyboardActions({
   setInputLayerText,
   mapLogicalOffsetToInputLayerOffset,
   setCaretToCodeUnitOffset,
+  setSelectionToCodeUnitOffsets,
   clearRectangularSelection,
   clearLineNumberMultiSelection,
   handleInput,
@@ -229,6 +236,60 @@ export function useEditorKeyboardActions({
     },
     [contentRef, getSelectionOffsetsInElement, replaceTextRange],
   );
+
+  const indentSelectedLinesAtSelection = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return false;
+    }
+
+    const selectionOffsets = getSelectionOffsetsInElement(element);
+    if (!selectionOffsets || selectionOffsets.isCollapsed) {
+      return false;
+    }
+
+    const text = getEditableText(element);
+    const edit = buildIndentSelectedLinesEdit({
+      text,
+      selectionStart: selectionOffsets.start,
+      selectionEnd: selectionOffsets.end,
+      indentText,
+    });
+    if (!edit) {
+      return false;
+    }
+
+    const safeStart = Math.max(0, Math.min(edit.start, edit.end));
+    const safeEnd = Math.max(safeStart, edit.end);
+
+    if (isTextareaInputElement(element)) {
+      const nextText = `${element.value.slice(0, safeStart)}${edit.newText}${element.value.slice(safeEnd)}`;
+      element.setRangeText(edit.newText, safeStart, safeEnd, "end");
+      if (element.value !== nextText) {
+        element.value = nextText;
+      }
+      element.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+      return true;
+    }
+
+    const currentText = getEditableText(element);
+    const nextText = `${currentText.slice(0, safeStart)}${edit.newText}${currentText.slice(safeEnd)}`;
+    setInputLayerText(element, nextText);
+    setSelectionToCodeUnitOffsets(
+      element,
+      edit.selectionStart,
+      edit.selectionEnd,
+    );
+    return true;
+  }, [
+    contentRef,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    indentText,
+    isTextareaInputElement,
+    setInputLayerText,
+    setSelectionToCodeUnitOffsets,
+  ]);
 
   const buildEnterInsertEdit = useCallback(() => {
     const element = contentRef.current;
@@ -430,7 +491,7 @@ export function useEditorKeyboardActions({
         event.preventDefault();
         event.stopPropagation();
         capturePendingEditBeforeCursor();
-        if (insertTextAtSelection(indentText)) {
+        if (indentSelectedLinesAtSelection() || insertTextAtSelection(indentText)) {
           handleInput();
         }
         return;
@@ -544,6 +605,7 @@ export function useEditorKeyboardActions({
       getSelectionOffsetsInElement,
       handleInput,
       handleRectangularSelectionInputByKey,
+      indentSelectedLinesAtSelection,
       insertTextAtSelection,
       isToggleLineCommentShortcut,
       isVerticalSelectionShortcut,

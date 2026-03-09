@@ -862,6 +862,7 @@ export function Editor({
     setInputLayerText,
     mapLogicalOffsetToInputLayerOffset,
     setCaretToCodeUnitOffset,
+    setSelectionToCodeUnitOffsets,
     clearRectangularSelection,
     clearLineNumberMultiSelection,
     handleInput,

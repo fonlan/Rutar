@@ -5405,6 +5405,29 @@ describe("Editor component", () => {
     });
   });
 
+  it("indents selected lines on Tab instead of replacing the selection", async () => {
+    const tab = createTab({ id: "tab-indent-selected-lines" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.focus();
+    textarea.setSelectionRange(2, 8);
+    fireEvent.keyDown(textarea, { key: "Tab", isComposing: false });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("\talpha\n\tbeta\n");
+      expect(textarea.selectionStart).toBe(3);
+      expect(textarea.selectionEnd).toBe(10);
+      expect(invokeMock).toHaveBeenCalledWith(
+        "edit_text",
+        expect.objectContaining({
+          id: tab.id,
+        }),
+      );
+    });
+  });
+
   it("prefers detected indentation for python Tab insertions", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "tabs",

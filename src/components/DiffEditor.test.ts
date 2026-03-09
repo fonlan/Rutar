@@ -2118,6 +2118,42 @@ describe("DiffEditor component", () => {
     });
   });
 
+  it("indents selected diff lines on Tab instead of replacing selected text", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\\repo\\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\\repo\\target.ts",
+    });
+    const diffTab = createDiffTab();
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    targetTextarea.setSelectionRange(2, 10);
+    fireEvent.keyDown(targetTextarea, { key: "Tab" });
+
+    await waitFor(() => {
+      expect(targetTextarea.value).toBe("\tright-1\n\tright-2");
+    });
+  });
+
   it("prefers detected indentation for python diff panel Tab insertions", async () => {
     useStore.getState().updateSettings({
       tabIndentMode: "tabs",

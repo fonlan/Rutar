@@ -18,6 +18,7 @@ import {
   buildAutoDedentInsertion,
   buildEnterAutoIndentEdit,
 } from "./enterAutoIndent";
+import { buildIndentSelectedLinesEdit } from "./indentSelectedLines";
 
 interface ApplyAlignedDiffPanelCopyResult {
   lineDiff: LineDiffComparisonResult;
@@ -428,6 +429,23 @@ export function useDiffEditorEditActions({
         !isComposing
       ) {
         event.preventDefault();
+        const indentEdit = buildIndentSelectedLinesEdit({
+          text: value,
+          selectionStart: safeStart,
+          selectionEnd: safeEnd,
+          indentText,
+        });
+        if (indentEdit) {
+          const nextValue = `${value.slice(0, indentEdit.start)}${indentEdit.newText}${value.slice(indentEdit.end)}`;
+          handlePanelTextareaChange(
+            side,
+            nextValue,
+            indentEdit.selectionStart,
+            indentEdit.selectionEnd,
+          );
+          return;
+        }
+
         const nextValue = `${value.slice(0, safeStart)}${indentText}${value.slice(safeEnd)}`;
         const nextCaret = safeStart + indentText.length;
         handlePanelTextareaChange(side, nextValue, nextCaret, nextCaret);
