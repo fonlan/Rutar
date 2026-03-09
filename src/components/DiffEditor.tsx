@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useResizeObserver } from '@/hooks/useResizeObserver';
@@ -59,6 +61,33 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     persistedActivePanel === 'target' ? 'target' : 'source'
   );
   const [lineDiff, setLineDiff] = useState<LineDiffComparisonResult>(() => buildInitialDiff(tab.diffPayload));
+  const compositionStateRef = useRef<{ source: boolean; target: boolean }>({
+    source: false,
+    target: false,
+  });
+  const [compositionDraftBySide, setCompositionDraftBySide] = useState<{
+    source: string | null;
+    target: string | null;
+  }>({
+    source: null,
+    target: null,
+  });
+  const setSideCompositionDraft = useCallback((side: ActivePanel, text: string | null) => {
+    setCompositionDraftBySide((previous) => {
+      if (previous[side] === text) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [side]: text,
+      };
+    });
+  }, []);
+  const isDiffPanelCompositionActive = useCallback(
+    () => compositionStateRef.current.source || compositionStateRef.current.target,
+    []
+  );
 
   const sourceTab = useMemo(
     () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
@@ -94,6 +123,18 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   useEffect(() => {
     setActiveDiffPanel(tab.id, activePanel);
   }, [activePanel, setActiveDiffPanel, tab.id]);
+
+  useEffect(() => {
+    compositionStateRef.current.source = false;
+    compositionStateRef.current.target = false;
+    setCompositionDraftBySide((previous) => {
+      if (previous.source === null && previous.target === null) {
+        return previous;
+      }
+
+      return { source: null, target: null };
+    });
+  }, [tab.diffPayload.sourceTabId, tab.diffPayload.targetTabId, tab.id]);
 
   const {
     leftWidthPx,
@@ -167,6 +208,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     findAlignedRowIndexByLineNumber,
     buildInitialDiff,
     dispatchDocumentUpdated,
+    isCompositionActive: isDiffPanelCompositionActive,
   });
 
   const { handleSavePanel } = useDiffEditorPanelActions({
@@ -187,6 +229,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const {
     handlePanelInputBlur,
     handlePanelTextareaChange,
+    handlePanelTextareaCompositionStart,
+    handlePanelTextareaCompositionUpdate,
+    handlePanelTextareaCompositionEnd,
     handlePanelPasteText,
     handlePanelTextareaKeyDown,
     handlePanelTextareaCopy,
@@ -208,6 +253,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     copyLinesRequestSequenceRef,
     setLineDiff,
     capturePanelScrollSnapshot,
+    clearSideCommitTimer,
+    compositionStateRef,
+    setSideCompositionDraft,
     applyDeferredBackendResultIfIdle,
     schedulePreviewMetadataComputation,
     scheduleSideCommit,
@@ -308,6 +356,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     targetViewport,
     fontSize: settings.fontSize,
   });
+
+  const displaySourcePanelText = compositionDraftBySide.source ?? sourcePanelText;
+  const displayTargetPanelText = compositionDraftBySide.target ?? targetPanelText;
 
   const saveLabel = tr('diffEditor.save');
   const sourceTitlePrefix = tr('diffEditor.sourceTitle');
@@ -411,9 +462,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         handleLineNumberKeyDown={handleLineNumberKeyDown}
         sourceTextareaRef={sourceTextareaRef}
         targetTextareaRef={targetTextareaRef}
-        sourcePanelText={sourcePanelText}
-        targetPanelText={targetPanelText}
+        sourceCompositionActive={compositionDraftBySide.source !== null}
+        targetCompositionActive={compositionDraftBySide.target !== null}
+        sourcePanelText={displaySourcePanelText}
+        targetPanelText={displayTargetPanelText}
         handlePanelTextareaChange={handlePanelTextareaChange}
+        handlePanelTextareaCompositionStart={handlePanelTextareaCompositionStart}
+        handlePanelTextareaCompositionUpdate={handlePanelTextareaCompositionUpdate}
+        handlePanelTextareaCompositionEnd={handlePanelTextareaCompositionEnd}
         handlePanelTextareaKeyDown={handlePanelTextareaKeyDown}
         handlePanelTextareaCopy={handlePanelTextareaCopy}
         handlePanelContextMenu={handlePanelContextMenu}

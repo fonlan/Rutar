@@ -1,5 +1,6 @@
 import type {
   ClipboardEvent as ReactClipboardEvent,
+  CompositionEvent as ReactCompositionEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -56,6 +57,8 @@ interface DiffEditorPanelsProps {
   ) => void;
   sourceTextareaRef: RefObject<HTMLTextAreaElement | null>;
   targetTextareaRef: RefObject<HTMLTextAreaElement | null>;
+  sourceCompositionActive: boolean;
+  targetCompositionActive: boolean;
   sourcePanelText: string;
   targetPanelText: string;
   handlePanelTextareaChange: (
@@ -63,7 +66,19 @@ interface DiffEditorPanelsProps {
     nextText: string,
     selectionStart: number,
     selectionEnd: number
+  ) => boolean;
+  handlePanelTextareaCompositionStart: (
+    side: ActivePanel,
+    event: ReactCompositionEvent<HTMLTextAreaElement>
   ) => void;
+  handlePanelTextareaCompositionUpdate: (
+    side: ActivePanel,
+    event: ReactCompositionEvent<HTMLTextAreaElement>
+  ) => void;
+  handlePanelTextareaCompositionEnd: (
+    side: ActivePanel,
+    event: ReactCompositionEvent<HTMLTextAreaElement>
+  ) => boolean;
   handlePanelTextareaKeyDown: (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   handlePanelTextareaCopy: (side: ActivePanel, event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   handlePanelContextMenu: (side: ActivePanel, event: ReactMouseEvent<HTMLTextAreaElement>) => void;
@@ -130,9 +145,14 @@ export function DiffEditorPanels({
   handleLineNumberKeyDown,
   sourceTextareaRef,
   targetTextareaRef,
+  sourceCompositionActive,
+  targetCompositionActive,
   sourcePanelText,
   targetPanelText,
   handlePanelTextareaChange,
+  handlePanelTextareaCompositionStart,
+  handlePanelTextareaCompositionUpdate,
+  handlePanelTextareaCompositionEnd,
   handlePanelTextareaKeyDown,
   handlePanelTextareaCopy,
   handlePanelContextMenu,
@@ -180,8 +200,12 @@ export function DiffEditorPanels({
           onLineNumberPointerDown={handleLineNumberPointerDown}
           onLineNumberKeyDown={handleLineNumberKeyDown}
           textareaRef={sourceTextareaRef}
+          compositionActive={sourceCompositionActive}
           panelText={sourcePanelText}
           onTextareaChange={handlePanelTextareaChange}
+          onTextareaCompositionStart={handlePanelTextareaCompositionStart}
+          onTextareaCompositionUpdate={handlePanelTextareaCompositionUpdate}
+          onTextareaCompositionEnd={handlePanelTextareaCompositionEnd}
           onTextareaKeyDown={handlePanelTextareaKeyDown}
           onTextareaCopy={handlePanelTextareaCopy}
           onPanelContextMenu={handlePanelContextMenu}
@@ -227,8 +251,12 @@ export function DiffEditorPanels({
           onLineNumberPointerDown={handleLineNumberPointerDown}
           onLineNumberKeyDown={handleLineNumberKeyDown}
           textareaRef={targetTextareaRef}
+          compositionActive={targetCompositionActive}
           panelText={targetPanelText}
           onTextareaChange={handlePanelTextareaChange}
+          onTextareaCompositionStart={handlePanelTextareaCompositionStart}
+          onTextareaCompositionUpdate={handlePanelTextareaCompositionUpdate}
+          onTextareaCompositionEnd={handlePanelTextareaCompositionEnd}
           onTextareaKeyDown={handlePanelTextareaKeyDown}
           onTextareaCopy={handlePanelTextareaCopy}
           onPanelContextMenu={handlePanelContextMenu}

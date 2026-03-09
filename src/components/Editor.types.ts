@@ -86,6 +86,14 @@ export interface PendingEditCursorSnapshot {
   column: number;
 }
 
+export interface EditorCompositionDisplayState {
+  line: number;
+  startColumn: number;
+  endColumn: number;
+  text: string;
+  mode: 'composing' | 'committed';
+}
+
 export interface TextDragMoveState {
   pointerId: number;
   startClientX: number;

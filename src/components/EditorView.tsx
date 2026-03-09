@@ -38,6 +38,7 @@ export function EditorView({
   syncSelectionAfterInteraction,
   handleEditorContextMenu,
   handleCompositionStart,
+  handleCompositionUpdate,
   handleCompositionEnd,
   width,
   height,
@@ -154,6 +155,7 @@ export function EditorView({
         onSyncSelectionAfterInteraction={syncSelectionAfterInteraction}
         onEditorContextMenu={handleEditorContextMenu}
         onCompositionStart={handleCompositionStart}
+        onCompositionUpdate={handleCompositionUpdate}
         onCompositionEnd={handleCompositionEnd}
       />
 

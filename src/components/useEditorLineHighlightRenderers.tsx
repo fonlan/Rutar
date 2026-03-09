@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 import type {
+  EditorCompositionDisplayState,
   EditorInputElement,
   EditorSegmentState,
   PairHighlightPosition,
@@ -33,12 +34,15 @@ interface HighlightClassNames {
   rectangular: string;
   textSelection: string;
   hyperlinkUnderline: string;
+  composition: string;
+  compositionCommitted: string;
 }
 
 interface UseEditorLineHighlightRenderersParams {
   searchHighlight: SearchHighlightState | null;
   isPairHighlightEnabled: boolean;
   pairHighlights: PairHighlightPosition[];
+  compositionDisplay: EditorCompositionDisplayState | null;
   normalizedRectangularSelection: NormalizedRectangularSelection | null;
   textSelectionHighlight: TextSelectionState | null;
   isHugeEditableMode: boolean;
@@ -57,6 +61,7 @@ export function useEditorLineHighlightRenderers({
   searchHighlight,
   isPairHighlightEnabled,
   pairHighlights,
+  compositionDisplay,
   normalizedRectangularSelection,
   textSelectionHighlight,
   isHugeEditableMode,
@@ -318,9 +323,51 @@ export function useEditorLineHighlightRenderers({
     [classNames.rectangular, classNames.textSelection, getInlineHighlightClass]
   );
 
+  const getCompositionDisplayForLine = useCallback(
+    (lineNumber: number, lineTextLength: number) => {
+      if (
+        !compositionDisplay
+        || compositionDisplay.line !== lineNumber
+        || !compositionDisplay.text
+        || compositionDisplay.text.includes('\n')
+      ) {
+        return null;
+      }
+
+      const start = Math.max(0, Math.min(lineTextLength, compositionDisplay.startColumn));
+      const end = Math.max(start, Math.min(lineTextLength, compositionDisplay.endColumn));
+
+      return {
+        ...compositionDisplay,
+        start,
+        end,
+      };
+    },
+    [compositionDisplay]
+  );
+
+  const renderCompositionFragment = useCallback(
+    (
+      lineNumber: number,
+      mode: EditorCompositionDisplayState['mode'],
+      text: string,
+      keySuffix: string
+    ) => (
+      <span
+        key={`composition-${lineNumber}-${keySuffix}`}
+        data-editor-composition-state={mode}
+        className={mode === 'composing' ? classNames.composition : classNames.compositionCommitted}
+      >
+        {text}
+      </span>
+    ),
+    [classNames.composition, classNames.compositionCommitted]
+  );
+
   const renderHighlightedPlainLine = useCallback(
     (text: string, lineNumber: number) => {
       const safeText = text || '';
+      const composition = getCompositionDisplayForLine(lineNumber, safeText.length);
       const range = getLineHighlightRange(lineNumber, safeText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, safeText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, safeText.length);
@@ -335,6 +382,7 @@ export function useEditorLineHighlightRenderers({
         && !textSelectionRange
         && !textSelectionInfo.includeLineBreakHighlight
         && hyperlinkRanges.length === 0
+        && !composition
       ) {
         return renderPlainLine(safeText);
       }
@@ -348,28 +396,69 @@ export function useEditorLineHighlightRenderers({
         hyperlinkRanges
       );
 
+      const rendered: ReactNode[] = [];
+      let compositionInserted = false;
+
+      const pushComposition = (keySuffix: string) => {
+        if (!composition || compositionInserted) {
+          return;
+        }
+
+        compositionInserted = true;
+        rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+      };
+
+      const pushPlainSlice = (
+        segment: { start: number; end: number; className: string; isHyperlink: boolean },
+        sliceStart: number,
+        sliceEnd: number,
+        keySuffix: string
+      ) => {
+        if (sliceEnd <= sliceStart) {
+          return;
+        }
+
+        const part = safeText.slice(sliceStart, sliceEnd);
+        const partClassName = segment.isHyperlink ? classNames.hyperlinkUnderline : '';
+        if (!segment.className) {
+          rendered.push(
+            <span key={`plain-segment-${lineNumber}-${keySuffix}`} className={partClassName || undefined}>
+              {part}
+            </span>
+          );
+          return;
+        }
+
+        rendered.push(
+          <mark key={`plain-segment-${lineNumber}-${keySuffix}`} className={segment.className}>
+            <span className={partClassName || undefined}>{part}</span>
+          </mark>
+        );
+      };
+
+      segments.forEach((segment, segmentIndex) => {
+        if (composition && !compositionInserted && composition.start <= segment.start) {
+          pushComposition(`before-${segmentIndex}`);
+        }
+
+        const overlapsComposition = !!composition && segment.start < composition.end && segment.end > composition.start;
+        if (!overlapsComposition) {
+          pushPlainSlice(segment, segment.start, segment.end, `full-${segmentIndex}`);
+          return;
+        }
+
+        pushPlainSlice(segment, segment.start, Math.max(segment.start, composition.start), `pre-${segmentIndex}`);
+        pushComposition(`inline-${segmentIndex}`);
+        pushPlainSlice(segment, Math.max(segment.start, composition.end), segment.end, `post-${segmentIndex}`);
+      });
+
+      if (composition && !compositionInserted) {
+        pushComposition('tail');
+      }
+
       return (
         <span>
-          {segments.map((segment, segmentIndex) => {
-            const part = safeText.slice(segment.start, segment.end);
-            const partClassName = segment.isHyperlink ? classNames.hyperlinkUnderline : '';
-            if (!segment.className) {
-              return (
-                <span
-                  key={`plain-segment-${lineNumber}-${segmentIndex}`}
-                  className={partClassName || undefined}
-                >
-                  {part}
-                </span>
-              );
-            }
-
-            return (
-              <mark key={`plain-segment-${lineNumber}-${segmentIndex}`} className={segment.className}>
-                <span className={partClassName || undefined}>{part}</span>
-              </mark>
-            );
-          })}
+          {rendered}
           {textSelectionInfo.includeLineBreakHighlight && (
             <mark key={`linebreak-highlight-${lineNumber}`} className={classNames.textSelection}>
               <span className="editor-selection-linebreak-marker inline-block w-[1ch]">{'\u00A0'}</span>
@@ -381,11 +470,13 @@ export function useEditorLineHighlightRenderers({
     [
       buildLineHighlightSegments,
       classNames.hyperlinkUnderline,
+      getCompositionDisplayForLine,
       getHttpUrlRangesInLine,
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
       getTextSelectionHighlightInfoForLine,
+      renderCompositionFragment,
       renderPlainLine,
     ]
   );
@@ -395,6 +486,7 @@ export function useEditorLineHighlightRenderers({
       if (!tokensArr || tokensArr.length === 0) return null;
 
       const lineText = tokensArr.map((token) => token.text ?? '').join('');
+      const composition = getCompositionDisplayForLine(lineNumber, lineText.length);
       const range = getLineHighlightRange(lineNumber, lineText.length);
       const pairColumns = getPairHighlightColumnsForLine(lineNumber, lineText.length);
       const rectangularRange = getRectangularHighlightRangeForLine(lineNumber, lineText.length);
@@ -409,6 +501,7 @@ export function useEditorLineHighlightRenderers({
         && !textSelectionRange
         && !textSelectionInfo.includeLineBreakHighlight
         && hyperlinkRanges.length === 0
+        && !composition
       ) {
         return renderTokens(tokensArr);
       }
@@ -422,50 +515,36 @@ export function useEditorLineHighlightRenderers({
         hyperlinkRanges
       );
 
-      let cursor = 0;
-      let segmentIndex = 0;
       const rendered: ReactNode[] = [];
+      let cursor = 0;
+      let compositionInserted = false;
 
-      tokensArr.forEach((token, tokenIndex) => {
-        if (token.text === undefined || token.text === null) {
+      const pushComposition = (keySuffix: string) => {
+        if (!composition || compositionInserted) {
           return;
         }
 
-        const tokenText = token.text;
-        const tokenLength = tokenText.length;
-        const tokenStart = cursor;
-        const tokenEnd = tokenStart + tokenLength;
-        const typeClass = resolveTokenTypeClass(token);
+        compositionInserted = true;
+        rendered.push(renderCompositionFragment(lineNumber, composition.mode, composition.text, keySuffix));
+      };
 
-        if (tokenLength === 0) {
-          rendered.push(
-            <span key={`t-empty-${tokenIndex}`} className={typeClass}>
-              {tokenText}
-            </span>
-          );
+      const pushTokenSlice = (
+        tokenText: string,
+        tokenStart: number,
+        sliceStart: number,
+        sliceEnd: number,
+        typeClass: string,
+        keySuffix: string
+      ) => {
+        if (sliceEnd <= sliceStart) {
           return;
         }
 
-        while (segmentIndex < segments.length && segments[segmentIndex].end <= tokenStart) {
-          segmentIndex += 1;
-        }
-
-        let localCursor = tokenStart;
-        let localPartIndex = 0;
-
-        while (localCursor < tokenEnd && segmentIndex < segments.length) {
-          const segment = segments[segmentIndex];
-
-          if (segment.start >= tokenEnd) {
-            break;
-          }
-
-          const partStart = Math.max(localCursor, segment.start);
-          const partEnd = Math.min(tokenEnd, segment.end);
-
+        segments.forEach((segment, segmentIndex) => {
+          const partStart = Math.max(sliceStart, segment.start);
+          const partEnd = Math.min(sliceEnd, segment.end);
           if (partEnd <= partStart) {
-            segmentIndex += 1;
-            continue;
+            return;
           }
 
           const tokenSliceStart = partStart - tokenStart;
@@ -478,36 +557,75 @@ export function useEditorLineHighlightRenderers({
 
           if (!segment.className) {
             rendered.push(
-              <span key={`t-part-${tokenIndex}-${localPartIndex}`} className={partTypeClass}>
+              <span key={`t-part-${lineNumber}-${keySuffix}-${segmentIndex}`} className={partTypeClass}>
                 {partText}
               </span>
             );
-          } else {
-            rendered.push(
-              <mark key={`t-part-${tokenIndex}-${localPartIndex}`} className={segment.className}>
-                <span className={partTypeClass}>{partText}</span>
-              </mark>
-            );
+            return;
           }
 
-          localCursor = partEnd;
-          localPartIndex += 1;
+          rendered.push(
+            <mark key={`t-part-${lineNumber}-${keySuffix}-${segmentIndex}`} className={segment.className}>
+              <span className={partTypeClass}>{partText}</span>
+            </mark>
+          );
+        });
+      };
 
-          if (segment.end <= localCursor) {
-            segmentIndex += 1;
-          }
+      tokensArr.forEach((token, tokenIndex) => {
+        if (token.text === undefined || token.text === null) {
+          return;
         }
 
-        if (localCursor < tokenEnd) {
+        const tokenText = token.text;
+        const tokenLength = tokenText.length;
+        const tokenStart = cursor;
+        const tokenEnd = tokenStart + tokenLength;
+        const typeClass = resolveTokenTypeClass(token);
+
+        if (composition && !compositionInserted && composition.start <= tokenStart) {
+          pushComposition(`before-${tokenIndex}`);
+        }
+
+        if (tokenLength === 0) {
           rendered.push(
-            <span key={`t-tail-${tokenIndex}`} className={typeClass}>
-              {tokenText.slice(localCursor - tokenStart)}
+            <span key={`t-empty-${tokenIndex}`} className={typeClass}>
+              {tokenText}
             </span>
+          );
+          cursor = tokenEnd;
+          return;
+        }
+
+        const overlapsComposition = !!composition && tokenStart < composition.end && tokenEnd > composition.start;
+        if (!overlapsComposition) {
+          pushTokenSlice(tokenText, tokenStart, tokenStart, tokenEnd, typeClass, `full-${tokenIndex}`);
+        } else {
+          pushTokenSlice(
+            tokenText,
+            tokenStart,
+            tokenStart,
+            Math.max(tokenStart, composition.start),
+            typeClass,
+            `pre-${tokenIndex}`
+          );
+          pushComposition(`inline-${tokenIndex}`);
+          pushTokenSlice(
+            tokenText,
+            tokenStart,
+            Math.max(tokenStart, composition.end),
+            tokenEnd,
+            typeClass,
+            `post-${tokenIndex}`
           );
         }
 
         cursor = tokenEnd;
       });
+
+      if (composition && !compositionInserted) {
+        pushComposition('tail');
+      }
 
       if (textSelectionInfo.includeLineBreakHighlight) {
         rendered.push(
@@ -523,11 +641,13 @@ export function useEditorLineHighlightRenderers({
       appendClassName,
       buildLineHighlightSegments,
       classNames.hyperlinkUnderline,
+      getCompositionDisplayForLine,
       getHttpUrlRangesInLine,
       getLineHighlightRange,
       getPairHighlightColumnsForLine,
       getRectangularHighlightRangeForLine,
       getTextSelectionHighlightInfoForLine,
+      renderCompositionFragment,
       renderTokens,
       resolveTokenTypeClass,
     ]
@@ -540,3 +660,10 @@ export function useEditorLineHighlightRenderers({
     renderHighlightedTokens,
   };
 }
+
+
+
+
+
+
+

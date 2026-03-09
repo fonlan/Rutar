@@ -1,5 +1,6 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { FormEventHandler, MutableRefObject } from 'react';
+import type { EditorCompositionDisplayState } from './Editor.types';
 
 interface UseEditorInputSyncActionsParams {
   tabId: string;
@@ -14,6 +15,7 @@ interface UseEditorInputSyncActionsParams {
   editTimeoutRef: MutableRefObject<any>;
   contentRef: MutableRefObject<any>;
   isComposingRef: MutableRefObject<boolean>;
+  editableSegmentStartLine: number;
   clearVerticalSelectionState: () => void;
   normalizeInputLayerDom: (element: any) => void;
   syncHugeScrollableContentWidth: () => void;
@@ -22,6 +24,14 @@ interface UseEditorInputSyncActionsParams {
   handleScroll: () => void;
   flushPendingSync: () => Promise<void>;
   capturePendingEditBeforeCursor: () => void;
+  getEditableText: (element: HTMLTextAreaElement) => string;
+  getSelectionOffsetsInElement: (element: HTMLTextAreaElement) => {
+    start: number;
+    end: number;
+    isCollapsed: boolean;
+  } | null;
+  codeUnitOffsetToLineColumn: (text: string, offset: number) => { line: number; column: number };
+  setCompositionDisplay: (state: EditorCompositionDisplayState | null) => void;
 }
 
 export function useEditorInputSyncActions({
@@ -37,6 +47,7 @@ export function useEditorInputSyncActions({
   editTimeoutRef,
   contentRef,
   isComposingRef,
+  editableSegmentStartLine,
   clearVerticalSelectionState,
   normalizeInputLayerDom,
   syncHugeScrollableContentWidth,
@@ -45,7 +56,33 @@ export function useEditorInputSyncActions({
   handleScroll,
   flushPendingSync,
   capturePendingEditBeforeCursor,
+  getEditableText,
+  getSelectionOffsetsInElement,
+  codeUnitOffsetToLineColumn,
+  setCompositionDisplay,
 }: UseEditorInputSyncActionsParams) {
+  const compositionDisplayRef = useRef<Pick<EditorCompositionDisplayState, 'line' | 'startColumn' | 'endColumn'> | null>(null);
+
+  const updateCompositionDisplayText = useCallback(
+    (text: string, mode: EditorCompositionDisplayState['mode']) => {
+      const current = compositionDisplayRef.current;
+      const safeText = typeof text === 'string' ? text : '';
+      if (!current || !safeText || safeText.includes('\n')) {
+        if (!safeText) {
+          setCompositionDisplay(null);
+        }
+        return;
+      }
+
+      setCompositionDisplay({
+        ...current,
+        text: safeText,
+        mode,
+      });
+    },
+    [setCompositionDisplay]
+  );
+
   const handleBeforeInput = useCallback<FormEventHandler<HTMLTextAreaElement>>(() => {
     capturePendingEditBeforeCursor();
   }, [capturePendingEditBeforeCursor]);
@@ -85,8 +122,21 @@ export function useEditorInputSyncActions({
   );
 
   const handleInput = useCallback(
-    () => {
+    (event: any) => {
       clearVerticalSelectionState();
+
+      if (isComposingRef.current) {
+        const nativeData =
+          typeof event?.nativeEvent?.data === 'string'
+            ? event.nativeEvent.data
+            : typeof event?.data === 'string'
+              ? event.data
+              : '';
+
+        if (nativeData) {
+          updateCompositionDisplayText(nativeData, 'composing');
+        }
+      }
 
       if (contentRef.current && !isComposingRef.current) {
         normalizeInputLayerDom(contentRef.current);
@@ -116,29 +166,85 @@ export function useEditorInputSyncActions({
       tabId,
       tabIsDirty,
       updateTab,
+      updateCompositionDisplayText,
     ]
   );
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
+    compositionDisplayRef.current = null;
+    setCompositionDisplay(null);
+
+    const element = contentRef.current;
+    const selectionOffsets = element ? getSelectionOffsetsInElement(element) : null;
+    if (element && selectionOffsets) {
+      const text = getEditableText(element);
+      const startPosition = codeUnitOffsetToLineColumn(text, selectionOffsets.start);
+      const endPosition = codeUnitOffsetToLineColumn(text, selectionOffsets.end);
+      if (startPosition.line === endPosition.line) {
+        compositionDisplayRef.current = {
+          line: (isHugeEditableMode ? editableSegmentStartLine : 0) + startPosition.line,
+          startColumn: startPosition.column,
+          endColumn: endPosition.column,
+        };
+      }
+    }
 
     if (isHugeEditableMode) {
       hugeWindowLockedRef.current = true;
     }
-  }, [hugeWindowLockedRef, isComposingRef, isHugeEditableMode]);
+  }, [
+    codeUnitOffsetToLineColumn,
+    contentRef,
+    editableSegmentStartLine,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    hugeWindowLockedRef,
+    isComposingRef,
+    isHugeEditableMode,
+    setCompositionDisplay,
+  ]);
+
+  const handleCompositionUpdate = useCallback(
+    (event: any) => {
+      const nextText =
+        typeof event?.data === 'string'
+          ? event.data
+          : typeof event?.nativeEvent?.data === 'string'
+            ? event.nativeEvent.data
+            : '';
+      updateCompositionDisplayText(nextText, 'composing');
+    },
+    [updateCompositionDisplayText]
+  );
 
   const handleCompositionEnd = useCallback(
-    () => {
+    (event: any) => {
       isComposingRef.current = false;
+      const finalText =
+        typeof event?.data === 'string'
+          ? event.data
+          : typeof event?.nativeEvent?.data === 'string'
+            ? event.nativeEvent.data
+            : '';
+
+      if (finalText) {
+        updateCompositionDisplayText(finalText, 'committed');
+      } else {
+        compositionDisplayRef.current = null;
+        setCompositionDisplay(null);
+      }
+
       queueTextSync();
     },
-    [isComposingRef, queueTextSync]
+    [isComposingRef, queueTextSync, setCompositionDisplay, updateCompositionDisplayText]
   );
 
   return {
     handleBeforeInput,
     handleInput,
     handleCompositionStart,
+    handleCompositionUpdate,
     handleCompositionEnd,
   };
 }

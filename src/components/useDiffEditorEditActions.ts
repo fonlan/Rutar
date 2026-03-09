@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   useCallback,
+  useRef,
   type ClipboardEvent as ReactClipboardEvent,
+  type CompositionEvent as ReactCompositionEvent,
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
@@ -46,6 +48,9 @@ interface UseDiffEditorEditActionsParams {
     alignedTargetPresent: boolean[],
   ) => void;
   scheduleSideCommit: (side: ActivePanel) => void;
+  clearSideCommitTimer: (side: ActivePanel) => void;
+  compositionStateRef: MutableRefObject<{ source: boolean; target: boolean }>;
+  setSideCompositionDraft: (side: ActivePanel, text: string | null) => void;
   invalidatePreviewMetadataComputation: () => void;
   normalizeTextToLines: (text: string) => string[];
   reconcilePresenceAfterTextEdit: (
@@ -88,6 +93,9 @@ export function useDiffEditorEditActions({
   applyDeferredBackendResultIfIdle,
   schedulePreviewMetadataComputation,
   scheduleSideCommit,
+  clearSideCommitTimer,
+  compositionStateRef,
+  setSideCompositionDraft,
   invalidatePreviewMetadataComputation,
   normalizeTextToLines,
   reconcilePresenceAfterTextEdit,
@@ -101,6 +109,27 @@ export function useDiffEditorEditActions({
     });
   }, [applyDeferredBackendResultIfIdle]);
 
+  const skippedCompositionChangeRef = useRef<{
+    source: string | null;
+    target: string | null;
+  }>({
+    source: null,
+    target: null,
+  });
+
+  const getPanelTextFromSnapshot = useCallback(
+    (side: ActivePanel) => {
+      const snapshot = lineDiffRef.current;
+      const lines =
+        side === "source"
+          ? snapshot.alignedSourceLines
+          : snapshot.alignedTargetLines;
+
+      return lines.join("\n");
+    },
+    [lineDiffRef],
+  );
+
   const handlePanelTextareaChange = useCallback(
     (
       side: ActivePanel,
@@ -108,7 +137,23 @@ export function useDiffEditorEditActions({
       selectionStart: number,
       selectionEnd: number,
     ) => {
+      const skippedText = skippedCompositionChangeRef.current[side];
+      if (skippedText !== null) {
+        skippedCompositionChangeRef.current[side] = null;
+        if (skippedText === nextText) {
+          lastEditAtRef.current = Date.now();
+          return false;
+        }
+      }
+
+      if (compositionStateRef.current[side]) {
+        lastEditAtRef.current = Date.now();
+        setSideCompositionDraft(side, nextText);
+        return false;
+      }
+
       lastEditAtRef.current = Date.now();
+      setSideCompositionDraft(side, null);
       capturePanelScrollSnapshot();
 
       const normalizedLines = normalizeTextToLines(nextText);
@@ -197,9 +242,11 @@ export function useDiffEditorEditActions({
       });
 
       scheduleSideCommit(side);
+      return true;
     },
     [
       capturePanelScrollSnapshot,
+      compositionStateRef,
       getLineIndexFromTextOffset,
       lastEditAtRef,
       lineDiffRef,
@@ -209,6 +256,7 @@ export function useDiffEditorEditActions({
       schedulePreviewMetadataComputation,
       scheduleSideCommit,
       setLineDiff,
+      setSideCompositionDraft,
     ],
   );
 
@@ -241,6 +289,62 @@ export function useDiffEditorEditActions({
     ],
   );
 
+  const handlePanelTextareaCompositionStart = useCallback(
+    (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => {
+      compositionStateRef.current[side] = true;
+      skippedCompositionChangeRef.current[side] = null;
+      clearSideCommitTimer(side);
+      lastEditAtRef.current = Date.now();
+      setSideCompositionDraft(side, event.currentTarget.value ?? "");
+    },
+    [
+      clearSideCommitTimer,
+      compositionStateRef,
+      lastEditAtRef,
+      setSideCompositionDraft,
+    ],
+  );
+
+  const handlePanelTextareaCompositionUpdate = useCallback(
+    (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => {
+      if (!compositionStateRef.current[side]) {
+        return;
+      }
+
+      lastEditAtRef.current = Date.now();
+      setSideCompositionDraft(side, event.currentTarget.value ?? "");
+    },
+    [compositionStateRef, lastEditAtRef, setSideCompositionDraft],
+  );
+
+  const handlePanelTextareaCompositionEnd = useCallback(
+    (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => {
+      const target = event.currentTarget;
+      const nextText = target.value ?? "";
+      const selectionStart = target.selectionStart ?? nextText.length;
+      const selectionEnd = target.selectionEnd ?? nextText.length;
+
+      compositionStateRef.current[side] = false;
+      lastEditAtRef.current = Date.now();
+      setSideCompositionDraft(side, null);
+
+      const currentText = getPanelTextFromSnapshot(side);
+      const applied = currentText === nextText
+        ? false
+        : handlePanelTextareaChange(side, nextText, selectionStart, selectionEnd);
+
+      skippedCompositionChangeRef.current[side] = nextText;
+      return applied;
+    },
+    [
+      compositionStateRef,
+      getPanelTextFromSnapshot,
+      handlePanelTextareaChange,
+      lastEditAtRef,
+      setSideCompositionDraft,
+    ],
+  );
+
   const handlePanelTextareaKeyDown = useCallback(
     (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       const target = event.currentTarget;
@@ -252,12 +356,14 @@ export function useDiffEditorEditActions({
       const indentText =
         side === "source" ? sourceIndentText : targetIndentText;
       const syntaxKey = side === "source" ? sourceSyntaxKey : targetSyntaxKey;
+      const isComposing =
+        compositionStateRef.current[side] || event.nativeEvent.isComposing;
 
       if (
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
-        !event.nativeEvent.isComposing
+        !isComposing
       ) {
         if (!event.shiftKey && safeStart === safeEnd) {
           const autoDedentReplacement = buildAutoDedentInsertion({
@@ -299,7 +405,7 @@ export function useDiffEditorEditActions({
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
-        !event.nativeEvent.isComposing
+        !isComposing
       ) {
         event.preventDefault();
         const enterEdit = buildEnterAutoIndentEdit({
@@ -318,7 +424,8 @@ export function useDiffEditorEditActions({
         event.key === "Tab" &&
         !event.ctrlKey &&
         !event.metaKey &&
-        !event.altKey
+        !event.altKey &&
+        !isComposing
       ) {
         event.preventDefault();
         const nextValue = `${value.slice(0, safeStart)}${indentText}${value.slice(safeEnd)}`;
@@ -327,6 +434,7 @@ export function useDiffEditorEditActions({
       }
     },
     [
+      compositionStateRef,
       handlePanelTextareaChange,
       sourceIndentText,
       sourceSyntaxKey,
@@ -491,6 +599,9 @@ export function useDiffEditorEditActions({
   return {
     handlePanelInputBlur,
     handlePanelTextareaChange,
+    handlePanelTextareaCompositionStart,
+    handlePanelTextareaCompositionUpdate,
+    handlePanelTextareaCompositionEnd,
     handlePanelPasteText,
     handlePanelTextareaKeyDown,
     handlePanelTextareaCopy,

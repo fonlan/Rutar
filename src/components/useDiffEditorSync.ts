@@ -48,6 +48,7 @@ interface UseDiffEditorSyncParams {
   findAlignedRowIndexByLineNumber: (present: boolean[], lineNumber: number) => number;
   buildInitialDiff: (payload: DiffTabPayload) => LineDiffComparisonResult;
   dispatchDocumentUpdated: (tabId: string) => void;
+  isCompositionActive: () => boolean;
 }
 
 const REFRESH_DEBOUNCE_MS = 120;
@@ -78,6 +79,7 @@ export function useDiffEditorSync({
   findAlignedRowIndexByLineNumber,
   buildInitialDiff,
   dispatchDocumentUpdated,
+  isCompositionActive,
 }: UseDiffEditorSyncParams) {
   const refreshTimerRef = useRef<number | null>(null);
   const refreshSequenceRef = useRef(0);
@@ -103,6 +105,10 @@ export function useDiffEditorSync({
   const previewMetadataSequenceRef = useRef(0);
 
   const isInputEditingActive = useCallback(() => {
+    if (isCompositionActive()) {
+      return true;
+    }
+
     const activeElement = document.activeElement;
     if (!(activeElement instanceof HTMLTextAreaElement)) {
       return false;
@@ -114,7 +120,7 @@ export function useDiffEditorSync({
     }
 
     return Date.now() - lastEditAtRef.current < INPUT_ACTIVE_HOLD_MS;
-  }, [lastEditAtRef]);
+  }, [isCompositionActive, lastEditAtRef]);
 
   const clearPreviewMetadataTimer = useCallback(() => {
     if (previewMetadataTimerRef.current !== null) {

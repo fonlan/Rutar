@@ -1,5 +1,6 @@
 import type {
   ClipboardEvent as ReactClipboardEvent,
+  CompositionEvent as ReactCompositionEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -52,8 +53,12 @@ interface DiffPanelViewProps {
     event: ReactKeyboardEvent<HTMLDivElement>
   ) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  compositionActive: boolean;
   panelText: string;
-  onTextareaChange: (side: ActivePanel, nextText: string, selectionStart: number, selectionEnd: number) => void;
+  onTextareaChange: (side: ActivePanel, nextText: string, selectionStart: number, selectionEnd: number) => boolean;
+  onTextareaCompositionStart: (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => void;
+  onTextareaCompositionUpdate: (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => void;
+  onTextareaCompositionEnd: (side: ActivePanel, event: ReactCompositionEvent<HTMLTextAreaElement>) => boolean;
   onTextareaKeyDown: (side: ActivePanel, event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onTextareaCopy: (side: ActivePanel, event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   onPanelContextMenu: (side: ActivePanel, event: ReactMouseEvent<HTMLTextAreaElement>) => void;
@@ -93,8 +98,12 @@ export function DiffPanelView({
   onLineNumberPointerDown,
   onLineNumberKeyDown,
   textareaRef,
+  compositionActive,
   panelText,
   onTextareaChange,
+  onTextareaCompositionStart,
+  onTextareaCompositionUpdate,
+  onTextareaCompositionEnd,
   onTextareaKeyDown,
   onTextareaCopy,
   onPanelContextMenu,
@@ -208,13 +217,32 @@ export function DiffPanelView({
                   const target = event.currentTarget;
                   const selectionStart = target.selectionStart ?? target.value.length;
                   const selectionEnd = target.selectionEnd ?? target.value.length;
-                  onTextareaChange(side, target.value, selectionStart, selectionEnd);
+                  const applied = onTextareaChange(side, target.value, selectionStart, selectionEnd);
+                  if (applied) {
+                    void updatePairHighlightsForSide(side, target.value, selectionStart, selectionEnd);
+                  }
+                }}
+                onCompositionStart={(event) => {
+                  onTextareaCompositionStart(side, event);
+                }}
+                onCompositionUpdate={(event) => {
+                  onTextareaCompositionUpdate(side, event);
+                }}
+                onCompositionEnd={(event) => {
+                  const target = event.currentTarget;
+                  const selectionStart = target.selectionStart ?? target.value.length;
+                  const selectionEnd = target.selectionEnd ?? target.value.length;
+                  onTextareaCompositionEnd(side, event);
                   void updatePairHighlightsForSide(side, target.value, selectionStart, selectionEnd);
                 }}
                 onKeyDown={(event) => {
                   onTextareaKeyDown(side, event);
                 }}
                 onSelect={(event) => {
+                  if (compositionActive) {
+                    return;
+                  }
+
                   const target = event.currentTarget;
                   schedulePairHighlightSyncForSide(side, target);
                 }}

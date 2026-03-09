@@ -31,6 +31,7 @@ interface EditorInputLayerProps {
   onSyncSelectionAfterInteraction: (event: any) => void;
   onEditorContextMenu: (event: any) => void;
   onCompositionStart: (event: any) => void;
+  onCompositionUpdate: (event: any) => void;
   onCompositionEnd: (event: any) => void;
 }
 
@@ -65,6 +66,7 @@ export function EditorInputLayer({
   onSyncSelectionAfterInteraction,
   onEditorContextMenu,
   onCompositionStart,
+  onCompositionUpdate,
   onCompositionEnd,
 }: EditorInputLayerProps) {
   if (isHugeEditableMode) {
@@ -122,6 +124,7 @@ export function EditorInputLayer({
             onFocus={onSyncSelectionAfterInteraction}
             onContextMenu={onEditorContextMenu}
             onCompositionStart={onCompositionStart}
+            onCompositionUpdate={onCompositionUpdate}
             onCompositionEnd={onCompositionEnd}
             spellCheck={false}
           />
@@ -162,6 +165,7 @@ export function EditorInputLayer({
       onFocus={onSyncSelectionAfterInteraction}
       onContextMenu={onEditorContextMenu}
       onCompositionStart={onCompositionStart}
+      onCompositionUpdate={onCompositionUpdate}
       onCompositionEnd={onCompositionEnd}
       spellCheck={false}
     />

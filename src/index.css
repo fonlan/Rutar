@@ -94,6 +94,18 @@
   caret-color: hsl(var(--foreground));
 }
 
+.editor-composition-text {
+  color: hsl(var(--foreground));
+  -webkit-text-fill-color: currentColor;
+}
+
+.editor-composition-text-composing {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
+}
+
 select,
 option {
   color: hsl(var(--foreground));

@@ -9,6 +9,7 @@ import { EditorView } from './EditorView';
 import {
   DEFAULT_SUBMENU_MAX_HEIGHTS,
   DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
+  type EditorCompositionDisplayState,
   type PendingEditCursorSnapshot,
 } from './Editor.types';
 import { resolveTokenTypeClass } from './editorTokenClass';
@@ -143,6 +144,7 @@ export function Editor({
   const savedCursorPosition = useStore((state) => state.cursorPositionByTab[tab.id]);
   const pendingEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
   const queuedEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
+  const [compositionDisplay, setCompositionDisplay] = useState<EditorCompositionDisplayState | null>(null);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
   const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
   const effectiveIndentation = useEffectiveIndentation({
@@ -726,6 +728,7 @@ export function Editor({
     codeUnitOffsetToUnicodeScalarIndex,
     pendingEditCursorSnapshotRef,
     queuedEditCursorSnapshotRef,
+    setCompositionDisplay,
   });
 
   const capturePendingEditBeforeCursor = useCallback(() => {
@@ -783,6 +786,7 @@ export function Editor({
     handleBeforeInput,
     handleInput,
     handleCompositionStart,
+    handleCompositionUpdate,
     handleCompositionEnd,
   } = useEditorInputSyncActions({
     tabId: tab.id,
@@ -797,6 +801,7 @@ export function Editor({
     editTimeoutRef: editTimeout,
     contentRef,
     isComposingRef,
+    editableSegmentStartLine: editableSegment.startLine,
     clearVerticalSelectionState,
     normalizeInputLayerDom,
     syncHugeScrollableContentWidth,
@@ -805,6 +810,10 @@ export function Editor({
     handleScroll,
     flushPendingSync,
     capturePendingEditBeforeCursor,
+    getEditableText,
+    getSelectionOffsetsInElement,
+    codeUnitOffsetToLineColumn,
+    setCompositionDisplay,
   });
 
   const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
@@ -887,6 +896,7 @@ export function Editor({
     searchHighlight,
     isPairHighlightEnabled,
     pairHighlights,
+    compositionDisplay,
     normalizedRectangularSelection,
     textSelectionHighlight,
     isHugeEditableMode,
@@ -905,6 +915,8 @@ export function Editor({
       rectangular: RECTANGULAR_SELECTION_HIGHLIGHT_CLASS,
       textSelection: TEXT_SELECTION_HIGHLIGHT_CLASS,
       hyperlinkUnderline: HYPERLINK_UNDERLINE_CLASS,
+      composition: 'editor-composition-text editor-composition-text-composing',
+      compositionCommitted: 'editor-composition-text editor-composition-text-committed',
     },
   });
 
@@ -1081,6 +1093,10 @@ export function Editor({
   });
 
   useEffect(() => {
+    setCompositionDisplay(null);
+  }, [tab.id]);
+
+  useEffect(() => {
     let disposed = false;
     let latestRequestId = 0;
 
@@ -1182,6 +1198,7 @@ export function Editor({
       syncSelectionAfterInteraction={syncSelectionAfterInteraction}
       handleEditorContextMenu={handleEditorContextMenu}
       handleCompositionStart={handleCompositionStart}
+      handleCompositionUpdate={handleCompositionUpdate}
       handleCompositionEnd={handleCompositionEnd}
       width={width}
       height={height}

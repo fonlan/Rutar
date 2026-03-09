@@ -87,7 +87,7 @@ export function EditorBackdropLayer({
 
   return (
     <div
-      className="absolute top-0 bottom-0 right-0 z-10 overflow-hidden pointer-events-none"
+      className="editor-backdrop-layer absolute top-0 bottom-0 right-0 z-10 overflow-hidden pointer-events-none"
       style={{
         left: `${contentViewportLeftPx}px`,
         width: `${contentViewportWidth}px`,

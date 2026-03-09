@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback } from 'react';
 import type { MutableRefObject } from 'react';
 import { useStore } from '@/store/useStore';
-import type { EditorSegmentState } from './Editor.types';
+import type { EditorCompositionDisplayState, EditorSegmentState } from './Editor.types';
 
 interface UseEditorFlushPendingSyncParams {
   tabId: string;
@@ -41,6 +41,7 @@ interface UseEditorFlushPendingSyncParams {
   codeUnitOffsetToUnicodeScalarIndex: (text: string, offset: number) => number;
   pendingEditCursorSnapshotRef: MutableRefObject<{ line: number; column: number } | null>;
   queuedEditCursorSnapshotRef: MutableRefObject<{ line: number; column: number } | null>;
+  setCompositionDisplay: (state: EditorCompositionDisplayState | null) => void;
 }
 
 export function useEditorFlushPendingSync({
@@ -73,6 +74,7 @@ export function useEditorFlushPendingSync({
   codeUnitOffsetToUnicodeScalarIndex,
   pendingEditCursorSnapshotRef,
   queuedEditCursorSnapshotRef,
+  setCompositionDisplay,
 }: UseEditorFlushPendingSyncParams) {
   const releaseHugeEditableWindowLock = useCallback(() => {
     hugeWindowLockedRef.current = false;
@@ -105,6 +107,10 @@ export function useEditorFlushPendingSync({
     }, hugeEditableWindowUnlockMs);
   }, [hugeEditableWindowUnlockMs, hugeWindowUnlockTimerRef, isHugeEditableMode, releaseHugeEditableWindowLock]);
 
+  const clearCompositionDisplay = useCallback(() => {
+    setCompositionDisplay(null);
+  }, [setCompositionDisplay]);
+
   const flushPendingSync = useCallback(async () => {
     if (syncInFlightRef.current || isComposingRef.current || !contentRef.current) {
       return;
@@ -129,6 +135,7 @@ export function useEditorFlushPendingSync({
         pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
         queuedEditCursorSnapshotRef.current = null;
         scheduleHugeEditableWindowUnlock();
+        clearCompositionDisplay();
         return;
       }
 
@@ -166,6 +173,7 @@ export function useEditorFlushPendingSync({
         suppressExternalReloadRef.current = true;
         updateTab(tabId, { lineCount: newLineCountSafe, isDirty: true });
         dispatchDocumentUpdated(tabId);
+        clearCompositionDisplay();
 
         if (contentRef.current) {
           const alignedTop = alignScrollOffset(currentScrollTop);
@@ -195,6 +203,7 @@ export function useEditorFlushPendingSync({
       syncedTextRef.current = targetText;
       pendingEditCursorSnapshotRef.current = queuedEditCursorSnapshotRef.current;
       queuedEditCursorSnapshotRef.current = null;
+      clearCompositionDisplay();
       return;
     }
 
@@ -220,6 +229,7 @@ export function useEditorFlushPendingSync({
       updateTab(tabId, { lineCount: newLineCount, isDirty: true });
       dispatchDocumentUpdated(tabId);
       await syncVisibleTokens(newLineCount);
+      clearCompositionDisplay();
     } catch (error) {
       console.error('Edit sync error:', error);
     } finally {
@@ -240,6 +250,7 @@ export function useEditorFlushPendingSync({
     editableSegmentRef,
     getEditableText,
     height,
+    clearCompositionDisplay,
     isComposingRef,
     isHugeEditableMode,
     itemSize,

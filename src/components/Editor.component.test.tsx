@@ -1430,12 +1430,16 @@ describe("Editor component", () => {
 
     const { container } = render(<Editor tab={tab} />);
     const textarea = await waitForEditorTextarea(container);
+    const backdrop = container.querySelector(".editor-backdrop-layer") as HTMLElement | null;
+
+    expect(backdrop).toBeTruthy();
 
     await waitFor(() => {
       expect(chunkCallCount).toBeGreaterThan(0);
     });
 
     fireEvent.compositionStart(textarea);
+    expect(backdrop).toBeTruthy();
 
     const beforeLockedRefresh = chunkCallCount;
     act(() => {
@@ -1484,6 +1488,106 @@ describe("Editor component", () => {
       { timeout: 1500 },
     );
   });
+
+  it("keeps syntax highlight visible while rendering IME composition text", async () => {
+    const editDeferred = createDeferred<number>();
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return "alpha\nbeta\n";
+      }
+      if (command === "get_syntax_token_lines") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `line-${startLine + index + 1}`,
+            type: "plain",
+          },
+        ]);
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+      if (command === "edit_text") {
+        return editDeferred.promise;
+      }
+      if (command === "cleanup_document") {
+        return 2;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "convert_text_base64") {
+        return "";
+      }
+      if (command === "get_rectangular_selection_text") {
+        return "";
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={createTab()} />);
+    const textarea = await waitForEditorTextarea(container);
+    const backdrop = container.querySelector(".editor-backdrop-layer") as HTMLElement | null;
+
+    await waitForEditorText(textarea);
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.compositionUpdate(textarea, { data: "pinyin" });
+    fireEvent.input(textarea, { target: { value: "pinyin\nbeta\n" } });
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-editor-composition-state="composing"]')?.textContent,
+      ).toBe("pinyin");
+      expect(container.querySelector(".token-plain")).toBeTruthy();
+      expect(backdrop).toBeTruthy();
+    });
+
+    fireEvent.compositionEnd(textarea, { data: "拼音" });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "edit_text",
+        expect.objectContaining({
+          id: "tab-editor-component",
+          newText: "pinyin",
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-editor-composition-state="committed"]')?.textContent,
+      ).toBe("拼音");
+      expect(container.querySelector(".token-plain")).toBeTruthy();
+    });
+
+    await act(async () => {
+      editDeferred.resolve(2);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-editor-composition-state]")).toBeNull();
+    });
+  }, 10000);
 
   it("resets huge editable textarea internal scroll offsets after force refresh sync", async () => {
     const tab = createTab({ id: "tab-huge-scroll-reset", lineCount: 22000 });

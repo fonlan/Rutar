@@ -1965,6 +1965,66 @@ describe("DiffEditor component", () => {
     }
   });
 
+  it("does not insert Tab indentation while IME composition is active in diff panel", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\repo\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\repo\target.ts",
+    });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ["left"],
+        alignedTargetLines: ["abc"],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const targetTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="target"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      targetTextarea.focus();
+      targetTextarea.setSelectionRange(1, 1);
+    });
+
+    const initialValue = targetTextarea.value;
+
+    fireEvent.compositionStart(targetTextarea);
+    fireEvent.keyDown(targetTextarea, { key: "Tab", isComposing: true });
+
+    expect(targetTextarea.value).toBe(initialValue);
+  });
+
   it("handles target textarea change and tab key insertion", async () => {
     const sourceTab = createFileTab({
       id: "source-tab",
@@ -4204,6 +4264,148 @@ describe("DiffEditor component", () => {
         container.querySelectorAll('mark[data-diff-pair-highlight="source"]'),
       ).map((element) => element.textContent ?? "");
       expect(marks).toEqual(["(", ")"]);
+    });
+  });
+
+  it("keeps existing pair highlights during IME composition and commits after composition ends", async () => {
+    const sourceTab = createFileTab({
+      id: "source-tab",
+      name: "source.ts",
+      path: "C:\repo\source.ts",
+    });
+    const targetTab = createFileTab({
+      id: "target-tab",
+      name: "target.ts",
+      path: "C:\repo\target.ts",
+    });
+    const diffTab = createDiffTab({
+      diffPayload: createDiffPayload({
+        sourceTabId: sourceTab.id,
+        targetTabId: targetTab.id,
+        sourceName: sourceTab.name,
+        targetName: targetTab.name,
+        sourcePath: sourceTab.path,
+        targetPath: targetTab.path,
+        alignedSourceLines: ["a()"],
+        alignedTargetLines: ["target"],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [1],
+        sourceDiffLineNumbers: [1],
+        targetDiffLineNumbers: [1],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    });
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const previousImplementation = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(
+      async (command: string, payload?: unknown) => {
+        const params =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        if (command === "compare_documents_by_line") {
+          return buildLineDiffResponse(["a()"], ["target"], [true], [true]);
+        }
+        if (command === "search_diff_panel_aligned_row_matches") {
+          return [];
+        }
+        if (command === "find_matching_pair_offsets") {
+          if (String(params.text ?? "") === "a()") {
+            return {
+              leftOffset: 0,
+              rightOffset: 0,
+              leftLine: 1,
+              leftColumn: 2,
+              rightLine: 1,
+              rightColumn: 3,
+            };
+          }
+          return null;
+        }
+        return previousImplementation
+          ? previousImplementation(command, payload as any)
+          : undefined;
+      },
+    );
+
+    const { container } = render(
+      React.createElement(DiffEditor, { tab: diffTab }),
+    );
+    const sourceTextarea = await waitFor(() => {
+      const element = container.querySelector(
+        'textarea[data-diff-panel="source"]',
+      ) as HTMLTextAreaElement | null;
+      expect(element).toBeTruthy();
+      return element as HTMLTextAreaElement;
+    });
+
+    act(() => {
+      sourceTextarea.focus();
+      sourceTextarea.setSelectionRange(1, 1);
+    });
+    fireEvent.select(sourceTextarea);
+
+    await waitFor(() => {
+      const marks = Array.from(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]'),
+      ).map((element) => element.textContent ?? "");
+      expect(marks).toEqual(["(", ")"]);
+    });
+
+    fireEvent.compositionStart(sourceTextarea);
+    fireEvent.change(sourceTextarea, {
+      target: {
+        value: "a拼()",
+        selectionStart: 2,
+        selectionEnd: 2,
+      },
+    });
+    act(() => {
+      sourceTextarea.setSelectionRange(2, 2);
+    });
+
+    await waitFor(() => {
+      const marks = Array.from(
+        container.querySelectorAll('mark[data-diff-pair-highlight="source"]'),
+      ).map((element) => element.textContent ?? "");
+      expect(marks).toEqual(["(", ")"]);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
+
+    expect(
+      vi.mocked(invoke).mock.calls.some(
+        ([command]) => command === "apply_aligned_diff_edit",
+      ),
+    ).toBe(false);
+
+    fireEvent.compositionEnd(sourceTextarea, { data: "拼" });
+
+    await waitFor(() => {
+      expect(sourceTextarea.value).toBe("a拼()");
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "apply_aligned_diff_edit",
+        expect.objectContaining({
+          editedSide: "source",
+          alignedSourceLines: ["a拼()"],
+        }),
+      );
     });
   });
 
