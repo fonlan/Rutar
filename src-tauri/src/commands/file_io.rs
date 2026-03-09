@@ -135,7 +135,11 @@ fn build_persist_content(doc: &Document) -> String {
     }
 }
 
-fn measure_document_size_bytes(rope: &Rope, encoding: &'static Encoding, line_ending: LineEnding) -> u64 {
+fn measure_document_size_bytes(
+    rope: &Rope,
+    encoding: &'static Encoding,
+    line_ending: LineEnding,
+) -> u64 {
     let utf8_content: String = rope.chunks().collect();
     let persisted_content = match line_ending {
         LineEnding::CrLf => utf8_content.replace('\n', "\r\n"),
@@ -281,7 +285,10 @@ fn gcd_usize(mut left: usize, mut right: usize) -> usize {
 }
 
 fn infer_space_indent_width(space_indent_counts: &[usize]) -> Option<usize> {
-    let mut non_zero = space_indent_counts.iter().copied().filter(|value| *value > 0);
+    let mut non_zero = space_indent_counts
+        .iter()
+        .copied()
+        .filter(|value| *value > 0);
     let first = non_zero.next()?;
     let mut gcd = first;
 
@@ -400,14 +407,19 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
             encoding: existing.encoding.name().to_string(),
             line_ending: existing.line_ending.label().to_string(),
             line_count: existing.rope.len_lines(),
-            size_bytes: measure_document_size_bytes(&existing.rope, existing.encoding, existing.line_ending),
+            size_bytes: measure_document_size_bytes(
+                &existing.rope,
+                existing.encoding,
+                existing.line_ending,
+            ),
             large_file_mode: existing.rope.len_bytes() > LARGE_FILE_THRESHOLD_BYTES,
             syntax_override: existing.syntax_override.clone(),
         });
     }
 
     let snapshot = read_disk_file_snapshot(&path_buf)?;
-    let size_bytes = measure_document_size_bytes(&snapshot.rope, snapshot.encoding, snapshot.line_ending);
+    let size_bytes =
+        measure_document_size_bytes(&snapshot.rope, snapshot.encoding, snapshot.line_ending);
 
     let id = Uuid::new_v4().to_string();
 
@@ -885,7 +897,11 @@ pub(super) fn reload_file_from_disk_impl(
             encoding: snapshot.encoding.name().to_string(),
             line_ending: snapshot.line_ending.label().to_string(),
             line_count: snapshot.line_count,
-            size_bytes: measure_document_size_bytes(&doc.rope, snapshot.encoding, snapshot.line_ending),
+            size_bytes: measure_document_size_bytes(
+                &doc.rope,
+                snapshot.encoding,
+                snapshot.line_ending,
+            ),
             large_file_mode: snapshot.large_file_mode,
             syntax_override: doc.syntax_override.clone(),
         })
@@ -1014,9 +1030,11 @@ pub(super) async fn get_document_size_bytes_impl(
         .map(|doc| (doc.rope.clone(), doc.encoding, doc.line_ending))
         .ok_or_else(|| "Document not found".to_string())?;
 
-    tauri::async_runtime::spawn_blocking(move || measure_document_size_bytes(&rope, encoding, line_ending))
-        .await
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        measure_document_size_bytes(&rope, encoding, line_ending)
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn detect_document_indentation_impl(
@@ -1034,7 +1052,10 @@ pub(super) fn detect_document_indentation_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{count_word_stats, detect_indentation_from_rope, measure_document_size_bytes, normalize_encoding_label};
+    use super::{
+        count_word_stats, detect_indentation_from_rope, measure_document_size_bytes,
+        normalize_encoding_label,
+    };
     use crate::state::LineEnding;
     use encoding_rs::Encoding;
     use ropey::Rope;

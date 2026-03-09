@@ -267,8 +267,12 @@ mod tests {
         };
 
         let inverse = operation.inverse();
-        let before = inverse.before_cursor.expect("inverse should keep after cursor as before snapshot");
-        let after = inverse.after_cursor.expect("inverse should keep before cursor as after snapshot");
+        let before = inverse
+            .before_cursor
+            .expect("inverse should keep after cursor as before snapshot");
+        let after = inverse
+            .after_cursor
+            .expect("inverse should keep before cursor as after snapshot");
 
         assert_eq!(before.line, 4);
         assert_eq!(before.column, 5);

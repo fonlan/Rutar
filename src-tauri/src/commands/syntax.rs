@@ -78,6 +78,10 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 }
                 "go" => Some(tree_sitter_go::LANGUAGE.into()),
                 "java" => Some(tree_sitter_java::LANGUAGE.into()),
+                "cs" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+                "php" | "phtml" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
+                "kt" | "kts" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+                "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
                 _ => None,
             };
         }
@@ -104,6 +108,10 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "cpp" => Some(tree_sitter_cpp::LANGUAGE.into()),
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        "csharp" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "php" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
+        "kotlin" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
         _ => None,
     }
 }
@@ -126,6 +134,35 @@ mod tests {
     }
 
     #[test]
+    fn csharp_php_kotlin_and_swift_extensions_should_resolve_languages() {
+        for file_name in [
+            "Program.cs",
+            "index.php",
+            "index.phtml",
+            "build.kts",
+            "App.swift",
+        ] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn csharp_php_kotlin_and_swift_syntax_overrides_should_be_supported() {
+        for syntax_key in ["csharp", "php", "kotlin", "swift"] {
+            let normalized = normalize_syntax_override(Some(syntax_key));
+            assert_eq!(
+                normalized.ok(),
+                Some(Some(syntax_key.to_string())),
+                "expected syntax override for {syntax_key}"
+            );
+        }
+    }
+
+    #[test]
     fn markdown_syntax_override_should_be_supported() {
         let normalized = normalize_syntax_override(Some("Markdown"));
         assert_eq!(normalized.ok(), Some(Some("markdown".to_string())));
@@ -137,5 +174,15 @@ mod tests {
         let language = get_language_from_path(&path);
         let parser = create_parser(language);
         assert!(parser.is_some());
+    }
+
+    #[test]
+    fn csharp_php_kotlin_and_swift_languages_should_create_parsers() {
+        for file_name in ["Program.cs", "index.php", "build.kts", "App.swift"] {
+            let path = Some(PathBuf::from(file_name));
+            let language = get_language_from_path(&path);
+            let parser = create_parser(language);
+            assert!(parser.is_some(), "expected parser for {file_name}");
+        }
     }
 }

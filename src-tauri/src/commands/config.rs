@@ -1045,7 +1045,8 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
     }
 
     if let Some(tab_indent_mode) = partial.tab_indent_mode {
-        config.tab_indent_mode = settings::normalize_tab_indent_mode(Some(tab_indent_mode.as_str()));
+        config.tab_indent_mode =
+            settings::normalize_tab_indent_mode(Some(tab_indent_mode.as_str()));
     }
 
     if let Some(new_file_line_ending) = partial.new_file_line_ending {
@@ -1460,7 +1461,11 @@ mod tests {
             remember_window_state: true,
             recent_files: vec!["  a  ".to_string(), "a".to_string()],
             recent_folders: vec!["  b  ".to_string(), "b".to_string()],
-            recent_search_keywords: vec!["alpha".to_string(), "alpha".to_string(), "  ".to_string()],
+            recent_search_keywords: vec![
+                "alpha".to_string(),
+                "alpha".to_string(),
+                "  ".to_string(),
+            ],
             recent_replace_values: vec!["".to_string(), "beta".to_string(), "beta".to_string()],
             pinned_tab_paths: vec!["  c  ".to_string(), "c".to_string()],
             windows_file_association_extensions: vec!["TXT".to_string()],
@@ -1493,8 +1498,14 @@ mod tests {
         );
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
-        assert_eq!(normalized.recent_search_keywords, vec!["alpha".to_string(), "  ".to_string()]);
-        assert_eq!(normalized.recent_replace_values, vec!["".to_string(), "beta".to_string()]);
+        assert_eq!(
+            normalized.recent_search_keywords,
+            vec!["alpha".to_string(), "  ".to_string()]
+        );
+        assert_eq!(
+            normalized.recent_replace_values,
+            vec!["".to_string(), "beta".to_string()]
+        );
         assert_eq!(normalized.pinned_tab_paths, vec!["c".to_string()]);
         assert_eq!(
             normalized.windows_file_association_extensions,

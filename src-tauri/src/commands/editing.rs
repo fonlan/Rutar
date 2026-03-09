@@ -12,7 +12,9 @@ pub struct HistoryActionResultPayload {
 
 fn build_cursor_snapshot(line: Option<usize>, column: Option<usize>) -> Option<CursorSnapshot> {
     match (line, column) {
-        (Some(line), Some(column)) if line > 0 && column > 0 => Some(CursorSnapshot { line, column }),
+        (Some(line), Some(column)) if line > 0 && column > 0 => {
+            Some(CursorSnapshot { line, column })
+        }
         _ => None,
     }
 }
@@ -128,7 +130,10 @@ pub(super) fn undo_impl(
         if let Some(operation) = doc.undo_stack.pop() {
             let inverse = operation.inverse();
             apply_operation(&mut doc, &inverse)?;
-            let result = cursor_payload_from_snapshot(operation.before_cursor.as_ref(), doc.rope.len_lines());
+            let result = cursor_payload_from_snapshot(
+                operation.before_cursor.as_ref(),
+                doc.rope.len_lines(),
+            );
             doc.redo_stack.push(operation);
             Ok(result)
         } else {
@@ -146,7 +151,8 @@ pub(super) fn redo_impl(
     if let Some(mut doc) = state.documents.get_mut(&id) {
         if let Some(operation) = doc.redo_stack.pop() {
             apply_operation(&mut doc, &operation)?;
-            let result = cursor_payload_from_snapshot(operation.after_cursor.as_ref(), doc.rope.len_lines());
+            let result =
+                cursor_payload_from_snapshot(operation.after_cursor.as_ref(), doc.rope.len_lines());
             doc.undo_stack.push(operation);
             Ok(result)
         } else {
