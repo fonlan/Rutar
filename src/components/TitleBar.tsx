@@ -116,8 +116,13 @@ const tabFileIconConfigBySyntaxKey: Partial<Record<SyntaxKey, TabFileIconConfig>
     go: { Icon: FileCode2, className: 'text-cyan-500' },
     java: { Icon: FileCode2, className: 'text-red-500' },
     csharp: { Icon: FileCode2, className: 'text-violet-500' },
+    hcl: { Icon: Braces, className: 'text-amber-500' },
+    lua: { Icon: FileCode2, className: 'text-blue-400' },
     php: { Icon: FileCode2, className: 'text-indigo-400' },
     kotlin: { Icon: FileCode2, className: 'text-fuchsia-500' },
+    powershell: { Icon: Terminal, className: 'text-sky-600' },
+    ruby: { Icon: FileCode2, className: 'text-rose-500' },
+    sql: { Icon: Braces, className: 'text-emerald-500' },
     swift: { Icon: FileCode2, className: 'text-orange-500' },
 };
 

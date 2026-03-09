@@ -96,8 +96,13 @@ describe("detectSyntaxKeyFromTab", () => {
       { fileName: "main.go", expected: "go" },
       { fileName: "Main.java", expected: "java" },
       { fileName: "Program.cs", expected: "csharp" },
+      { fileName: "main.tf", expected: "hcl" },
+      { fileName: "main.lua", expected: "lua" },
       { fileName: "index.phtml", expected: "php" },
       { fileName: "build.kts", expected: "kotlin" },
+      { fileName: "script.ps1", expected: "powershell" },
+      { fileName: "Gemfile", expected: "ruby" },
+      { fileName: "schema.sql", expected: "sql" },
       { fileName: "App.swift", expected: "swift" },
     ];
 
@@ -133,12 +138,15 @@ describe("syntax helpers", () => {
   it("returns label for syntax key", () => {
     expect(getSyntaxLabel("typescript")).toBe("TypeScript");
     expect(getSyntaxLabel("dockerfile")).toBe("Dockerfile");
+    expect(getSyntaxLabel("powershell")).toBe("PowerShell");
     expect(getSyntaxLabel("unknown" as never)).toBe("Plain Text");
   });
 
   it("returns line comment prefix with fallback", () => {
     expect(getLineCommentPrefixForSyntaxKey("typescript")).toBe("//");
     expect(getLineCommentPrefixForSyntaxKey("dockerfile")).toBe("#");
+    expect(getLineCommentPrefixForSyntaxKey("lua")).toBe("--");
+    expect(getLineCommentPrefixForSyntaxKey("sql")).toBe("--");
     expect(getLineCommentPrefixForSyntaxKey(null)).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey(undefined)).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey("unknown" as never)).toBe("#");

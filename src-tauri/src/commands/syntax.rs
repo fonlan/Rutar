@@ -55,6 +55,7 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                     return Some(tree_sitter_dockerfile::language());
                 }
                 "makefile" | "gnumakefile" => return Some(tree_sitter_make::LANGUAGE.into()),
+                "gemfile" | "rakefile" => return Some(tree_sitter_ruby::LANGUAGE.into()),
                 _ => {}
             }
         }
@@ -84,8 +85,13 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 "go" => Some(tree_sitter_go::LANGUAGE.into()),
                 "java" => Some(tree_sitter_java::LANGUAGE.into()),
                 "cs" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+                "hcl" | "tf" | "tfvars" => Some(tree_sitter_hcl::LANGUAGE.into()),
+                "lua" => Some(tree_sitter_lua::LANGUAGE.into()),
                 "php" | "phtml" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
                 "kt" | "kts" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+                "ps1" | "psd1" | "psm1" => Some(tree_sitter_powershell::LANGUAGE.into()),
+                "rb" | "rake" | "gemspec" | "ru" => Some(tree_sitter_ruby::LANGUAGE.into()),
+                "sql" => Some(tree_sitter_sequel::LANGUAGE.into()),
                 "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
                 _ => None,
             };
@@ -116,8 +122,13 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
         "csharp" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "hcl" => Some(tree_sitter_hcl::LANGUAGE.into()),
+        "lua" => Some(tree_sitter_lua::LANGUAGE.into()),
         "php" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
         "kotlin" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "powershell" => Some(tree_sitter_powershell::LANGUAGE.into()),
+        "ruby" => Some(tree_sitter_ruby::LANGUAGE.into()),
+        "sql" => Some(tree_sitter_sequel::LANGUAGE.into()),
         "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
         _ => None,
     }
@@ -192,8 +203,41 @@ mod tests {
     }
 
     #[test]
+    fn hcl_lua_powershell_ruby_and_sql_extensions_should_resolve_languages() {
+        for file_name in [
+            "main.tf",
+            "main.tfvars",
+            "main.hcl",
+            "main.lua",
+            "script.ps1",
+            "module.psm1",
+            "Gemfile",
+            "main.rb",
+            "schema.sql",
+        ] {
+            let path = Some(PathBuf::from(file_name));
+            assert!(
+                get_language_from_path(&path).is_some(),
+                "expected language for {file_name}"
+            );
+        }
+    }
+
+    #[test]
     fn csharp_php_kotlin_and_swift_syntax_overrides_should_be_supported() {
         for syntax_key in ["csharp", "php", "kotlin", "swift"] {
+            let normalized = normalize_syntax_override(Some(syntax_key));
+            assert_eq!(
+                normalized.ok(),
+                Some(Some(syntax_key.to_string())),
+                "expected syntax override for {syntax_key}"
+            );
+        }
+    }
+
+    #[test]
+    fn hcl_lua_powershell_ruby_and_sql_syntax_overrides_should_be_supported() {
+        for syntax_key in ["hcl", "lua", "powershell", "ruby", "sql"] {
             let normalized = normalize_syntax_override(Some(syntax_key));
             assert_eq!(
                 normalized.ok(),
@@ -230,6 +274,16 @@ mod tests {
     #[test]
     fn csharp_php_kotlin_and_swift_languages_should_create_parsers() {
         for file_name in ["Program.cs", "index.php", "build.kts", "App.swift"] {
+            let path = Some(PathBuf::from(file_name));
+            let language = get_language_from_path(&path);
+            let parser = create_parser(language);
+            assert!(parser.is_some(), "expected parser for {file_name}");
+        }
+    }
+
+    #[test]
+    fn hcl_lua_powershell_ruby_and_sql_languages_should_create_parsers() {
+        for file_name in ["main.tf", "main.lua", "script.ps1", "Gemfile", "schema.sql"] {
             let path = Some(PathBuf::from(file_name));
             let language = get_language_from_path(&path);
             let parser = create_parser(language);

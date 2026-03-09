@@ -68,8 +68,13 @@ export type SyntaxKey =
   | 'go'
   | 'java'
   | 'csharp'
+  | 'hcl'
+  | 'lua'
   | 'php'
   | 'kotlin'
+  | 'powershell'
+  | 'ruby'
+  | 'sql'
   | 'swift';
 
 export type AppLanguage = 'zh-CN' | 'en-US';

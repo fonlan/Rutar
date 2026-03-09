@@ -22,8 +22,13 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'go', label: 'Go' },
   { value: 'java', label: 'Java' },
   { value: 'csharp', label: 'C#' },
+  { value: 'hcl', label: 'HCL / Terraform' },
+  { value: 'lua', label: 'Lua' },
   { value: 'php', label: 'PHP' },
   { value: 'kotlin', label: 'Kotlin' },
+  { value: 'powershell', label: 'PowerShell' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'sql', label: 'SQL' },
   { value: 'swift', label: 'Swift' },
 ];
 
@@ -47,8 +52,13 @@ const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   go: '//',
   java: '//',
   csharp: '//',
+  hcl: '#',
+  lua: '--',
   php: '//',
   kotlin: '//',
+  powershell: '#',
+  ruby: '#',
+  sql: '--',
   swift: '//',
   css: '//',
   html: '//',
@@ -76,6 +86,10 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
 
   if (fileName === 'makefile' || fileName === 'gnumakefile') {
     return 'makefile';
+  }
+
+  if (fileName === 'gemfile' || fileName === 'rakefile') {
+    return 'ruby';
   }
 
   const dotIndex = fileName.lastIndexOf('.');
@@ -165,12 +179,29 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
       return 'java';
     case 'cs':
       return 'csharp';
+    case 'hcl':
+    case 'tf':
+    case 'tfvars':
+      return 'hcl';
+    case 'lua':
+      return 'lua';
     case 'php':
     case 'phtml':
       return 'php';
     case 'kt':
     case 'kts':
       return 'kotlin';
+    case 'ps1':
+    case 'psd1':
+    case 'psm1':
+      return 'powershell';
+    case 'rb':
+    case 'rake':
+    case 'gemspec':
+    case 'ru':
+      return 'ruby';
+    case 'sql':
+      return 'sql';
     case 'swift':
       return 'swift';
     default:
