@@ -91,14 +91,19 @@ pub(super) fn apply_operation(doc: &mut Document, operation: &EditOperation) -> 
     }
 
     if let Some(tree) = doc.tree.as_mut() {
-        tree.edit(&InputEdit {
+        let edit = InputEdit {
             start_byte,
             old_end_byte,
             new_end_byte,
             start_position,
             old_end_position,
             new_end_position,
-        });
+        };
+
+        match tree {
+            DocumentTree::TreeSitter(tree) => tree.edit(&edit),
+            DocumentTree::Markdown(tree) => tree.edit(&edit),
+        }
     }
 
     doc.syntax_dirty = doc.parser.is_some();

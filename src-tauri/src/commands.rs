@@ -1,4 +1,7 @@
-use crate::state::{default_line_ending, AppState, Document, EditOperation, LineEnding};
+use crate::state::{
+    default_line_ending, AppState, Document, DocumentParser, DocumentTree, EditOperation,
+    LineEnding,
+};
 use chardetng::EncodingDetector;
 use dashmap::DashMap;
 use encoding_rs::Encoding;

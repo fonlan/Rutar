@@ -1,5 +1,11 @@
+use crate::state::DocumentParser;
 use std::path::PathBuf;
 use tree_sitter::{Language, Parser};
+use tree_sitter_md::MarkdownParser;
+
+fn markdown_language() -> Language {
+    tree_sitter_md::LANGUAGE.into()
+}
 
 pub(super) fn normalize_syntax_override(
     syntax_override: Option<&str>,
@@ -13,7 +19,7 @@ pub(super) fn normalize_syntax_override(
         return Ok(None);
     }
 
-    if normalized == "plain_text" || normalized == "markdown" {
+    if normalized == "plain_text" {
         return Ok(Some(normalized));
     }
 
@@ -29,7 +35,7 @@ pub(super) fn resolve_document_language(
     syntax_override: Option<&str>,
 ) -> Option<Language> {
     if let Some(syntax_key) = syntax_override {
-        if syntax_key == "plain_text" || syntax_key == "markdown" {
+        if syntax_key == "plain_text" {
             return None;
         }
 
@@ -39,11 +45,54 @@ pub(super) fn resolve_document_language(
     get_language_from_path(path)
 }
 
-pub(super) fn create_parser(language: Option<Language>) -> Option<Parser> {
+pub(super) fn create_parser(language: Option<Language>) -> Option<DocumentParser> {
     let lang = language?;
+    if lang == markdown_language() {
+        return Some(DocumentParser::Markdown(MarkdownParser::default()));
+    }
+
     let mut parser = Parser::new();
     parser.set_language(&lang).ok()?;
-    Some(parser)
+    Some(DocumentParser::TreeSitter(parser))
+}
+
+pub(super) fn create_parser_for_syntax_key(syntax_key: &str) -> Option<DocumentParser> {
+    create_parser(language_from_syntax_key(syntax_key))
+}
+
+pub(super) fn syntax_key_from_markdown_fence_info(info_string: &str) -> Option<String> {
+    let raw_tag = info_string.split_whitespace().next()?.trim();
+    let normalized = raw_tag
+        .trim_matches(|ch: char| matches!(ch, '`' | '{' | '}' | '.'))
+        .to_ascii_lowercase();
+
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let syntax_key = match normalized.as_str() {
+        "js" | "jsx" | "node" => "javascript",
+        "ts" | "tsx" => "typescript",
+        "rs" => "rust",
+        "py" => "python",
+        "md" => "markdown",
+        "shell" | "sh" => "bash",
+        "make" | "mk" => "makefile",
+        "docker" => "dockerfile",
+        "c++" | "cc" | "cxx" | "hpp" | "hxx" => "cpp",
+        "c#" | "cs" => "csharp",
+        "yml" => "yaml",
+        "terraform" | "tf" => "hcl",
+        "ps" | "ps1" | "pwsh" => "powershell",
+        "rb" => "ruby",
+        _ => normalized.as_str(),
+    };
+
+    if language_from_syntax_key(syntax_key).is_some() {
+        Some(syntax_key.to_string())
+    } else {
+        None
+    }
 }
 
 fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
@@ -70,6 +119,8 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
                 "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
                 "py" | "pyw" => Some(tree_sitter_python::LANGUAGE.into()),
                 "json" | "jsonc" => Some(tree_sitter_json::LANGUAGE.into()),
+                "md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn" | "mdtxt" | "mdtext"
+                | "rmd" | "qmd" | "mdx" => Some(markdown_language()),
                 "dockerfile" => Some(tree_sitter_dockerfile::language()),
                 "ini" | "cfg" | "conf" | "cnf" | "properties" => {
                     Some(tree_sitter_ini::LANGUAGE.into())
@@ -107,6 +158,7 @@ fn get_language_from_path(path: &Option<PathBuf>) -> Option<Language> {
 
 fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
     match syntax_key {
+        "markdown" => Some(markdown_language()),
         "javascript" => Some(tree_sitter_javascript::LANGUAGE.into()),
         "typescript" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
@@ -142,7 +194,11 @@ fn language_from_syntax_key(syntax_key: &str) -> Option<Language> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_parser, get_language_from_path, normalize_syntax_override};
+    use super::{
+        create_parser, create_parser_for_syntax_key, get_language_from_path,
+        normalize_syntax_override, syntax_key_from_markdown_fence_info,
+    };
+    use crate::state::DocumentParser;
     use std::path::PathBuf;
 
     #[test]
@@ -185,8 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn zsh_and_jsonc_extensions_should_resolve_languages() {
-        for file_name in ["shell.zsh", "settings.jsonc"] {
+    fn markdown_zsh_and_jsonc_extensions_should_resolve_languages() {
+        for file_name in [
+            "notes.md",
+            "guide.markdown",
+            "doc.mdx",
+            "shell.zsh",
+            "settings.jsonc",
+        ] {
             let path = Some(PathBuf::from(file_name));
             assert!(
                 get_language_from_path(&path).is_some(),
@@ -214,8 +276,8 @@ mod tests {
     }
 
     #[test]
-    fn zsh_and_jsonc_syntax_overrides_should_be_supported() {
-        for syntax_key in ["zsh", "jsonc"] {
+    fn markdown_zsh_and_jsonc_syntax_overrides_should_be_supported() {
+        for syntax_key in ["markdown", "zsh", "jsonc"] {
             let normalized = normalize_syntax_override(Some(syntax_key));
             assert_eq!(
                 normalized.ok(),
@@ -288,9 +350,41 @@ mod tests {
     }
 
     #[test]
-    fn markdown_syntax_override_should_be_supported() {
-        let normalized = normalize_syntax_override(Some("Markdown"));
-        assert_eq!(normalized.ok(), Some(Some("markdown".to_string())));
+    fn markdown_fence_language_tags_should_normalize_common_aliases() {
+        let cases = [
+            ("ts", Some("typescript")),
+            ("jsx", Some("javascript")),
+            ("{.rs}", Some("rust")),
+            ("c++", Some("cpp")),
+            ("pwsh", Some("powershell")),
+            ("terraform", Some("hcl")),
+            ("make", Some("makefile")),
+            ("mermaid", None),
+            ("", None),
+        ];
+
+        for (info_string, expected) in cases {
+            let normalized = syntax_key_from_markdown_fence_info(info_string);
+            assert_eq!(
+                normalized.as_deref(),
+                expected,
+                "expected fence syntax for {info_string}"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_fence_syntax_key_should_create_nested_parser() {
+        let parser = create_parser_for_syntax_key("typescript");
+        assert!(parser.is_some());
+    }
+
+    #[test]
+    fn markdown_language_should_create_markdown_parser() {
+        let path = Some(PathBuf::from("README.md"));
+        let language = get_language_from_path(&path);
+        let parser = create_parser(language);
+        assert!(matches!(parser, Some(DocumentParser::Markdown(_))));
     }
 
     #[test]

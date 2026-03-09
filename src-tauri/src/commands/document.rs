@@ -13,6 +13,12 @@ enum LeafTokenContext {
     Value,
     IniSectionName,
     Comment,
+    MarkdownHeading,
+    MarkdownEmphasis,
+    MarkdownStrong,
+    MarkdownCode,
+    MarkdownLink,
+    MarkdownImage,
 }
 
 fn contextualize_leaf_kind(kind: &str, context: Option<LeafTokenContext>) -> String {
@@ -20,25 +26,126 @@ fn contextualize_leaf_kind(kind: &str, context: Option<LeafTokenContext>) -> Str
         Some(LeafTokenContext::Key) => format!("key_{kind}"),
         Some(LeafTokenContext::IniSectionName) if kind == "text" => "section_name_text".to_string(),
         Some(LeafTokenContext::Comment) => format!("comment_{kind}"),
+        Some(LeafTokenContext::MarkdownHeading)
+            if !matches!(
+                kind,
+                "atx_h1_marker"
+                    | "atx_h2_marker"
+                    | "atx_h3_marker"
+                    | "atx_h4_marker"
+                    | "atx_h5_marker"
+                    | "atx_h6_marker"
+                    | "setext_h1_underline"
+                    | "setext_h2_underline"
+            ) =>
+        {
+            "heading_text".to_string()
+        }
+        Some(LeafTokenContext::MarkdownEmphasis) if kind != "emphasis_delimiter" => {
+            "emphasis_text".to_string()
+        }
+        Some(LeafTokenContext::MarkdownStrong) if kind != "emphasis_delimiter" => {
+            "strong_text".to_string()
+        }
+        Some(LeafTokenContext::MarkdownCode)
+            if kind != "fenced_code_block_delimiter" && kind != "code_span_delimiter" =>
+        {
+            "code_text".to_string()
+        }
+        Some(LeafTokenContext::MarkdownLink)
+            if !matches!(
+                kind,
+                "backslash_escape" | "entity_reference" | "numeric_character_reference"
+            ) =>
+        {
+            "link_text".to_string()
+        }
+        Some(LeafTokenContext::MarkdownImage)
+            if !matches!(
+                kind,
+                "backslash_escape" | "entity_reference" | "numeric_character_reference"
+            ) =>
+        {
+            "image_text".to_string()
+        }
         _ => kind.to_string(),
     }
 }
 
+fn context_for_node_kind(
+    kind: &str,
+    inherited: Option<LeafTokenContext>,
+) -> Option<LeafTokenContext> {
+    match kind {
+        "setting_name" => Some(LeafTokenContext::Key),
+        "setting_value" => Some(LeafTokenContext::Value),
+        "section_name" => Some(LeafTokenContext::IniSectionName),
+        "comment" => Some(LeafTokenContext::Comment),
+        "atx_heading" | "setext_heading" => Some(LeafTokenContext::MarkdownHeading),
+        "emphasis" => Some(LeafTokenContext::MarkdownEmphasis),
+        "strong_emphasis" => Some(LeafTokenContext::MarkdownStrong),
+        "code_span"
+        | "code_fence_content"
+        | "fenced_code_block"
+        | "indented_code_block"
+        | "info_string" => Some(LeafTokenContext::MarkdownCode),
+        "link_text" | "link_label" | "link_destination" | "uri_autolink" => {
+            Some(LeafTokenContext::MarkdownLink)
+        }
+        "image_description" => Some(LeafTokenContext::MarkdownImage),
+        _ => inherited,
+    }
+}
+
+fn context_for_child_node(
+    kind: &str,
+    field_name: Option<&str>,
+    inherited: Option<LeafTokenContext>,
+) -> Option<LeafTokenContext> {
+    match field_name {
+        Some("key") => Some(LeafTokenContext::Key),
+        Some("value") => Some(LeafTokenContext::Value),
+        _ => context_for_node_kind(kind, inherited),
+    }
+}
+
 pub(super) fn ensure_document_tree(doc: &mut Document) {
-    if doc.parser.is_none() {
-        doc.tree = None;
-        doc.syntax_dirty = false;
-        return;
-    }
+    match doc.parser.as_mut() {
+        None => {
+            doc.tree = None;
+            doc.syntax_dirty = false;
+            return;
+        }
+        Some(DocumentParser::TreeSitter(parser)) => {
+            if !doc.syntax_dirty && matches!(doc.tree, Some(DocumentTree::TreeSitter(_))) {
+                return;
+            }
 
-    if !doc.syntax_dirty && doc.tree.is_some() {
-        return;
-    }
+            let source: String = doc.rope.chunks().collect();
+            let parsed = parser.parse(
+                &source,
+                match doc.tree.as_ref() {
+                    Some(DocumentTree::TreeSitter(tree)) => Some(tree),
+                    _ => None,
+                },
+            );
+            doc.tree = parsed.map(DocumentTree::TreeSitter);
+        }
+        Some(DocumentParser::Markdown(parser)) => {
+            if !doc.syntax_dirty && matches!(doc.tree, Some(DocumentTree::Markdown(_))) {
+                return;
+            }
 
-    if let Some(parser) = doc.parser.as_mut() {
-        let source: String = doc.rope.chunks().collect();
-        let parsed = parser.parse(&source, doc.tree.as_ref());
-        doc.tree = parsed;
+            let source: String = doc.rope.chunks().collect();
+            let parsed = parser.parse(
+                source.as_bytes(),
+                match doc.tree.as_ref() {
+                    Some(DocumentTree::Markdown(tree)) => Some(tree),
+                    _ => None,
+                },
+            );
+            doc.tree = parsed.map(DocumentTree::Markdown);
+        }
     }
 
     doc.syntax_dirty = false;
@@ -55,13 +162,15 @@ fn collect_leaf_tokens(
         return;
     }
 
+    let node_context = context_for_node_kind(node.kind(), context);
+
     if node.child_count() == 0 {
         let start = node.start_byte().max(range_start_byte);
         let end = node.end_byte().min(range_end_byte);
 
         if start < end {
             out.push(LeafToken {
-                kind: contextualize_leaf_kind(node.kind(), context),
+                kind: contextualize_leaf_kind(node.kind(), node_context),
                 start_byte: start,
                 end_byte: end,
             });
@@ -74,17 +183,8 @@ fn collect_leaf_tokens(
     if cursor.goto_first_child() {
         loop {
             let child_node = cursor.node();
-            let next_context = match cursor.field_name() {
-                Some("key") => Some(LeafTokenContext::Key),
-                Some("value") => Some(LeafTokenContext::Value),
-                _ => match child_node.kind() {
-                    "setting_name" => Some(LeafTokenContext::Key),
-                    "setting_value" => Some(LeafTokenContext::Value),
-                    "section_name" => Some(LeafTokenContext::IniSectionName),
-                    "comment" => Some(LeafTokenContext::Comment),
-                    _ => context,
-                },
-            };
+            let next_context =
+                context_for_child_node(child_node.kind(), cursor.field_name(), node_context);
 
             collect_leaf_tokens(
                 child_node,
@@ -98,6 +198,256 @@ fn collect_leaf_tokens(
             }
         }
     }
+}
+
+fn maybe_push_markdown_compound_text_token(
+    node: tree_sitter::Node,
+    range_start_byte: usize,
+    range_end_byte: usize,
+    out: &mut Vec<LeafToken>,
+) {
+    let token_kind = match node.kind() {
+        "emphasis" => "emphasis_text",
+        "strong_emphasis" => "strong_text",
+        "code_span" => "code_text",
+        _ => return,
+    };
+
+    if node.child_count() < 2 {
+        return;
+    }
+
+    let mut has_non_delimiter_named_child = false;
+    for index in 0..node.named_child_count() {
+        let Some(child) = u32::try_from(index)
+            .ok()
+            .and_then(|child_index| node.named_child(child_index))
+        else {
+            continue;
+        };
+
+        let is_supported_delimiter = matches!(
+            (node.kind(), child.kind()),
+            ("emphasis", "emphasis_delimiter")
+                | ("strong_emphasis", "emphasis_delimiter")
+                | ("code_span", "code_span_delimiter")
+        );
+        if !is_supported_delimiter {
+            has_non_delimiter_named_child = true;
+            break;
+        }
+    }
+
+    if has_non_delimiter_named_child {
+        return;
+    }
+
+    let Some(first_child) = node.child(0) else {
+        return;
+    };
+    let last_child_index = node.child_count().saturating_sub(1);
+    let Some(last_child) = u32::try_from(last_child_index)
+        .ok()
+        .and_then(|index| node.child(index))
+    else {
+        return;
+    };
+
+    let start = first_child.end_byte().max(range_start_byte);
+    let end = last_child.start_byte().min(range_end_byte);
+    if start >= end {
+        return;
+    }
+
+    out.push(LeafToken {
+        kind: token_kind.to_string(),
+        start_byte: start,
+        end_byte: end,
+    });
+}
+
+fn node_text(rope: &Rope, node: tree_sitter::Node) -> String {
+    rope.byte_slice(node.start_byte()..node.end_byte())
+        .to_string()
+}
+
+fn collect_injected_leaf_tokens_for_source(
+    source: &str,
+    syntax_key: &str,
+) -> Option<Vec<LeafToken>> {
+    let mut parser = syntax::create_parser_for_syntax_key(syntax_key)?;
+
+    match &mut parser {
+        DocumentParser::TreeSitter(parser) => {
+            let tree = parser.parse(source, None)?;
+            let mut leaves = Vec::new();
+            collect_leaf_tokens(tree.root_node(), 0, source.len(), None, &mut leaves);
+            Some(leaves)
+        }
+        DocumentParser::Markdown(parser) => {
+            let tree = parser.parse(source.as_bytes(), None)?;
+            let rope = Rope::from_str(source);
+            let mut cursor = tree.walk();
+            let mut leaves = Vec::new();
+            collect_markdown_leaf_tokens(&mut cursor, &rope, 0, source.len(), None, &mut leaves);
+            Some(leaves)
+        }
+    }
+}
+
+fn injected_markdown_fence_leaves(
+    node: tree_sitter::Node,
+    rope: &Rope,
+    range_start_byte: usize,
+    range_end_byte: usize,
+) -> Option<Vec<LeafToken>> {
+    let mut info_string = None;
+    let mut content_node = None;
+
+    let mut child_cursor = node.walk();
+    if child_cursor.goto_first_child() {
+        loop {
+            let child_node = child_cursor.node();
+            match child_node.kind() {
+                "info_string" => info_string = Some(node_text(rope, child_node)),
+                "code_fence_content" => content_node = Some(child_node),
+                _ => {}
+            }
+
+            if !child_cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+
+    let content_node = content_node?;
+    let syntax_key = syntax::syntax_key_from_markdown_fence_info(info_string.as_deref()?)?;
+    if content_node.end_byte() <= range_start_byte || content_node.start_byte() >= range_end_byte {
+        return Some(Vec::new());
+    }
+
+    let source = node_text(rope, content_node);
+    if source.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let mut leaves = collect_injected_leaf_tokens_for_source(source.as_str(), syntax_key.as_str())?;
+    for leaf in &mut leaves {
+        leaf.start_byte = leaf.start_byte.saturating_add(content_node.start_byte());
+        leaf.end_byte = leaf.end_byte.saturating_add(content_node.start_byte());
+    }
+
+    Some(leaves)
+}
+
+fn collect_markdown_fenced_code_block_tokens(
+    cursor: &mut tree_sitter_md::MarkdownCursor<'_>,
+    rope: &Rope,
+    range_start_byte: usize,
+    range_end_byte: usize,
+    context: Option<LeafTokenContext>,
+    out: &mut Vec<LeafToken>,
+) {
+    let node = cursor.node();
+    let mut injected_leaves =
+        injected_markdown_fence_leaves(node, rope, range_start_byte, range_end_byte);
+
+    if !cursor.goto_first_child() {
+        return;
+    }
+
+    loop {
+        let child_node = cursor.node();
+        if child_node.kind() == "code_fence_content" {
+            if let Some(leaves) = injected_leaves.take() {
+                out.extend(leaves);
+            } else {
+                collect_markdown_leaf_tokens(
+                    cursor,
+                    rope,
+                    range_start_byte,
+                    range_end_byte,
+                    context,
+                    out,
+                );
+            }
+        } else {
+            collect_markdown_leaf_tokens(
+                cursor,
+                rope,
+                range_start_byte,
+                range_end_byte,
+                context,
+                out,
+            );
+        }
+
+        if !cursor.goto_next_sibling() {
+            break;
+        }
+    }
+
+    let _ = cursor.goto_parent();
+}
+
+fn collect_markdown_leaf_tokens(
+    cursor: &mut tree_sitter_md::MarkdownCursor<'_>,
+    rope: &Rope,
+    range_start_byte: usize,
+    range_end_byte: usize,
+    context: Option<LeafTokenContext>,
+    out: &mut Vec<LeafToken>,
+) {
+    let node = cursor.node();
+    if node.end_byte() <= range_start_byte || node.start_byte() >= range_end_byte {
+        return;
+    }
+
+    let node_context = context_for_node_kind(node.kind(), context);
+    if node.kind() == "fenced_code_block" {
+        collect_markdown_fenced_code_block_tokens(
+            cursor,
+            rope,
+            range_start_byte,
+            range_end_byte,
+            node_context,
+            out,
+        );
+        return;
+    }
+
+    maybe_push_markdown_compound_text_token(node, range_start_byte, range_end_byte, out);
+
+    if !cursor.goto_first_child() {
+        let start = node.start_byte().max(range_start_byte);
+        let end = node.end_byte().min(range_end_byte);
+
+        if start < end {
+            out.push(LeafToken {
+                kind: contextualize_leaf_kind(node.kind(), node_context),
+                start_byte: start,
+                end_byte: end,
+            });
+        }
+
+        return;
+    }
+
+    loop {
+        collect_markdown_leaf_tokens(
+            cursor,
+            rope,
+            range_start_byte,
+            range_end_byte,
+            node_context,
+            out,
+        );
+        if !cursor.goto_next_sibling() {
+            break;
+        }
+    }
+
+    let _ = cursor.goto_parent();
 }
 
 fn push_plain_token(
@@ -305,7 +655,22 @@ pub(super) fn get_syntax_tokens_impl(
 
         if let Some(tree) = doc.tree.as_ref() {
             let mut leaves = Vec::new();
-            collect_leaf_tokens(tree.root_node(), start_byte, end_byte, None, &mut leaves);
+            match tree {
+                DocumentTree::TreeSitter(tree) => {
+                    collect_leaf_tokens(tree.root_node(), start_byte, end_byte, None, &mut leaves);
+                }
+                DocumentTree::Markdown(tree) => {
+                    let mut cursor = tree.walk();
+                    collect_markdown_leaf_tokens(
+                        &mut cursor,
+                        &doc.rope,
+                        start_byte,
+                        end_byte,
+                        None,
+                        &mut leaves,
+                    );
+                }
+            }
             Ok(build_tokens_with_gaps(
                 &doc.rope, leaves, start_byte, end_byte,
             ))
@@ -336,12 +701,13 @@ pub(super) fn get_syntax_token_lines_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tokens_with_gaps, collect_leaf_tokens, is_syntax_request_stale,
-        register_syntax_request_serial,
+        build_tokens_with_gaps, collect_leaf_tokens, collect_markdown_leaf_tokens,
+        is_syntax_request_stale, register_syntax_request_serial,
     };
     use crate::state::AppState;
     use ropey::Rope;
     use tree_sitter::Parser;
+    use tree_sitter_md::MarkdownParser;
 
     #[test]
     fn ini_tokens_should_include_key_value_section_and_comment() {
@@ -368,6 +734,108 @@ mod tests {
         assert!(token_types.iter().any(|kind| kind == "key_setting_name"));
         assert!(token_types.iter().any(|kind| kind == "setting_value"));
         assert!(token_types.iter().any(|kind| kind == "comment_text"));
+    }
+
+    #[test]
+    fn markdown_tokens_should_include_heading_link_emphasis_and_code_context() {
+        let source = "# Title
+
+Visit [docs](https://example.com) with *em* and **strong** plus `code`.
+";
+
+        let mut parser = MarkdownParser::default();
+        let tree = parser
+            .parse(source.as_bytes(), None)
+            .expect("parse markdown");
+        let rope = Rope::from_str(source);
+        let mut cursor = tree.walk();
+        let mut leaves = Vec::new();
+        collect_markdown_leaf_tokens(&mut cursor, &rope, 0, source.len(), None, &mut leaves);
+
+        let tokens = build_tokens_with_gaps(&rope, leaves, 0, source.len());
+        let token_types: Vec<String> = tokens
+            .into_iter()
+            .filter_map(|token| token.r#type)
+            .collect();
+
+        assert!(token_types.iter().any(|kind| kind == "heading_text"));
+        assert!(token_types.iter().any(|kind| kind == "link_text"));
+        assert!(
+            token_types
+                .iter()
+                .any(|kind| kind == "emphasis_text" || kind == "emphasis"),
+            "{token_types:?}"
+        );
+        assert!(token_types
+            .iter()
+            .any(|kind| kind == "strong_text" || kind == "strong_emphasis"));
+        assert!(token_types
+            .iter()
+            .any(|kind| kind == "code_span" || kind == "code_text"));
+    }
+
+    #[test]
+    fn markdown_fenced_code_blocks_should_inject_typescript_tokens() {
+        let source = "~~~ts
+const answer = 42;
+~~~
+";
+
+        let mut parser = MarkdownParser::default();
+        let tree = parser
+            .parse(source.as_bytes(), None)
+            .expect("parse markdown");
+        let rope = Rope::from_str(source);
+        let mut cursor = tree.walk();
+        let mut leaves = Vec::new();
+        collect_markdown_leaf_tokens(&mut cursor, &rope, 0, source.len(), None, &mut leaves);
+
+        let tokens = build_tokens_with_gaps(&rope, leaves, 0, source.len());
+        let token_types: Vec<String> = tokens
+            .into_iter()
+            .filter_map(|token| token.r#type)
+            .collect();
+
+        assert!(
+            token_types.iter().any(|kind| kind == "const"),
+            "{token_types:?}"
+        );
+        assert!(
+            token_types.iter().any(|kind| kind == "identifier"),
+            "{token_types:?}"
+        );
+        assert!(
+            token_types.iter().any(|kind| kind == "number"),
+            "{token_types:?}"
+        );
+    }
+
+    #[test]
+    fn markdown_unsupported_fence_should_keep_code_text_fallback() {
+        let source = "~~~mermaid
+flowchart TD
+~~~
+";
+
+        let mut parser = MarkdownParser::default();
+        let tree = parser
+            .parse(source.as_bytes(), None)
+            .expect("parse markdown");
+        let rope = Rope::from_str(source);
+        let mut cursor = tree.walk();
+        let mut leaves = Vec::new();
+        collect_markdown_leaf_tokens(&mut cursor, &rope, 0, source.len(), None, &mut leaves);
+
+        let tokens = build_tokens_with_gaps(&rope, leaves, 0, source.len());
+        let token_types: Vec<String> = tokens
+            .into_iter()
+            .filter_map(|token| token.r#type)
+            .collect();
+
+        assert!(
+            token_types.iter().any(|kind| kind == "code_text"),
+            "{token_types:?}"
+        );
     }
 
     #[test]

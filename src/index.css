@@ -412,6 +412,64 @@ option {
   font-style: italic;
 }
 
+.editor-syntax-markdown .token-title,
+.editor-syntax-markdown .token-heading_text,
+.editor-syntax-markdown .token-atx_h1_marker,
+.editor-syntax-markdown .token-atx_h2_marker,
+.editor-syntax-markdown .token-atx_h3_marker,
+.editor-syntax-markdown .token-atx_h4_marker,
+.editor-syntax-markdown .token-atx_h5_marker,
+.editor-syntax-markdown .token-atx_h6_marker,
+.editor-syntax-markdown .token-setext_h1_underline,
+.editor-syntax-markdown .token-setext_h2_underline {
+  color: #0550ae !important;
+  font-weight: 600;
+}
+
+.editor-syntax-markdown .token-link,
+.editor-syntax-markdown .token-link_text,
+.editor-syntax-markdown .token-image_text,
+.editor-syntax-markdown .token-link_destination,
+.editor-syntax-markdown .token-uri_autolink {
+  color: #0e7490 !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.editor-syntax-markdown .token-code,
+.editor-syntax-markdown .token-code_text,
+.editor-syntax-markdown .token-code_span,
+.editor-syntax-markdown .token-code_fence_content,
+.editor-syntax-markdown .token-fenced_code_block,
+.editor-syntax-markdown .token-indented_code_block,
+.editor-syntax-markdown .token-info_string {
+  color: #0a7b4f !important;
+}
+
+.editor-syntax-markdown .token-emphasis,
+.editor-syntax-markdown .token-emphasis_text {
+  color: #6f42c1 !important;
+  font-style: italic;
+}
+
+.editor-syntax-markdown .token-strong,
+.editor-syntax-markdown .token-strong_text {
+  color: #b4236a !important;
+  font-weight: 600;
+}
+
+.editor-syntax-markdown .token-fenced_code_block_delimiter,
+.editor-syntax-markdown .token-code_span_delimiter,
+.editor-syntax-markdown .token-block_quote_marker,
+.editor-syntax-markdown .token-list_marker_plus,
+.editor-syntax-markdown .token-list_marker_minus,
+.editor-syntax-markdown .token-list_marker_star,
+.editor-syntax-markdown .token-list_marker_dot,
+.editor-syntax-markdown .token-list_marker_parenthesis,
+.editor-syntax-markdown .token-thematic_break {
+  color: #a15c00 !important;
+}
+
 /* 修复特殊符号显示 */
 .token-_ { color: #4b5563 !important; opacity: 0.9; }
 
@@ -509,6 +567,64 @@ option {
 .dark .editor-syntax-ini .token-comment_text {
   color: #4ade80 !important;
   font-style: italic;
+}
+
+.dark .editor-syntax-markdown .token-title,
+.dark .editor-syntax-markdown .token-heading_text,
+.dark .editor-syntax-markdown .token-atx_h1_marker,
+.dark .editor-syntax-markdown .token-atx_h2_marker,
+.dark .editor-syntax-markdown .token-atx_h3_marker,
+.dark .editor-syntax-markdown .token-atx_h4_marker,
+.dark .editor-syntax-markdown .token-atx_h5_marker,
+.dark .editor-syntax-markdown .token-atx_h6_marker,
+.dark .editor-syntax-markdown .token-setext_h1_underline,
+.dark .editor-syntax-markdown .token-setext_h2_underline {
+  color: #7dcfff !important;
+  font-weight: 600;
+}
+
+.dark .editor-syntax-markdown .token-link,
+.dark .editor-syntax-markdown .token-link_text,
+.dark .editor-syntax-markdown .token-image_text,
+.dark .editor-syntax-markdown .token-link_destination,
+.dark .editor-syntax-markdown .token-uri_autolink {
+  color: #4fc1ff !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dark .editor-syntax-markdown .token-code,
+.dark .editor-syntax-markdown .token-code_text,
+.dark .editor-syntax-markdown .token-code_span,
+.dark .editor-syntax-markdown .token-code_fence_content,
+.dark .editor-syntax-markdown .token-fenced_code_block,
+.dark .editor-syntax-markdown .token-indented_code_block,
+.dark .editor-syntax-markdown .token-info_string {
+  color: #a5d6ff !important;
+}
+
+.dark .editor-syntax-markdown .token-emphasis,
+.dark .editor-syntax-markdown .token-emphasis_text {
+  color: #c39bff !important;
+  font-style: italic;
+}
+
+.dark .editor-syntax-markdown .token-strong,
+.dark .editor-syntax-markdown .token-strong_text {
+  color: #ff7ab2 !important;
+  font-weight: 600;
+}
+
+.dark .editor-syntax-markdown .token-fenced_code_block_delimiter,
+.dark .editor-syntax-markdown .token-code_span_delimiter,
+.dark .editor-syntax-markdown .token-block_quote_marker,
+.dark .editor-syntax-markdown .token-list_marker_plus,
+.dark .editor-syntax-markdown .token-list_marker_minus,
+.dark .editor-syntax-markdown .token-list_marker_star,
+.dark .editor-syntax-markdown .token-list_marker_dot,
+.dark .editor-syntax-markdown .token-list_marker_parenthesis,
+.dark .editor-syntax-markdown .token-thematic_break {
+  color: #ffcb6b !important;
 }
 
 .dark .token-_ { color: #93a4b8 !important; opacity: 0.9; }

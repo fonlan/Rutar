@@ -369,6 +369,42 @@ export function resolveTokenTypeClass(token: SyntaxToken) {
     if (/^key_+$/.test(normalizedType) && /^['"]$/.test(text)) {
       typeClass += ' token-key_quote token-punctuation';
     }
+
+    if (
+      normalizedType === 'heading_text' ||
+      /^atx_h[1-6]_marker$/.test(normalizedType) ||
+      /^setext_h[12]_underline$/.test(normalizedType)
+    ) {
+      typeClass += ' token-title';
+    }
+
+    if (
+      normalizedType === 'link_text' ||
+      normalizedType === 'image_text' ||
+      normalizedType === 'link_destination' ||
+      normalizedType === 'uri_autolink'
+    ) {
+      typeClass += ' token-link';
+    }
+
+    if (
+      normalizedType === 'code_text' ||
+      normalizedType === 'code_span' ||
+      normalizedType === 'code_fence_content' ||
+      normalizedType === 'fenced_code_block' ||
+      normalizedType === 'indented_code_block' ||
+      normalizedType === 'info_string'
+    ) {
+      typeClass += ' token-code';
+    }
+
+    if (normalizedType === 'emphasis' || normalizedType === 'emphasis_text') {
+      typeClass += ' token-emphasis';
+    }
+
+    if (normalizedType === 'strong_emphasis' || normalizedType === 'strong_text') {
+      typeClass += ' token-strong';
+    }
   }
 
   return typeClass;

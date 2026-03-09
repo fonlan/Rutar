@@ -4,6 +4,7 @@ use ropey::Rope;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tree_sitter::{Language, Parser, Tree};
+use tree_sitter_md::{MarkdownParser, MarkdownTree};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct FileFingerprint {
@@ -76,6 +77,16 @@ impl EditOperation {
     }
 }
 
+pub enum DocumentParser {
+    TreeSitter(Parser),
+    Markdown(MarkdownParser),
+}
+
+pub enum DocumentTree {
+    TreeSitter(Tree),
+    Markdown(MarkdownTree),
+}
+
 pub struct Document {
     pub rope: Rope,
     pub saved_rope: Rope,
@@ -92,8 +103,8 @@ pub struct Document {
     pub redo_stack: Vec<EditOperation>,
     pub saved_undo_depth: usize,
     pub saved_undo_operation_id: Option<u64>,
-    pub parser: Option<Parser>,
-    pub tree: Option<Tree>,
+    pub parser: Option<DocumentParser>,
+    pub tree: Option<DocumentTree>,
     pub language: Option<Language>,
     pub syntax_dirty: bool,
     pub saved_file_fingerprint: Option<FileFingerprint>,
