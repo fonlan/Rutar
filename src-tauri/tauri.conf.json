@@ -34,8 +34,11 @@
         "img-src": [
           "'self'",
           "asset:",
+          "http://asset.localhost",
           "data:",
-          "blob:"
+          "blob:",
+          "https:",
+          "http:"
         ],
         "style-src": [
           "'self'",
@@ -50,7 +53,13 @@
       "freezePrototype": false,
       "capabilities": [
         "default"
-      ]
+      ],
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
     }
   },
   "bundle": {

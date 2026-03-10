@@ -71,7 +71,7 @@ describe("MarkdownPreviewPanel", () => {
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US" });
     useStore.setState({ markdownPreviewWidthRatio: 0.5 });
-    convertFileSrcApiMock.mockImplementation((filePath: string) => `asset://mock/${filePath.replace(/\\/g, "/")}`);
+    convertFileSrcApiMock.mockImplementation((filePath: string) => `http://asset.localhost/${encodeURIComponent(filePath)}`);
     invokeMock.mockResolvedValue("# Hello");
     mermaidInitializeMock.mockImplementation(() => undefined);
     mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
@@ -92,7 +92,7 @@ describe("MarkdownPreviewPanel", () => {
     const image = await screen.findByRole("img", { name: "Preview" });
 
     expect(convertFileSrcApiMock).toHaveBeenCalledWith("C:\\repo\\docs\\images\\pic.png");
-    expect(image.getAttribute("src")).toBe("asset://mock/C:/repo/docs/images/pic.png");
+    expect(image.getAttribute("src")).toBe("http://asset.localhost/C%3A%5Crepo%5Cdocs%5Cimages%5Cpic.png");
   });
 
   it("keeps remote markdown image paths unchanged", async () => {
