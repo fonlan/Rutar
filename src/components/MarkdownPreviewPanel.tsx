@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { marked } from 'marked';
 import {
   useCallback,
@@ -7,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
@@ -39,7 +41,10 @@ const MIN_PREVIEW_WIDTH_RATIO = 0.2;
 const MAX_PREVIEW_WIDTH_RATIO = 0.8;
 const LIVE_UPDATE_DEBOUNCE_MS = 140;
 const EXTERNAL_IMAGE_SRC_PATTERN = /^(?:https?:|data:|blob:|asset:|\/\/)/i;
+const EXTERNAL_OPEN_TARGET_PATTERN = /^(?:https?:|mailto:|tel:|data:|blob:)/i;
 const FILE_URL_PATTERN = /^file:/i;
+const FRAGMENT_LINK_PATTERN = /^#/;
+const MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE = 'data-rutar-open-target';
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
 const WINDOWS_FILE_URL_PATH_PATTERN = /^\/[a-zA-Z]:/;
 const UNC_PATH_PATTERN = /^\\\\/;
@@ -172,8 +177,68 @@ function resolveMarkdownImageSrc(src: string, tabPath: string | null | undefined
   }
 }
 
-function rewriteMarkdownImageSources(html: string, tabPath: string | null | undefined) {
-  if (!html || !html.includes('<img')) {
+function resolveMarkdownOpenTarget(target: string, tabPath: string | null | undefined) {
+  const trimmedTarget = target.trim();
+  if (!trimmedTarget || FRAGMENT_LINK_PATTERN.test(trimmedTarget)) {
+    return null;
+  }
+
+  if (trimmedTarget.startsWith('//')) {
+    return `https:${trimmedTarget}`;
+  }
+
+  if (FILE_URL_PATTERN.test(trimmedTarget) || EXTERNAL_OPEN_TARGET_PATTERN.test(trimmedTarget)) {
+    return trimmedTarget;
+  }
+
+  if (isNativeAbsolutePath(trimmedTarget)) {
+    return nativePathToFileUrl(trimmedTarget);
+  }
+
+  const parentDirectoryPath = tabPath ? getParentDirectoryPath(tabPath) : null;
+  const parentDirectoryUrl = parentDirectoryPath ? nativePathToFileUrl(parentDirectoryPath, true) : null;
+  if (!parentDirectoryUrl) {
+    return null;
+  }
+
+  try {
+    const resolvedUrl = new URL(trimmedTarget, parentDirectoryUrl).toString();
+    if (FILE_URL_PATTERN.test(resolvedUrl) || EXTERNAL_OPEN_TARGET_PATTERN.test(resolvedUrl)) {
+      return resolvedUrl;
+    }
+  } catch {
+  }
+
+  return null;
+}
+
+function syncMarkdownOpenTargetAttribute(
+  element: Element,
+  rawTarget: string,
+  tabPath: string | null | undefined,
+) {
+  const openTarget = resolveMarkdownOpenTarget(rawTarget, tabPath);
+  const previousTarget = element.getAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE);
+
+  if (!openTarget) {
+    if (previousTarget === null) {
+      return false;
+    }
+
+    element.removeAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE);
+    return true;
+  }
+
+  if (previousTarget === openTarget) {
+    return false;
+  }
+
+  element.setAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE, openTarget);
+  return true;
+}
+
+function rewriteMarkdownPreviewHtml(html: string, tabPath: string | null | undefined) {
+  if (!html || (!html.includes('<img') && !html.includes('<a'))) {
     return html;
   }
 
@@ -189,6 +254,21 @@ function rewriteMarkdownImageSources(html: string, tabPath: string | null | unde
     const resolvedSrc = resolveMarkdownImageSrc(rawSrc, tabPath);
     if (resolvedSrc && resolvedSrc !== rawSrc) {
       imageElement.setAttribute('src', resolvedSrc);
+      didUpdate = true;
+    }
+
+    if (syncMarkdownOpenTargetAttribute(imageElement, rawSrc, tabPath)) {
+      didUpdate = true;
+    }
+  }
+
+  for (const anchorElement of parsedDocument.querySelectorAll('a[href]')) {
+    const rawHref = anchorElement.getAttribute('href');
+    if (!rawHref) {
+      continue;
+    }
+
+    if (syncMarkdownOpenTargetAttribute(anchorElement, rawHref, tabPath)) {
       didUpdate = true;
     }
   }
@@ -477,8 +557,46 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     }
 
     const parsedHtml = marked.parse(deferredMarkdownSource) as string;
-    return rewriteMarkdownImageSources(parsedHtml, tab?.path);
+    return rewriteMarkdownPreviewHtml(parsedHtml, tab?.path);
   }, [deferredMarkdownSource, markdownEnabled, tab?.path]);
+
+  const handlePreviewClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    const targetElement = event.target;
+    if (!(targetElement instanceof Element)) {
+      return;
+    }
+
+    const linkElement = targetElement.closest('a[href]');
+    if (linkElement) {
+      const openTarget = linkElement.getAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE);
+      if (!openTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void openUrl(openTarget).catch((error) => {
+        console.error('Failed to open markdown preview link:', error);
+      });
+      return;
+    }
+
+    const imageElement = targetElement.closest('img[src]');
+    if (!imageElement) {
+      return;
+    }
+
+    const openTarget = imageElement.getAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE);
+    if (!openTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void openUrl(openTarget).catch((error) => {
+      console.error('Failed to open markdown preview image:', error);
+    });
+  }, []);
 
   useEffect(() => {
     if (!open || !markdownEnabled || !renderedHtml) {
@@ -705,6 +823,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
             <article
               ref={previewArticleRef}
               className="markdown-preview"
+              onClick={handlePreviewClick}
               dangerouslySetInnerHTML={{ __html: renderedHtml }}
             />
           )}

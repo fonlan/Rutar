@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
 
@@ -16,6 +17,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(async () => undefined),
+}));
+
 vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
   default: {
     initialize: mermaidInitializeMock,
@@ -25,6 +30,7 @@ vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
 
 const invokeMock = vi.mocked(invoke);
 const convertFileSrcApiMock = vi.mocked(convertFileSrc);
+const openUrlMock = vi.mocked(openUrl);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -105,6 +111,40 @@ describe("MarkdownPreviewPanel", () => {
 
     expect(convertFileSrcApiMock).not.toHaveBeenCalled();
     expect(image.getAttribute("src")).toBe("https://example.com/pic.png");
+  });
+
+  it("opens markdown hyperlinks with the system opener instead of navigating in-panel", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("[Docs](https://example.com/docs)");
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    const link = await screen.findByRole("link", { name: "Docs" });
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const dispatched = link.dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(openUrlMock).toHaveBeenCalledWith("https://example.com/docs");
+    });
+  });
+
+  it("opens clicked markdown images with the system opener using the original file target", async () => {
+    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    const image = await screen.findByRole("img", { name: "Preview" });
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const dispatched = image.dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(openUrlMock).toHaveBeenCalledWith("file:///C:/repo/docs/images/pic.png");
+    });
   });
 
   it("shows markdown-only message for non-markdown tabs", () => {
