@@ -668,6 +668,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           ? 'border-l border-border opacity-100 pointer-events-auto'
           : 'border-l border-transparent opacity-0 pointer-events-none'
       )}
+      onContextMenu={(event) => event.preventDefault()}
       style={{ width: open ? `${clampPreviewRatio(previewWidthRatio) * 100}%` : '0px' }}
     >
       <section

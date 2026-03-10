@@ -127,6 +127,23 @@ describe("MarkdownPreviewPanel", () => {
     });
   });
 
+  it("prevents native context menu inside preview panel", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = previewScroller.dispatchEvent(event);
+
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it("refreshes content when current tab emits document-updated event", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
 
