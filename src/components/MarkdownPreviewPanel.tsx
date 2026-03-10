@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { marked } from 'marked';
 import {
   useCallback,
@@ -38,7 +38,163 @@ type MermaidApi = {
 const MIN_PREVIEW_WIDTH_RATIO = 0.2;
 const MAX_PREVIEW_WIDTH_RATIO = 0.8;
 const LIVE_UPDATE_DEBOUNCE_MS = 140;
+const EXTERNAL_IMAGE_SRC_PATTERN = /^(?:https?:|data:|blob:|asset:|\/\/)/i;
+const FILE_URL_PATTERN = /^file:/i;
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
+const WINDOWS_FILE_URL_PATH_PATTERN = /^\/[a-zA-Z]:/;
+const UNC_PATH_PATTERN = /^\\\\/;
 let mermaidApiPromise: Promise<MermaidApi> | null = null;
+
+function getParentDirectoryPath(filePath: string): string | null {
+  const normalizedPath = filePath.trim();
+
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  if (separatorIndex === 0) {
+    return normalizedPath[0];
+  }
+
+  if (separatorIndex === 2 && /^[a-zA-Z]:[\\/]/.test(normalizedPath)) {
+    return normalizedPath.slice(0, 3);
+  }
+
+  return normalizedPath.slice(0, separatorIndex);
+}
+
+function isNativeAbsolutePath(filePath: string) {
+  return (
+    filePath.startsWith('/')
+    || WINDOWS_ABSOLUTE_PATH_PATTERN.test(filePath)
+    || UNC_PATH_PATTERN.test(filePath)
+  );
+}
+
+function nativePathToFileUrl(nativePath: string, isDirectory = false): string | null {
+  const trimmedPath = nativePath.trim();
+  if (!trimmedPath) {
+    return null;
+  }
+
+  if (WINDOWS_ABSOLUTE_PATH_PATTERN.test(trimmedPath)) {
+    const normalizedPath = trimmedPath.replace(/\\/g, '/');
+    const encodedPath = normalizedPath
+      .split('/')
+      .map((segment, index) => (index === 0 ? segment : encodeURIComponent(segment)))
+      .join('/');
+    const pathname = isDirectory && !encodedPath.endsWith('/') ? `${encodedPath}/` : encodedPath;
+    return `file:///${pathname}`;
+  }
+
+  if (UNC_PATH_PATTERN.test(trimmedPath)) {
+    const normalizedPath = trimmedPath.slice(2).replace(/\\/g, '/');
+    const separatorIndex = normalizedPath.indexOf('/');
+    const host = separatorIndex >= 0 ? normalizedPath.slice(0, separatorIndex) : normalizedPath;
+    const encodedPath = separatorIndex >= 0
+      ? normalizedPath
+        .slice(separatorIndex)
+        .split('/')
+        .map((segment, index) => (index === 0 ? '' : encodeURIComponent(segment)))
+        .join('/')
+      : '';
+    const pathname = isDirectory && !encodedPath.endsWith('/') ? `${encodedPath}/` : encodedPath;
+    return `file://${host}${pathname}`;
+  }
+
+  if (trimmedPath.startsWith('/')) {
+    const encodedPath = trimmedPath
+      .split('/')
+      .map((segment, index) => (index === 0 ? '' : encodeURIComponent(segment)))
+      .join('/');
+    const pathname = isDirectory && !encodedPath.endsWith('/') ? `${encodedPath}/` : encodedPath;
+    return `file://${pathname}`;
+  }
+
+  return null;
+}
+
+function fileUrlToNativePath(fileUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(fileUrl);
+    if (parsedUrl.protocol !== 'file:') {
+      return null;
+    }
+
+    const decodedPath = decodeURIComponent(parsedUrl.pathname);
+    if (parsedUrl.host) {
+      return `\\\\${parsedUrl.host}${decodedPath.replace(/\//g, '\\')}`;
+    }
+
+    if (WINDOWS_FILE_URL_PATH_PATTERN.test(decodedPath)) {
+      return decodedPath.slice(1).replace(/\//g, '\\');
+    }
+
+    return decodedPath;
+  } catch {
+    return null;
+  }
+}
+
+function resolveMarkdownImageSrc(src: string, tabPath: string | null | undefined) {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc || EXTERNAL_IMAGE_SRC_PATTERN.test(trimmedSrc)) {
+    return trimmedSrc;
+  }
+
+  const absolutePath = FILE_URL_PATTERN.test(trimmedSrc)
+    ? fileUrlToNativePath(trimmedSrc)
+    : isNativeAbsolutePath(trimmedSrc)
+      ? trimmedSrc
+      : null;
+  if (absolutePath) {
+    return convertFileSrc(absolutePath);
+  }
+
+  const parentDirectoryPath = tabPath ? getParentDirectoryPath(tabPath) : null;
+  const parentDirectoryUrl = parentDirectoryPath ? nativePathToFileUrl(parentDirectoryPath, true) : null;
+  if (!parentDirectoryUrl) {
+    return trimmedSrc;
+  }
+
+  try {
+    const resolvedUrl = new URL(trimmedSrc, parentDirectoryUrl).toString();
+    const resolvedPath = fileUrlToNativePath(resolvedUrl);
+    return resolvedPath ? convertFileSrc(resolvedPath) : trimmedSrc;
+  } catch {
+    return trimmedSrc;
+  }
+}
+
+function rewriteMarkdownImageSources(html: string, tabPath: string | null | undefined) {
+  if (!html || !html.includes('<img')) {
+    return html;
+  }
+
+  const parsedDocument = new DOMParser().parseFromString(html, 'text/html');
+  let didUpdate = false;
+
+  for (const imageElement of parsedDocument.querySelectorAll('img[src]')) {
+    const rawSrc = imageElement.getAttribute('src');
+    if (!rawSrc) {
+      continue;
+    }
+
+    const resolvedSrc = resolveMarkdownImageSrc(rawSrc, tabPath);
+    if (resolvedSrc && resolvedSrc !== rawSrc) {
+      imageElement.setAttribute('src', resolvedSrc);
+      didUpdate = true;
+    }
+  }
+
+  return didUpdate ? parsedDocument.body.innerHTML : html;
+}
 
 function clampPreviewRatio(value: number) {
   if (!Number.isFinite(value)) {
@@ -320,8 +476,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       return '';
     }
 
-    return marked.parse(deferredMarkdownSource) as string;
-  }, [deferredMarkdownSource, markdownEnabled]);
+    const parsedHtml = marked.parse(deferredMarkdownSource) as string;
+    return rewriteMarkdownImageSources(parsedHtml, tab?.path);
+  }, [deferredMarkdownSource, markdownEnabled, tab?.path]);
 
   useEffect(() => {
     if (!open || !markdownEnabled || !renderedHtml) {

@@ -1,16 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
 
-const { mermaidInitializeMock, mermaidRenderMock } = vi.hoisted(() => ({
+const { convertFileSrcMock, mermaidInitializeMock, mermaidRenderMock } = vi.hoisted(() => ({
+  convertFileSrcMock: vi.fn(),
   mermaidInitializeMock: vi.fn(),
   mermaidRenderMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: convertFileSrcMock,
   invoke: vi.fn(),
 }));
 
@@ -22,6 +24,7 @@ vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const convertFileSrcApiMock = vi.mocked(convertFileSrc);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -68,6 +71,7 @@ describe("MarkdownPreviewPanel", () => {
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US" });
     useStore.setState({ markdownPreviewWidthRatio: 0.5 });
+    convertFileSrcApiMock.mockImplementation((filePath: string) => `asset://mock/${filePath.replace(/\\/g, "/")}`);
     invokeMock.mockResolvedValue("# Hello");
     mermaidInitializeMock.mockImplementation(() => undefined);
     mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
@@ -77,6 +81,30 @@ describe("MarkdownPreviewPanel", () => {
     render(<MarkdownPreviewPanel open={true} tab={null} />);
 
     expect(screen.getByText("No active document")).toBeInTheDocument();
+  });
+
+  it("resolves relative markdown image paths through tauri asset URLs", async () => {
+    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    const image = await screen.findByRole("img", { name: "Preview" });
+
+    expect(convertFileSrcApiMock).toHaveBeenCalledWith("C:\\repo\\docs\\images\\pic.png");
+    expect(image.getAttribute("src")).toBe("asset://mock/C:/repo/docs/images/pic.png");
+  });
+
+  it("keeps remote markdown image paths unchanged", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("![Remote](https://example.com/pic.png)");
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    const image = await screen.findByRole("img", { name: "Remote" });
+
+    expect(convertFileSrcApiMock).not.toHaveBeenCalled();
+    expect(image.getAttribute("src")).toBe("https://example.com/pic.png");
   });
 
   it("shows markdown-only message for non-markdown tabs", () => {
