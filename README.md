@@ -55,9 +55,6 @@ cd src-tauri && cargo test
 ## Configuration
 
 - User config file: `%AppData%\Rutar\config.json`.
-- Common options: language, font family/size, tab width, line ending, word wrap, recent items, search/replace history, pinned tabs, window state, mouse gestures.
-- Markdown preview currently requires `app.security.freezePrototype = false` in `src-tauri/tauri.conf.json` because of Mermaid runtime compatibility.
-- Locked tabs are persisted by path in `pinnedTabPaths` and restored on startup.
 
 ## Project Structure
 
