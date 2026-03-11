@@ -77,11 +77,11 @@ export function EditorLineNumberGutter({
   }, [endLineNumberDrag]);
 
   const beginLineNumberDrag = useCallback(
-    (lineNumber: number) => {
+    (lineNumber: number, shiftKey: boolean) => {
       dragAnchorLineRef.current = lineNumber;
       dragLastLineRef.current = lineNumber;
       suppressNextClickRef.current = false;
-      onLineNumberClick(lineNumber, false, false);
+      onLineNumberClick(lineNumber, shiftKey, false);
     },
     [onLineNumberClick]
   );
@@ -175,7 +175,7 @@ export function EditorLineNumberGutter({
                 }
 
                 const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
-                beginLineNumberDrag(lineNumber);
+                beginLineNumberDrag(lineNumber, event.shiftKey);
               }}
               onMouseOver={(event) => {
                 if (!dragAnchorLineRef.current) {

@@ -158,6 +158,7 @@ async function clickLineNumberWithMouseSequence(
   options?: {
     ctrlKey?: boolean;
     metaKey?: boolean;
+    shiftKey?: boolean;
   },
 ) {
   const lineElement = await getLineNumberElement(container, lineNumber);
@@ -166,6 +167,7 @@ async function clickLineNumberWithMouseSequence(
     buttons: 1,
     ctrlKey: options?.ctrlKey ?? false,
     metaKey: options?.metaKey ?? false,
+    shiftKey: options?.shiftKey ?? false,
   };
 
   fireEvent.mouseDown(lineElement, eventOptions);
@@ -173,11 +175,13 @@ async function clickLineNumberWithMouseSequence(
     button: 0,
     ctrlKey: eventOptions.ctrlKey,
     metaKey: eventOptions.metaKey,
+    shiftKey: eventOptions.shiftKey,
   });
   fireEvent.click(lineElement, {
     button: 0,
     ctrlKey: eventOptions.ctrlKey,
     metaKey: eventOptions.metaKey,
+    shiftKey: eventOptions.shiftKey,
   });
 }
 
@@ -187,6 +191,7 @@ async function ctrlClickLineNumberWithMouseSequence(
   options?: {
     ctrlKey?: boolean;
     metaKey?: boolean;
+    shiftKey?: boolean;
   },
 ) {
   await clickLineNumberWithMouseSequence(container, lineNumber, options);
@@ -1956,6 +1961,39 @@ describe("Editor component", () => {
     });
   });
 
+  it("selects a line-number range on Shift-click", async () => {
+    const tab = createTab({ id: "tab-line-number-shift-range", lineCount: 10 });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+
+    await clickLineNumberWithMouseSequence(container, 2);
+    await clickLineNumberWithMouseSequence(container, 4, { shiftKey: true });
+
+    await waitFor(() => {
+      const selectedText = textarea.value.slice(
+        textarea.selectionStart,
+        textarea.selectionEnd,
+      );
+      expect(selectedText).toBe("two\nthree\nfour\n");
+    });
+  });
+
   it("supports Ctrl/Cmd multi-select via line-number gutter click sequence", async () => {
     const tab = createTab({ id: "tab-line-number-ctrl-multi-select", lineCount: 10 });
     const multilineText = "one\ntwo\nthree\nfour\nfive\n";
@@ -2025,6 +2063,69 @@ describe("Editor component", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(setData).toHaveBeenCalledWith("text/plain", "two\nfour\n");
+  });
+
+  it("appends a contiguous range on Ctrl/Cmd+Shift line-number click", async () => {
+    const tab = createTab({ id: "tab-line-number-ctrl-shift-range", lineCount: 10 });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+
+    await clickLineNumberWithMouseSequence(container, 2);
+    await clickLineNumberWithMouseSequence(container, 4, { ctrlKey: true, shiftKey: true });
+
+    const { event, setData } = createClipboardLikeEvent("copy");
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "two\nthree\nfour\n");
+  });
+
+  it("preserves existing discontiguous selection when Ctrl/Cmd+Shift appends a range", async () => {
+    const tab = createTab({ id: "tab-line-number-ctrl-shift-preserve-existing", lineCount: 12 });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\nsix\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five", "six"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+
+    await ctrlClickLineNumberWithMouseSequence(container, 2, { ctrlKey: true });
+    await ctrlClickLineNumberWithMouseSequence(container, 6, { ctrlKey: true });
+    await clickLineNumberWithMouseSequence(container, 4, { ctrlKey: true, shiftKey: true });
+
+    const { event, setData } = createClipboardLikeEvent("copy");
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "two\nfour\nfive\nsix\n");
   });
 
   it("uses preventScroll when first-click focusing from line number gutter", async () => {

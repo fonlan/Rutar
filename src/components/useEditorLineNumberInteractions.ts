@@ -60,10 +60,13 @@ export function useEditorLineNumberInteractions({
   }, []);
 
   const buildLineNumberRange = useCallback((startLine: number, endLine: number) => {
-    const safeStartLine = Math.max(1, Math.floor(startLine));
-    const safeEndLine = Math.max(safeStartLine, Math.floor(endLine));
+    const normalizedStartLine = Math.max(1, Math.min(Math.floor(startLine), Math.floor(endLine)));
+    const normalizedEndLine = Math.max(1, Math.max(Math.floor(startLine), Math.floor(endLine)));
 
-    return Array.from({ length: safeEndLine - safeStartLine + 1 }, (_, index) => safeStartLine + index);
+    return Array.from(
+      { length: normalizedEndLine - normalizedStartLine + 1 },
+      (_, index) => normalizedStartLine + index
+    );
   }, []);
 
   const resolveSourceLineRangeSelectionOffsets = useCallback(
@@ -179,11 +182,23 @@ export function useEditorLineNumberInteractions({
         const seededSelection = derivedWholeLineSelection
           ? buildLineNumberRange(derivedWholeLineSelection.startLine, derivedWholeLineSelection.endLine)
           : [];
+        const anchorLine = lineNumberSelectionAnchorLineRef.current ?? safeLine;
 
-        lineNumberSelectionAnchorLineRef.current = safeLine;
+        if (lineNumberSelectionAnchorLineRef.current === null) {
+          lineNumberSelectionAnchorLineRef.current = anchorLine;
+        }
+
         clearRectangularSelection();
         setLineNumberMultiSelection((prev) => {
           const baseSelection = prev.length === 0 ? seededSelection : prev;
+
+          if (shiftKey) {
+            const rangeSelection = buildLineNumberRange(anchorLine, safeLine);
+            return Array.from(new Set([...baseSelection, ...rangeSelection])).sort(
+              (left, right) => left - right
+            );
+          }
+
           const exists = baseSelection.includes(safeLine);
           if (exists) {
             return baseSelection.filter((lineNumber) => lineNumber !== safeLine);
@@ -191,6 +206,10 @@ export function useEditorLineNumberInteractions({
 
           return [...baseSelection, safeLine].sort((left, right) => left - right);
         });
+
+        if (!shiftKey) {
+          lineNumberSelectionAnchorLineRef.current = safeLine;
+        }
 
         if (element && starts.length > 0) {
           const lineOffsets = resolveAbsoluteLineRangeSelectionOffsets(text, starts, safeLine, safeLine);
