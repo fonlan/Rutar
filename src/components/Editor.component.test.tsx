@@ -671,6 +671,44 @@ describe("Editor component", () => {
     });
   });
 
+  it("does not clip active Ctrl-added line selection highlight to content box", async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: true,
+    });
+    const tab = createTab({
+      id: "tab-line-number-selection-no-content-box-clip",
+      lineCount: 10,
+    });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    await waitForEditorTextarea(container);
+
+    await clickLineNumberWithMouseSequence(container, 2);
+    await ctrlClickLineNumberWithMouseSequence(container, 4, { ctrlKey: true });
+
+    await waitFor(() => {
+      const highlightedLines = Array.from(
+        container.querySelectorAll<HTMLElement>(".editor-line"),
+      ).filter((line) => line.className.includes("bg-blue-500/25"));
+      expect(highlightedLines).toHaveLength(2);
+      expect(highlightedLines[1]?.style.backgroundClip).toBe("");
+    });
+  });
+
   it("keeps current line highlight free of long color transitions", async () => {
     useStore.getState().updateSettings({
       highlightCurrentLine: true,
