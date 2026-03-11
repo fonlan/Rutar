@@ -675,6 +675,14 @@ export function Editor({
     toggleBookmarkSidebar,
     setEditorContextMenu,
   });
+  const mapSourceLineToAbsoluteLine = useCallback(
+    (sourceLine: number) => {
+      const safeSourceLine = Math.max(1, Math.floor(sourceLine));
+      return isHugeEditableMode ? editableSegment.startLine + safeSourceLine : safeSourceLine;
+    },
+    [editableSegment.startLine, isHugeEditableMode]
+  );
+
   const { getLineNumberFromGutterElement, handleLineNumberClick } = useEditorLineNumberInteractions({
     tabId: tab.id,
     contentRef,
@@ -682,12 +690,14 @@ export function Editor({
     clearLineNumberMultiSelection,
     clearRectangularSelection,
     mapAbsoluteLineToSourceLine,
+    mapSourceLineToAbsoluteLine,
     setLineNumberMultiSelection,
     setActiveLineNumber,
     setCursorPosition,
     syncSelectionAfterInteraction,
     normalizeSegmentText,
     getEditableText,
+    getSelectionOffsetsInElement,
     buildLineStartOffsets,
     getLineBoundsByLineNumber,
     mapLogicalOffsetToInputLayerOffset,

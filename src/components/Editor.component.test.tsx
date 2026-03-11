@@ -152,6 +152,46 @@ async function clickLineNumber(
   fireEvent.click(lineElement as Element, options ?? {});
 }
 
+async function clickLineNumberWithMouseSequence(
+  container: HTMLElement,
+  lineNumber: number,
+  options?: {
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+  },
+) {
+  const lineElement = await getLineNumberElement(container, lineNumber);
+  const eventOptions = {
+    button: 0,
+    buttons: 1,
+    ctrlKey: options?.ctrlKey ?? false,
+    metaKey: options?.metaKey ?? false,
+  };
+
+  fireEvent.mouseDown(lineElement, eventOptions);
+  fireEvent.mouseUp(lineElement, {
+    button: 0,
+    ctrlKey: eventOptions.ctrlKey,
+    metaKey: eventOptions.metaKey,
+  });
+  fireEvent.click(lineElement, {
+    button: 0,
+    ctrlKey: eventOptions.ctrlKey,
+    metaKey: eventOptions.metaKey,
+  });
+}
+
+async function ctrlClickLineNumberWithMouseSequence(
+  container: HTMLElement,
+  lineNumber: number,
+  options?: {
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+  },
+) {
+  await clickLineNumberWithMouseSequence(container, lineNumber, options);
+}
+
 async function getLineNumberElement(
   container: HTMLElement,
   lineNumber: number,
@@ -1834,7 +1874,7 @@ describe("Editor component", () => {
     const textarea = await waitForEditorTextarea(container);
     await waitForEditorText(textarea);
 
-    await clickLineNumber(container, 2);
+    await clickLineNumberWithMouseSequence(container, 2);
 
     await waitFor(() => {
       expect(textarea.selectionStart).toBe(6);
@@ -1876,6 +1916,77 @@ describe("Editor component", () => {
       );
       expect(selectedText).toBe("two\nthree\nfour\n");
     });
+  });
+
+  it("supports Ctrl/Cmd multi-select via line-number gutter click sequence", async () => {
+    const tab = createTab({ id: "tab-line-number-ctrl-multi-select", lineCount: 10 });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+
+    await ctrlClickLineNumberWithMouseSequence(container, 2, { ctrlKey: true });
+    await ctrlClickLineNumberWithMouseSequence(container, 4, { ctrlKey: true });
+
+    const { event, setData } = createClipboardLikeEvent("copy");
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "two\nfour\n");
+  });
+
+  it("preserves existing gutter line selection when Ctrl/Cmd-click appends another line", async () => {
+    const tab = createTab({ id: "tab-line-number-ctrl-append-existing", lineCount: 10 });
+    const multilineText = "one\ntwo\nthree\nfour\nfive\n";
+    const defaultInvokeImpl = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return multilineText;
+      }
+      if (command === "get_visible_lines_chunk") {
+        return ["one", "two", "three", "four", "five"];
+      }
+
+      return defaultInvokeImpl
+        ? defaultInvokeImpl(command, payload)
+        : undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, multilineText);
+
+    await clickLineNumber(container, 2);
+
+    await waitFor(() => {
+      const selectedText = textarea.value.slice(
+        textarea.selectionStart,
+        textarea.selectionEnd,
+      );
+      expect(selectedText).toBe("two\n");
+    });
+
+    await ctrlClickLineNumberWithMouseSequence(container, 4, { ctrlKey: true });
+
+    const { event, setData } = createClipboardLikeEvent("copy");
+    textarea.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "two\nfour\n");
   });
 
   it("uses preventScroll when first-click focusing from line number gutter", async () => {

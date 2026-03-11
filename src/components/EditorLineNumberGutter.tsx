@@ -168,6 +168,12 @@ export function EditorLineNumberGutter({
                   return;
                 }
 
+                if (event.ctrlKey || event.metaKey) {
+                  suppressNextClickRef.current = false;
+                  endLineNumberDrag();
+                  return;
+                }
+
                 const lineNumber = getLineNumberFromGutterElement(event.currentTarget, index + 1);
                 beginLineNumberDrag(lineNumber);
               }}

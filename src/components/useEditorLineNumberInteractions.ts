@@ -8,12 +8,16 @@ interface UseEditorLineNumberInteractionsParams {
   clearLineNumberMultiSelection: () => void;
   clearRectangularSelection: () => void;
   mapAbsoluteLineToSourceLine: (absoluteLine: number) => number | null;
+  mapSourceLineToAbsoluteLine: (sourceLine: number) => number;
   setLineNumberMultiSelection: (updater: number[] | ((prev: number[]) => number[])) => void;
   setActiveLineNumber: (updater: number | ((prev: number) => number)) => void;
   setCursorPosition: (tabId: string, line: number, column: number) => void;
   syncSelectionAfterInteraction: () => void;
   normalizeSegmentText: (text: string) => string;
   getEditableText: (element: HTMLTextAreaElement) => string;
+  getSelectionOffsetsInElement: (
+    element: HTMLTextAreaElement
+  ) => { start: number; end: number; isCollapsed: boolean } | null;
   buildLineStartOffsets: (text: string) => number[];
   getLineBoundsByLineNumber: (
     text: string,
@@ -32,12 +36,14 @@ export function useEditorLineNumberInteractions({
   clearLineNumberMultiSelection,
   clearRectangularSelection,
   mapAbsoluteLineToSourceLine,
+  mapSourceLineToAbsoluteLine,
   setLineNumberMultiSelection,
   setActiveLineNumber,
   setCursorPosition,
   syncSelectionAfterInteraction,
   normalizeSegmentText,
   getEditableText,
+  getSelectionOffsetsInElement,
   buildLineStartOffsets,
   getLineBoundsByLineNumber,
   mapLogicalOffsetToInputLayerOffset,
@@ -53,34 +59,143 @@ export function useEditorLineNumberInteractions({
     return Math.max(1, Math.floor(fallbackLine));
   }, []);
 
+  const buildLineNumberRange = useCallback((startLine: number, endLine: number) => {
+    const safeStartLine = Math.max(1, Math.floor(startLine));
+    const safeEndLine = Math.max(safeStartLine, Math.floor(endLine));
+
+    return Array.from({ length: safeEndLine - safeStartLine + 1 }, (_, index) => safeStartLine + index);
+  }, []);
+
+  const resolveSourceLineRangeSelectionOffsets = useCallback(
+    (text: string, starts: number[], startLineInSource: number, endLineInSource: number) => {
+      const startBounds = getLineBoundsByLineNumber(text, starts, startLineInSource);
+      const endBounds = getLineBoundsByLineNumber(text, starts, endLineInSource);
+      if (!startBounds || !endBounds) {
+        return null;
+      }
+
+      const selectionStartOffset = mapLogicalOffsetToInputLayerOffset(text, startBounds.start);
+      const logicalEndOffset = endBounds.end < text.length && text[endBounds.end] === '\n'
+        ? endBounds.end + 1
+        : endBounds.end;
+      const selectionEndOffset = mapLogicalOffsetToInputLayerOffset(text, logicalEndOffset);
+
+      return {
+        selectionStartOffset,
+        selectionEndOffset,
+      };
+    },
+    [
+      getLineBoundsByLineNumber,
+      mapLogicalOffsetToInputLayerOffset,
+    ]
+  );
+
+  const resolveAbsoluteLineRangeSelectionOffsets = useCallback(
+    (text: string, starts: number[], startAbsoluteLine: number, endAbsoluteLine: number) => {
+      const startLineInSource = mapAbsoluteLineToSourceLine(startAbsoluteLine);
+      const endLineInSource = mapAbsoluteLineToSourceLine(endAbsoluteLine);
+      if (startLineInSource === null || endLineInSource === null) {
+        return null;
+      }
+
+      return resolveSourceLineRangeSelectionOffsets(text, starts, startLineInSource, endLineInSource);
+    },
+    [
+      mapAbsoluteLineToSourceLine,
+      resolveSourceLineRangeSelectionOffsets,
+    ]
+  );
+
+  const deriveWholeLineSelectionRange = useCallback(
+    (text: string, starts: number[], selectionStart: number, selectionEnd: number) => {
+      if (selectionEnd <= selectionStart || starts.length === 0) {
+        return null;
+      }
+
+      let startSourceLine: number | null = null;
+      for (let sourceLine = 1; sourceLine <= starts.length; sourceLine += 1) {
+        const startBounds = getLineBoundsByLineNumber(text, starts, sourceLine);
+        if (!startBounds) {
+          continue;
+        }
+
+        const startOffset = mapLogicalOffsetToInputLayerOffset(text, startBounds.start);
+        if (startOffset === selectionStart) {
+          startSourceLine = sourceLine;
+          break;
+        }
+      }
+
+      if (startSourceLine === null) {
+        return null;
+      }
+
+      for (let endSourceLine = startSourceLine; endSourceLine <= starts.length; endSourceLine += 1) {
+        const rangeOffsets = resolveSourceLineRangeSelectionOffsets(
+          text,
+          starts,
+          startSourceLine,
+          endSourceLine
+        );
+        if (!rangeOffsets) {
+          continue;
+        }
+
+        if (
+          rangeOffsets.selectionStartOffset === selectionStart &&
+          rangeOffsets.selectionEndOffset === selectionEnd
+        ) {
+          return {
+            startLine: mapSourceLineToAbsoluteLine(startSourceLine),
+            endLine: mapSourceLineToAbsoluteLine(endSourceLine),
+          };
+        }
+      }
+
+      return null;
+    },
+    [
+      getLineBoundsByLineNumber,
+      mapLogicalOffsetToInputLayerOffset,
+      mapSourceLineToAbsoluteLine,
+      resolveSourceLineRangeSelectionOffsets,
+    ]
+  );
+
   const handleLineNumberClick = useCallback(
     (line: number, shiftKey: boolean, additiveKey: boolean) => {
       const safeLine = Math.max(1, Math.floor(line));
+      const element = contentRef.current;
+      const text = element ? normalizeSegmentText(getEditableText(element)) : '';
+      const starts = text ? buildLineStartOffsets(text) : [];
 
       if (additiveKey) {
+        const selectionOffsets = element ? getSelectionOffsetsInElement(element) : null;
+        const derivedWholeLineSelection =
+          selectionOffsets && !selectionOffsets.isCollapsed && starts.length > 0
+            ? deriveWholeLineSelectionRange(text, starts, selectionOffsets.start, selectionOffsets.end)
+            : null;
+        const seededSelection = derivedWholeLineSelection
+          ? buildLineNumberRange(derivedWholeLineSelection.startLine, derivedWholeLineSelection.endLine)
+          : [];
+
         lineNumberSelectionAnchorLineRef.current = safeLine;
         clearRectangularSelection();
         setLineNumberMultiSelection((prev) => {
-          const exists = prev.includes(safeLine);
+          const baseSelection = prev.length === 0 ? seededSelection : prev;
+          const exists = baseSelection.includes(safeLine);
           if (exists) {
-            return prev.filter((lineNumber) => lineNumber !== safeLine);
+            return baseSelection.filter((lineNumber) => lineNumber !== safeLine);
           }
 
-          return [...prev, safeLine].sort((left, right) => left - right);
+          return [...baseSelection, safeLine].sort((left, right) => left - right);
         });
 
-        const element = contentRef.current;
-        if (element) {
-          const text = normalizeSegmentText(getEditableText(element));
-          const starts = buildLineStartOffsets(text);
-          const lineInSource = mapAbsoluteLineToSourceLine(safeLine);
-          if (lineInSource === null) {
-            return;
-          }
-          const bounds = getLineBoundsByLineNumber(text, starts, lineInSource);
-          if (bounds) {
-            const caretOffset = mapLogicalOffsetToInputLayerOffset(text, bounds.start);
-            setCaretToCodeUnitOffset(element, caretOffset);
+        if (element && starts.length > 0) {
+          const lineOffsets = resolveAbsoluteLineRangeSelectionOffsets(text, starts, safeLine, safeLine);
+          if (lineOffsets) {
+            setCaretToCodeUnitOffset(element, lineOffsets.selectionStartOffset);
           }
         }
 
@@ -107,45 +222,40 @@ export function useEditorLineNumberInteractions({
       setActiveLineNumber((prev) => (prev === safeLine ? prev : safeLine));
       setCursorPosition(tabId, safeLine, 1);
 
-      const element = contentRef.current;
-      if (!element) {
+      if (!element || starts.length === 0) {
         return;
       }
 
-      const text = normalizeSegmentText(getEditableText(element));
-      const starts = buildLineStartOffsets(text);
-      const startLineInSource = mapAbsoluteLineToSourceLine(selectionStartLine);
-      const endLineInSource = mapAbsoluteLineToSourceLine(selectionEndLine);
-      if (startLineInSource === null || endLineInSource === null) {
+      const lineRangeOffsets = resolveAbsoluteLineRangeSelectionOffsets(
+        text,
+        starts,
+        selectionStartLine,
+        selectionEndLine
+      );
+      if (!lineRangeOffsets) {
         return;
       }
-      const startBounds = getLineBoundsByLineNumber(text, starts, startLineInSource);
-      const endBounds = getLineBoundsByLineNumber(text, starts, endLineInSource);
-      if (!startBounds || !endBounds) {
-        return;
-      }
-
-      const selectionStartOffset = mapLogicalOffsetToInputLayerOffset(text, startBounds.start);
-      const logicalEndOffset = endBounds.end < text.length && text[endBounds.end] === '\n'
-        ? endBounds.end + 1
-        : endBounds.end;
-      const selectionEndOffset = mapLogicalOffsetToInputLayerOffset(text, logicalEndOffset);
 
       clearRectangularSelection();
-      setSelectionToCodeUnitOffsets(element, selectionStartOffset, selectionEndOffset);
+      setSelectionToCodeUnitOffsets(
+        element,
+        lineRangeOffsets.selectionStartOffset,
+        lineRangeOffsets.selectionEndOffset
+      );
       syncSelectionAfterInteraction();
     },
     [
+      buildLineNumberRange,
       buildLineStartOffsets,
       clearLineNumberMultiSelection,
       clearRectangularSelection,
       contentRef,
+      deriveWholeLineSelectionRange,
       getEditableText,
-      getLineBoundsByLineNumber,
+      getSelectionOffsetsInElement,
       lineNumberSelectionAnchorLineRef,
-      mapAbsoluteLineToSourceLine,
-      mapLogicalOffsetToInputLayerOffset,
       normalizeSegmentText,
+      resolveAbsoluteLineRangeSelectionOffsets,
       setActiveLineNumber,
       setCaretToCodeUnitOffset,
       setCursorPosition,
