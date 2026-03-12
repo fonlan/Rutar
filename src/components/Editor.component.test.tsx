@@ -2375,6 +2375,104 @@ describe("Editor component", () => {
     });
   });
 
+  it("loads an unloaded huge-file target window after navigate-to-line", async () => {
+    const tab = createTab({
+      id: "tab-navigate-line-huge-window-load",
+      lineCount: 25000,
+      largeFileMode: true,
+    });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return "unused\n";
+      }
+      if (command === "get_visible_lines_chunk") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+
+        return Array.from({ length: count }, (_, index) => {
+          const lineNumber = startLine + index + 1;
+          return lineNumber >= 12346 && lineNumber < 12446
+            ? `target-${lineNumber}`
+            : `seed-${lineNumber}`;
+        });
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return tab.lineCount;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: tab.lineCount,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(textarea.value).toContain("seed-");
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:navigate-to-line", {
+          detail: {
+            tabId: tab.id,
+            line: 12346,
+            column: 8,
+            length: 0,
+            source: "shortcut",
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some(
+          ([command, payload]) =>
+            command === "get_visible_lines_chunk" &&
+            typeof payload === "object" &&
+            payload !== null &&
+            "id" in payload &&
+            (payload as { id?: string }).id === tab.id &&
+            "startLine" in payload &&
+            "endLine" in payload &&
+            Number((payload as { startLine?: number }).startLine) <= 12345 &&
+            Number((payload as { endLine?: number }).endLine) > 12345,
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toContain("target-12346");
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(12346);
+      expect(cursor?.column).toBe(8);
+    });
+  });
+
   it("handles navigate-to-outline event and moves caret to line start", async () => {
     const tab = createTab({ id: "tab-navigate-outline-event", lineCount: 12 });
     const { container } = render(<Editor tab={tab} />);
@@ -2402,6 +2500,104 @@ describe("Editor component", () => {
       expect(cursor?.column).toBe(1);
       expect(textarea.selectionStart).toBe(6);
       expect(textarea.selectionEnd).toBe(6);
+    });
+  });
+
+  it("loads an unloaded huge-file target window after navigate-to-outline", async () => {
+    const tab = createTab({
+      id: "tab-navigate-outline-huge-window-load",
+      lineCount: 25000,
+      largeFileMode: true,
+    });
+
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return "unused\n";
+      }
+      if (command === "get_visible_lines_chunk") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+
+        return Array.from({ length: count }, (_, index) => {
+          const lineNumber = startLine + index + 1;
+          return lineNumber >= 12346 && lineNumber < 12446
+            ? `target-${lineNumber}`
+            : `seed-${lineNumber}`;
+        });
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return tab.lineCount;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: tab.lineCount,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+
+      return undefined;
+    });
+
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+
+    await waitFor(() => {
+      expect(textarea.value).toContain("seed-");
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:navigate-to-outline", {
+          detail: {
+            tabId: tab.id,
+            line: 12346,
+            column: 8,
+            length: 0,
+            source: "outline",
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some(
+          ([command, payload]) =>
+            command === "get_visible_lines_chunk" &&
+            typeof payload === "object" &&
+            payload !== null &&
+            "id" in payload &&
+            (payload as { id?: string }).id === tab.id &&
+            "startLine" in payload &&
+            "endLine" in payload &&
+            Number((payload as { startLine?: number }).startLine) <= 12345 &&
+            Number((payload as { endLine?: number }).endLine) > 12345,
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toContain("target-12346");
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(12346);
+      expect(cursor?.column).toBe(1);
     });
   });
 

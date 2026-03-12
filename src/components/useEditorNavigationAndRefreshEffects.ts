@@ -35,7 +35,7 @@ interface UseEditorNavigationAndRefreshEffectsParams {
     occludedRightPx: number,
     listElement?: HTMLDivElement
   ) => void;
-  syncVisibleTokens: (lineCount: number) => Promise<void>;
+  syncVisibleTokens: (lineCount: number, visibleRange?: { start: number; stop: number }) => Promise<void>;
   alignScrollOffset: (value: number) => number;
   setCaretToLineColumn: (element: HTMLTextAreaElement, line: number, column: number) => void;
   loadTextFromBackend: () => Promise<void>;
@@ -111,6 +111,7 @@ export function useEditorNavigationAndRefreshEffects({
       const targetOccludedRightPx = Number.isFinite(detail.occludedRightPx)
         ? Math.max(0, Math.floor(detail.occludedRightPx as number))
         : 0;
+      const targetVisibleIndex = Math.min(Math.max(0, targetLine - 1), Math.max(0, tabLineCount - 1));
       const shouldMoveCaretToLineStart = detail.source === 'outline';
       const targetCaretColumn = shouldMoveCaretToLineStart ? 1 : targetColumn;
       setActiveLineNumber(targetLine);
@@ -217,7 +218,10 @@ export function useEditorNavigationAndRefreshEffects({
         }
         scheduleNavigationStabilization();
 
-        void syncVisibleTokens(Math.max(1, tabLineCount));
+        void syncVisibleTokens(Math.max(1, tabLineCount), {
+          start: targetVisibleIndex,
+          stop: targetVisibleIndex,
+        });
         return;
       }
 
@@ -238,7 +242,10 @@ export function useEditorNavigationAndRefreshEffects({
       }
       scheduleNavigationStabilization();
 
-      void syncVisibleTokens(Math.max(1, tabLineCount));
+      void syncVisibleTokens(Math.max(1, tabLineCount), {
+        start: targetVisibleIndex,
+        stop: targetVisibleIndex,
+      });
     };
 
     const handleSearchClose = (event: Event) => {

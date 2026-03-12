@@ -8,6 +8,11 @@ interface TokenRange {
   end: number;
 }
 
+interface VisibleRange {
+  start: number;
+  stop: number;
+}
+
 interface EditableSegmentSelectionSnapshot {
   startLine: number;
   startColumn: number;
@@ -100,6 +105,7 @@ export function useEditorContentSync({
   const tokenFetchInFlightRef = useRef(false);
   const inFlightTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
   const pendingTokenRangeRef: MutableRefObject<TokenRange | null> = useRef<TokenRange | null>(null);
+  const pendingLockedVisibleRangeRef: MutableRefObject<VisibleRange | null> = useRef<VisibleRange | null>(null);
 
   const captureEditableSegmentSelectionSnapshot = useCallback((): EditableSegmentSelectionSnapshot | null => {
     const element = contentRef.current;
@@ -378,19 +384,36 @@ export function useEditorContentSync({
   );
 
   const syncVisibleTokens = useCallback(
-    async (lineCount: number, visibleRange?: { start: number; stop: number }) => {
+    async (lineCount: number, visibleRange?: VisibleRange) => {
+      let effectiveVisibleRange = visibleRange;
+
       if (isHugeEditableMode && hugeWindowLockedRef.current) {
+        if (effectiveVisibleRange) {
+          pendingLockedVisibleRangeRef.current = {
+            start: effectiveVisibleRange.start,
+            stop: effectiveVisibleRange.stop,
+          };
+        }
         hugeWindowFollowScrollOnUnlockRef.current = true;
         return;
+      }
+
+      if (isHugeEditableMode) {
+        if (effectiveVisibleRange) {
+          pendingLockedVisibleRangeRef.current = null;
+        } else if (pendingLockedVisibleRangeRef.current) {
+          effectiveVisibleRange = pendingLockedVisibleRangeRef.current;
+          pendingLockedVisibleRangeRef.current = null;
+        }
       }
 
       const buffer = largeFetchBuffer;
       let start = 0;
       let end = 1;
 
-      if (visibleRange) {
-        start = Math.max(0, visibleRange.start - buffer);
-        end = Math.max(start + 1, Math.min(lineCount, visibleRange.stop + buffer));
+      if (effectiveVisibleRange) {
+        start = Math.max(0, effectiveVisibleRange.start - buffer);
+        end = Math.max(start + 1, Math.min(lineCount, effectiveVisibleRange.stop + buffer));
       } else {
         const scrollTop = isHugeEditableMode
           ? scrollContainerRef.current?.scrollTop ?? 0
@@ -437,6 +460,7 @@ export function useEditorContentSync({
       lineTokensLength,
       largeFetchBuffer,
       listRef,
+      pendingLockedVisibleRangeRef,
       scrollContainerRef,
       tokenStartLine,
       usePlainLineRendering,
