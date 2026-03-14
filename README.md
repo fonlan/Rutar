@@ -15,6 +15,7 @@ Rutar is a lightweight, high-performance code editor built with Tauri, React 19,
 - Editable side-by-side diff tabs with backend-aligned line comparison.
 - Rust-side search/filter sessions and word count to keep UI responsive.
 - Search and replace inputs keep recent-history dropdowns persisted in config.
+- External file-change prompts pause while the app is backgrounded, and declining a prompt suppresses repeated prompts until the app next leaves foreground.
 - Locked tabs, recent files/folders, and persisted user settings.
 - Bilingual UI (English and Simplified Chinese).
 

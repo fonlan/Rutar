@@ -1519,6 +1519,80 @@ describe('App component', () => {
     });
   });
 
+  it('suppresses repeated external-change prompts after declining until app leaves foreground', async () => {
+    const fileTab = createFileTab({ id: 'tab-external-change-suppress-until-background' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+    });
+
+    let externalChangedHandler: ((event: { payload?: { id?: unknown } }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://external-file-changed') {
+        externalChangedHandler = callback as (event: { payload?: { id?: unknown } }) => void;
+      }
+
+      return () => undefined;
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        has_external_file_change: async () => true,
+        acknowledge_external_file_change: async () => undefined,
+      })
+    );
+    vi.mocked(ask).mockResolvedValue(false);
+
+    if (!hasFocusSpy) {
+      throw new Error('document.hasFocus spy is not initialized');
+    }
+
+    hasFocusSpy.mockReturnValue(true);
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(externalChangedHandler).toBeTruthy();
+      expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
+    });
+
+    const checkCountAfterDecline = vi
+      .mocked(invoke)
+      .mock.calls.filter(([command]) => command === 'has_external_file_change').length;
+
+    act(() => {
+      externalChangedHandler?.({ payload: { id: fileTab.id } });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(invoke).mock.calls.filter(([command]) => command === 'has_external_file_change')
+    ).toHaveLength(checkCountAfterDecline);
+    expect(
+      vi.mocked(invoke).mock.calls.filter(([command]) => command === 'reload_file_from_disk')
+    ).toHaveLength(0);
+
+    hasFocusSpy.mockReturnValue(false);
+    act(() => {
+      fireEvent.blur(window);
+    });
+
+    hasFocusSpy.mockReturnValue(true);
+    act(() => {
+      fireEvent.focus(window);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(ask)).toHaveBeenCalledTimes(2);
+      expect(
+        vi.mocked(invoke).mock.calls.filter(([command]) => command === 'has_external_file_change')
+      ).toHaveLength(checkCountAfterDecline + 1);
+    });
+  });
+
   it('logs error when acknowledging declined external change fails', async () => {
     const fileTab = createFileTab({ id: 'tab-external-change-ack-failed' });
     useStore.setState({

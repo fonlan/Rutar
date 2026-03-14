@@ -243,6 +243,7 @@ function App() {
   const previousActiveTabIdRef = useRef<string | null>(null);
   const hasOpenedPinnedTabsRef = useRef(false);
   const externalChangeCheckingTabIdsRef = useRef<Set<string>>(new Set());
+  const suppressedExternalChangePromptTabIdsRef = useRef<Set<string>>(new Set());
   const appForegroundRef = useRef(isAppInForeground());
   const [configReady, setConfigReady] = useState(false);
   const isWindows = detectWindowsPlatform();
@@ -463,6 +464,10 @@ function App() {
       return;
     }
 
+    if (suppressedExternalChangePromptTabIdsRef.current.has(snapshotTab.id)) {
+      return;
+    }
+
     if (externalChangeCheckingTabIdsRef.current.has(snapshotTab.id)) {
       return;
     }
@@ -553,6 +558,7 @@ function App() {
         return;
       }
 
+      suppressedExternalChangePromptTabIdsRef.current.add(latestTab.id);
       await acknowledgeExternalChange();
     } finally {
       externalChangeCheckingTabIdsRef.current.delete(snapshotTab.id);
@@ -564,6 +570,10 @@ function App() {
       const wasForeground = appForegroundRef.current;
       const isForeground = isAppInForeground();
       appForegroundRef.current = isForeground;
+
+      if (wasForeground && !isForeground) {
+        suppressedExternalChangePromptTabIdsRef.current.clear();
+      }
 
       if (!wasForeground && isForeground) {
         void checkTabForExternalChange(useStore.getState().activeTabId);
