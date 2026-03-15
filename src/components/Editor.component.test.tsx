@@ -935,6 +935,26 @@ describe("Editor component", () => {
     });
   });
 
+  it("reserves the textarea scrollbar gutter in wrapped backdrop rows", async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const { container } = render(
+      <Editor
+        tab={createTab({
+          id: "tab-word-wrap-scrollbar-gutter",
+          lineCount: 12,
+        })}
+      />,
+    );
+    const textarea = await waitForEditorTextarea(container);
+    await waitFor(() => {
+      expect(container.querySelector(".editor-line")).toBeTruthy();
+    });
+    const firstRow = container.querySelector(".editor-line") as HTMLDivElement;
+    expect(textarea.style.paddingRight).toBe("20px");
+    expect(firstRow.style.paddingRight).toBe("calc(30px)");
+  });
   it("handles non-array plain-line chunk result without crashing", async () => {
     const tab = createTab({
       id: "tab-large-file-chunk-non-array",

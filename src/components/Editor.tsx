@@ -261,6 +261,7 @@ export function Editor({
     lineNumberBottomSpacerHeightPx,
     contentTextPadding,
     contentTextRightPadding,
+    contentScrollbarGutterWidth,
     contentBottomSafetyPadding,
     horizontalOverflowMode,
     usePlainLineRendering,
@@ -1203,6 +1204,7 @@ export function Editor({
       tabSize={tabSize}
       contentTextPadding={contentTextPadding}
       contentTextRightPadding={contentTextRightPadding}
+      contentScrollbarGutterWidth={contentScrollbarGutterWidth}
       contentBottomSafetyPadding={contentBottomSafetyPadding}
       handleBeforeInput={handleBeforeInput}
       handleInput={handleInput}
@@ -1295,4 +1297,3 @@ export function Editor({
     />
   );
 }
-

@@ -28,6 +28,7 @@ interface EditorBackdropLayerProps {
   wordWrap: boolean;
   contentTextPadding: string;
   contentTextRightPadding: string;
+  contentScrollbarGutterWidth: string;
   fontFamily: string;
   renderedFontSizePx: number;
   lineHeightPx: number;
@@ -68,6 +69,7 @@ export function EditorBackdropLayer({
   wordWrap,
   contentTextPadding,
   contentTextRightPadding,
+  contentScrollbarGutterWidth,
   fontFamily,
   renderedFontSizePx,
   lineHeightPx,
@@ -84,6 +86,11 @@ export function EditorBackdropLayer({
   if (!visible || width <= 0 || height <= 0) {
     return null;
   }
+
+  // Mirror the textarea scrollbar gutter so soft-wrap breakpoints stay aligned.
+  const wrappedContentRightPadding = wordWrap
+    ? `calc(${contentTextRightPadding} + ${contentScrollbarGutterWidth})`
+    : contentTextRightPadding;
 
   return (
     <div
@@ -154,7 +161,7 @@ export function EditorBackdropLayer({
                     ? `${Math.max(contentViewportWidth, hugeScrollableContentWidth)}px`
                     : '100%',
                 paddingLeft: contentTextPadding,
-                paddingRight: contentTextRightPadding,
+                paddingRight: wrappedContentRightPadding,
                 fontFamily,
                 fontSize: `${renderedFontSizePx}px`,
                 lineHeight: `${lineHeightPx}px`,

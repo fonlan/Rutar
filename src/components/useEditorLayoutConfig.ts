@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { editorTestUtils } from './editorUtils';
 
 const { alignToDevicePixel, alignScrollOffset } = editorTestUtils;
+const EDITOR_SCROLLBAR_WIDTH_PX = 10;
 
 interface UseEditorLayoutConfigParams {
   settings: {
@@ -54,6 +55,7 @@ export function useEditorLayoutConfig({
   const lineNumberBottomSpacerHeightPx = editorScrollbarSafetyPaddingPx;
   const contentTextPadding = `${contentTextPaddingPx}px`;
   const contentTextRightPadding = `${contentTextPaddingPx + editorScrollbarSafetyPaddingPx}px`;
+  const contentScrollbarGutterWidth = `${EDITOR_SCROLLBAR_WIDTH_PX}px`;
   const contentBottomSafetyPadding = `${editorScrollbarSafetyPaddingPx}px`;
   const horizontalOverflowMode = wordWrap ? 'hidden' : 'auto';
   const usePlainLineRendering = tabLargeFileMode || tabLineCount >= largeFilePlainRenderLineThreshold;
@@ -81,6 +83,7 @@ export function useEditorLayoutConfig({
     lineNumberBottomSpacerHeightPx,
     contentTextPadding,
     contentTextRightPadding,
+    contentScrollbarGutterWidth,
     contentBottomSafetyPadding,
     horizontalOverflowMode,
     usePlainLineRendering,

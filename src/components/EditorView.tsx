@@ -28,6 +28,7 @@ export function EditorView({
   tabSize,
   contentTextPadding,
   contentTextRightPadding,
+  contentScrollbarGutterWidth,
   contentBottomSafetyPadding,
   handleInput,
   handleBeforeInput,
@@ -145,6 +146,7 @@ export function EditorView({
         tabSize={tabSize}
         contentTextPadding={contentTextPadding}
         contentTextRightPadding={contentTextRightPadding}
+        contentScrollbarGutterWidth={contentScrollbarGutterWidth}
         contentBottomSafetyPadding={contentBottomSafetyPadding}
         onBeforeInput={handleBeforeInput}
         onInput={handleInput}
@@ -185,6 +187,7 @@ export function EditorView({
         wordWrap={wordWrap}
         contentTextPadding={contentTextPadding}
         contentTextRightPadding={contentTextRightPadding}
+        contentScrollbarGutterWidth={contentScrollbarGutterWidth}
         fontFamily={settings.fontFamily}
         renderedFontSizePx={renderedFontSizePx}
         lineHeightPx={lineHeightPx}
