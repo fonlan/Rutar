@@ -60,7 +60,10 @@ export function useEditorRowMeasurement({
         return;
       }
 
-      const measuredHeight = Math.max(itemSize, Math.round(element.scrollHeight));
+      const contentElement = element.firstElementChild as HTMLElement | null;
+      // Measure intrinsic wrapped text height from the content node so rows can shrink after edits.
+      const intrinsicHeight = contentElement ? contentElement.scrollHeight : element.scrollHeight;
+      const measuredHeight = Math.max(itemSize, Math.round(intrinsicHeight));
       const previousHeight = rowHeightsRef.current.get(index);
 
       if (previousHeight !== undefined && Math.abs(previousHeight - measuredHeight) < 0.5) {
