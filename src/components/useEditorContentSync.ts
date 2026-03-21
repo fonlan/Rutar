@@ -260,42 +260,6 @@ export function useEditorContentSync({
     ]
   );
 
-  const fetchTokens = useCallback(
-    async (
-      start: number,
-      end: number,
-      version: number,
-      requestSerial: number
-    ) => {
-      try {
-        const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
-          id: tabId,
-          startLine: start,
-          endLine: end,
-          requestSerial,
-        });
-
-        if (version !== currentRequestVersionRef.current) return;
-        if (!Array.isArray(lineResult)) return;
-
-        setLineTokens(lineResult);
-        setStartLine(start);
-        setTokenFallbackPlainLines([]);
-        setTokenFallbackPlainStartLine(0);
-      } catch (error) {
-        console.error('Fetch error:', error);
-      }
-    },
-    [
-      currentRequestVersionRef,
-      setLineTokens,
-      setStartLine,
-      setTokenFallbackPlainLines,
-      setTokenFallbackPlainStartLine,
-      tabId,
-    ]
-  );
-
   const fetchTokenFallbackPlainLines = useCallback(
     async (start: number, end: number) => {
       const version = ++fallbackPlainRequestVersionRef.current;
@@ -320,6 +284,61 @@ export function useEditorContentSync({
       normalizeLineText,
       setTokenFallbackPlainLines,
       setTokenFallbackPlainStartLine,
+      tabId,
+    ]
+  );
+
+  const clearTokenFallbackPlainLines = useCallback(() => {
+    // Invalidate in-flight fallback requests before clearing.
+    fallbackPlainRequestVersionRef.current += 1;
+    setTokenFallbackPlainLines([]);
+    setTokenFallbackPlainStartLine(0);
+  }, [setTokenFallbackPlainLines, setTokenFallbackPlainStartLine]);
+
+  const fetchTokens = useCallback(
+    async (
+      start: number,
+      end: number,
+      version: number,
+      requestSerial: number
+    ) => {
+      try {
+        const lineResult = await invoke<SyntaxToken[][]>('get_syntax_token_lines', {
+          id: tabId,
+          startLine: start,
+          endLine: end,
+          requestSerial,
+        });
+
+        if (version !== currentRequestVersionRef.current) return;
+        if (!Array.isArray(lineResult)) return;
+
+        const expectedLineCount = Math.max(0, end - start);
+        const hasMissingTokenCoverage = lineResult.length < expectedLineCount;
+        const hasEmptyTokenLine = lineResult.some((line) => !Array.isArray(line) || line.length === 0);
+        if (expectedLineCount > 0 && lineResult.length === 0) {
+          // Stale backend serial fast-path can yield empty result: keep current render cache.
+          void fetchTokenFallbackPlainLines(start, end);
+          return;
+        }
+
+        setLineTokens(lineResult);
+        setStartLine(start);
+        if (hasMissingTokenCoverage || hasEmptyTokenLine) {
+          void fetchTokenFallbackPlainLines(start, end);
+          return;
+        }
+        clearTokenFallbackPlainLines();
+      } catch (error) {
+        console.error('Fetch error:', error);
+      }
+    },
+    [
+      clearTokenFallbackPlainLines,
+      currentRequestVersionRef,
+      fetchTokenFallbackPlainLines,
+      setLineTokens,
+      setStartLine,
       tabId,
     ]
   );

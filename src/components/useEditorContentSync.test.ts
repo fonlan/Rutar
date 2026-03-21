@@ -254,4 +254,39 @@ describe('useEditorContentSync', () => {
     expect(Number(secondPayload.endLine ?? 0)).toBe(131);
     expect(Number(secondPayload.requestSerial ?? 0)).toBeGreaterThan(Number(firstPayload.requestSerial ?? 0));
   });
+
+  it('keeps existing token cache when syntax response is empty and requests plain fallback lines', async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'get_syntax_token_lines') {
+        return [];
+      }
+
+      if (command === 'get_visible_lines_chunk') {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        return Array.from({ length: Math.max(1, endLine - startLine) }, (_, index) => `fallback-${startLine + index + 1}`);
+      }
+
+      return '';
+    });
+
+    const params = buildHookParams();
+    const setLineTokens = vi.fn();
+    const setStartLine = vi.fn();
+    params.setLineTokens = setLineTokens;
+    params.setStartLine = setStartLine;
+
+    const { result } = renderHook(() => useEditorContentSync(params));
+    await result.current.syncVisibleTokens(500, { start: 20, stop: 30 });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('get_visible_lines_chunk', {
+        id: params.tabId,
+        startLine: 20,
+        endLine: 30,
+      });
+    });
+    expect(setLineTokens).not.toHaveBeenCalled();
+    expect(setStartLine).not.toHaveBeenCalled();
+  });
 });

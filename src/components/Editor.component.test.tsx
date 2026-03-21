@@ -523,6 +523,130 @@ describe("Editor component", () => {
     });
   });
 
+  it("keeps backdrop text visible when switching tabs if revisited token fetch returns empty", async () => {
+    const firstTab = createTab({
+      id: "tab-switch-empty-token-guard-first",
+      lineCount: 4,
+    });
+    const secondTab = createTab({
+      id: "tab-switch-empty-token-guard-second",
+      lineCount: 4,
+      name: "second-empty-token.ts",
+      path: "C:\\repo\\second-empty-token.ts",
+    });
+    const firstTabFallbackDeferred = createDeferred<string[]>();
+    let firstTabTokenFetchCount = 0;
+    let shouldDeferFirstTabFallback = false;
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        const id = String(payload?.id ?? "");
+        if (id === firstTab.id) {
+          return "first-tab-line\n";
+        }
+        if (id === secondTab.id) {
+          return "second-tab-line\n";
+        }
+        return "fallback\n";
+      }
+      if (command === "get_syntax_token_lines") {
+        const id = String(payload?.id ?? "");
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (id === firstTab.id) {
+          firstTabTokenFetchCount += 1;
+          if (firstTabTokenFetchCount >= 2) {
+            shouldDeferFirstTabFallback = true;
+            return [];
+          }
+          return Array.from({ length: count }, (_, index) => [
+            {
+              text: `first-token-${startLine + index + 1}`,
+              type: "plain",
+            },
+          ]);
+        }
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `second-token-${startLine + index + 1}`,
+            type: "plain",
+          },
+        ]);
+      }
+      if (command === "get_visible_lines_chunk") {
+        const id = String(payload?.id ?? "");
+        if (id === firstTab.id && shouldDeferFirstTabFallback) {
+          return firstTabFallbackDeferred.promise;
+        }
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        const prefix = id === firstTab.id ? "first-fallback" : "second-fallback";
+        return Array.from({ length: count }, (_, index) => `${prefix}-${startLine + index + 1}`);
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return 2;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "convert_text_base64") {
+        return "";
+      }
+      if (command === "get_rectangular_selection_text") {
+        return "";
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+      return undefined;
+    });
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, "first-tab-line\n");
+    await waitFor(() => {
+      const backdrop = container.querySelector(".editor-backdrop-layer");
+      expect(backdrop?.textContent).toContain("first-token-1");
+    });
+    rerender(<Editor tab={secondTab} />);
+    await waitForEditorText(textarea, "second-tab-line\n");
+    rerender(<Editor tab={firstTab} />);
+    await waitFor(() => {
+      expect(firstTabTokenFetchCount).toBeGreaterThanOrEqual(2);
+    });
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some(
+          ([command, callPayload]) =>
+            command === "get_visible_lines_chunk" &&
+            String((callPayload as { id?: string } | undefined)?.id ?? "") === firstTab.id &&
+            shouldDeferFirstTabFallback,
+        ),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      const backdrop = container.querySelector(".editor-backdrop-layer");
+      expect(backdrop?.textContent).toContain("first-token-1");
+      expect(backdrop?.textContent).not.toContain("...");
+    });
+    await act(async () => {
+      firstTabFallbackDeferred.resolve(["first-fallback-1", "first-fallback-2"]);
+      await Promise.resolve();
+    });
+  });
   it("uses plain-line fetching path when largeFileMode is enabled", async () => {
     const tab = createTab({
       id: "tab-large-file-mode",
