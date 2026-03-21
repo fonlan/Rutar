@@ -13,6 +13,7 @@ interface UseEditorNavigationAndRefreshEffectsParams {
   tabLineCount: number;
   itemSize: number;
   isHugeEditableMode: boolean;
+  wordWrap: boolean;
   requestTimeoutRef: MutableRefObject<any>;
   currentRequestVersionRef: MutableRefObject<number>;
   pendingRestoreScrollTopRef: MutableRefObject<number | null>;
@@ -37,7 +38,12 @@ interface UseEditorNavigationAndRefreshEffectsParams {
   ) => void;
   syncVisibleTokens: (lineCount: number, visibleRange?: { start: number; stop: number }) => Promise<void>;
   alignScrollOffset: (value: number) => number;
-  setCaretToLineColumn: (element: HTMLTextAreaElement, line: number, column: number) => void;
+  setCaretToLineColumn: (
+    element: HTMLTextAreaElement,
+    line: number,
+    column: number,
+    options?: { preserveScrollPosition?: boolean }
+  ) => void;
   loadTextFromBackend: () => Promise<void>;
   updateTab: (tabId: string, patch: { lineCount: number }) => void;
   getSelectionOffsetsInElement: (element: HTMLTextAreaElement) => SelectionOffsets | null;
@@ -51,6 +57,7 @@ export function useEditorNavigationAndRefreshEffects({
   tabLineCount,
   itemSize,
   isHugeEditableMode,
+  wordWrap,
   requestTimeoutRef,
   currentRequestVersionRef,
   pendingRestoreScrollTopRef,
@@ -127,7 +134,9 @@ export function useEditorNavigationAndRefreshEffects({
           : targetLine;
         const columnForCaret = targetCaretColumn;
 
-        setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret);
+        setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret, {
+          preserveScrollPosition: !(wordWrap && !isHugeEditableMode),
+        });
         setCursorPosition(tabId, targetLine, columnForCaret);
       };
 
@@ -152,6 +161,7 @@ export function useEditorNavigationAndRefreshEffects({
       });
 
       const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
+      const useCaretDrivenVerticalReveal = wordWrap && !isHugeEditableMode;
       const applyTargetScrollTop = () => {
         if (navigationSerialRef.current !== navigationSerial) {
           return;
@@ -164,7 +174,22 @@ export function useEditorNavigationAndRefreshEffects({
         } | null;
         const listElement = listInstance?._outerRef;
         const lineNumberElement = lineNumberListInstance?._outerRef;
-
+        if (useCaretDrivenVerticalReveal) {
+          const currentTop = contentRef.current?.scrollTop ?? listElement?.scrollTop ?? 0;
+          if (typeof listInstance?.scrollTo === 'function') {
+            listInstance.scrollTo(currentTop);
+          }
+          if (listElement && Math.abs(listElement.scrollTop - currentTop) > 0.001) {
+            listElement.scrollTop = currentTop;
+          }
+          if (typeof lineNumberListInstance?.scrollTo === 'function') {
+            lineNumberListInstance.scrollTo(currentTop);
+          }
+          if (lineNumberElement && Math.abs(lineNumberElement.scrollTop - currentTop) > 0.001) {
+            lineNumberElement.scrollTop = currentTop;
+          }
+          return;
+        }
         if (isHugeEditableMode) {
           if (scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = targetScrollTop;
@@ -288,6 +313,7 @@ export function useEditorNavigationAndRefreshEffects({
     syncVisibleTokens,
     tabId,
     tabLineCount,
+    wordWrap,
   ]);
 
   useEffect(() => {

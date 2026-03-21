@@ -1083,6 +1083,7 @@ export function Editor({
     tabLineCount: tab.lineCount,
     itemSize,
     isHugeEditableMode,
+    wordWrap,
     requestTimeoutRef: requestTimeout,
     currentRequestVersionRef: currentRequestVersion,
     pendingRestoreScrollTopRef,

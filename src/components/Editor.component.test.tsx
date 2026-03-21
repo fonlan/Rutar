@@ -2569,6 +2569,135 @@ describe("Editor component", () => {
     });
   });
 
+  it("keeps wrapped search navigation anchored on caret-revealed match view", async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const tab = createTab({ id: "tab-navigate-wrap-search", lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.scrollTop = 24;
+    const originalSetSelectionRange = textarea.setSelectionRange.bind(textarea);
+    let allowCaretScrollMutation = false;
+    const selectionSpy = vi
+      .spyOn(textarea, "setSelectionRange")
+      .mockImplementation((start: number | null, end: number | null, direction?: any) => {
+        originalSetSelectionRange(start ?? 0, end ?? 0, direction);
+        if (allowCaretScrollMutation) {
+          textarea.scrollTop = 777;
+        }
+      });
+
+    allowCaretScrollMutation = true;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:navigate-to-line", {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 3,
+            length: 2,
+            lineText: "beta",
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(2);
+      expect(cursor?.column).toBe(3);
+      expect(textarea.scrollTop).toBe(777);
+    });
+
+    selectionSpy.mockRestore();
+  });
+  it("keeps wrapped shortcut navigation anchored on caret-revealed target line", async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const tab = createTab({ id: "tab-navigate-wrap-shortcut", lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    textarea.scrollTop = 24;
+    const originalSetSelectionRange = textarea.setSelectionRange.bind(textarea);
+    let allowCaretScrollMutation = false;
+    const selectionSpy = vi
+      .spyOn(textarea, "setSelectionRange")
+      .mockImplementation((start: number | null, end: number | null, direction?: any) => {
+        originalSetSelectionRange(start ?? 0, end ?? 0, direction);
+        if (allowCaretScrollMutation) {
+          textarea.scrollTop = 654;
+        }
+      });
+    allowCaretScrollMutation = true;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:navigate-to-line", {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 1,
+            length: 0,
+            lineText: "",
+            source: "shortcut",
+          },
+        }),
+      );
+    });
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(2);
+      expect(cursor?.column).toBe(1);
+      expect(textarea.scrollTop).toBe(654);
+    });
+    selectionSpy.mockRestore();
+  });
+  it("keeps wrapped outline navigation anchored on caret-revealed target line", async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const tab = createTab({ id: "tab-navigate-wrap-outline", lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    textarea.scrollTop = 24;
+    const originalSetSelectionRange = textarea.setSelectionRange.bind(textarea);
+    let allowCaretScrollMutation = false;
+    const selectionSpy = vi
+      .spyOn(textarea, "setSelectionRange")
+      .mockImplementation((start: number | null, end: number | null, direction?: any) => {
+        originalSetSelectionRange(start ?? 0, end ?? 0, direction);
+        if (allowCaretScrollMutation) {
+          textarea.scrollTop = 432;
+        }
+      });
+    allowCaretScrollMutation = true;
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:navigate-to-outline", {
+          detail: {
+            tabId: tab.id,
+            line: 2,
+            column: 7,
+            length: 0,
+            lineText: "",
+            source: "outline",
+          },
+        }),
+      );
+    });
+    await waitFor(() => {
+      const cursor = useStore.getState().cursorPositionByTab[tab.id];
+      expect(cursor?.line).toBe(2);
+      expect(cursor?.column).toBe(1);
+      expect(textarea.scrollTop).toBe(432);
+    });
+    selectionSpy.mockRestore();
+  });
   it("loads an unloaded huge-file target window after navigate-to-line", async () => {
     const tab = createTab({
       id: "tab-navigate-line-huge-window-load",

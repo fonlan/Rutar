@@ -410,6 +410,29 @@ describe('editorTestUtils offset and coordinate helpers', () => {
     expect(textarea.selectionEnd).toBe(3);
   });
 
+  it('optionally allows textarea caret placement to keep browser-updated scroll position', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'ab\ncd';
+    textarea.scrollTop = 12;
+    textarea.scrollLeft = 8;
+    const originalSetSelectionRange = textarea.setSelectionRange.bind(textarea);
+    const setSelectionRangeSpy = vi
+      .spyOn(textarea, 'setSelectionRange')
+      .mockImplementation((start: number | null, end: number | null, direction?: any) => {
+        originalSetSelectionRange(start ?? 0, end ?? 0, direction);
+        textarea.scrollTop = 90;
+        textarea.scrollLeft = 44;
+      });
+    editorTestUtils.setCaretToLineColumn(textarea, 2, 2);
+    expect(textarea.scrollTop).toBe(12);
+    expect(textarea.scrollLeft).toBe(8);
+    editorTestUtils.setCaretToLineColumn(textarea, 2, 2, {
+      preserveScrollPosition: false,
+    });
+    expect(textarea.scrollTop).toBe(90);
+    expect(textarea.scrollLeft).toBe(44);
+    setSelectionRangeSpy.mockRestore();
+  });
   it('writes input-layer placeholder for trailing newline in contenteditable caret placement', () => {
     const div = document.createElement('div');
     div.textContent = 'ab\n';

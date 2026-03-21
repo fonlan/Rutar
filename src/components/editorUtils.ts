@@ -191,10 +191,16 @@ function getCodeUnitOffsetFromLineColumn(text: string, line: number, column: num
   return Math.min(safeLineEndOffset, lineStartOffset + targetColumn - 1);
 }
 
-function setCaretToLineColumn(element: EditorInputElement, line: number, column: number) {
+function setCaretToLineColumn(
+  element: EditorInputElement,
+  line: number,
+  column: number,
+  options?: { preserveScrollPosition?: boolean }
+) {
   const content = normalizeEditorText(getEditableText(element));
   const layerText = toInputLayerText(content);
   const targetOffset = getCodeUnitOffsetFromLineColumn(content, line, column);
+  const preserveScrollPosition = options?.preserveScrollPosition !== false;
 
   if (isTextareaInputElement(element)) {
     const previousScrollTop = element.scrollTop;
@@ -207,11 +213,13 @@ function setCaretToLineColumn(element: EditorInputElement, line: number, column:
     const safeOffset = Math.min(layerOffset, content.length);
     focusEditorInputWithoutScroll(element);
     element.setSelectionRange(safeOffset, safeOffset);
-    if (Math.abs(element.scrollTop - previousScrollTop) > 0.001) {
-      element.scrollTop = previousScrollTop;
-    }
-    if (Math.abs(element.scrollLeft - previousScrollLeft) > 0.001) {
-      element.scrollLeft = previousScrollLeft;
+    if (preserveScrollPosition) {
+      if (Math.abs(element.scrollTop - previousScrollTop) > 0.001) {
+        element.scrollTop = previousScrollTop;
+      }
+      if (Math.abs(element.scrollLeft - previousScrollLeft) > 0.001) {
+        element.scrollLeft = previousScrollLeft;
+      }
     }
     return;
   }
