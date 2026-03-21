@@ -384,7 +384,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       sourceEditorRef.current = null;
       sourceModelRef.current = null;
     };
-  }, [applyEditorOptions, queueSyncEdits, setCursorPosition, sourceTab, tab.diffPayload.sourceTabId]);
+  }, [queueSyncEdits, setCursorPosition, tab.diffPayload.sourceTabId]);
 
   useEffect(() => {
     if (!targetHostRef.current || targetEditorRef.current) {
@@ -439,7 +439,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       targetEditorRef.current = null;
       targetModelRef.current = null;
     };
-  }, [applyEditorOptions, queueSyncEdits, setCursorPosition, tab.diffPayload.targetTabId, targetTab]);
+  }, [queueSyncEdits, setCursorPosition, tab.diffPayload.targetTabId]);
 
   useEffect(() => {
     const sourceEditor = sourceEditorRef.current;

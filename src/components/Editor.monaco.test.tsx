@@ -192,4 +192,38 @@ describe('Editor (Monaco)', () => {
       );
     });
   });
+
+  it('does not recreate Monaco editor when toggling wordWrap', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        wordWrap: false,
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+      expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({ wordWrap: true });
+    });
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'on',
+        })
+      );
+    });
+
+    expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
 });

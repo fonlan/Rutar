@@ -285,13 +285,6 @@ export function Editor({
   }, [
     queueSyncEdits,
     setCursorPosition,
-    settings.fontFamily,
-    settings.fontSize,
-    settings.showLineNumbers,
-    settings.tabIndentMode,
-    settings.tabWidth,
-    settings.wordWrap,
-    tab.largeFileMode,
   ]);
 
   useEffect(() => {
