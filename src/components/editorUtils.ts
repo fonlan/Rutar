@@ -195,7 +195,7 @@ function setCaretToLineColumn(
   element: EditorInputElement,
   line: number,
   column: number,
-  options?: { preserveScrollPosition?: boolean }
+  options?: { preserveScrollPosition?: boolean; focusInput?: boolean }
 ) {
   const content = normalizeEditorText(getEditableText(element));
   const layerText = toInputLayerText(content);
@@ -211,7 +211,9 @@ function setCaretToLineColumn(
 
     const layerOffset = mapLogicalOffsetToInputLayerOffset(content, targetOffset);
     const safeOffset = Math.min(layerOffset, content.length);
-    focusEditorInputWithoutScroll(element);
+    if (options?.focusInput !== false) {
+      focusEditorInputWithoutScroll(element);
+    }
     element.setSelectionRange(safeOffset, safeOffset);
     if (preserveScrollPosition) {
       if (Math.abs(element.scrollTop - previousScrollTop) > 0.001) {

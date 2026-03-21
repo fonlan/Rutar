@@ -32,6 +32,7 @@ export type I18nKey =
   | 'toolbar.undo'
   | 'toolbar.redo'
   | 'toolbar.find'
+  | 'toolbar.findAdvanced'
   | 'toolbar.replace'
   | 'toolbar.toggleWordWrap'
   | 'toolbar.bookmarkSidebar'
@@ -62,6 +63,13 @@ export type I18nKey =
   | 'toolbar.disabled.noSelectedText'
   | 'toolbar.disabled.noUndoHistory'
   | 'toolbar.disabled.noRedoHistory'
+  | 'quickFind.placeholder'
+  | 'quickFind.previous'
+  | 'quickFind.next'
+  | 'quickFind.close'
+  | 'quickFind.searching'
+  | 'quickFind.noMatches'
+  | 'quickFind.failedPrefix'
   | 'preview.title'
   | 'preview.notMarkdown'
   | 'preview.loading'
@@ -276,7 +284,8 @@ const zhCN: Messages = {
   'toolbar.paste': '粘贴',
   'toolbar.undo': '撤销 (Ctrl+Z)',
   'toolbar.redo': '重做 (Ctrl+Y / Ctrl+Shift+Z)',
-  'toolbar.find': '查找 (Ctrl+F)',
+  'toolbar.find': '快速搜索 (Ctrl+F)',
+  'toolbar.findAdvanced': '高级搜索 (Ctrl+Shift+F)',
   'toolbar.replace': '替换 (Ctrl+H)',
   'toolbar.toggleWordWrap': '切换自动换行',
   'toolbar.bookmarkSidebar': '书签侧边栏',
@@ -307,6 +316,13 @@ const zhCN: Messages = {
   'toolbar.disabled.noSelectedText': '当前没有选中文本',
   'toolbar.disabled.noUndoHistory': '当前没有可撤销的操作',
   'toolbar.disabled.noRedoHistory': '当前没有可重做的操作',
+  'quickFind.placeholder': '快速搜索',
+  'quickFind.previous': '上一个',
+  'quickFind.next': '下一个',
+  'quickFind.close': '关闭快速搜索',
+  'quickFind.searching': '搜索中...',
+  'quickFind.noMatches': '未找到匹配项',
+  'quickFind.failedPrefix': '搜索失败：',
   'preview.title': 'Markdown 预览',
   'preview.notMarkdown': '仅支持 Markdown 文件预览。',
   'preview.loading': '正在渲染预览...',
@@ -520,7 +536,8 @@ const enUS: Messages = {
   'toolbar.paste': 'Paste',
   'toolbar.undo': 'Undo (Ctrl+Z)',
   'toolbar.redo': 'Redo (Ctrl+Y / Ctrl+Shift+Z)',
-  'toolbar.find': 'Find (Ctrl+F)',
+  'toolbar.find': 'Quick Find (Ctrl+F)',
+  'toolbar.findAdvanced': 'Advanced Search (Ctrl+Shift+F)',
   'toolbar.replace': 'Replace (Ctrl+H)',
   'toolbar.toggleWordWrap': 'Toggle Word Wrap',
   'toolbar.bookmarkSidebar': 'Bookmark Sidebar',
@@ -551,6 +568,13 @@ const enUS: Messages = {
   'toolbar.disabled.noSelectedText': 'No selected text',
   'toolbar.disabled.noUndoHistory': 'No undo history',
   'toolbar.disabled.noRedoHistory': 'No redo history',
+  'quickFind.placeholder': 'Quick Find',
+  'quickFind.previous': 'Previous',
+  'quickFind.next': 'Next',
+  'quickFind.close': 'Close quick find',
+  'quickFind.searching': 'Searching...',
+  'quickFind.noMatches': 'No matches',
+  'quickFind.failedPrefix': 'Search failed:',
   'preview.title': 'Markdown Preview',
   'preview.notMarkdown': 'Preview is available for Markdown files only.',
   'preview.loading': 'Rendering preview...',

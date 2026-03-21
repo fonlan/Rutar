@@ -2569,6 +2569,88 @@ describe("Editor component", () => {
     });
   });
 
+  it("keeps external quick-find input focus when navigate-to-line source is quick-find", async () => {
+    const tab = createTab({ id: "tab-navigate-quick-find-focus", lineCount: 12 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    const quickFindInput = document.createElement("input");
+    quickFindInput.type = "text";
+    document.body.appendChild(quickFindInput);
+    quickFindInput.focus();
+    expect(document.activeElement).toBe(quickFindInput);
+
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("rutar:navigate-to-line", {
+            detail: {
+              tabId: tab.id,
+              line: 3,
+              column: 2,
+              length: 1,
+              lineText: "gamma",
+              source: "quick-find",
+            },
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        const cursor = useStore.getState().cursorPositionByTab[tab.id];
+        expect(cursor?.line).toBe(3);
+        expect(cursor?.column).toBe(2);
+      });
+
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 140));
+      });
+
+      expect(document.activeElement).toBe(quickFindInput);
+    } finally {
+      quickFindInput.remove();
+    }
+  });
+  it("scrolls editor viewport for quick-find navigation in word-wrap mode", async () => {
+    useStore.getState().updateSettings({
+      wordWrap: true,
+    });
+    const tab = createTab({ id: "tab-navigate-quick-find-wrap-scroll", lineCount: 120 });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+
+    textarea.scrollTop = 0;
+    const quickFindInput = document.createElement("input");
+    quickFindInput.type = "text";
+    document.body.appendChild(quickFindInput);
+    quickFindInput.focus();
+
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("rutar:navigate-to-line", {
+            detail: {
+              tabId: tab.id,
+              line: 40,
+              column: 1,
+              length: 1,
+              lineText: "line-40",
+              source: "quick-find",
+            },
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(textarea.scrollTop).toBeGreaterThan(0);
+      });
+      expect(document.activeElement).toBe(quickFindInput);
+    } finally {
+      quickFindInput.remove();
+    }
+  });
   it("keeps wrapped search navigation anchored on caret-revealed match view", async () => {
     useStore.getState().updateSettings({
       wordWrap: true,

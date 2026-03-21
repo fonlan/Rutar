@@ -69,18 +69,32 @@ export function dispatchNavigateToLine(
   column: number,
   length: number,
   lineText = '',
-  occludedRightPx = 0
+  occludedRightPx = 0,
+  source?: string
 ) {
+  const detail: {
+    tabId: string;
+    line: number;
+    column: number;
+    length: number;
+    lineText: string;
+    occludedRightPx: number;
+    source?: string;
+  } = {
+    tabId,
+    line,
+    column,
+    length,
+    lineText,
+    occludedRightPx: Math.max(0, occludedRightPx),
+  };
+  if (source) {
+    detail.source = source;
+  }
+
   window.dispatchEvent(
     new CustomEvent('rutar:navigate-to-line', {
-      detail: {
-        tabId,
-        line,
-        column,
-        length,
-        lineText,
-        occludedRightPx: Math.max(0, occludedRightPx),
-      },
+      detail,
     })
   );
 }

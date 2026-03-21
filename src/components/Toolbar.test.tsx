@@ -10,6 +10,7 @@ import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } fro
 import { detectOutlineType, loadOutline } from "@/lib/outline";
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
 import { confirmTabClose, saveTab } from "@/lib/tabClose";
+import { QUICK_FIND_OPEN_EVENT } from "@/lib/quickFind";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -198,18 +199,23 @@ describe("Toolbar", () => {
     });
   });
 
-  it("dispatches search-open find event on Ctrl+F", async () => {
+  it("dispatches quick-find-open on Ctrl+F and does not open advanced search", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
 
-    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
-    const listener = (event: Event) => {
-      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    const advancedEvents: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const quickFindEvents: Array<{ tabId?: string }> = [];
+    const advancedListener = (event: Event) => {
+      advancedEvents.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
-    window.addEventListener("rutar:search-open", listener as EventListener);
+    const quickFindListener = (event: Event) => {
+      quickFindEvents.push((event as CustomEvent).detail as { tabId?: string });
+    };
+    window.addEventListener("rutar:search-open", advancedListener as EventListener);
+    window.addEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
 
     fireEvent.keyDown(window, {
       key: "f",
@@ -217,6 +223,29 @@ describe("Toolbar", () => {
       ctrlKey: true,
     });
 
+    expect(advancedEvents).toEqual([]);
+    expect(quickFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
+    window.removeEventListener("rutar:search-open", advancedListener as EventListener);
+    window.removeEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
+  });
+
+  it("dispatches search-open find event on Ctrl+Shift+F", async () => {
+    useStore.getState().addTab(createTab());
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    };
+    window.addEventListener("rutar:search-open", listener as EventListener);
+    fireEvent.keyDown(window, {
+      key: "F",
+      code: "KeyF",
+      ctrlKey: true,
+      shiftKey: true,
+    });
     await waitFor(() => {
       expect(events[0]).toEqual({ mode: "find" });
     });
@@ -229,19 +258,16 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
-
     const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
     const listener = (event: Event) => {
       events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
     window.addEventListener("rutar:search-open", listener as EventListener);
-
     fireEvent.keyDown(window, {
       key: "h",
       code: "KeyH",
       ctrlKey: true,
     });
-
     await waitFor(() => {
       expect(events[0]).toEqual({ mode: "replace" });
     });
@@ -254,44 +280,47 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
-
     const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
     const listener = (event: Event) => {
       events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
     window.addEventListener("rutar:search-open", listener as EventListener);
-
     const filterWrapper = screen.getByTitle("Filter");
     fireEvent.click(filterWrapper.querySelector("button") as HTMLButtonElement);
-
     await waitFor(() => {
       expect(events[0]).toEqual({ mode: "filter" });
     });
     window.removeEventListener("rutar:search-open", listener as EventListener);
   });
 
-  it("dispatches search-open find and replace events from toolbar buttons", async () => {
+  it("dispatches quick find open plus advanced find/replace events from toolbar buttons", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
-
-    const events: Array<{ mode: "find" | "replace" | "filter" }> = [];
-    const listener = (event: Event) => {
-      events.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
+    const advancedEvents: Array<{ mode: "find" | "replace" | "filter" }> = [];
+    const quickFindEvents: Array<{ tabId?: string }> = [];
+    const advancedListener = (event: Event) => {
+      advancedEvents.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
-    window.addEventListener("rutar:search-open", listener as EventListener);
-
-    const findWrapper = screen.getByTitle((title) => title.includes("Find"));
-    fireEvent.click(findWrapper.querySelector("button") as HTMLButtonElement);
+    const quickFindListener = (event: Event) => {
+      quickFindEvents.push((event as CustomEvent).detail as { tabId?: string });
+    };
+    window.addEventListener("rutar:search-open", advancedListener as EventListener);
+    window.addEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
+    const quickFindWrapper = screen.getByTitle((title) => title.includes("Quick Find"));
+    fireEvent.click(quickFindWrapper.querySelector("button") as HTMLButtonElement);
+    const advancedFindWrapper = screen.getByTitle((title) => title.includes("Advanced Search"));
+    fireEvent.click(advancedFindWrapper.querySelector("button") as HTMLButtonElement);
     const replaceWrapper = screen.getByTitle((title) => title.includes("Replace"));
     fireEvent.click(replaceWrapper.querySelector("button") as HTMLButtonElement);
-
     await waitFor(() => {
-      expect(events).toEqual([{ mode: "find" }, { mode: "replace" }]);
+      expect(advancedEvents).toEqual([{ mode: "find" }, { mode: "replace" }]);
     });
-    window.removeEventListener("rutar:search-open", listener as EventListener);
+    expect(quickFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
+    window.removeEventListener("rutar:search-open", advancedListener as EventListener);
+    window.removeEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
   });
 
   it("toggles line numbers on Alt+L", async () => {
@@ -481,7 +510,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
     useStore.getState().addTab({
       id: "tab-diff-undo",
-      name: "a.ts ↔ b.ts",
+      name: "a.ts <-> b.ts",
       path: "",
       encoding: "UTF-8",
       lineEnding: "LF",
@@ -703,7 +732,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
     useStore.getState().addTab({
       id: "tab-diff-redo",
-      name: "a.ts ↔ b.ts",
+      name: "a.ts <-> b.ts",
       path: "",
       encoding: "UTF-8",
       lineEnding: "LF",
@@ -2049,7 +2078,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
     useStore.getState().addTab({
       id: "tab-diff",
-      name: "a.ts ↔ b.ts",
+      name: "a.ts <-> b.ts",
       path: "",
       encoding: "UTF-8",
       lineEnding: "LF",
@@ -2102,7 +2131,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
     useStore.getState().addTab({
       id: "tab-diff",
-      name: "a.ts ↔ b.ts",
+      name: "a.ts <-> b.ts",
       path: "",
       encoding: "UTF-8",
       lineEnding: "LF",

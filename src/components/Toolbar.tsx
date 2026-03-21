@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen
+    Undo, Redo, Search, TextSearch, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
@@ -24,6 +24,7 @@ import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { isMarkdownTab } from '@/lib/markdown';
+import { dispatchQuickFindOpen } from '@/lib/quickFind';
 import { cn } from '@/lib/utils';
 
 function dispatchEditorForceRefresh(
@@ -792,7 +793,13 @@ export function Toolbar() {
         console.warn('Paste command blocked. Use Ctrl+V in editor.');
     }, [activeDiffPanel, activeDiffTab, activeTab]);
 
-    const handleFind = useCallback(() => {
+    const handleQuickFind = useCallback(() => {
+        if (!activeTab) return;
+        dispatchQuickFindOpen({
+            tabId: activeTab.id,
+        });
+    }, [activeTab]);
+    const handleAdvancedFind = useCallback(() => {
         if (!activeTab) return;
         dispatchSearchOpen('find');
     }, [activeTab]);
@@ -963,8 +970,19 @@ export function Toolbar() {
             }
 
             if (isKey('f') && !event.shiftKey) {
+                if (!activeTab) {
+                    return;
+                }
                 event.preventDefault();
-                handleFind();
+                handleQuickFind();
+                return;
+            }
+            if (isKey('f') && event.shiftKey) {
+                if (!activeTab) {
+                    return;
+                }
+                event.preventDefault();
+                handleAdvancedFind();
                 return;
             }
 
@@ -979,7 +997,9 @@ export function Toolbar() {
         window.addEventListener('keydown', handleKeyDown, true);
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [
-        handleFind,
+        activeTab,
+        handleQuickFind,
+        handleAdvancedFind,
         handleCloseActiveTab,
         handleNewFile,
         handleOpenFile,
@@ -1145,7 +1165,8 @@ export function Toolbar() {
             
             {/* Search Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleFind} disabled={!activeTab} />
+            <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleQuickFind} disabled={!activeTab} />
+            <ToolbarBtn icon={TextSearch} title={tr('toolbar.findAdvanced')} onClick={handleAdvancedFind} disabled={!activeTab} />
             <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!activeTab} />
             <ToolbarBtn icon={FilterIcon} title={filterTitle} onClick={handleFilter} disabled={!activeTab} />
 

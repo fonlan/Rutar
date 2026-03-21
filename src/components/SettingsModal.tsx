@@ -241,6 +241,7 @@ export function SettingsModal() {
     { action: tr('toolbar.undo'), shortcut: `${primaryModifierLabel} + Z` },
     { action: tr('toolbar.redo'), shortcut: redoShortcutLabel },
     { action: tr('toolbar.find'), shortcut: `${primaryModifierLabel} + F` },
+    { action: tr('toolbar.findAdvanced'), shortcut: `${primaryModifierLabel} + Shift + F` },
     { action: tr('settings.shortcutGoToLine'), shortcut: `${primaryModifierLabel} + G` },
     { action: tr('toolbar.replace'), shortcut: `${primaryModifierLabel} + H` },
     { action: tr('settings.shortcutFindNext'), shortcut: 'F3 / Shift + F3' },

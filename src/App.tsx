@@ -22,6 +22,7 @@ import {
 } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, TabIndentMode, isDiffTab } from '@/store/useStore';
 import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
+import { QuickFindOverlay } from '@/components/QuickFindOverlay';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 
@@ -1677,6 +1678,7 @@ function App() {
               ) : (
                 editorFallback
               )}
+              <QuickFindOverlay tab={activeFileTab} />
             </div>
             <MarkdownPreviewPanel open={markdownPreviewOpen} tab={activeFileTab} />
           </div>
