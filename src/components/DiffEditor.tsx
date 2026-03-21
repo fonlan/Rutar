@@ -178,6 +178,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         folding: !largeFileMode,
         scrollBeyondLastLine: false,
+        find: {
+          addExtraSpaceOnTop: false,
+        },
       });
     },
     [

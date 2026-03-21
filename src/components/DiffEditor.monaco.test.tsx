@@ -178,6 +178,38 @@ describe('DiffEditor (Monaco)', () => {
     });
   });
 
+  it('keeps find widget overlay options without adding top spacer', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+      expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          find: {
+            addExtraSpaceOnTop: false,
+          },
+        })
+      );
+      expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          find: {
+            addExtraSpaceOnTop: false,
+          },
+        })
+      );
+    });
+  });
   it('handles toolbar diff undo event', async () => {
     const sourceTab = createFileTab({ id: 'tab-source' });
     const targetTab = createFileTab({ id: 'tab-target' });

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { QUICK_FIND_OPEN_EVENT, type QuickFindOpenEventDetail } from '@/lib/quickFind';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
 import type { MonacoEngineState, MonacoTextEdit } from './monacoTypes';
@@ -253,6 +254,9 @@ export function Editor({
       glyphMargin: false,
       folding: !tab.largeFileMode,
       scrollBeyondLastLine: false,
+      find: {
+        addExtraSpaceOnTop: false,
+      },
     });
 
     editorRef.current = editor;
@@ -378,6 +382,9 @@ export function Editor({
       selectionHighlight: !tab.largeFileMode,
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
       folding: !tab.largeFileMode,
+      find: {
+        addExtraSpaceOnTop: false,
+      },
     });
   }, [
     settings.fontFamily,
@@ -600,6 +607,25 @@ export function Editor({
     const handleSearchClose = () => {
       editorRef.current?.focus();
     };
+    const handleQuickFindOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<QuickFindOpenEventDetail>;
+      const targetTabId = customEvent.detail?.tabId;
+      if (targetTabId && targetTabId !== tab.id) {
+        return;
+      }
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+      editor.focus();
+      const findAction = editor.getAction('actions.find');
+      if (!findAction) {
+        return;
+      }
+      void findAction.run().catch((error) => {
+        console.error('Failed to open Monaco find widget:', error);
+      });
+    };
 
     const handleDocumentUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ tabId?: string }>;
@@ -621,6 +647,7 @@ export function Editor({
     window.addEventListener('rutar:paste-text', handlePaste as EventListener);
     window.addEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
     window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
+    window.addEventListener(QUICK_FIND_OPEN_EVENT, handleQuickFindOpen as EventListener);
     window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
 
     return () => {
@@ -630,6 +657,7 @@ export function Editor({
       window.removeEventListener('rutar:paste-text', handlePaste as EventListener);
       window.removeEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
+      window.removeEventListener(QUICK_FIND_OPEN_EVENT, handleQuickFindOpen as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
   }, [ensureEditorModelLoaded, tab.id]);

@@ -2,6 +2,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { QUICK_FIND_OPEN_EVENT } from '@/lib/quickFind';
 import { type FileTab, useStore } from '@/store/useStore';
 import { Editor } from './Editor';
 
@@ -9,6 +10,7 @@ const monacoMockState = vi.hoisted(() => ({
   editorCreate: vi.fn(),
   editorInstance: null as any,
   model: null as any,
+  findActionRun: vi.fn(async () => undefined),
   changeListener: null as null | ((event: unknown) => void),
   cursorListener: null as null | ((event: unknown) => void),
   mouseDownListener: null as null | ((event: unknown) => void),
@@ -72,6 +74,14 @@ vi.mock('monaco-editor', () => {
     revealPositionInCenter: vi.fn(),
     revealPositionInCenterIfOutsideViewport: vi.fn(),
     focus: vi.fn(),
+    getAction: vi.fn((actionId: string) => {
+      if (actionId === 'actions.find') {
+        return {
+          run: monacoMockState.findActionRun,
+        };
+      }
+      return null;
+    }),
     getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
     getSelection: vi.fn(() => ({
       startLineNumber: 1,
@@ -126,6 +136,8 @@ describe('Editor (Monaco)', () => {
     monacoMockState.cursorListener = null;
     monacoMockState.mouseDownListener = null;
     monacoMockState.model.value = '';
+    monacoMockState.findActionRun.mockReset();
+    monacoMockState.findActionRun.mockResolvedValue(undefined);
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'get_document_text') {
@@ -150,6 +162,14 @@ describe('Editor (Monaco)', () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
     });
     expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    expect(monacoMockState.editorCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        find: {
+          addExtraSpaceOnTop: false,
+        },
+      })
+    );
   });
 
   it('handles navigate event and moves cursor', async () => {
@@ -178,6 +198,28 @@ describe('Editor (Monaco)', () => {
     });
   });
 
+  it('opens Monaco find widget on quick-find-open event', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(QUICK_FIND_OPEN_EVENT, {
+          detail: { tabId: tab.id },
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.getAction).toHaveBeenCalledWith('actions.find');
+      expect(monacoMockState.findActionRun).toHaveBeenCalledTimes(1);
+    });
+  });
   it('syncs model edits to backend command', async () => {
     const tab = createTab();
     useStore.setState({
