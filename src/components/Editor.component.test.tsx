@@ -912,6 +912,56 @@ describe("Editor component", () => {
     }
   });
 
+  it("updates current line highlight during pointer-active drag selection before raf flush", async () => {
+    useStore.getState().updateSettings({
+      highlightCurrentLine: true,
+    });
+    const tab = createTab({
+      id: "tab-current-line-highlight-pointer-drag-selectionchange-immediate",
+      lineCount: 12,
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    let nextRafId = 0;
+    const pendingRafCallbacks = new Map<number, FrameRequestCallback>();
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextRafId;
+      pendingRafCallbacks.set(id, callback);
+      return id;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      pendingRafCallbacks.delete(id);
+    }) as typeof window.cancelAnimationFrame;
+    try {
+      await act(async () => {
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+        fireEvent.pointerDown(textarea, {
+          button: 0,
+          buttons: 1,
+          clientX: 24,
+          clientY: 24,
+        });
+        textarea.setSelectionRange(0, 6);
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      const highlightedLine = Array.from(
+        container.querySelectorAll<HTMLElement>(".editor-line"),
+      ).find((line) => line.className.includes("bg-violet-300/35"));
+      expect(highlightedLine?.textContent).toContain("line-2");
+    } finally {
+      fireEvent.pointerUp(textarea, {
+        button: 0,
+        clientX: 24,
+        clientY: 24,
+      });
+      window.requestAnimationFrame = originalRequestAnimationFrame;
+      window.cancelAnimationFrame = originalCancelAnimationFrame;
+    }
+  });
   it("highlights only finite positive diff lines after normalization", async () => {
     const tab = createTab({
       id: "tab-diff-highlight-normalize",

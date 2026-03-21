@@ -61,14 +61,7 @@ export function useEditorUiInteractionEffects({
         return;
       }
 
-      const selectionCollapsed = !!(
-        contentRef.current
-        && contentRef.current.selectionStart === contentRef.current.selectionEnd
-      );
-
-      if (!pointerSelectionActiveRef.current || selectionCollapsed) {
-        syncActiveLineStateNow();
-      }
+      syncActiveLineStateNow();
 
       if (selectionChangeRafRef.current !== null) {
         return;
