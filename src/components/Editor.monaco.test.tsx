@@ -9,6 +9,7 @@ const monacoMockState = vi.hoisted(() => ({
   editorInstance: null as any,
   model: null as any,
   changeListener: null as null | ((event: unknown) => void),
+  cursorListener: null as null | ((event: unknown) => void),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -41,9 +42,12 @@ vi.mock('monaco-editor', () => {
         dispose: vi.fn(),
       };
     }),
-    onDidChangeCursorPosition: vi.fn(() => ({
-      dispose: vi.fn(),
-    })),
+    onDidChangeCursorPosition: vi.fn((listener: (event: unknown) => void) => {
+      monacoMockState.cursorListener = listener;
+      return {
+        dispose: vi.fn(),
+      };
+    }),
     setModel: vi.fn(),
     getModel: vi.fn(() => model),
     saveViewState: vi.fn(() => null),
@@ -102,6 +106,7 @@ describe('Editor (Monaco)', () => {
     vi.clearAllMocks();
     useStore.setState(initialStoreState, true);
     monacoMockState.changeListener = null;
+    monacoMockState.cursorListener = null;
     monacoMockState.model.value = '';
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
@@ -224,6 +229,36 @@ describe('Editor (Monaco)', () => {
     });
 
     expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not rebind model when cursor position updates', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.cursorListener).toBeTruthy();
+      expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      monacoMockState.cursorListener?.({
+        position: {
+          lineNumber: 2,
+          column: 4,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().cursorPositionByTab[tab.id]).toEqual({ line: 2, column: 4 });
+    });
+
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
   });
 });

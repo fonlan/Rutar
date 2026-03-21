@@ -110,7 +110,6 @@ export function Editor({
   const tabs = useStore((state) => state.tabs);
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
-  const cursorByTab = useStore((state) => state.cursorPositionByTab);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activeTabIdRef = useRef<string | null>(null);
@@ -337,7 +336,12 @@ export function Editor({
     if (!model) {
       model = monaco.editor.createModel('', monacoLanguage);
       modelByTabId.set(tab.id, model);
-      void ensureEditorModelLoaded(tab, 'bootstrap');
+      const currentTab =
+        useStore
+          .getState()
+          .tabs
+          .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab;
+      void ensureEditorModelLoaded(currentTab, 'bootstrap');
     }
 
     if (model.getLanguageId() !== monacoLanguage) {
@@ -357,7 +361,7 @@ export function Editor({
       editor.restoreViewState(viewState);
     }
 
-    const savedCursor = cursorByTab[tab.id];
+    const savedCursor = useStore.getState().cursorPositionByTab[tab.id];
     if (savedCursor) {
       const lineNumber = Math.max(1, savedCursor.line);
       const column = Math.max(1, savedCursor.column);
@@ -367,7 +371,7 @@ export function Editor({
     }
 
     editor.focus();
-  }, [cursorByTab, ensureEditorModelLoaded, monacoLanguage, tab]);
+  }, [ensureEditorModelLoaded, monacoLanguage, tab.id]);
 
   useEffect(() => {
     const trackedTabIds = new Set(
@@ -392,6 +396,12 @@ export function Editor({
   }, [tabs]);
 
   useEffect(() => {
+    const resolveCurrentTab = () =>
+      useStore
+        .getState()
+        .tabs
+        .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab;
+
     const handleNavigate = (event: Event) => {
       const customEvent = event as CustomEvent<{
         tabId?: string;
@@ -438,7 +448,7 @@ export function Editor({
       const restoreLine = customEvent.detail?.restoreCursorLine;
       const restoreColumn = customEvent.detail?.restoreCursorColumn;
 
-      void ensureEditorModelLoaded(tab, 'refresh').then(() => {
+      void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh').then(() => {
         if (!restoreLine || !restoreColumn) {
           return;
         }
@@ -533,7 +543,7 @@ export function Editor({
         return;
       }
 
-      void ensureEditorModelLoaded(tab, 'refresh');
+      void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh');
     };
 
     window.addEventListener('rutar:navigate-to-line', handleNavigate as EventListener);
@@ -553,7 +563,7 @@ export function Editor({
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [ensureEditorModelLoaded, tab]);
+  }, [ensureEditorModelLoaded, tab.id]);
 
   return (
     <div
