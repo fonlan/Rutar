@@ -62,6 +62,10 @@ export default defineConfig(async () => ({
             return "react-vendor";
           }
 
+          if (packageName === "monaco-editor") {
+            return "monaco-vendor";
+          }
+
           return "vendor";
         },
       },

@@ -34,6 +34,11 @@ pub fn get_visible_lines(
 }
 
 #[tauri::command]
+pub fn get_document_text(state: State<'_, AppState>, id: String) -> Result<String, String> {
+    file_io::get_document_text_impl(state, id)
+}
+
+#[tauri::command]
 pub fn get_bookmark_line_previews(
     state: State<'_, AppState>,
     id: String,

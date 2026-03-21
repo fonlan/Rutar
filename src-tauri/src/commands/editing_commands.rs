@@ -50,6 +50,27 @@ pub fn edit_text(
 }
 
 #[tauri::command]
+pub fn apply_text_edits_by_line_column(
+    state: State<'_, AppState>,
+    id: String,
+    edits: Vec<editing::LineColumnTextEdit>,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
+) -> Result<usize, String> {
+    editing::apply_text_edits_by_line_column_impl(
+        state,
+        id,
+        edits,
+        before_cursor_line,
+        before_cursor_column,
+        after_cursor_line,
+        after_cursor_column,
+    )
+}
+
+#[tauri::command]
 pub fn replace_line_range(
     state: State<'_, AppState>,
     id: String,

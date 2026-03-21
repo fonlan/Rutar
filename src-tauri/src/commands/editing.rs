@@ -220,6 +220,159 @@ pub(super) fn edit_text_impl(
     }
 }
 
+#[derive(serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LineColumnTextEdit {
+    pub start_line_number: usize,
+    pub start_column: usize,
+    pub end_line_number: usize,
+    pub end_column: usize,
+    pub text: String,
+}
+
+fn trimmed_line_without_break(rope: &Rope, line_index: usize) -> String {
+    let mut line = rope.line(line_index).to_string();
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    line
+}
+
+fn utf16_column_to_char_offset(text: &str, column: usize) -> usize {
+    let target_utf16_offset = column.saturating_sub(1);
+    let mut consumed_utf16 = 0usize;
+    let mut consumed_chars = 0usize;
+
+    for ch in text.chars() {
+        let next_utf16 = consumed_utf16.saturating_add(ch.len_utf16());
+        if next_utf16 > target_utf16_offset {
+            break;
+        }
+
+        consumed_utf16 = next_utf16;
+        consumed_chars = consumed_chars.saturating_add(1);
+    }
+
+    consumed_chars
+}
+
+fn line_column_to_char_index_utf16(rope: &Rope, line_number: usize, column: usize) -> usize {
+    let line_count = rope.len_lines().max(1);
+    let safe_line = line_number.max(1);
+
+    if safe_line > line_count {
+        return rope.len_chars();
+    }
+
+    let line_index = safe_line - 1;
+    let line_start_char = rope.line_to_char(line_index);
+    let line_text = trimmed_line_without_break(rope, line_index);
+    let line_chars = line_text.chars().count();
+    let char_offset = utf16_column_to_char_offset(&line_text, column).min(line_chars);
+
+    line_start_char.saturating_add(char_offset)
+}
+
+#[cfg(test)]
+fn apply_line_column_edits_to_text_for_test(source: &str, edits: Vec<LineColumnTextEdit>) -> String {
+    let mut rope = Rope::from_str(source);
+    let mut sorted_edits = edits;
+    sorted_edits.sort_by(|left, right| {
+        left.start_line_number
+            .cmp(&right.start_line_number)
+            .then(left.start_column.cmp(&right.start_column))
+            .then(left.end_line_number.cmp(&right.end_line_number))
+            .then(left.end_column.cmp(&right.end_column))
+    });
+
+    for edit in sorted_edits.into_iter().rev() {
+        let raw_start =
+            line_column_to_char_index_utf16(&rope, edit.start_line_number, edit.start_column);
+        let raw_end = line_column_to_char_index_utf16(&rope, edit.end_line_number, edit.end_column);
+        let start_char = raw_start.min(raw_end);
+        let end_char = raw_start.max(raw_end);
+
+        if start_char < end_char {
+            rope.remove(start_char..end_char);
+        }
+
+        if !edit.text.is_empty() {
+            rope.insert(start_char, &edit.text);
+        }
+    }
+
+    rope.to_string()
+}
+
+pub(super) fn apply_text_edits_by_line_column_impl(
+    state: State<'_, AppState>,
+    id: String,
+    edits: Vec<LineColumnTextEdit>,
+    before_cursor_line: Option<usize>,
+    before_cursor_column: Option<usize>,
+    after_cursor_line: Option<usize>,
+    after_cursor_column: Option<usize>,
+) -> Result<usize, String> {
+    if let Some(mut doc) = state.documents.get_mut(&id) {
+        if edits.is_empty() {
+            return Ok(doc.rope.len_lines());
+        }
+
+        let mut sorted_edits = edits;
+        sorted_edits.sort_by(|left, right| {
+            left.start_line_number
+                .cmp(&right.start_line_number)
+                .then(left.start_column.cmp(&right.start_column))
+                .then(left.end_line_number.cmp(&right.end_line_number))
+                .then(left.end_column.cmp(&right.end_column))
+        });
+
+        let edit_count = sorted_edits.len();
+        let mut changed = false;
+
+        for (index, edit) in sorted_edits.into_iter().rev().enumerate() {
+            let raw_start = line_column_to_char_index_utf16(
+                &doc.rope,
+                edit.start_line_number,
+                edit.start_column,
+            );
+            let raw_end =
+                line_column_to_char_index_utf16(&doc.rope, edit.end_line_number, edit.end_column);
+            let start_char = raw_start.min(raw_end);
+            let end_char = raw_start.max(raw_end);
+
+            let old_text = doc.rope.slice(start_char..end_char).to_string();
+            if old_text == edit.text {
+                continue;
+            }
+
+            let mut operation = create_edit_operation(&mut doc, start_char, old_text, edit.text);
+            if index + 1 == edit_count {
+                operation.before_cursor =
+                    build_cursor_snapshot(before_cursor_line, before_cursor_column);
+            }
+            if index == 0 {
+                operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
+            }
+
+            apply_operation(&mut doc, &operation)?;
+            doc.undo_stack.push(operation);
+            changed = true;
+        }
+
+        if changed {
+            doc.redo_stack.clear();
+        }
+
+        Ok(doc.rope.len_lines())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairOffsetsResultPayload {
@@ -1208,7 +1361,12 @@ pub(super) fn format_document_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_document_lines, find_matching_pair_offsets_impl, DocumentCleanupAction};
+    use super::{
+        apply_line_column_edits_to_text_for_test, cleanup_document_lines,
+        find_matching_pair_offsets_impl, line_column_to_char_index_utf16, utf16_column_to_char_offset,
+        DocumentCleanupAction, LineColumnTextEdit,
+    };
+    use ropey::Rope;
 
     #[test]
     fn remove_empty_lines_should_drop_blank_lines_and_keep_terminal_newline() {
@@ -1327,5 +1485,83 @@ mod tests {
         assert_eq!(payload.left_column, 3);
         assert_eq!(payload.right_line, 1);
         assert_eq!(payload.right_column, 5);
+    }
+
+    #[test]
+    fn utf16_column_to_char_offset_should_handle_surrogate_pairs() {
+        let line = "😀abc";
+        assert_eq!(utf16_column_to_char_offset(line, 1), 0);
+        assert_eq!(utf16_column_to_char_offset(line, 2), 0);
+        assert_eq!(utf16_column_to_char_offset(line, 3), 1);
+        assert_eq!(utf16_column_to_char_offset(line, 4), 2);
+    }
+
+    #[test]
+    fn line_column_to_char_index_utf16_should_resolve_offsets_with_multibyte_chars() {
+        let rope = Rope::from_str("😀abc\nline2\n");
+        assert_eq!(line_column_to_char_index_utf16(&rope, 1, 1), 0);
+        assert_eq!(line_column_to_char_index_utf16(&rope, 1, 3), 1);
+        assert_eq!(line_column_to_char_index_utf16(&rope, 1, 6), 4);
+        assert_eq!(line_column_to_char_index_utf16(&rope, 2, 3), 7);
+    }
+
+    #[test]
+    fn apply_line_column_edits_should_handle_cross_line_replace() {
+        let source = "alpha\nbeta\ngamma\n";
+        let result = apply_line_column_edits_to_text_for_test(
+            source,
+            vec![LineColumnTextEdit {
+                start_line_number: 1,
+                start_column: 3,
+                end_line_number: 2,
+                end_column: 3,
+                text: "X\nY".to_string(),
+            }],
+        );
+
+        assert_eq!(result, "alX\nYta\ngamma\n");
+    }
+
+    #[test]
+    fn apply_line_column_edits_should_respect_utf16_columns_with_emoji() {
+        let source = "😀abc\n";
+        let result = apply_line_column_edits_to_text_for_test(
+            source,
+            vec![LineColumnTextEdit {
+                start_line_number: 1,
+                start_column: 3,
+                end_line_number: 1,
+                end_column: 5,
+                text: "Z".to_string(),
+            }],
+        );
+
+        assert_eq!(result, "😀Zc\n");
+    }
+
+    #[test]
+    fn apply_line_column_edits_should_apply_batch_edits_in_original_coordinate_space() {
+        let source = "012345\n";
+        let result = apply_line_column_edits_to_text_for_test(
+            source,
+            vec![
+                LineColumnTextEdit {
+                    start_line_number: 1,
+                    start_column: 5,
+                    end_line_number: 1,
+                    end_column: 6,
+                    text: "B".to_string(),
+                },
+                LineColumnTextEdit {
+                    start_line_number: 1,
+                    start_column: 2,
+                    end_line_number: 1,
+                    end_column: 3,
+                    text: "AA".to_string(),
+                },
+            ],
+        );
+
+        assert_eq!(result, "0AA23B5\n");
     }
 }

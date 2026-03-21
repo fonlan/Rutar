@@ -595,6 +595,17 @@ pub(super) fn get_visible_lines_impl(
     }
 }
 
+pub(super) fn get_document_text_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        Ok(doc.rope.to_string())
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
 pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
     state.documents.remove(&id);
     state.syntax_request_serials.remove(&id);

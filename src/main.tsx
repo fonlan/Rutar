@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "monaco-editor/min/vs/editor/editor.main.css";
+import { setupMonacoEnvironment } from "./lib/monaco/setupMonaco";
 
 const ROOT_ELEMENT_ID = "root";
 
@@ -37,6 +39,7 @@ function ensureBootSplash() {
 }
 
 ensureBootSplash();
+setupMonacoEnvironment();
 
 ReactDOM.createRoot(document.getElementById(ROOT_ELEMENT_ID) as HTMLElement).render(
   <React.StrictMode>

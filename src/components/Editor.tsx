@@ -1,1297 +1,575 @@
-// @ts-nocheck
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as monaco from 'monaco-editor';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
-import { FileTab, useStore } from '@/store/useStore';
-import { useResizeObserver } from '@/hooks/useResizeObserver';
-import { t } from '@/i18n';
-import { EditorView } from './EditorView';
-import {
-  DEFAULT_SUBMENU_MAX_HEIGHTS,
-  DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
-  type EditorCompositionDisplayState,
-  type PendingEditCursorSnapshot,
-} from './Editor.types';
-import { resolveTokenTypeClass } from './editorTokenClass';
-import { editorTestUtils } from './editorUtils';
-import { useEditorClipboardSelectionEffects } from './useEditorClipboardSelectionEffects';
-import { useEditorBookmarkActions } from './useEditorBookmarkActions';
-import { useEditorContentSync } from './useEditorContentSync';
-import { useEditorContextCleanupAction } from './useEditorContextCleanupAction';
-import { useEditorContextConvertActions } from './useEditorContextConvertActions';
-import { useEditorContextMenuInteractions } from './useEditorContextMenuInteractions';
-import { useEditorContextMenuActions } from './useEditorContextMenuActions';
-import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
-import { useEditorCoreState } from './useEditorCoreState';
-import { useEditorDerivedState } from './useEditorDerivedState';
-import { useEditorDocumentLoadEffects } from './useEditorDocumentLoadEffects';
-import { useEditorFlushPendingSync } from './useEditorFlushPendingSync';
-import { useEditorGlobalPointerEffects } from './useEditorGlobalPointerEffects';
-import { useEditorHugeEditableLayout } from './useEditorHugeEditableLayout';
-import { useEditorInputSyncActions } from './useEditorInputSyncActions';
-import { useEditorKeyboardActions } from './useEditorKeyboardActions';
-import { useEditorLayoutConfig } from './useEditorLayoutConfig';
-import { useEditorLineNumberInteractions } from './useEditorLineNumberInteractions';
-import { useEditorLineNumberContextActions } from './useEditorLineNumberContextActions';
-import { useEditorLineNumberMultiSelection } from './useEditorLineNumberMultiSelection';
-import { useEditorLineNumberWheel } from './useEditorLineNumberWheel';
-import { useEditorLineHighlightRenderers } from './useEditorLineHighlightRenderers';
-import { useEditorLocalLifecycleEffects } from './useEditorLocalLifecycleEffects';
-import { useEditorNavigationAndRefreshEffects } from './useEditorNavigationAndRefreshEffects';
-import { useEditorPointerFinalizeEffects } from './useEditorPointerFinalizeEffects';
-import { useEditorPointerInteractions } from './useEditorPointerInteractions';
-import { useEditorPointerSelectionGuards } from './useEditorPointerSelectionGuards';
-import { useEditorRectangularSelectionActions } from './useEditorRectangularSelectionActions';
-import { useEditorRowMeasurement } from './useEditorRowMeasurement';
-import { useEditorSearchHorizontalNavigation } from './useEditorSearchHorizontalNavigation';
-import { useEditorSelectedTextReader } from './useEditorSelectedTextReader';
-import { useEditorSelectionPresence } from './useEditorSelectionPresence';
-import { useEditorSelectionInteractionActions } from './useEditorSelectionInteractionActions';
-import { useEditorSelectionStateSync } from './useEditorSelectionStateSync';
-import { useEditorScrollSyncEffects } from './useEditorScrollSyncEffects';
-import { useEditorTextMeasurement } from './useEditorTextMeasurement';
-import { useEditorTextDragMoveAction } from './useEditorTextDragMoveAction';
-import { useEditorToggleLineCommentsAction } from './useEditorToggleLineCommentsAction';
-import { useEditorTextSelectionHighlightSync } from './useEditorTextSelectionHighlightSync';
-import { useEditorUiInteractionEffects } from './useEditorUiInteractionEffects';
-import { useEditorVisibleItemsRendered } from './useEditorVisibleItemsRendered';
-import { useEffectiveIndentation } from './useEffectiveIndentation';
-
-const MAX_LINE_RANGE = 2147483647;
-const DEFAULT_FETCH_BUFFER_LINES = 50;
-const LARGE_FILE_FETCH_BUFFER_LINES = 200;
-const HUGE_EDITABLE_FETCH_BUFFER_LINES = 100;
-const LARGE_FILE_FETCH_DEBOUNCE_MS = 12;
-const HUGE_EDITABLE_FETCH_DEBOUNCE_MS = 24;
-const NORMAL_FILE_FETCH_DEBOUNCE_MS = 50;
-const SCROLLBAR_DRAG_FETCH_DEBOUNCE_MS = 8;
-const LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD = 20000;
-const LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS = 160;
-const NORMAL_EDIT_SYNC_DEBOUNCE_MS = 40;
-const HUGE_EDITABLE_WINDOW_UNLOCK_MS = 260;
-const EMPTY_LINE_PLACEHOLDER = '\u200B';
-const SEARCH_HIGHLIGHT_CLASS = 'rounded-sm bg-yellow-300/70 px-0.5 text-black dark:bg-yellow-400/70';
-const PAIR_HIGHLIGHT_CLASS =
-  'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
-const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
-  'rounded-[2px] bg-emerald-300/55 text-black ring-1 ring-emerald-500/45 dark:bg-emerald-400/40 dark:ring-emerald-300/45';
-const RECTANGULAR_SELECTION_HIGHLIGHT_CLASS =
-  'rounded-[2px] bg-violet-300/45 text-black ring-1 ring-violet-500/40 dark:bg-violet-400/30 dark:ring-violet-300/40';
-const TEXT_SELECTION_HIGHLIGHT_CLASS =
-  'bg-blue-400/35 dark:bg-blue-500/30 editor-text-selection-highlight';
-const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
-const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
-const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
-const SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX = 32;
-const EMPTY_BOOKMARKS: number[] = [];
-const EMPTY_UNSAVED_CHANGE_LINES: number[] = [];
-const HYPERLINK_UNDERLINE_CLASS =
-  'underline decoration-sky-500/80 underline-offset-2 text-sky-600 dark:text-sky-300';
+import { type FileTab, useStore } from '@/store/useStore';
+import type { MonacoEngineState, MonacoTextEdit } from './monacoTypes';
 
 export { editorTestUtils } from './editorUtils';
 
-const {
-  isToggleLineCommentShortcut,
-  isVerticalSelectionShortcut,
-  isTextareaInputElement,
-  setInputLayerText,
-  getEditableText,
-  normalizeEditorText,
-  normalizeLineText,
-  normalizeEditableLineText,
-  normalizeSegmentText,
-  toInputLayerText,
-  mapLogicalOffsetToInputLayerOffset,
-  getCaretLineInElement,
-  getSelectionOffsetsInElement,
-  getSelectionAnchorFocusOffsetsInElement,
-  getLogicalOffsetFromDomPoint,
-  getLogicalOffsetFromPoint,
-  getCodeUnitOffsetFromLineColumn,
-  setCaretToLineColumn,
-  codeUnitOffsetToLineColumn,
-  arePairHighlightPositionsEqual,
-  buildCodeUnitDiff,
-  codeUnitOffsetToUnicodeScalarIndex,
-  alignScrollOffset,
-  normalizeRectangularSelection,
-  buildLineStartOffsets,
-  getLineBoundsByLineNumber,
-  getOffsetForColumnInLine,
-  setCaretToCodeUnitOffset,
-  setSelectionToCodeUnitOffsets,
-  dispatchEditorInputEvent,
-  normalizeInputLayerDom,
-  writePlainTextToClipboard,
-  replaceSelectionWithText,
-  isPointerOnScrollbar,
-  trimHttpUrlCandidate,
-  getHttpUrlRangesInLine,
-  getHttpUrlAtTextOffset,
-  appendClassName,
-  dispatchDocumentUpdated,
-} = editorTestUtils;
+const modelByTabId = new Map<string, monaco.editor.ITextModel>();
+const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+
+function dispatchDocumentUpdated(tabId: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:document-updated', {
+      detail: { tabId },
+    })
+  );
+}
+
+function resolveMonacoLanguage(fileTab: FileTab) {
+  const syntaxKey = fileTab.syntaxOverride ?? detectSyntaxKeyFromTab(fileTab);
+  switch (syntaxKey) {
+    case 'plain_text':
+      return 'plaintext';
+    case 'markdown':
+      return 'markdown';
+    case 'dockerfile':
+      return 'dockerfile';
+    case 'makefile':
+      return 'makefile';
+    case 'javascript':
+      return 'javascript';
+    case 'typescript':
+      return 'typescript';
+    case 'rust':
+      return 'rust';
+    case 'python':
+      return 'python';
+    case 'json':
+      return 'json';
+    case 'jsonc':
+      return 'json';
+    case 'ini':
+      return 'ini';
+    case 'html':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'bash':
+      return 'shell';
+    case 'zsh':
+      return 'shell';
+    case 'toml':
+      return 'ini';
+    case 'yaml':
+      return 'yaml';
+    case 'xml':
+      return 'xml';
+    case 'c':
+      return 'c';
+    case 'cpp':
+      return 'cpp';
+    case 'go':
+      return 'go';
+    case 'java':
+      return 'java';
+    case 'csharp':
+      return 'csharp';
+    case 'hcl':
+      return 'hcl';
+    case 'lua':
+      return 'lua';
+    case 'php':
+      return 'php';
+    case 'kotlin':
+      return 'kotlin';
+    case 'powershell':
+      return 'powershell';
+    case 'ruby':
+      return 'ruby';
+    case 'sql':
+      return 'sql';
+    case 'swift':
+      return 'swift';
+    default:
+      return 'plaintext';
+  }
+}
+
+async function getDocumentText(tabId: string, lineCountHint: number) {
+  try {
+    return await invoke<string>('get_document_text', { id: tabId });
+  } catch {
+    return invoke<string>('get_visible_lines', {
+      id: tabId,
+      startLine: 0,
+      endLine: Math.max(1, lineCountHint),
+    });
+  }
+}
+
 export function Editor({
   tab,
-  diffHighlightLines = [],
 }: {
   tab: FileTab;
   diffHighlightLines?: number[];
 }) {
   const settings = useStore((state) => state.settings);
+  const tabs = useStore((state) => state.tabs);
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
-  const savedCursorPosition = useStore((state) => state.cursorPositionByTab[tab.id]);
-  const pendingEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
-  const queuedEditCursorSnapshotRef = useRef<PendingEditCursorSnapshot | null>(null);
-  const [compositionDisplay, setCompositionDisplay] = useState<EditorCompositionDisplayState | null>(null);
-  const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
-  const activeSyntaxKey = tab.syntaxOverride ?? detectSyntaxKeyFromTab(tab);
-  const effectiveIndentation = useEffectiveIndentation({
-    tab,
-    activeSyntaxKey,
-    tabIndentMode: settings.tabIndentMode,
-    tabWidth: settings.tabWidth,
+  const cursorByTab = useStore((state) => state.cursorPositionByTab);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const activeTabIdRef = useRef<string | null>(null);
+  const applyingRemoteTextRef = useRef(false);
+  const ignoreDocumentUpdatedCountRef = useRef(0);
+  const syncChainRef = useRef(Promise.resolve());
+  const cursorSnapshotRef = useRef<{ line: number; column: number }>({ line: 1, column: 1 });
+  const engineStateRef = useRef<MonacoEngineState>({
+    modelId: tab.id,
+    syncVersion: 0,
+    lastAppliedBackendVersion: 0,
   });
-  const {
-    lineTokens,
-    setLineTokens,
-    startLine,
-    setStartLine,
-    tokenFallbackPlainLines,
-    setTokenFallbackPlainLines,
-    tokenFallbackPlainStartLine,
-    setTokenFallbackPlainStartLine,
-    plainLines,
-    setPlainLines,
-    plainStartLine,
-    setPlainStartLine,
-    editableSegment,
-    setEditableSegment,
-    activeLineNumber,
-    setActiveLineNumber,
-    searchHighlight,
-    setSearchHighlight,
-    textSelectionHighlight,
-    setTextSelectionHighlight,
-    pairHighlights,
-    setPairHighlights,
-    rectangularSelection,
-    setRectangularSelection,
-    lineNumberMultiSelection,
-    setLineNumberMultiSelection,
-    outlineFlashLine,
-    setOutlineFlashLine,
-    showBase64DecodeErrorToast,
-    setShowBase64DecodeErrorToast,
-    editorContextMenu,
-    setEditorContextMenu,
-    submenuVerticalAlignments,
-    setSubmenuVerticalAlignments,
-    submenuMaxHeights,
-    setSubmenuMaxHeights,
-    contentRef,
-    scrollContainerRef,
-    listRef,
-    lineNumberListRef,
-    requestTimeout,
-    editTimeout,
-    isScrollbarDragRef,
-    editorContextMenuRef,
-    submenuPanelRefs,
-    currentRequestVersion,
-    isComposingRef,
-    syncInFlightRef,
-    initializedRef,
-    suppressExternalReloadRef,
-    pendingSyncRequestedRef,
-    hugeWindowLockedRef,
-    hugeWindowFollowScrollOnUnlockRef,
-    hugeWindowUnlockTimerRef,
-    outlineFlashTimerRef,
-    base64DecodeErrorToastTimerRef,
-    pendingRestoreScrollTopRef,
-    verticalSelectionRef,
-    rectangularSelectionPointerActiveRef,
-    rectangularSelectionRef,
-    rectangularSelectionLastClientPointRef,
-    rectangularSelectionAutoScrollDirectionRef,
-    rectangularSelectionAutoScrollRafRef,
-    textDragMoveStateRef,
-    textDragCursorAppliedRef,
-    pointerSelectionActiveRef,
-    lineNumberSelectionAnchorLineRef,
-    lineNumberContextLineRef,
-    selectionChangeRafRef,
-    editableSegmentRef,
-    syncedTextRef,
-    lastKnownContentScrollTopRef,
-    lastKnownContentScrollLeftRef,
-    lastKnownContainerScrollTopRef,
-    lastKnownContainerScrollLeftRef,
-  } = useEditorCoreState({
-    defaultSubmenuVerticalAlignments: DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
-    defaultSubmenuMaxHeights: DEFAULT_SUBMENU_MAX_HEIGHTS,
-  });
-  const { ref: containerRef, width, height } = useResizeObserver<HTMLDivElement>();
-  const syncSelectionAfterEditableSegmentSwapRef = useRef<(() => void) | null>(null);
-  const {
-    lineNumberMultiSelectionSet,
-    diffHighlightLineSet,
-    normalizedRectangularSelection,
-  } = useEditorDerivedState({
-    lineNumberMultiSelection,
-    diffHighlightLines,
-    rectangularSelection,
-    normalizeRectangularSelection,
-  });
+  const pendingFetchRequestIdRef = useRef(0);
+  const monacoLanguage = useMemo(() => resolveMonacoLanguage(tab), [tab]);
 
-  const {
-    tabSize,
-    wordWrap,
-    showLineNumbers,
-    highlightCurrentLine,
-    renderedFontSizePx,
-    lineNumberFontSizePx,
-    lineHeightPx,
-    itemSize,
-    lineNumberColumnWidthPx,
-    contentViewportLeftPx,
-    contentViewportWidth,
-    lineNumberBottomSpacerHeightPx,
-    contentTextPadding,
-    contentTextRightPadding,
-    contentScrollbarGutterWidth,
-    contentBottomSafetyPadding,
-    horizontalOverflowMode,
-    usePlainLineRendering,
-    isHugeEditableMode,
-    isPairHighlightEnabled,
-    hugeEditablePaddingTop,
-    hugeEditableSegmentHeightPx,
-    lineNumberVirtualItemCount,
-  } = useEditorLayoutConfig({
-    settings,
-    width,
-    tabLineCount: tab.lineCount,
-    tabLargeFileMode: tab.largeFileMode,
-    editableSegmentStartLine: editableSegment.startLine,
-    editableSegmentEndLine: editableSegment.endLine,
-    largeFilePlainRenderLineThreshold: LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD,
-    isPlainTextMode: activeSyntaxKey === 'plain_text',
-  });
-  const {
-    deleteLabel,
-    selectAllLabel,
-    copyLabel,
-    cutLabel,
-    pasteLabel,
-    selectCurrentLineLabel,
-    addCurrentLineToBookmarkLabel,
-    editMenuLabel,
-    sortMenuLabel,
-    convertMenuLabel,
-    convertBase64EncodeLabel,
-    convertBase64DecodeLabel,
-    copyBase64EncodeResultLabel,
-    copyBase64DecodeResultLabel,
-    base64DecodeFailedToastLabel,
-    bookmarkMenuLabel,
-    addBookmarkLabel,
-    removeBookmarkLabel,
-    editSubmenuPositionClassName,
-    sortSubmenuPositionClassName,
-    convertSubmenuPositionClassName,
-    bookmarkSubmenuPositionClassName,
-    editSubmenuStyle,
-    sortSubmenuStyle,
-    convertSubmenuStyle,
-    bookmarkSubmenuStyle,
-    cleanupMenuItems,
-    sortMenuItems,
-  } = useEditorContextMenuConfig({
-    tr,
-    submenuDirection: editorContextMenu?.submenuDirection,
-    submenuVerticalAlignments,
-    submenuMaxHeights,
-  });
+  const ensureEditorModelLoaded = useCallback(
+    async (targetTab: FileTab, reason: 'bootstrap' | 'refresh') => {
+      const model = modelByTabId.get(targetTab.id);
+      if (!model) {
+        return;
+      }
 
-  const addBookmark = useStore((state) => state.addBookmark);
-  const removeBookmark = useStore((state) => state.removeBookmark);
-  const toggleBookmark = useStore((state) => state.toggleBookmark);
-  const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
-  const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
-  const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
-  const [unsavedChangeLines, setUnsavedChangeLines] = useState<number[]>(EMPTY_UNSAVED_CHANGE_LINES);
-  const unsavedChangeLineSet = useMemo(() => {
-    return new Set(unsavedChangeLines);
-  }, [unsavedChangeLines]);
-  const largeFetchBuffer = isHugeEditableMode
-    ? HUGE_EDITABLE_FETCH_BUFFER_LINES
-    : tab.largeFileMode
-    ? LARGE_FILE_FETCH_BUFFER_LINES
-    : DEFAULT_FETCH_BUFFER_LINES;
-  const { getListItemSize, getLineNumberListItemSize, measureRenderedLineHeight } = useEditorRowMeasurement({
-    itemSize,
-    wordWrap,
-    lineNumberBottomSpacerHeightPx,
-    tabLineCount: tab.lineCount,
-    lineHeightPx,
-    renderedFontSizePx,
-    fontFamily: settings.fontFamily,
-    tabId: tab.id,
-    width,
-    showLineNumbers,
-    listRef,
-    lineNumberListRef,
-  });
-  const { syncVisibleTokens, loadTextFromBackend } = useEditorContentSync({
-    maxLineRange: MAX_LINE_RANGE,
-    tabId: tab.id,
-    height,
-    itemSize,
-    largeFetchBuffer,
-    isHugeEditableMode,
-    usePlainLineRendering,
-    contentRef,
-    scrollContainerRef,
-    listRef,
-    isScrollbarDragRef,
-    currentRequestVersionRef: currentRequestVersion,
-    hugeWindowLockedRef,
-    hugeWindowFollowScrollOnUnlockRef,
-    editableSegmentRef,
-    pendingRestoreScrollTopRef,
-    syncedTextRef,
-    pendingSyncRequestedRef,
-    lineTokensLength: lineTokens.length,
-    tokenStartLine: startLine,
-    setPlainLines,
-    setPlainStartLine,
-    setLineTokens,
-    setStartLine,
-    setTokenFallbackPlainLines,
-    setTokenFallbackPlainStartLine,
-    setEditableSegment,
-    normalizeLineText,
-    normalizeEditableLineText,
-    normalizeEditorText,
-    setInputLayerText,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    codeUnitOffsetToLineColumn,
-    getCodeUnitOffsetFromLineColumn,
-    syncSelectionAfterEditableSegmentSwapRef,
-  });
-
-  const { handleScroll } = useEditorScrollSyncEffects({
-    isHugeEditableMode,
-    showLineNumbers,
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    editableSegmentStartLine: editableSegment.startLine,
-    editableSegmentEndLine: editableSegment.endLine,
-    alignScrollOffset,
-    pendingRestoreScrollTopRef,
-    contentRef,
-    scrollContainerRef,
-    listRef,
-    lineNumberListRef,
-    isScrollbarDragRef,
-    lastKnownContentScrollTopRef,
-    lastKnownContentScrollLeftRef,
-    lastKnownContainerScrollTopRef,
-    lastKnownContainerScrollLeftRef,
-  });
-
-  const {
-    clearPointerSelectionNativeHighlightMode,
-    endScrollbarDragSelectionGuard,
-    finalizePointerSelectionInteraction,
-  } = useEditorPointerSelectionGuards({
-    contentRef,
-    isScrollbarDragRef,
-    pointerSelectionActiveRef,
-  });
-  const { measureTextWidthByEditorStyle, resolveDropOffsetFromPointer } = useEditorTextMeasurement({
-    renderedFontSizePx,
-    fontFamily: settings.fontFamily,
-    lineHeightPx,
-    wordWrap,
-    getEditableText,
-  });
-
-  const { ensureSearchMatchVisibleHorizontally } = useEditorSearchHorizontalNavigation({
-    contentRef,
-    wordWrap,
-    searchNavigateHorizontalMarginPx: SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX,
-    searchNavigateMinVisibleTextWidthPx: SEARCH_NAVIGATE_MIN_VISIBLE_TEXT_WIDTH_PX,
-    getEditableText,
-    measureTextWidthByEditorStyle,
-    alignScrollOffset,
-  });
-
-  const {
-    handleEditorPointerMove,
-    handleEditorPointerLeave,
-    handleEditorPointerDown,
-    handleHugeScrollablePointerDown,
-  } = useEditorPointerInteractions({
-    isHugeEditableMode,
-    hyperlinkHoverHint: tr('editor.hyperlink.openHint'),
-    contentRef,
-    scrollContainerRef,
-    textDragMoveStateRef,
-    isScrollbarDragRef,
-    pointerSelectionActiveRef,
-    verticalSelectionRef,
-    rectangularSelectionRef,
-    rectangularSelectionPointerActiveRef,
-    rectangularSelectionLastClientPointRef,
-    setLineNumberMultiSelection,
-    setTextSelectionHighlight,
-    setRectangularSelection,
-    isPointerOnScrollbar,
-    isTextareaInputElement,
-    resolveDropOffsetFromPointer,
-    getHttpUrlAtTextOffset,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    getLogicalOffsetFromPoint,
-    normalizeSegmentText,
-    codeUnitOffsetToLineColumn,
-  });
-  const { editableSegmentLines, hugeScrollableContentWidth, syncHugeScrollableContentWidth } =
-    useEditorHugeEditableLayout({
-      isHugeEditableMode,
-      wordWrap,
-      contentViewportWidth,
-      editableSegmentStartLine: editableSegment.startLine,
-      editableSegmentEndLine: editableSegment.endLine,
-      editableSegmentText: editableSegment.text,
-      renderedFontSizePx,
-      fontFamily: settings.fontFamily,
-      contentRef,
-    });
-
-  const { syncActiveLineStateNow, syncSelectionState } = useEditorSelectionStateSync({
-    isHugeEditableMode,
-    isPairHighlightEnabled,
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    initializedRef,
-    contentRef,
-    editableSegmentRef,
-    setActiveLineNumber,
-    setCursorPosition,
-    setPairHighlights,
-    normalizeSegmentText,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    codeUnitOffsetToLineColumn,
-    arePairHighlightPositionsEqual,
-  });
-
-  const {
-    clearVerticalSelectionState,
-    clearRectangularSelection,
-    syncSelectionAfterInteraction,
-  } = useEditorSelectionInteractionActions({
-    verticalSelectionRef,
-    rectangularSelectionRef,
-    rectangularSelectionPointerActiveRef,
-    rectangularSelectionLastClientPointRef,
-    rectangularSelectionAutoScrollDirectionRef,
-    rectangularSelectionAutoScrollRafRef,
-    setRectangularSelection,
-    handleScroll,
-    syncActiveLineStateNow,
-    syncSelectionState,
-  });
-  const {
-    clearLineNumberMultiSelection,
-    mapAbsoluteLineToSourceLine,
-    buildLineNumberSelectionRangeText,
-    applyLineNumberMultiSelectionEdit,
-  } = useEditorLineNumberMultiSelection({
-    lineNumberMultiSelection,
-    setLineNumberMultiSelection,
-    isHugeEditableMode,
-    tabId: tab.id,
-    contentRef,
-    editableSegmentRef,
-    setEditableSegment,
-    syncedTextRef,
-    suppressExternalReloadRef,
-    lineNumberSelectionAnchorLineRef,
-    normalizeSegmentText,
-    getEditableText,
-    buildLineStartOffsets,
-    getLineBoundsByLineNumber,
-    codeUnitOffsetToUnicodeScalarIndex,
-    setInputLayerText,
-    setCaretToCodeUnitOffset,
-    setActiveLineNumber,
-    setCursorPosition,
-    handleScroll,
-    syncSelectionState,
-    syncVisibleTokens,
-    updateTab,
-    dispatchDocumentUpdated,
-  });
-
-  const {
-    getRectangularSelectionText,
-    getRectangularSelectionTextFromBackend,
-    indentRectangularSelection,
-    replaceRectangularSelection,
-    outdentRectangularSelection,
-    updateRectangularSelectionFromPoint,
-    getRectangularSelectionScrollElement,
-    beginRectangularSelectionAtPoint,
-    beginRectangularSelectionFromCaret,
-    nudgeRectangularSelectionByKey,
-  } = useEditorRectangularSelectionActions({
-    isHugeEditableMode,
-    contentRef,
-    scrollContainerRef,
-    rectangularSelectionRef,
-    normalizedRectangularSelection,
-    setRectangularSelection,
-    clearRectangularSelection,
-    syncSelectionState,
-    normalizeSegmentText,
-    normalizeLineText,
-    getEditableText,
-    buildLineStartOffsets,
-    getLineBoundsByLineNumber,
-    getOffsetForColumnInLine,
-    setInputLayerText,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    dispatchEditorInputEvent,
-    getLogicalOffsetFromPoint,
-    codeUnitOffsetToLineColumn,
-    getSelectionAnchorFocusOffsetsInElement,
-    getSelectionOffsetsInElement,
-  });
-
-  const { getSelectedEditorText } = useEditorSelectedTextReader({
-    contentRef,
-    normalizedRectangularSelection,
-    getRectangularSelectionText,
-    normalizeSegmentText,
-    normalizeLineText,
-    getEditableText,
-    isTextareaInputElement,
-  });
-
-  const { applyTextDragMove } = useEditorTextDragMoveAction({
-    setInputLayerText,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    dispatchEditorInputEvent,
-    syncSelectionAfterInteraction,
-  });
-
-  const { syncTextSelectionHighlight } = useEditorTextSelectionHighlightSync({
-    contentRef,
-    rectangularSelectionRef,
-    normalizedRectangularSelection,
-    setTextSelectionHighlight,
-    getSelectionOffsetsInElement,
-  });
-  syncSelectionAfterEditableSegmentSwapRef.current = () => {
-    syncSelectionState();
-    syncTextSelectionHighlight();
-  };
-
-  const { hasSelectionInsideEditor } = useEditorSelectionPresence({
-    contentRef,
-    lineNumberMultiSelectionCount: lineNumberMultiSelection.length,
-    isTextareaInputElement,
-  });
-
-  const {
-    updateSubmenuVerticalAlignment,
-    handleEditorContextMenu,
-    handleLineNumberContextMenu,
-  } = useEditorContextMenuInteractions({
-    contentRef,
-    submenuPanelRefs,
-    lineNumberContextLineRef,
-    activeLineNumber,
-    normalizedRectangularSelection,
-    hasSelectionInsideEditor,
-    defaultSubmenuVerticalAlignments: DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
-    defaultSubmenuMaxHeights: DEFAULT_SUBMENU_MAX_HEIGHTS,
-    setSubmenuVerticalAlignments,
-    setSubmenuMaxHeights,
-    setEditorContextMenu,
-  });
-
-  const {
-    tryPasteTextIntoEditor,
-    isEditorContextMenuActionDisabled,
-    handleEditorContextMenuAction,
-  } = useEditorContextMenuActions({
-    contentRef,
-    editorContextMenuHasSelection: !!editorContextMenu?.hasSelection,
-    lineNumberMultiSelection,
-    normalizedRectangularSelection,
-    setEditorContextMenu,
-    clearLineNumberMultiSelection,
-    buildLineNumberSelectionRangeText,
-    applyLineNumberMultiSelectionEdit,
-    getRectangularSelectionTextFromBackend,
-    replaceRectangularSelection,
-    syncSelectionAfterInteraction,
-    getRectangularSelectionText,
-    getSelectedEditorText,
-    clearRectangularSelection,
-    normalizeSegmentText,
-    getEditableText,
-    setSelectionToCodeUnitOffsets,
-    replaceSelectionWithText,
-    dispatchEditorInputEvent,
-    handleScroll,
-  });
-
-  const {
-    hasContextBookmark,
-    handleAddBookmarkFromContext,
-    handleRemoveBookmarkFromContext,
-    handleLineNumberDoubleClick,
-  } = useEditorBookmarkActions({
-    tabId: tab.id,
-    bookmarks,
-    bookmarkSidebarOpen,
-    editorContextMenu,
-    addBookmark,
-    removeBookmark,
-    toggleBookmark,
-    toggleBookmarkSidebar,
-    setEditorContextMenu,
-  });
-  const mapSourceLineToAbsoluteLine = useCallback(
-    (sourceLine: number) => {
-      const safeSourceLine = Math.max(1, Math.floor(sourceLine));
-      return isHugeEditableMode ? editableSegment.startLine + safeSourceLine : safeSourceLine;
-    },
-    [editableSegment.startLine, isHugeEditableMode]
-  );
-
-  const { getLineNumberFromGutterElement, handleLineNumberClick } = useEditorLineNumberInteractions({
-    tabId: tab.id,
-    contentRef,
-    lineNumberSelectionAnchorLineRef,
-    clearLineNumberMultiSelection,
-    clearRectangularSelection,
-    mapAbsoluteLineToSourceLine,
-    mapSourceLineToAbsoluteLine,
-    setLineNumberMultiSelection,
-    setActiveLineNumber,
-    setCursorPosition,
-    syncSelectionAfterInteraction,
-    normalizeSegmentText,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    buildLineStartOffsets,
-    getLineBoundsByLineNumber,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    setSelectionToCodeUnitOffsets,
-  });
-
-  const { handleLineNumberWheel } = useEditorLineNumberWheel({
-    getRectangularSelectionScrollElement,
-    alignScrollOffset,
-  });
-
-  const { flushPendingSync } = useEditorFlushPendingSync({
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    isHugeEditableMode,
-    hugeEditableWindowUnlockMs: HUGE_EDITABLE_WINDOW_UNLOCK_MS,
-    height,
-    itemSize,
-    largeFetchBuffer,
-    contentRef,
-    scrollContainerRef,
-    editableSegmentRef,
-    setEditableSegment,
-    syncedTextRef,
-    suppressExternalReloadRef,
-    pendingSyncRequestedRef,
-    syncInFlightRef,
-    isComposingRef,
-    hugeWindowLockedRef,
-    hugeWindowFollowScrollOnUnlockRef,
-    hugeWindowUnlockTimerRef,
-    syncVisibleTokens,
-    updateTab,
-    dispatchDocumentUpdated,
-    normalizeSegmentText,
-    getEditableText,
-    alignScrollOffset,
-    buildCodeUnitDiff,
-    codeUnitOffsetToUnicodeScalarIndex,
-    pendingEditCursorSnapshotRef,
-    queuedEditCursorSnapshotRef,
-    setCompositionDisplay,
-  });
-
-  const capturePendingEditBeforeCursor = useCallback(() => {
-    const currentCursor = useStore.getState().cursorPositionByTab[tab.id] ?? savedCursorPosition;
-    if (!currentCursor) {
-      return;
-    }
-
-    if (!pendingEditCursorSnapshotRef.current) {
-      pendingEditCursorSnapshotRef.current = {
-        line: currentCursor.line,
-        column: currentCursor.column,
-      };
-      return;
-    }
-
-    if (!syncInFlightRef.current || queuedEditCursorSnapshotRef.current) {
-      return;
-    }
-
-    queuedEditCursorSnapshotRef.current = {
-      line: currentCursor.line,
-      column: currentCursor.column,
-    };
-  }, [savedCursorPosition, tab.id, syncInFlightRef]);
-
-  const { handleCleanupDocumentFromContext } = useEditorContextCleanupAction({
-    tabId: tab.id,
-    setEditorContextMenu,
-    flushPendingSync,
-    loadTextFromBackend,
-    syncVisibleTokens,
-    syncSelectionAfterInteraction,
-    updateTab,
-    dispatchDocumentUpdated,
-  });
-
-  const { handleConvertSelectionFromContext } = useEditorContextConvertActions({
-    editorContextMenuHasSelection: !!editorContextMenu?.hasSelection,
-    contentRef,
-    normalizedRectangularSelection,
-    base64DecodeErrorToastTimerRef,
-    setShowBase64DecodeErrorToast,
-    setEditorContextMenu,
-    getRectangularSelectionTextFromBackend,
-    getSelectedEditorText,
-    replaceRectangularSelection,
-    replaceSelectionWithText,
-    dispatchEditorInputEvent,
-    syncSelectionAfterInteraction,
-    writePlainTextToClipboard,
-  });
-
-  const {
-    handleBeforeInput,
-    handleInput,
-    handleCompositionStart,
-    handleCompositionUpdate,
-    handleCompositionEnd,
-  } = useEditorInputSyncActions({
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    tabIsDirty: tab.isDirty,
-    largeFilePlainRenderLineThreshold: LARGE_FILE_PLAIN_RENDER_LINE_THRESHOLD,
-    largeFileEditSyncDebounceMs: LARGE_FILE_EDIT_SYNC_DEBOUNCE_MS,
-    normalEditSyncDebounceMs: NORMAL_EDIT_SYNC_DEBOUNCE_MS,
-    isHugeEditableMode,
-    pendingSyncRequestedRef,
-    hugeWindowLockedRef,
-    editTimeoutRef: editTimeout,
-    contentRef,
-    isComposingRef,
-    editableSegmentStartLine: editableSegment.startLine,
-    clearVerticalSelectionState,
-    normalizeInputLayerDom,
-    syncHugeScrollableContentWidth,
-    updateTab,
-    syncSelectionAfterInteraction,
-    handleScroll,
-    flushPendingSync,
-    capturePendingEditBeforeCursor,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    codeUnitOffsetToLineColumn,
-    setCompositionDisplay,
-  });
-
-  const { toggleSelectedLinesComment } = useEditorToggleLineCommentsAction({
-    activeSyntaxKey,
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    contentRef,
-    updateTab,
-    dispatchDocumentUpdated,
-    loadTextFromBackend,
-    syncVisibleTokens,
-    syncSelectionAfterInteraction,
-    getSelectionOffsetsInElement,
-    normalizeSegmentText,
-    getEditableText,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    codeUnitOffsetToUnicodeScalarIndex,
-    setSelectionToCodeUnitOffsets,
-  });
-
-  const { handleEditableKeyDown } = useEditorKeyboardActions({
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    activeLineNumber,
-    activeSyntaxKey,
-    tabWidth: effectiveIndentation.width,
-    tabIndentMode: effectiveIndentation.mode,
-    contentRef,
-    rectangularSelectionRef,
-    lineNumberMultiSelection,
-    normalizedRectangularSelection,
-    indentRectangularSelection,
-    replaceRectangularSelection,
-    outdentRectangularSelection,
-    isVerticalSelectionShortcut,
-    beginRectangularSelectionFromCaret,
-    nudgeRectangularSelectionByKey,
-    clearVerticalSelectionState,
-    isToggleLineCommentShortcut,
-    toggleSelectedLinesComment,
-    applyLineNumberMultiSelectionEdit,
-    buildLineNumberSelectionRangeText,
-    normalizeSegmentText,
-    getEditableText,
-    getSelectionOffsetsInElement,
-    isTextareaInputElement,
-    setInputLayerText,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    setSelectionToCodeUnitOffsets,
-    clearRectangularSelection,
-    clearLineNumberMultiSelection,
-    handleInput,
-    capturePendingEditBeforeCursor,
-  });
-
-  const { onItemsRendered } = useEditorVisibleItemsRendered({
-    isHugeEditableMode,
-    pendingSyncRequestedRef,
-    syncInFlightRef,
-    isComposingRef,
-    isScrollbarDragRef,
-    largeFetchBuffer,
-    tabLineCount: tab.lineCount,
-    tabLargeFileMode: tab.largeFileMode,
-    editableSegmentStartLine: editableSegment.startLine,
-    editableSegmentEndLine: editableSegment.endLine,
-    usePlainLineRendering,
-    plainLinesLength: plainLines.length,
-    plainStartLine,
-    lineTokensLength: lineTokens.length,
-    startLine,
-    requestTimeoutRef: requestTimeout,
-    hugeEditableFetchDebounceMs: HUGE_EDITABLE_FETCH_DEBOUNCE_MS,
-    largeFileFetchDebounceMs: LARGE_FILE_FETCH_DEBOUNCE_MS,
-    normalFileFetchDebounceMs: NORMAL_FILE_FETCH_DEBOUNCE_MS,
-    scrollbarDragFetchDebounceMs: SCROLLBAR_DRAG_FETCH_DEBOUNCE_MS,
-    syncVisibleTokens,
-  });
-
-  const { renderHighlightedPlainLine, renderHighlightedTokens } = useEditorLineHighlightRenderers({
-    searchHighlight,
-    isPairHighlightEnabled,
-    pairHighlights,
-    compositionDisplay,
-    normalizedRectangularSelection,
-    textSelectionHighlight,
-    isHugeEditableMode,
-    editableSegmentRef,
-    contentRef,
-    normalizeSegmentText,
-    getEditableText,
-    getCodeUnitOffsetFromLineColumn,
-    getHttpUrlRangesInLine,
-    appendClassName,
-    resolveTokenTypeClass,
-    classNames: {
-      search: SEARCH_HIGHLIGHT_CLASS,
-      pair: PAIR_HIGHLIGHT_CLASS,
-      searchAndPair: SEARCH_AND_PAIR_HIGHLIGHT_CLASS,
-      rectangular: RECTANGULAR_SELECTION_HIGHLIGHT_CLASS,
-      textSelection: TEXT_SELECTION_HIGHLIGHT_CLASS,
-      hyperlinkUnderline: HYPERLINK_UNDERLINE_CLASS,
-      composition: 'editor-composition-text editor-composition-text-composing',
-      compositionCommitted: 'editor-composition-text editor-composition-text-committed',
-    },
-  });
-
-  const {
-    handleSelectCurrentLineFromContext,
-    handleAddCurrentLineBookmarkFromContext,
-  } = useEditorLineNumberContextActions({
-    editorContextMenu,
-    lineNumberContextLineRef,
-    handleLineNumberClick,
-    handleLineNumberDoubleClick,
-    setEditorContextMenu,
-  });
-
-  useEditorDocumentLoadEffects({
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    itemSize,
-    savedCursorLine: savedCursorPosition?.line ?? 1,
-    savedCursorColumn: savedCursorPosition?.column ?? 1,
-    usePlainLineRendering,
-    isHugeEditableMode,
-    lineTokens,
-    startLine,
-    tokenFallbackPlainLines,
-    tokenFallbackPlainStartLine,
-    plainLines,
-    plainStartLine,
-    editableSegmentState: editableSegment,
-    initializedRef,
-    suppressExternalReloadRef,
-    syncInFlightRef,
-    pendingSyncRequestedRef,
-    hugeWindowLockedRef,
-    hugeWindowFollowScrollOnUnlockRef,
-    hugeWindowUnlockTimerRef,
-    syncedTextRef,
-    requestTimeoutRef: requestTimeout,
-    editTimeoutRef: editTimeout,
-    editableSegmentRef,
-    contentRef,
-    scrollContainerRef,
-    pendingRestoreScrollTopRef,
-    lastKnownContentScrollTopRef,
-    lastKnownContentScrollLeftRef,
-    lastKnownContainerScrollTopRef,
-    lastKnownContainerScrollLeftRef,
-    setLineTokens,
-    setStartLine,
-    setTokenFallbackPlainLines,
-    setTokenFallbackPlainStartLine,
-    setEditableSegment,
-    setPlainLines,
-    setPlainStartLine,
-    setInputLayerText,
-    getEditableText,
-    setCaretToLineColumn,
-    loadTextFromBackend,
-    syncVisibleTokens,
-  });
-
-
-  useEditorPointerFinalizeEffects({
-    endScrollbarDragSelectionGuard,
-    finalizePointerSelectionInteraction,
-    clearPointerSelectionNativeHighlightMode,
-    syncSelectionAfterInteraction,
-    syncTextSelectionHighlight,
-  });
-
-  useEditorGlobalPointerEffects({
-    rectangularAutoScrollEdgePx: RECTANGULAR_AUTO_SCROLL_EDGE_PX,
-    rectangularAutoScrollMaxStepPx: RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX,
-    contentRef,
-    textDragMoveStateRef,
-    textDragCursorAppliedRef,
-    rectangularSelectionPointerActiveRef,
-    rectangularSelectionLastClientPointRef,
-    rectangularSelectionAutoScrollDirectionRef,
-    rectangularSelectionAutoScrollRafRef,
-    isTextareaInputElement,
-    resolveDropOffsetFromPointer,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-    getRectangularSelectionScrollElement,
-    updateRectangularSelectionFromPoint,
-    applyTextDragMove,
-    alignScrollOffset,
-    handleScroll,
-  });
-
-  useEditorClipboardSelectionEffects({
-    contentRef,
-    normalizedRectangularSelection,
-    lineNumberMultiSelection,
-    normalizeSegmentText,
-    getEditableText,
-    buildLineNumberSelectionRangeText,
-    getRectangularSelectionText,
-    applyLineNumberMultiSelectionEdit,
-    replaceRectangularSelection,
-  });
-
-  useEditorUiInteractionEffects({
-    contentRef,
-    selectionChangeRafRef,
-    pointerSelectionActiveRef,
-    verticalSelectionRef,
-    hasSelectionInsideEditor,
-    clearVerticalSelectionState,
-    handleScroll,
-    syncActiveLineStateNow,
-    syncSelectionState,
-    syncTextSelectionHighlight,
-    editorContextMenu,
-    editorContextMenuRef,
-    setEditorContextMenu,
-  });
-
-  useEditorLocalLifecycleEffects({
-    isPairHighlightEnabled,
-    setPairHighlights,
-    base64DecodeErrorToastTimerRef,
-    setEditorContextMenu,
-    lineNumberContextLineRef,
-    clearRectangularSelection,
-    textDragCursorAppliedRef,
-    contentRef,
-    textDragMoveStateRef,
-    tabId: tab.id,
-    savedCursorLine: savedCursorPosition?.line ?? 1,
-    savedCursorColumn: savedCursorPosition?.column ?? 1,
-    highlightCurrentLine,
-    syncSelectionState,
-    tryPasteTextIntoEditor,
-    setActiveLineNumber,
-    lineNumberSelectionAnchorLineRef,
-    setLineNumberMultiSelection,
-    setCursorPosition,
-    setSearchHighlight,
-    setTextSelectionHighlight,
-    outlineFlashTimerRef,
-    setOutlineFlashLine,
-  });
-
-  useEditorNavigationAndRefreshEffects({
-    tabId: tab.id,
-    tabLineCount: tab.lineCount,
-    itemSize,
-    isHugeEditableMode,
-    wordWrap,
-    requestTimeoutRef: requestTimeout,
-    currentRequestVersionRef: currentRequestVersion,
-    pendingRestoreScrollTopRef,
-    outlineFlashTimerRef,
-    contentRef,
-    scrollContainerRef,
-    listRef,
-    lineNumberListRef,
-    editableSegmentRef,
-    setActiveLineNumber,
-    setCursorPosition,
-    setOutlineFlashLine,
-    setSearchHighlight,
-    ensureSearchMatchVisibleHorizontally,
-    syncVisibleTokens,
-    alignScrollOffset,
-    setCaretToLineColumn,
-    loadTextFromBackend,
-    updateTab,
-    getSelectionOffsetsInElement,
-    getEditableText,
-    mapLogicalOffsetToInputLayerOffset,
-    setCaretToCodeUnitOffset,
-  });
-
-  useEffect(() => {
-    setCompositionDisplay(null);
-  }, [tab.id]);
-
-  useEffect(() => {
-    let disposed = false;
-    let latestRequestId = 0;
-
-    const applyUnsavedChangeLines = (result: unknown) => {
-      const normalized = Array.isArray(result)
-        ? Array.from(
-            new Set(
-              result
-                .map((value) => Number(value))
-                .filter((value) => Number.isFinite(value) && value > 0)
-                .map((value) => Math.floor(value))
-            )
-          ).sort((left, right) => left - right)
-        : EMPTY_UNSAVED_CHANGE_LINES;
-
-      setUnsavedChangeLines((previous) => {
-        if (previous.length === normalized.length && previous.every((value, index) => value === normalized[index])) {
-          return previous;
+      const requestId = ++pendingFetchRequestIdRef.current;
+      try {
+        const text = await getDocumentText(targetTab.id, Math.max(1, targetTab.lineCount));
+        if (requestId !== pendingFetchRequestIdRef.current || model.isDisposed()) {
+          return;
         }
 
-        return normalized;
+        if (model.getValue() === text) {
+          return;
+        }
+
+        applyingRemoteTextRef.current = true;
+        model.setValue(text);
+      } catch (error) {
+        console.error(`Failed to load Monaco document text (${reason}):`, error);
+      } finally {
+        applyingRemoteTextRef.current = false;
+      }
+    },
+    []
+  );
+
+  const queueSyncEdits = useCallback(
+    (
+      targetTab: FileTab,
+      edits: MonacoTextEdit[],
+      beforeCursor?: { line: number; column: number },
+      afterCursor?: { line: number; column: number }
+    ) => {
+      if (edits.length === 0) {
+        return;
+      }
+
+      syncChainRef.current = syncChainRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          try {
+            const newLineCount = await invoke<number>('apply_text_edits_by_line_column', {
+              id: targetTab.id,
+              edits,
+              beforeCursorLine: beforeCursor?.line,
+              beforeCursorColumn: beforeCursor?.column,
+              afterCursorLine: afterCursor?.line,
+              afterCursorColumn: afterCursor?.column,
+            });
+
+            updateTab(targetTab.id, {
+              lineCount: Math.max(1, newLineCount),
+              isDirty: true,
+            });
+            ignoreDocumentUpdatedCountRef.current += 1;
+            dispatchDocumentUpdated(targetTab.id);
+          } catch (error) {
+            console.error('Failed to sync Monaco edits:', error);
+          }
+        });
+    },
+    [updateTab]
+  );
+
+  useEffect(() => {
+    if (!containerRef.current || editorRef.current) {
+      return;
+    }
+
+    const editor = monaco.editor.create(containerRef.current, {
+      automaticLayout: true,
+      fontFamily: settings.fontFamily,
+      fontSize: settings.fontSize,
+      lineNumbers: settings.showLineNumbers ? 'on' : 'off',
+      wordWrap: settings.wordWrap ? 'on' : 'off',
+      minimap: { enabled: !tab.largeFileMode },
+      smoothScrolling: !tab.largeFileMode,
+      bracketPairColorization: {
+        enabled: !tab.largeFileMode,
+      },
+      occurrencesHighlight: tab.largeFileMode ? 'off' : 'singleFile',
+      selectionHighlight: !tab.largeFileMode,
+      renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
+      tabSize: settings.tabWidth,
+      insertSpaces: settings.tabIndentMode === 'spaces',
+      glyphMargin: false,
+      folding: !tab.largeFileMode,
+      scrollBeyondLastLine: false,
+    });
+
+    editorRef.current = editor;
+
+    const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
+      if (applyingRemoteTextRef.current) {
+        return;
+      }
+
+      const currentTabId = activeTabIdRef.current;
+      if (!currentTabId) {
+        return;
+      }
+
+      const currentTab = useStore
+        .getState()
+        .tabs
+        .find((candidate) => candidate.id === currentTabId && candidate.tabType !== 'diff');
+      if (!currentTab) {
+        return;
+      }
+
+      const beforeCursor = cursorSnapshotRef.current;
+      const currentPosition = editor.getPosition();
+      const afterCursor = currentPosition
+        ? { line: currentPosition.lineNumber, column: currentPosition.column }
+        : beforeCursor;
+
+      const edits = event.changes.map((change: monaco.editor.IModelContentChange): MonacoTextEdit => ({
+        startLineNumber: change.range.startLineNumber,
+        startColumn: change.range.startColumn,
+        endLineNumber: change.range.endLineNumber,
+        endColumn: change.range.endColumn,
+        text: change.text,
+      }));
+
+      queueSyncEdits(currentTab, edits, beforeCursor, afterCursor);
+    });
+
+    const cursorDisposable = editor.onDidChangeCursorPosition((event: monaco.editor.ICursorPositionChangedEvent) => {
+      const currentTabId = activeTabIdRef.current;
+      if (!currentTabId) {
+        return;
+      }
+
+      cursorSnapshotRef.current = {
+        line: event.position.lineNumber,
+        column: event.position.column,
+      };
+      setCursorPosition(currentTabId, event.position.lineNumber, event.position.column);
+    });
+
+    return () => {
+      contentDisposable.dispose();
+      cursorDisposable.dispose();
+
+      const activeTabId = activeTabIdRef.current;
+      if (activeTabId) {
+        viewStateByTabId.set(activeTabId, editor.saveViewState() ?? null);
+      }
+
+      editor.dispose();
+      editorRef.current = null;
+      activeTabIdRef.current = null;
+    };
+  }, [
+    queueSyncEdits,
+    setCursorPosition,
+    settings.fontFamily,
+    settings.fontSize,
+    settings.showLineNumbers,
+    settings.tabIndentMode,
+    settings.tabWidth,
+    settings.wordWrap,
+    tab.largeFileMode,
+  ]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    monaco.editor.setTheme(settings.theme === 'dark' ? 'vs-dark' : 'vs');
+    editor.updateOptions({
+      fontFamily: settings.fontFamily,
+      fontSize: settings.fontSize,
+      lineNumbers: settings.showLineNumbers ? 'on' : 'off',
+      wordWrap: settings.wordWrap ? 'on' : 'off',
+      tabSize: settings.tabWidth,
+      insertSpaces: settings.tabIndentMode === 'spaces',
+      minimap: { enabled: !tab.largeFileMode },
+      smoothScrolling: !tab.largeFileMode,
+      bracketPairColorization: {
+        enabled: !tab.largeFileMode,
+      },
+      occurrencesHighlight: tab.largeFileMode ? 'off' : 'singleFile',
+      selectionHighlight: !tab.largeFileMode,
+      renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
+      folding: !tab.largeFileMode,
+    });
+  }, [
+    settings.fontFamily,
+    settings.fontSize,
+    settings.showLineNumbers,
+    settings.tabIndentMode,
+    settings.tabWidth,
+    settings.theme,
+    settings.wordWrap,
+    tab.largeFileMode,
+  ]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const previousTabId = activeTabIdRef.current;
+    if (previousTabId) {
+      viewStateByTabId.set(previousTabId, editor.saveViewState() ?? null);
+    }
+
+    let model = modelByTabId.get(tab.id);
+    if (!model) {
+      model = monaco.editor.createModel('', monacoLanguage);
+      modelByTabId.set(tab.id, model);
+      void ensureEditorModelLoaded(tab, 'bootstrap');
+    }
+
+    if (model.getLanguageId() !== monacoLanguage) {
+      monaco.editor.setModelLanguage(model, monacoLanguage);
+    }
+
+    editor.setModel(model);
+    activeTabIdRef.current = tab.id;
+    engineStateRef.current = {
+      modelId: tab.id,
+      syncVersion: engineStateRef.current.syncVersion + 1,
+      lastAppliedBackendVersion: engineStateRef.current.lastAppliedBackendVersion,
+    };
+
+    const viewState = viewStateByTabId.get(tab.id);
+    if (viewState) {
+      editor.restoreViewState(viewState);
+    }
+
+    const savedCursor = cursorByTab[tab.id];
+    if (savedCursor) {
+      const lineNumber = Math.max(1, savedCursor.line);
+      const column = Math.max(1, savedCursor.column);
+      editor.setPosition({ lineNumber, column });
+      editor.revealPositionInCenterIfOutsideViewport({ lineNumber, column });
+      cursorSnapshotRef.current = { line: lineNumber, column };
+    }
+
+    editor.focus();
+  }, [cursorByTab, ensureEditorModelLoaded, monacoLanguage, tab]);
+
+  useEffect(() => {
+    const trackedTabIds = new Set(
+      tabs
+        .filter((candidate) => candidate.tabType !== 'diff')
+        .map((candidate) => candidate.id)
+    );
+
+    for (const [tabId, model] of modelByTabId.entries()) {
+      if (trackedTabIds.has(tabId)) {
+        continue;
+      }
+
+      if (activeTabIdRef.current === tabId) {
+        continue;
+      }
+
+      model.dispose();
+      modelByTabId.delete(tabId);
+      viewStateByTabId.delete(tabId);
+    }
+  }, [tabs]);
+
+  useEffect(() => {
+    const handleNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        tabId?: string;
+        line?: number;
+        column?: number;
+        source?: string;
+      }>;
+
+      if (customEvent.detail?.tabId !== tab.id) {
+        return;
+      }
+
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const lineNumber = Math.max(1, Math.floor(customEvent.detail?.line ?? 1));
+      const column = Math.max(1, Math.floor(customEvent.detail?.column ?? 1));
+      editor.setPosition({ lineNumber, column });
+      editor.revealPositionInCenter({ lineNumber, column });
+
+      if (customEvent.detail?.source !== 'quick-find') {
+        editor.focus();
+      }
+    };
+
+    const handleForceRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        tabId?: string;
+        restoreCursorLine?: number;
+        restoreCursorColumn?: number;
+      }>;
+
+      if (customEvent.detail?.tabId !== tab.id) {
+        return;
+      }
+
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const restoreLine = customEvent.detail?.restoreCursorLine;
+      const restoreColumn = customEvent.detail?.restoreCursorColumn;
+
+      void ensureEditorModelLoaded(tab, 'refresh').then(() => {
+        if (!restoreLine || !restoreColumn) {
+          return;
+        }
+
+        editor.setPosition({
+          lineNumber: Math.max(1, restoreLine),
+          column: Math.max(1, restoreColumn),
+        });
+        editor.revealPositionInCenter({
+          lineNumber: Math.max(1, restoreLine),
+          column: Math.max(1, restoreColumn),
+        });
       });
     };
 
-    const refreshUnsavedChangeLines = async () => {
-      const requestId = ++latestRequestId;
-
-      if (tab.tabType === 'diff' || tab.largeFileMode || !tab.isDirty) {
-        if (!disposed && requestId === latestRequestId) {
-          applyUnsavedChangeLines([]);
-        }
+    const handlePaste = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId?: string; text?: string }>;
+      if (customEvent.detail?.tabId !== tab.id) {
         return;
       }
 
-      try {
-        const result = await invoke<number[]>('get_unsaved_change_line_numbers', { id: tab.id });
-        if (disposed || requestId !== latestRequestId) {
-          return;
-        }
-        applyUnsavedChangeLines(result);
-      } catch (error) {
-        if (disposed || requestId !== latestRequestId) {
-          return;
-        }
-        console.error('Failed to load unsaved change line markers:', error);
-        applyUnsavedChangeLines([]);
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
       }
+
+      const text = customEvent.detail?.text ?? '';
+      const selection = editor.getSelection();
+      if (!selection) {
+        return;
+      }
+
+      editor.executeEdits('rutar-paste', [
+        {
+          range: selection,
+          text,
+          forceMoveMarkers: true,
+        },
+      ]);
+      editor.focus();
+    };
+
+    const handleClipboardAction = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        tabId?: string;
+        action?: 'copy' | 'cut' | 'paste';
+      }>;
+      if (customEvent.detail?.tabId !== tab.id) {
+        return;
+      }
+
+      const action = customEvent.detail?.action;
+      if (!action || action === 'paste') {
+        return;
+      }
+
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      const selection = editor?.getSelection();
+      if (!editor || !model || !selection || selection.isEmpty()) {
+        return;
+      }
+
+      const selectedText = model.getValueInRange(selection);
+      if (selectedText && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(selectedText);
+      }
+
+      if (action === 'cut') {
+        editor.executeEdits('rutar-cut', [
+          {
+            range: selection,
+            text: '',
+            forceMoveMarkers: true,
+          },
+        ]);
+      }
+    };
+
+    const handleSearchClose = () => {
+      editorRef.current?.focus();
     };
 
     const handleDocumentUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ tabId?: string }>).detail;
-      if (detail?.tabId !== tab.id) {
+      const customEvent = event as CustomEvent<{ tabId?: string }>;
+      if (customEvent.detail?.tabId !== tab.id) {
         return;
       }
 
-      void refreshUnsavedChangeLines();
+      if (ignoreDocumentUpdatedCountRef.current > 0) {
+        ignoreDocumentUpdatedCountRef.current -= 1;
+        return;
+      }
+
+      void ensureEditorModelLoaded(tab, 'refresh');
     };
 
-    void refreshUnsavedChangeLines();
+    window.addEventListener('rutar:navigate-to-line', handleNavigate as EventListener);
+    window.addEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
+    window.addEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
+    window.addEventListener('rutar:paste-text', handlePaste as EventListener);
+    window.addEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
+    window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
     window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
 
     return () => {
-      disposed = true;
+      window.removeEventListener('rutar:navigate-to-line', handleNavigate as EventListener);
+      window.removeEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
+      window.removeEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
+      window.removeEventListener('rutar:paste-text', handlePaste as EventListener);
+      window.removeEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
+      window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [tab.id, tab.isDirty, tab.largeFileMode, tab.tabType]);
+  }, [ensureEditorModelLoaded, tab]);
 
   return (
-    <EditorView
-      containerRef={containerRef}
-      activeSyntaxKey={activeSyntaxKey}
-      isHugeEditableMode={isHugeEditableMode}
-      contentRef={contentRef}
-      scrollContainerRef={scrollContainerRef}
-      contentViewportLeftPx={contentViewportLeftPx}
-      contentViewportWidth={contentViewportWidth}
-      horizontalOverflowMode={horizontalOverflowMode}
-      handleScroll={handleScroll}
-      handleHugeScrollablePointerDown={handleHugeScrollablePointerDown}
-      tab={tab}
-      itemSize={itemSize}
-      wordWrap={wordWrap}
-      hugeScrollableContentWidth={hugeScrollableContentWidth}
-      hugeEditablePaddingTop={hugeEditablePaddingTop}
-      hugeEditableSegmentHeightPx={hugeEditableSegmentHeightPx}
-      settings={settings}
-      renderedFontSizePx={renderedFontSizePx}
-      lineHeightPx={lineHeightPx}
-      tabSize={tabSize}
-      contentTextPadding={contentTextPadding}
-      contentTextRightPadding={contentTextRightPadding}
-      contentScrollbarGutterWidth={contentScrollbarGutterWidth}
-      contentBottomSafetyPadding={contentBottomSafetyPadding}
-      handleBeforeInput={handleBeforeInput}
-      handleInput={handleInput}
-      handleEditableKeyDown={handleEditableKeyDown}
-      handleEditorPointerDown={handleEditorPointerDown}
-      handleEditorPointerMove={handleEditorPointerMove}
-      handleEditorPointerLeave={handleEditorPointerLeave}
-      syncSelectionAfterInteraction={syncSelectionAfterInteraction}
-      handleEditorContextMenu={handleEditorContextMenu}
-      handleCompositionStart={handleCompositionStart}
-      handleCompositionUpdate={handleCompositionUpdate}
-      handleCompositionEnd={handleCompositionEnd}
-      width={width}
-      height={height}
-      listRef={listRef}
-      getListItemSize={getListItemSize}
-      onItemsRendered={onItemsRendered}
-      editableSegment={editableSegment}
-      usePlainLineRendering={usePlainLineRendering}
-      plainStartLine={plainStartLine}
-      startLine={startLine}
-      tokenFallbackPlainLines={tokenFallbackPlainLines}
-      tokenFallbackPlainStartLine={tokenFallbackPlainStartLine}
-      lineTokens={lineTokens}
-      editableSegmentLines={editableSegmentLines}
-      plainLines={plainLines}
-      measureRenderedLineHeight={measureRenderedLineHeight}
-      diffHighlightLineSet={diffHighlightLineSet}
-      unsavedChangeLineSet={unsavedChangeLineSet}
-      outlineFlashLine={outlineFlashLine}
-      lineNumberMultiSelectionSet={lineNumberMultiSelectionSet}
-      highlightCurrentLine={highlightCurrentLine}
-      activeLineNumber={activeLineNumber}
-      renderHighlightedPlainLine={renderHighlightedPlainLine}
-      renderHighlightedTokens={renderHighlightedTokens}
-      showLineNumbers={showLineNumbers}
-      lineNumberColumnWidthPx={lineNumberColumnWidthPx}
-      lineNumberVirtualItemCount={lineNumberVirtualItemCount}
-      lineNumberFontSizePx={lineNumberFontSizePx}
-      lineNumberListRef={lineNumberListRef}
-      bookmarks={bookmarks}
-      getLineNumberListItemSize={getLineNumberListItemSize}
-      getLineNumberFromGutterElement={getLineNumberFromGutterElement}
-      handleLineNumberWheel={handleLineNumberWheel}
-      handleLineNumberDoubleClick={handleLineNumberDoubleClick}
-      handleLineNumberClick={handleLineNumberClick}
-      handleLineNumberContextMenu={handleLineNumberContextMenu}
-      editorContextMenu={editorContextMenu}
-      editorContextMenuRef={editorContextMenuRef}
-      submenuPanelRefs={submenuPanelRefs}
-      editSubmenuStyle={editSubmenuStyle}
-      sortSubmenuStyle={sortSubmenuStyle}
-      convertSubmenuStyle={convertSubmenuStyle}
-      bookmarkSubmenuStyle={bookmarkSubmenuStyle}
-      editSubmenuPositionClassName={editSubmenuPositionClassName}
-      sortSubmenuPositionClassName={sortSubmenuPositionClassName}
-      convertSubmenuPositionClassName={convertSubmenuPositionClassName}
-      bookmarkSubmenuPositionClassName={bookmarkSubmenuPositionClassName}
-      cleanupMenuItems={cleanupMenuItems}
-      sortMenuItems={sortMenuItems}
-      copyLabel={copyLabel}
-      cutLabel={cutLabel}
-      pasteLabel={pasteLabel}
-      deleteLabel={deleteLabel}
-      selectAllLabel={selectAllLabel}
-      selectCurrentLineLabel={selectCurrentLineLabel}
-      addCurrentLineToBookmarkLabel={addCurrentLineToBookmarkLabel}
-      editMenuLabel={editMenuLabel}
-      sortMenuLabel={sortMenuLabel}
-      convertMenuLabel={convertMenuLabel}
-      convertBase64EncodeLabel={convertBase64EncodeLabel}
-      convertBase64DecodeLabel={convertBase64DecodeLabel}
-      copyBase64EncodeResultLabel={copyBase64EncodeResultLabel}
-      copyBase64DecodeResultLabel={copyBase64DecodeResultLabel}
-      bookmarkMenuLabel={bookmarkMenuLabel}
-      addBookmarkLabel={addBookmarkLabel}
-      removeBookmarkLabel={removeBookmarkLabel}
-      hasContextBookmark={hasContextBookmark}
-      handleSelectCurrentLineFromContext={handleSelectCurrentLineFromContext}
-      handleAddCurrentLineBookmarkFromContext={handleAddCurrentLineBookmarkFromContext}
-      handleEditorContextMenuAction={handleEditorContextMenuAction}
-      isEditorContextMenuActionDisabled={isEditorContextMenuActionDisabled}
-      updateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
-      handleCleanupDocumentFromContext={handleCleanupDocumentFromContext}
-      handleConvertSelectionFromContext={handleConvertSelectionFromContext}
-      handleAddBookmarkFromContext={handleAddBookmarkFromContext}
-      handleRemoveBookmarkFromContext={handleRemoveBookmarkFromContext}
-      showBase64DecodeErrorToast={showBase64DecodeErrorToast}
-      base64DecodeFailedToastLabel={base64DecodeFailedToastLabel}
-    />
+    <div
+      className="h-full w-full overflow-hidden bg-background"
+      data-monaco-engine-state={engineStateRef.current.modelId}
+      data-monaco-sync-version={engineStateRef.current.syncVersion}
+      data-monaco-backend-version={engineStateRef.current.lastAppliedBackendVersion}
+    >
+      <div ref={containerRef} className="h-full w-full" />
+    </div>
   );
 }

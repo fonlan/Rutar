@@ -69,6 +69,24 @@ function dispatchDiffPaste(diffTabId: string, panel: DiffPanelSide, text: string
     );
 }
 
+function dispatchEditorClipboardAction(tabId: string, action: 'cut' | 'copy' | 'paste') {
+    window.dispatchEvent(
+        new CustomEvent('rutar:editor-clipboard-action', {
+            detail: { tabId, action },
+        })
+    );
+}
+function dispatchDiffClipboardAction(
+    diffTabId: string,
+    panel: DiffPanelSide,
+    action: 'cut' | 'copy' | 'paste'
+) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:diff-clipboard-action', {
+            detail: { diffTabId, panel, action },
+        })
+    );
+}
 function dispatchDiffHistoryAction(diffTabId: string, panel: DiffPanelSide, action: 'undo' | 'redo') {
     window.dispatchEvent(
         new CustomEvent('rutar:diff-history-action', {
@@ -262,8 +280,13 @@ export function Toolbar() {
         const editor = activeDiffTab && activeDiffPanel
             ? getDiffPanelEditorElement(activeDiffPanel)
             : getActiveEditorElement();
-        setCanClipboardSelectionAction(hasSelectionInEditorElement(editor));
-    }, [activeDiffPanel, activeDiffTab, activeTabIdForActions, activeTabLargeFileMode]);
+        if (editor) {
+            setCanClipboardSelectionAction(hasSelectionInEditorElement(editor));
+            return;
+        }
+
+        setCanClipboardSelectionAction(!!activeEditTab);
+    }, [activeDiffPanel, activeDiffTab, activeEditTab, activeTabIdForActions, activeTabLargeFileMode]);
 
     const refreshEditHistoryState = useCallback(async (targetTabId?: string) => {
         const id = targetTabId ?? activeTabIdForActions;
@@ -757,11 +780,31 @@ export function Toolbar() {
         };
 
         if (action === 'copy') {
+            if (activeDiffTab && activeDiffPanel) {
+                dispatchDiffClipboardAction(activeDiffTab.id, activeDiffPanel, action);
+                return;
+            }
+
+            if (activeTab) {
+                dispatchEditorClipboardAction(activeTab.id, action);
+                return;
+            }
+
             runExecCommand('copy');
             return;
         }
 
         if (action === 'cut') {
+            if (activeDiffTab && activeDiffPanel) {
+                dispatchDiffClipboardAction(activeDiffTab.id, activeDiffPanel, action);
+                return;
+            }
+
+            if (activeTab) {
+                dispatchEditorClipboardAction(activeTab.id, action);
+                return;
+            }
+
             runExecCommand('cut');
             return;
         }
