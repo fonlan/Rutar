@@ -47,6 +47,8 @@ export function useEditorUiInteractionEffects({
       }
 
       if (pointerSelectionActiveRef.current) {
+        // Native textarea selection paint is disabled; keep custom highlight in sync during drag.
+        syncTextSelectionHighlight();
         return;
       }
 

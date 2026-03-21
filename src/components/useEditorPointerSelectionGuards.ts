@@ -12,19 +12,7 @@ export function useEditorPointerSelectionGuards({
   isScrollbarDragRef,
   pointerSelectionActiveRef,
 }: UseEditorPointerSelectionGuardsParams) {
-  const setPointerSelectionNativeHighlightMode = useCallback((enabled: boolean) => {
-    const element = contentRef.current;
-    if (!element) {
-      return;
-    }
-
-    if (enabled) {
-      element.style.setProperty('--editor-native-selection-bg', 'hsl(217 91% 60% / 0.28)');
-      return;
-    }
-
-    element.style.removeProperty('--editor-native-selection-bg');
-  }, [contentRef]);
+  const clearPointerSelectionNativeHighlightMode = useCallback(() => {}, []);
 
   const endScrollbarDragSelectionGuard = useCallback(() => {
     if (!isScrollbarDragRef.current) {
@@ -39,10 +27,6 @@ export function useEditorPointerSelectionGuards({
     }
   }, [contentRef, isScrollbarDragRef]);
 
-  const clearPointerSelectionNativeHighlightMode = useCallback(() => {
-    setPointerSelectionNativeHighlightMode(false);
-  }, [setPointerSelectionNativeHighlightMode]);
-
   const finalizePointerSelectionInteraction = useCallback(() => {
     const wasPointerSelectionActive = pointerSelectionActiveRef.current;
     pointerSelectionActiveRef.current = false;
@@ -50,7 +34,6 @@ export function useEditorPointerSelectionGuards({
   }, [pointerSelectionActiveRef]);
 
   return {
-    setPointerSelectionNativeHighlightMode,
     clearPointerSelectionNativeHighlightMode,
     endScrollbarDragSelectionGuard,
     finalizePointerSelectionInteraction,

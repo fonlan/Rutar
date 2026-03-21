@@ -7100,7 +7100,7 @@ describe("Editor component", () => {
     expect(textarea.title).toBe("");
   });
 
-  it("uses native selection paint during primary drag selection and suppresses link hover affordance", async () => {
+  it("uses custom selection paint during primary drag selection and suppresses link hover affordance", async () => {
     const tab = createTab({ id: "tab-link-hover-suppressed-while-dragging" });
     const { container } = render(<Editor tab={tab} />);
     const textarea = await waitForEditorTextarea(container);
@@ -7117,7 +7117,11 @@ describe("Editor component", () => {
 
     expect(
       textarea.style.getPropertyValue("--editor-native-selection-bg"),
-    ).toBe("hsl(217 91% 60% / 0.28)");
+    ).toBe("");
+    const hasOverlappedTextSelectionHighlight = Array.from(
+      container.querySelectorAll(".editor-line mark"),
+    ).some((element) => element.className.includes("bg-blue-400/35"));
+    expect(hasOverlappedTextSelectionHighlight).toBe(false);
 
     fireEvent.pointerMove(textarea, {
       buttons: 1,
@@ -7207,8 +7211,30 @@ describe("Editor component", () => {
       expect(hasTextSelectionHighlight).toBe(true);
     });
   });
+  it("renders custom text selection highlight during pointer-active drag selection", async () => {
+    const tab = createTab({ id: "tab-drag-selection-highlight-while-pointer-active" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    fireEvent.pointerDown(textarea, {
+      button: 0,
+      buttons: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    textarea.focus();
+    textarea.setSelectionRange(0, 5);
+    document.dispatchEvent(new Event("selectionchange"));
+    await waitFor(() => {
+      const hasTextSelectionHighlight = Array.from(
+        container.querySelectorAll(".editor-line mark"),
+      ).some((element) => element.className.includes("editor-text-selection-highlight"));
+      expect(hasTextSelectionHighlight).toBe(true);
+    });
+    fireEvent.pointerUp(window);
+  });
 
-  it("does not clear native drag highlight in the same frame as pointerup", async () => {
+  it("keeps custom selection highlight after pointerup with native paint disabled", async () => {
     const tab = createTab({ id: "tab-drag-selection-no-release-flicker" });
     const { container } = render(<Editor tab={tab} />);
     const textarea = await waitForEditorTextarea(container);
@@ -7228,7 +7254,7 @@ describe("Editor component", () => {
     fireEvent.pointerUp(window);
     expect(
       textarea.style.getPropertyValue("--editor-native-selection-bg"),
-    ).toBe("hsl(217 91% 60% / 0.28)");
+    ).toBe("");
 
     await waitFor(() => {
       expect(
@@ -7244,6 +7270,146 @@ describe("Editor component", () => {
     });
   });
 
+  it("keeps native selection paint disabled during double-click while second press is active", async () => {
+    const tab = createTab({ id: "tab-double-click-selection-no-flicker" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    let nextRafId = 0;
+    const pendingRafCallbacks = new Map<number, FrameRequestCallback>();
+    const flushAllRafCallbacks = () => {
+      let safety = 0;
+      while (pendingRafCallbacks.size > 0 && safety < 50) {
+        const nextEntry = pendingRafCallbacks.entries().next().value;
+        if (!nextEntry) {
+          break;
+        }
+        const [rafId, callback] = nextEntry;
+        pendingRafCallbacks.delete(rafId);
+        callback(performance.now());
+        safety += 1;
+      }
+    };
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextRafId;
+      pendingRafCallbacks.set(id, callback);
+      return id;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      pendingRafCallbacks.delete(id);
+    }) as typeof window.cancelAnimationFrame;
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        buttons: 1,
+        clientX: 12,
+        clientY: 8,
+      });
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+      fireEvent.pointerUp(window);
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        buttons: 1,
+        detail: 2,
+        clientX: 18,
+        clientY: 8,
+      });
+      textarea.focus();
+      textarea.setSelectionRange(0, 5);
+      document.dispatchEvent(new Event("selectionchange"));
+      act(() => {
+        flushAllRafCallbacks();
+      });
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+      fireEvent.pointerUp(window);
+      act(() => {
+        flushAllRafCallbacks();
+      });
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+      await waitFor(() => {
+        const hasTextSelectionHighlight = Array.from(
+          container.querySelectorAll(".editor-line mark"),
+        ).some((element) => element.className.includes("bg-blue-400/35"));
+        expect(hasTextSelectionHighlight).toBe(true);
+      });
+    } finally {
+      fireEvent.pointerUp(window);
+      window.requestAnimationFrame = originalRequestAnimationFrame;
+      window.cancelAnimationFrame = originalCancelAnimationFrame;
+    }
+  });
+  it("keeps native selection paint disabled after second pointerup in double-click flow", async () => {
+    const tab = createTab({ id: "tab-double-click-stale-release-clear-guard" });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea);
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    let nextRafId = 0;
+    const pendingRafCallbacks = new Map<number, FrameRequestCallback>();
+    const flushNextRafCallback = () => {
+      const nextEntry = pendingRafCallbacks.entries().next().value;
+      if (!nextEntry) {
+        return;
+      }
+      const [rafId, callback] = nextEntry;
+      pendingRafCallbacks.delete(rafId);
+      callback(performance.now());
+    };
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextRafId;
+      pendingRafCallbacks.set(id, callback);
+      return id;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      pendingRafCallbacks.delete(id);
+    }) as typeof window.cancelAnimationFrame;
+    try {
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        buttons: 1,
+        clientX: 8,
+        clientY: 8,
+      });
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+      fireEvent.pointerUp(window);
+      fireEvent.pointerDown(textarea, {
+        button: 0,
+        buttons: 1,
+        detail: 2,
+        clientX: 10,
+        clientY: 8,
+      });
+      fireEvent.pointerUp(window);
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+      act(() => {
+        let safety = 0;
+        while (pendingRafCallbacks.size > 0 && safety < 80) {
+          flushNextRafCallback();
+          safety += 1;
+        }
+      });
+      expect(
+        textarea.style.getPropertyValue("--editor-native-selection-bg"),
+      ).toBe("");
+    } finally {
+      fireEvent.pointerUp(window);
+      window.requestAnimationFrame = originalRequestAnimationFrame;
+      window.cancelAnimationFrame = originalCancelAnimationFrame;
+    }
+  });
   it("renders trailing text-selection highlight when newline is selected", async () => {
     const tab = createTab({
       id: "tab-selection-highlights-selected-newline",
@@ -7268,6 +7434,10 @@ describe("Editor component", () => {
         ".editor-selection-linebreak-marker",
       );
       expect(lineBreakMarker).toBeTruthy();
+      const lineBreakMark = firstLine?.querySelector(
+        "mark.editor-selection-linebreak-mark",
+      );
+      expect(lineBreakMark).toBeTruthy();
     });
   });
 

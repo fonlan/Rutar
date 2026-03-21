@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 import type {
   EditorCompositionDisplayState,
@@ -25,6 +25,21 @@ interface HighlightRange {
 interface TextSelectionHighlightInfo {
   range: HighlightRange | null;
   includeLineBreakHighlight: boolean;
+}
+
+interface TextSelectionSourceCache {
+  sourceText: string;
+  lineOffset: number;
+  minLineNumber: number;
+  maxLineNumber: number;
+  element: HTMLTextAreaElement | null;
+  elementValueLength: number;
+  segmentStartLine: number;
+  segmentEndLine: number;
+  segmentTextLength: number;
+  lineStartOffsetBySourceLine: Map<number, number>;
+  lastResolvedSourceLine: number;
+  lastResolvedSourceLineStartOffset: number;
 }
 
 interface HighlightClassNames {
@@ -75,6 +90,8 @@ export function useEditorLineHighlightRenderers({
   resolveTokenTypeClass,
   classNames,
 }: UseEditorLineHighlightRenderersParams) {
+  const textSelectionSourceCacheRef = useRef<TextSelectionSourceCache | null>(null);
+
   const renderTokens = useCallback((tokensArr: SyntaxToken[]) => {
     if (!tokensArr || tokensArr.length === 0) return null;
 
@@ -187,39 +204,127 @@ export function useEditorLineHighlightRenderers({
   const getTextSelectionHighlightInfoForLine = useCallback(
     (lineNumber: number, lineTextLength: number): TextSelectionHighlightInfo => {
       if (!textSelectionHighlight || textSelectionHighlight.end <= textSelectionHighlight.start) {
+        textSelectionSourceCacheRef.current = null;
         return {
           range: null,
           includeLineBreakHighlight: false,
         };
       }
 
-      let sourceText = '';
-      let targetLineInSource = lineNumber;
-
-      if (isHugeEditableMode) {
-        const segment = editableSegmentRef.current;
-        if (lineNumber < segment.startLine + 1 || lineNumber > segment.endLine) {
-          return {
-            range: null,
-            includeLineBreakHighlight: false,
-          };
+      const resolveLineStartOffsetInSource = (cache: TextSelectionSourceCache, sourceLine: number) => {
+        const normalizedSourceLine = Math.max(1, Math.floor(sourceLine));
+        const cachedOffset = cache.lineStartOffsetBySourceLine.get(normalizedSourceLine);
+        if (cachedOffset !== undefined) {
+          return cachedOffset;
         }
 
-        sourceText = segment.text;
-        targetLineInSource = Math.max(1, lineNumber - segment.startLine);
-      } else {
+        let currentLine = cache.lastResolvedSourceLine;
+        let currentOffset = cache.lastResolvedSourceLineStartOffset;
+        if (normalizedSourceLine < currentLine) {
+          currentLine = 1;
+          currentOffset = 0;
+        }
+
+        while (currentLine < normalizedSourceLine) {
+          const newlineOffset = cache.sourceText.indexOf('\n', currentOffset);
+          if (newlineOffset === -1) {
+            currentOffset = cache.sourceText.length;
+            currentLine = normalizedSourceLine;
+            break;
+          }
+
+          currentOffset = newlineOffset + 1;
+          currentLine += 1;
+          cache.lineStartOffsetBySourceLine.set(currentLine, currentOffset);
+        }
+
+        cache.lastResolvedSourceLine = currentLine;
+        cache.lastResolvedSourceLineStartOffset = currentOffset;
+        return currentOffset;
+      };
+
+      const resolveTextSelectionSourceCache = () => {
+        if (isHugeEditableMode) {
+          const segment = editableSegmentRef.current;
+          const cached = textSelectionSourceCacheRef.current;
+          if (
+            cached
+            && cached.segmentStartLine === segment.startLine
+            && cached.segmentEndLine === segment.endLine
+            && cached.segmentTextLength === segment.text.length
+          ) {
+            return cached;
+          }
+
+          const lineStartOffsetBySourceLine = new Map<number, number>([[1, 0]]);
+          const nextCache: TextSelectionSourceCache = {
+            sourceText: segment.text,
+            lineOffset: segment.startLine,
+            minLineNumber: segment.startLine + 1,
+            maxLineNumber: segment.endLine,
+            element: null,
+            elementValueLength: -1,
+            segmentStartLine: segment.startLine,
+            segmentEndLine: segment.endLine,
+            segmentTextLength: segment.text.length,
+            lineStartOffsetBySourceLine,
+            lastResolvedSourceLine: 1,
+            lastResolvedSourceLineStartOffset: 0,
+          };
+          textSelectionSourceCacheRef.current = nextCache;
+          return nextCache;
+        }
+
         const element = contentRef.current;
         if (!element) {
-          return {
-            range: null,
-            includeLineBreakHighlight: false,
-          };
+          textSelectionSourceCacheRef.current = null;
+          return null;
         }
 
-        sourceText = normalizeSegmentText(getEditableText(element));
+        const elementValueLength = (element.value || '').length;
+        const cached = textSelectionSourceCacheRef.current;
+        if (cached && cached.element === element && cached.elementValueLength === elementValueLength) {
+          return cached;
+        }
+
+        const sourceText = normalizeSegmentText(getEditableText(element));
+        const firstLineStartOffset = getCodeUnitOffsetFromLineColumn(sourceText, 1, 1);
+        const lineStartOffsetBySourceLine = new Map<number, number>([[1, firstLineStartOffset]]);
+        const nextCache: TextSelectionSourceCache = {
+          sourceText,
+          lineOffset: 0,
+          minLineNumber: 1,
+          maxLineNumber: Number.MAX_SAFE_INTEGER,
+          element,
+          elementValueLength,
+          segmentStartLine: -1,
+          segmentEndLine: -1,
+          segmentTextLength: -1,
+          lineStartOffsetBySourceLine,
+          lastResolvedSourceLine: 1,
+          lastResolvedSourceLineStartOffset: firstLineStartOffset,
+        };
+        textSelectionSourceCacheRef.current = nextCache;
+        return nextCache;
+      };
+
+      const sourceCache = resolveTextSelectionSourceCache();
+      if (!sourceCache) {
+        return {
+          range: null,
+          includeLineBreakHighlight: false,
+        };
       }
 
-      const lineStart = getCodeUnitOffsetFromLineColumn(sourceText, targetLineInSource, 1);
+      if (lineNumber < sourceCache.minLineNumber || lineNumber > sourceCache.maxLineNumber) {
+        return {
+          range: null,
+          includeLineBreakHighlight: false,
+        };
+      }
+
+      const targetLineInSource = Math.max(1, lineNumber - sourceCache.lineOffset);
+      const lineStart = resolveLineStartOffsetInSource(sourceCache, targetLineInSource);
       const lineEnd = lineStart + lineTextLength;
       const selectionStart = textSelectionHighlight.start;
       const selectionEnd = textSelectionHighlight.end;
@@ -228,8 +333,8 @@ export function useEditorLineHighlightRenderers({
       const end = Math.min(lineEnd, selectionEnd);
       const hasRange = end > start;
       const includeLineBreakHighlight =
-        lineEnd < sourceText.length
-        && sourceText.charAt(lineEnd) === '\n'
+        lineEnd < sourceCache.sourceText.length
+        && sourceCache.sourceText.charAt(lineEnd) === '\n'
         && selectionStart <= lineEnd
         && selectionEnd > lineEnd;
 
@@ -533,8 +638,8 @@ export function useEditorLineHighlightRenderers({
         <span>
           {rendered}
           {textSelectionInfo.includeLineBreakHighlight && (
-            <mark key={`linebreak-highlight-${lineNumber}`} className={classNames.textSelection}>
-              <span className="editor-selection-linebreak-marker inline-block w-[1ch]">{'\u00A0'}</span>
+            <mark key={`linebreak-highlight-${lineNumber}`} className={`${classNames.textSelection} editor-selection-linebreak-mark`}>
+              <span className="editor-selection-linebreak-marker">{'\u00A0'}</span>
             </mark>
           )}
         </span>
@@ -748,8 +853,8 @@ export function useEditorLineHighlightRenderers({
 
       if (textSelectionInfo.includeLineBreakHighlight) {
         rendered.push(
-          <mark key={`linebreak-highlight-${lineNumber}`} className={classNames.textSelection}>
-            <span className="editor-selection-linebreak-marker inline-block w-[1ch]">{'\u00A0'}</span>
+          <mark key={`linebreak-highlight-${lineNumber}`} className={`${classNames.textSelection} editor-selection-linebreak-mark`}>
+            <span className="editor-selection-linebreak-marker">{'\u00A0'}</span>
           </mark>
         );
       }

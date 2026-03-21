@@ -45,7 +45,10 @@ export function useEditorLayoutConfig({
     () => alignToDevicePixel(Math.max(10, renderedFontSizePx - 2)),
     [renderedFontSizePx]
   );
-  const lineHeightPx = useMemo(() => Math.max(1, Math.round(renderedFontSizePx * 1.5)), [renderedFontSizePx]);
+  const lineHeightPx = useMemo(
+    () => Math.max(alignToDevicePixel(renderedFontSizePx), alignToDevicePixel(renderedFontSizePx * 1.5)),
+    [renderedFontSizePx]
+  );
   const itemSize = lineHeightPx;
   const lineNumberColumnWidthPx = showLineNumbers ? 72 : 0;
   const contentViewportLeftPx = lineNumberColumnWidthPx;

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
+import { editorTestUtils } from './editorUtils';
+
+const { alignToDevicePixel } = editorTestUtils;
 
 interface UseEditorRowMeasurementParams {
   itemSize: number;
@@ -62,8 +65,9 @@ export function useEditorRowMeasurement({
 
       const contentElement = element.firstElementChild as HTMLElement | null;
       // Measure intrinsic wrapped text height from the content node so rows can shrink after edits.
-      const intrinsicHeight = contentElement ? contentElement.scrollHeight : element.scrollHeight;
-      const measuredHeight = Math.max(itemSize, Math.round(intrinsicHeight));
+      const measuredHeightSource = contentElement ? contentElement.scrollHeight : element.scrollHeight;
+      const intrinsicHeight = Number.isFinite(measuredHeightSource) ? measuredHeightSource : itemSize;
+      const measuredHeight = Math.max(itemSize, alignToDevicePixel(intrinsicHeight));
       const previousHeight = rowHeightsRef.current.get(index);
 
       if (previousHeight !== undefined && Math.abs(previousHeight - measuredHeight) < 0.5) {

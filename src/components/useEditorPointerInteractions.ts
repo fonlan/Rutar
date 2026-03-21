@@ -28,7 +28,6 @@ interface UseEditorPointerInteractionsParams {
       | null
       | ((prev: TextSelectionState | null) => TextSelectionState | null)
   ) => void;
-  setPointerSelectionNativeHighlightMode: (enabled: boolean) => void;
   setRectangularSelection: (selection: RectangularSelectionState | null) => void;
   isPointerOnScrollbar: (element: HTMLElement, clientX: number, clientY: number) => boolean;
   isTextareaInputElement: (element: unknown) => element is HTMLTextAreaElement;
@@ -55,7 +54,6 @@ export function useEditorPointerInteractions({
   rectangularSelectionLastClientPointRef,
   setLineNumberMultiSelection,
   setTextSelectionHighlight,
-  setPointerSelectionNativeHighlightMode,
   setRectangularSelection,
   isPointerOnScrollbar,
   isTextareaInputElement,
@@ -156,7 +154,6 @@ export function useEditorPointerInteractions({
       );
 
       pointerSelectionActiveRef.current = isPrimaryPlainPointerSelectionStart;
-      setPointerSelectionNativeHighlightMode(isPrimaryPlainPointerSelectionStart);
 
       if (
         currentElement
@@ -187,7 +184,6 @@ export function useEditorPointerInteractions({
       ) {
         textDragMoveStateRef.current = null;
         pointerSelectionActiveRef.current = false;
-        setPointerSelectionNativeHighlightMode(false);
         verticalSelectionRef.current = null;
         event.preventDefault();
         event.stopPropagation();
@@ -340,7 +336,6 @@ export function useEditorPointerInteractions({
       resolveDropOffsetFromPointer,
       setLineNumberMultiSelection,
       setTextSelectionHighlight,
-      setPointerSelectionNativeHighlightMode,
       setRectangularSelection,
       textDragMoveStateRef,
       verticalSelectionRef,

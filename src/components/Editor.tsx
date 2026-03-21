@@ -78,7 +78,7 @@ const SEARCH_AND_PAIR_HIGHLIGHT_CLASS =
 const RECTANGULAR_SELECTION_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-violet-300/45 text-black ring-1 ring-violet-500/40 dark:bg-violet-400/30 dark:ring-violet-300/40';
 const TEXT_SELECTION_HIGHLIGHT_CLASS =
-  'bg-blue-400/35 dark:bg-blue-500/30';
+  'bg-blue-400/35 dark:bg-blue-500/30 editor-text-selection-highlight';
 const RECTANGULAR_AUTO_SCROLL_EDGE_PX = 36;
 const RECTANGULAR_AUTO_SCROLL_MAX_STEP_PX = 18;
 const SEARCH_NAVIGATE_HORIZONTAL_MARGIN_PX = 12;
@@ -405,7 +405,6 @@ export function Editor({
   });
 
   const {
-    setPointerSelectionNativeHighlightMode,
     clearPointerSelectionNativeHighlightMode,
     endScrollbarDragSelectionGuard,
     finalizePointerSelectionInteraction,
@@ -451,7 +450,6 @@ export function Editor({
     rectangularSelectionLastClientPointRef,
     setLineNumberMultiSelection,
     setTextSelectionHighlight,
-    setPointerSelectionNativeHighlightMode,
     setRectangularSelection,
     isPointerOnScrollbar,
     isTextareaInputElement,
@@ -603,7 +601,6 @@ export function Editor({
     setTextSelectionHighlight,
     getSelectionOffsetsInElement,
   });
-
   syncSelectionAfterEditableSegmentSwapRef.current = () => {
     syncSelectionState();
     syncTextSelectionHighlight();
