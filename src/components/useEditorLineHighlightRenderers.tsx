@@ -33,7 +33,7 @@ interface TextSelectionSourceCache {
   minLineNumber: number;
   maxLineNumber: number;
   element: HTMLTextAreaElement | null;
-  elementValueLength: number;
+  elementValueSnapshot: string | null;
   segmentStartLine: number;
   segmentEndLine: number;
   segmentTextLength: number;
@@ -263,7 +263,7 @@ export function useEditorLineHighlightRenderers({
             minLineNumber: segment.startLine + 1,
             maxLineNumber: segment.endLine,
             element: null,
-            elementValueLength: -1,
+            elementValueSnapshot: null,
             segmentStartLine: segment.startLine,
             segmentEndLine: segment.endLine,
             segmentTextLength: segment.text.length,
@@ -281,9 +281,13 @@ export function useEditorLineHighlightRenderers({
           return null;
         }
 
-        const elementValueLength = (element.value || '').length;
+        const elementValue = element.value || '';
         const cached = textSelectionSourceCacheRef.current;
-        if (cached && cached.element === element && cached.elementValueLength === elementValueLength) {
+        if (
+          cached
+          && cached.element === element
+          && cached.elementValueSnapshot === elementValue
+        ) {
           return cached;
         }
 
@@ -296,7 +300,7 @@ export function useEditorLineHighlightRenderers({
           minLineNumber: 1,
           maxLineNumber: Number.MAX_SAFE_INTEGER,
           element,
-          elementValueLength,
+          elementValueSnapshot: elementValue,
           segmentStartLine: -1,
           segmentEndLine: -1,
           segmentTextLength: -1,

@@ -8,6 +8,7 @@ import { editorTestUtils } from "./editorUtils";
 const { getCodeUnitOffsetFromLineColumn, appendClassName } = editorTestUtils;
 
 let latestRenderers: ReturnType<typeof useEditorLineHighlightRenderers> | null = null;
+let latestContentElement: HTMLTextAreaElement | null = null;
 const getEditableTextMock = vi.fn((element: EditorInputElement) =>
   "value" in element ? (element.value || "") : (element.textContent || ""),
 );
@@ -23,6 +24,7 @@ function HookHarness() {
 
   if (contentRef.current) {
     contentRef.current.value = "alpha\nbeta\n";
+    latestContentElement = contentRef.current;
   }
 
   latestRenderers = useEditorLineHighlightRenderers({
@@ -70,5 +72,24 @@ describe("useEditorLineHighlightRenderers", () => {
 
     expect(getEditableTextMock).toHaveBeenCalledTimes(1);
     expect(normalizeSegmentTextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates cached source text when textarea content changes with same length", () => {
+    getEditableTextMock.mockClear();
+    normalizeSegmentTextMock.mockClear();
+    latestRenderers = null;
+    latestContentElement = null;
+
+    render(<HookHarness />);
+    expect(latestRenderers).toBeTruthy();
+    expect(latestContentElement).toBeTruthy();
+
+    latestRenderers!.renderHighlightedPlainLine("alpha", 1);
+    expect(getEditableTextMock).toHaveBeenCalledTimes(1);
+
+    latestContentElement!.value = "ab\ncdefghi\n";
+    latestRenderers!.renderHighlightedPlainLine("cdefghi", 2);
+    expect(getEditableTextMock).toHaveBeenCalledTimes(2);
+    expect(normalizeSegmentTextMock).toHaveBeenCalledTimes(2);
   });
 });
