@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -14,6 +14,15 @@ const monacoMockState = vi.hoisted(() => ({
   changeListener: null as null | ((event: unknown) => void),
   cursorListener: null as null | ((event: unknown) => void),
   mouseDownListener: null as null | ((event: unknown) => void),
+  contextMenuListener: null as null | ((event: unknown) => void),
+  selection: null as any,
+  mouseTargetType: {
+    GUTTER_LINE_NUMBERS: 2,
+    CONTENT_TEXT: 6,
+    SCROLLBAR: 11,
+    OVERVIEW_RULER: 10,
+    OUTSIDE_EDITOR: 13,
+  },
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -25,6 +34,19 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
 }));
 
 vi.mock('monaco-editor', () => {
+  const createSelection = (
+    startLineNumber: number,
+    startColumn: number,
+    endLineNumber: number,
+    endColumn: number
+  ) => ({
+    startLineNumber,
+    startColumn,
+    endLineNumber,
+    endColumn,
+    isEmpty: () => startLineNumber === endLineNumber && startColumn === endColumn,
+  });
+
   const model = {
     value: '',
     languageId: 'plaintext',
@@ -37,6 +59,7 @@ vi.mock('monaco-editor', () => {
     isDisposed() {
       return false;
     },
+    dispose: vi.fn(),
     getLanguageId() {
       return this.languageId;
     },
@@ -44,7 +67,15 @@ vi.mock('monaco-editor', () => {
       const lines = this.value.split('\n');
       return lines[Math.max(1, lineNumber) - 1] ?? '';
     },
+    getLineCount() {
+      return this.value.split('\n').length;
+    },
+    getLineMaxColumn(lineNumber: number) {
+      return this.getLineContent(lineNumber).length + 1;
+    },
   };
+
+  monacoMockState.selection = createSelection(1, 1, 1, 1);
 
   const editorInstance = {
     updateOptions: vi.fn(),
@@ -66,13 +97,28 @@ vi.mock('monaco-editor', () => {
         dispose: vi.fn(),
       };
     }),
+    onContextMenu: vi.fn((listener: (event: unknown) => void) => {
+      monacoMockState.contextMenuListener = listener;
+      return {
+        dispose: vi.fn(),
+      };
+    }),
     setModel: vi.fn(),
     getModel: vi.fn(() => model),
     saveViewState: vi.fn(() => null),
     restoreViewState: vi.fn(),
     setPosition: vi.fn(),
+    setSelection: vi.fn((selection: any) => {
+      monacoMockState.selection = createSelection(
+        selection.startLineNumber,
+        selection.startColumn,
+        selection.endLineNumber,
+        selection.endColumn
+      );
+    }),
     revealPositionInCenter: vi.fn(),
     revealPositionInCenterIfOutsideViewport: vi.fn(),
+    revealLineInCenterIfOutsideViewport: vi.fn(),
     focus: vi.fn(),
     getAction: vi.fn((actionId: string) => {
       if (actionId === 'actions.find') {
@@ -83,13 +129,7 @@ vi.mock('monaco-editor', () => {
       return null;
     }),
     getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
-    getSelection: vi.fn(() => ({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 1,
-      endColumn: 1,
-      isEmpty: () => false,
-    })),
+    getSelection: vi.fn(() => monacoMockState.selection),
     executeEdits: vi.fn(),
     dispose: vi.fn(),
   };
@@ -107,6 +147,7 @@ vi.mock('monaco-editor', () => {
       }),
       setTheme: vi.fn(),
       getModel: vi.fn(() => null),
+      MouseTargetType: monacoMockState.mouseTargetType,
     },
   };
 });
@@ -135,6 +176,14 @@ describe('Editor (Monaco)', () => {
     monacoMockState.changeListener = null;
     monacoMockState.cursorListener = null;
     monacoMockState.mouseDownListener = null;
+    monacoMockState.contextMenuListener = null;
+    monacoMockState.selection = {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+      isEmpty: () => true,
+    };
     monacoMockState.model.value = '';
     monacoMockState.findActionRun.mockReset();
     monacoMockState.findActionRun.mockResolvedValue(undefined);
@@ -351,6 +400,154 @@ describe('Editor (Monaco)', () => {
     });
 
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows disabled copy/cut/delete in context menu when selection is empty', async () => {
+    const tab = createTab({ id: 'tab-monaco-context-disabled' });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.contextMenuListener).toBeTruthy();
+    });
+
+    act(() => {
+      monacoMockState.contextMenuListener?.({
+        event: {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          browserEvent: {
+            clientX: 160,
+            clientY: 180,
+          },
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.CONTENT_TEXT,
+          position: {
+            lineNumber: 1,
+            column: 1,
+          },
+        },
+      });
+    });
+
+    expect(await screen.findByRole('button', { name: 'Copy' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cut' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Paste' })).toBeEnabled();
+  });
+
+  it('runs cleanup action from context menu', async () => {
+    const tab = createTab({ id: 'tab-monaco-context-cleanup', lineCount: 4 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return 'alpha\n\nbeta\n';
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 1;
+      }
+      if (command === 'cleanup_document') {
+        return 2;
+      }
+      return undefined;
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.contextMenuListener).toBeTruthy();
+    });
+
+    act(() => {
+      monacoMockState.contextMenuListener?.({
+        event: {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          browserEvent: {
+            clientX: 220,
+            clientY: 200,
+          },
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.CONTENT_TEXT,
+          position: {
+            lineNumber: 1,
+            column: 1,
+          },
+        },
+      });
+    });
+
+    const editLabel = await screen.findByText('Edit');
+    fireEvent.mouseEnter(editLabel.closest('div') as Element);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Empty Lines' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('cleanup_document', {
+        id: tab.id,
+        action: 'remove_empty_lines',
+      });
+    });
+  });
+
+  it('adds bookmark from line-number context menu action', async () => {
+    const tab = createTab({ id: 'tab-monaco-line-bookmark', lineCount: 4 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.contextMenuListener).toBeTruthy();
+    });
+    monacoMockState.model.setValue('one\ntwo\nthree\n');
+
+    act(() => {
+      monacoMockState.contextMenuListener?.({
+        event: {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          browserEvent: {
+            clientX: 150,
+            clientY: 180,
+          },
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.GUTTER_LINE_NUMBERS,
+          position: {
+            lineNumber: 3,
+            column: 1,
+          },
+        },
+      });
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Current Line to Bookmark' }));
+    expect(useStore.getState().bookmarksByTab[tab.id]).toEqual([3]);
+    expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
   });
 
   it('opens http hyperlink on Ctrl/Cmd+click', async () => {

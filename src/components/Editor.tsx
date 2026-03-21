@@ -1,16 +1,34 @@
 import { invoke } from '@tauri-apps/api/core';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '@/i18n';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
+import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
+import {
+  EditorContextMenu,
+  type EditorCleanupAction,
+  type EditorContextMenuAction,
+  type EditorContextMenuState,
+  type EditorConvertAction,
+  type EditorSubmenuKey,
+} from './EditorContextMenu';
+import {
+  DEFAULT_SUBMENU_MAX_HEIGHTS,
+  DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS,
+  type EditorSubmenuVerticalAlign,
+} from './Editor.types';
 import type { MonacoEngineState, MonacoTextEdit } from './monacoTypes';
+import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 
 export { editorTestUtils } from './editorUtils';
 
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+const EMPTY_BOOKMARKS: number[] = [];
 const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
 const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
 
@@ -148,6 +166,12 @@ export function Editor({
   const tabs = useStore((state) => state.tabs);
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
+  const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
+  const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
+  const addBookmark = useStore((state) => state.addBookmark);
+  const removeBookmark = useStore((state) => state.removeBookmark);
+  const toggleBookmark = useStore((state) => state.toggleBookmark);
+  const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const activeTabIdRef = useRef<string | null>(null);
@@ -161,7 +185,67 @@ export function Editor({
     lastAppliedBackendVersion: 0,
   });
   const pendingFetchRequestIdRef = useRef(0);
+  const editorContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
+    edit: null,
+    sort: null,
+    convert: null,
+    bookmark: null,
+  });
+  const base64DecodeErrorToastTimerRef = useRef<number | null>(null);
+  const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
+  const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
+    Record<EditorSubmenuKey, EditorSubmenuVerticalAlign>
+  >(() => ({ ...DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS }));
+  const [submenuMaxHeights, setSubmenuMaxHeights] = useState<Record<EditorSubmenuKey, number | null>>(
+    () => ({ ...DEFAULT_SUBMENU_MAX_HEIGHTS })
+  );
+  const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
   const monacoLanguage = useMemo(() => resolveMonacoLanguage(tab), [tab]);
+  const tr = useCallback((key: string) => t(settings.language, key as Parameters<typeof t>[1]), [settings.language]);
+  const resolveCurrentTab = useCallback(
+    () =>
+      useStore
+        .getState()
+        .tabs
+        .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab,
+    [tab]
+  );
+  const {
+    deleteLabel,
+    selectAllLabel,
+    copyLabel,
+    cutLabel,
+    pasteLabel,
+    selectCurrentLineLabel,
+    addCurrentLineToBookmarkLabel,
+    editMenuLabel,
+    sortMenuLabel,
+    convertMenuLabel,
+    convertBase64EncodeLabel,
+    convertBase64DecodeLabel,
+    copyBase64EncodeResultLabel,
+    copyBase64DecodeResultLabel,
+    base64DecodeFailedToastLabel,
+    bookmarkMenuLabel,
+    addBookmarkLabel,
+    removeBookmarkLabel,
+    editSubmenuPositionClassName,
+    sortSubmenuPositionClassName,
+    convertSubmenuPositionClassName,
+    bookmarkSubmenuPositionClassName,
+    editSubmenuStyle,
+    sortSubmenuStyle,
+    convertSubmenuStyle,
+    bookmarkSubmenuStyle,
+    cleanupMenuItems,
+    sortMenuItems,
+  } = useEditorContextMenuConfig({
+    tr,
+    submenuDirection: editorContextMenu?.submenuDirection,
+    submenuVerticalAlignments,
+    submenuMaxHeights,
+  });
 
   const ensureEditorModelLoaded = useCallback(
     async (targetTab: FileTab, reason: 'bootstrap' | 'refresh') => {
@@ -229,6 +313,355 @@ export function Editor({
     },
     [updateTab]
   );
+  const flushPendingSync = useCallback(async () => {
+    await syncChainRef.current.catch(() => undefined);
+  }, []);
+  const hasEditorSelection = useCallback(() => {
+    const selection = editorRef.current?.getSelection();
+    return !!selection && !selection.isEmpty();
+  }, []);
+  const getSelectedEditorText = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    const selection = editor?.getSelection();
+    if (!editor || !model || !selection || selection.isEmpty()) {
+      return '';
+    }
+    return model.getValueInRange(selection);
+  }, []);
+  const writePlainTextToClipboard = useCallback(async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    throw new Error('Clipboard write is not supported.');
+  }, []);
+  const readPlainTextFromClipboard = useCallback(async () => {
+    try {
+      return await readClipboardText();
+    } catch {
+      if (navigator.clipboard?.readText) {
+        return navigator.clipboard.readText();
+      }
+      throw new Error('Clipboard read is not supported.');
+    }
+  }, []);
+  const applySelectionEdit = useCallback((source: string, text: string) => {
+    const editor = editorRef.current;
+    const selection = editor?.getSelection();
+    if (!editor || !selection) {
+      return false;
+    }
+    editor.executeEdits(source, [
+      {
+        range: selection,
+        text,
+        forceMoveMarkers: true,
+      },
+    ]);
+    setEditorContextMenu(null);
+    editor.focus();
+    return true;
+  }, []);
+  const handleSelectAllFromContext = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) {
+      return;
+    }
+    const endLine = Math.max(1, model.getLineCount());
+    const endColumn = model.getLineMaxColumn(endLine);
+    editor.setSelection({
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: endLine,
+      endColumn,
+    });
+    editor.focus();
+  }, []);
+  const selectLineByNumber = useCallback((lineNumber: number) => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) {
+      return;
+    }
+    const lineCount = Math.max(1, model.getLineCount());
+    const safeLine = Math.max(1, Math.min(Math.floor(lineNumber), lineCount));
+    const endLineNumber = safeLine < lineCount ? safeLine + 1 : safeLine;
+    const endColumn = safeLine < lineCount ? 1 : model.getLineMaxColumn(safeLine);
+    editor.setSelection({
+      startLineNumber: safeLine,
+      startColumn: 1,
+      endLineNumber,
+      endColumn,
+    });
+    editor.setPosition({ lineNumber: safeLine, column: 1 });
+    editor.revealLineInCenterIfOutsideViewport(safeLine);
+    editor.focus();
+  }, []);
+  const resolveContextLineNumber = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    const fallbackLine = editor?.getPosition()?.lineNumber ?? cursorSnapshotRef.current.line ?? 1;
+    const menuLine = editorContextMenu?.lineNumber ?? fallbackLine;
+    const lineCount = Math.max(1, model?.getLineCount() ?? tab.lineCount);
+    return Math.max(1, Math.min(Math.floor(menuLine), lineCount));
+  }, [editorContextMenu, tab.lineCount]);
+  const hasContextBookmark = useMemo(
+    () => editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber),
+    [bookmarks, editorContextMenu]
+  );
+  const triggerBase64DecodeErrorToast = useCallback(() => {
+    if (base64DecodeErrorToastTimerRef.current !== null) {
+      window.clearTimeout(base64DecodeErrorToastTimerRef.current);
+    }
+    setShowBase64DecodeErrorToast(true);
+    base64DecodeErrorToastTimerRef.current = window.setTimeout(() => {
+      setShowBase64DecodeErrorToast(false);
+      base64DecodeErrorToastTimerRef.current = null;
+    }, 2200);
+  }, []);
+  const updateSubmenuVerticalAlignment = useCallback(
+    (submenuKey: EditorSubmenuKey, anchorElement: HTMLDivElement) => {
+      const submenuElement = submenuPanelRefs.current[submenuKey];
+      if (!submenuElement) {
+        return;
+      }
+      const viewportPadding = 8;
+      const submenuHeight = submenuElement.scrollHeight;
+      if (submenuHeight <= 0) {
+        return;
+      }
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const availableBelow = Math.max(0, Math.floor(window.innerHeight - viewportPadding - anchorRect.top));
+      const availableAbove = Math.max(0, Math.floor(anchorRect.bottom - viewportPadding));
+      const topAlignedBottom = anchorRect.top + submenuHeight;
+      const bottomAlignedTop = anchorRect.bottom - submenuHeight;
+      let nextAlign: EditorSubmenuVerticalAlign = 'top';
+      if (topAlignedBottom > window.innerHeight - viewportPadding) {
+        if (bottomAlignedTop >= viewportPadding) {
+          nextAlign = 'bottom';
+        } else {
+          nextAlign = availableAbove > availableBelow ? 'bottom' : 'top';
+        }
+      }
+      const availableForCurrentAlign = nextAlign === 'bottom' ? availableAbove : availableBelow;
+      const nextMaxHeight =
+        submenuHeight > availableForCurrentAlign && availableForCurrentAlign > 0
+          ? availableForCurrentAlign
+          : null;
+      setSubmenuVerticalAlignments((current) =>
+        current[submenuKey] === nextAlign
+          ? current
+          : {
+              ...current,
+              [submenuKey]: nextAlign,
+            }
+      );
+      setSubmenuMaxHeights((current) =>
+        current[submenuKey] === nextMaxHeight
+          ? current
+          : {
+              ...current,
+              [submenuKey]: nextMaxHeight,
+            }
+      );
+    },
+    []
+  );
+  const isEditorContextMenuActionDisabled = useCallback(
+    (action: EditorContextMenuAction) => {
+      const hasSelection = !!editorContextMenu?.hasSelection;
+      if (action === 'paste' || action === 'selectAll') {
+        return false;
+      }
+      return !hasSelection;
+    },
+    [editorContextMenu]
+  );
+  const handleEditorContextMenuAction = useCallback(
+    async (action: EditorContextMenuAction) => {
+      if (isEditorContextMenuActionDisabled(action)) {
+        setEditorContextMenu(null);
+        return;
+      }
+      if (action === 'selectAll') {
+        handleSelectAllFromContext();
+        setEditorContextMenu(null);
+        return;
+      }
+      if (action === 'paste') {
+        try {
+          const clipboardText = await readPlainTextFromClipboard();
+          applySelectionEdit('rutar-context-paste', clipboardText);
+        } catch (error) {
+          console.warn('Failed to read clipboard text for context-menu paste:', error);
+        }
+        setEditorContextMenu(null);
+        return;
+      }
+      if (action === 'delete') {
+        applySelectionEdit('rutar-context-delete', '');
+        setEditorContextMenu(null);
+        return;
+      }
+      const selectedText = getSelectedEditorText();
+      if (!selectedText) {
+        setEditorContextMenu(null);
+        return;
+      }
+      try {
+        await writePlainTextToClipboard(selectedText);
+      } catch (error) {
+        console.warn('Failed to write selected text to clipboard from context menu:', error);
+      }
+      if (action === 'cut') {
+        applySelectionEdit('rutar-context-cut', '');
+      }
+      setEditorContextMenu(null);
+    },
+    [
+      applySelectionEdit,
+      getSelectedEditorText,
+      handleSelectAllFromContext,
+      isEditorContextMenuActionDisabled,
+      readPlainTextFromClipboard,
+      writePlainTextToClipboard,
+    ]
+  );
+  const handleCleanupDocumentFromContext = useCallback(
+    async (action: EditorCleanupAction) => {
+      setEditorContextMenu(null);
+      try {
+        await flushPendingSync();
+        const newLineCount = await invoke<number>('cleanup_document', {
+          id: tab.id,
+          action,
+        });
+        const safeLineCount = Math.max(1, newLineCount);
+        updateTab(tab.id, {
+          lineCount: safeLineCount,
+          isDirty: true,
+        });
+        ignoreDocumentUpdatedCountRef.current += 1;
+        dispatchDocumentUpdated(tab.id);
+        await ensureEditorModelLoaded(resolveCurrentTab(), 'refresh');
+      } catch (error) {
+        console.error('Failed to cleanup document via context menu:', error);
+      }
+    },
+    [ensureEditorModelLoaded, flushPendingSync, resolveCurrentTab, tab.id, updateTab]
+  );
+  const handleConvertSelectionFromContext = useCallback(
+    async (action: EditorConvertAction) => {
+      const shouldCopyResult = action === 'copy_base64_encode' || action === 'copy_base64_decode';
+      const shouldDecode = action === 'base64_decode' || action === 'copy_base64_decode';
+      const selectedText = getSelectedEditorText();
+      if (!selectedText) {
+        setEditorContextMenu(null);
+        return;
+      }
+      let nextText = '';
+      try {
+        nextText = await invoke<string>('convert_text_base64', {
+          text: selectedText,
+          action: shouldDecode ? 'base64_decode' : 'base64_encode',
+        });
+      } catch (error) {
+        if (shouldDecode) {
+          triggerBase64DecodeErrorToast();
+        } else {
+          console.error('Failed to convert Base64 text from context menu:', error);
+        }
+        setEditorContextMenu(null);
+        return;
+      }
+      if (shouldCopyResult) {
+        try {
+          await writePlainTextToClipboard(nextText);
+        } catch (error) {
+          console.warn('Failed to copy Base64 conversion result to clipboard:', error);
+        }
+      } else {
+        applySelectionEdit('rutar-context-convert', nextText);
+      }
+      setEditorContextMenu(null);
+    },
+    [applySelectionEdit, getSelectedEditorText, triggerBase64DecodeErrorToast, writePlainTextToClipboard]
+  );
+  const handleAddBookmarkFromContext = useCallback(() => {
+    const line = resolveContextLineNumber();
+    addBookmark(tab.id, line);
+    setEditorContextMenu(null);
+  }, [addBookmark, resolveContextLineNumber, tab.id]);
+  const handleRemoveBookmarkFromContext = useCallback(() => {
+    const line = resolveContextLineNumber();
+    removeBookmark(tab.id, line);
+    setEditorContextMenu(null);
+  }, [removeBookmark, resolveContextLineNumber, tab.id]);
+  const handleSelectCurrentLineFromContext = useCallback(() => {
+    selectLineByNumber(resolveContextLineNumber());
+    setEditorContextMenu(null);
+  }, [resolveContextLineNumber, selectLineByNumber]);
+  const handleAddCurrentLineBookmarkFromContext = useCallback(() => {
+    const line = resolveContextLineNumber();
+    const hasBookmark = bookmarks.includes(line);
+    toggleBookmark(tab.id, line);
+    if (!hasBookmark && !bookmarkSidebarOpen) {
+      toggleBookmarkSidebar(true);
+    }
+    setEditorContextMenu(null);
+  }, [bookmarkSidebarOpen, bookmarks, resolveContextLineNumber, tab.id, toggleBookmark, toggleBookmarkSidebar]);
+  const handleMonacoContextMenu = useCallback(
+    (event: monaco.editor.IEditorMouseEvent) => {
+      event.event.preventDefault();
+      event.event.stopPropagation();
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model) {
+        return;
+      }
+      const targetType = event.target.type;
+      const isLineNumberTarget = targetType === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS;
+      if (
+        !isLineNumberTarget &&
+        (targetType === monaco.editor.MouseTargetType.SCROLLBAR ||
+          targetType === monaco.editor.MouseTargetType.OVERVIEW_RULER ||
+          targetType === monaco.editor.MouseTargetType.OUTSIDE_EDITOR)
+      ) {
+        setEditorContextMenu(null);
+        return;
+      }
+      const browserEvent = event.event.browserEvent as MouseEvent | undefined;
+      const rawClientX = browserEvent?.clientX ?? 0;
+      const rawClientY = browserEvent?.clientY ?? 0;
+      const menuWidth = isLineNumberTarget ? 176 : 160;
+      const menuHeight = isLineNumberTarget ? 96 : 360;
+      const viewportPadding = 8;
+      const boundedX = Math.min(rawClientX, window.innerWidth - menuWidth - viewportPadding);
+      const boundedY = Math.min(rawClientY, window.innerHeight - menuHeight - viewportPadding);
+      const safeX = Math.max(viewportPadding, boundedX);
+      const safeY = Math.max(viewportPadding, boundedY);
+      const submenuWidth = 192;
+      const submenuGap = 4;
+      const canOpenSubmenuRight =
+        safeX + menuWidth + submenuGap + submenuWidth + viewportPadding <= window.innerWidth;
+      const fallbackLine = editor.getPosition()?.lineNumber ?? cursorSnapshotRef.current.line ?? 1;
+      const rawLine = event.target.position?.lineNumber ?? fallbackLine;
+      const safeLine = Math.max(1, Math.min(Math.floor(rawLine), model.getLineCount()));
+      setSubmenuVerticalAlignments({ ...DEFAULT_SUBMENU_VERTICAL_ALIGNMENTS });
+      setSubmenuMaxHeights({ ...DEFAULT_SUBMENU_MAX_HEIGHTS });
+      setEditorContextMenu({
+        target: isLineNumberTarget ? 'lineNumber' : 'editor',
+        x: safeX,
+        y: safeY,
+        hasSelection: hasEditorSelection(),
+        lineNumber: safeLine,
+        submenuDirection: canOpenSubmenuRight ? 'right' : 'left',
+      });
+    },
+    [hasEditorSelection]
+  );
 
   useEffect(() => {
     if (!containerRef.current || editorRef.current) {
@@ -255,6 +688,7 @@ export function Editor({
       lineDecorationsWidth: 10,
       folding: !tab.largeFileMode,
       scrollBeyondLastLine: false,
+      contextmenu: false,
       find: {
         addExtraSpaceOnTop: false,
       },
@@ -341,10 +775,12 @@ export function Editor({
       });
     });
 
+    const contextMenuDisposable = editor.onContextMenu(handleMonacoContextMenu);
     return () => {
       contentDisposable.dispose();
       cursorDisposable.dispose();
       mouseDownDisposable.dispose();
+      contextMenuDisposable.dispose();
 
       const activeTabId = activeTabIdRef.current;
       if (activeTabId) {
@@ -356,6 +792,7 @@ export function Editor({
       activeTabIdRef.current = null;
     };
   }, [
+    handleMonacoContextMenu,
     queueSyncEdits,
     setCursorPosition,
   ]);
@@ -384,6 +821,7 @@ export function Editor({
       selectionHighlight: !tab.largeFileMode,
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
       folding: !tab.largeFileMode,
+      contextmenu: false,
       find: {
         addExtraSpaceOnTop: false,
       },
@@ -450,7 +888,7 @@ export function Editor({
     }
 
     editor.focus();
-  }, [ensureEditorModelLoaded, monacoLanguage, tab.id]);
+  }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id]);
 
   useEffect(() => {
     const trackedTabIds = new Set(
@@ -475,11 +913,52 @@ export function Editor({
   }, [tabs]);
 
   useEffect(() => {
-    const resolveCurrentTab = () =>
-      useStore
-        .getState()
-        .tabs
-        .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab;
+    if (!editorContextMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && editorContextMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setEditorContextMenu(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setEditorContextMenu(null);
+      }
+    };
+
+    const closeMenu = () => {
+      setEditorContextMenu(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('blur', closeMenu);
+    window.addEventListener('resize', closeMenu);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('blur', closeMenu);
+      window.removeEventListener('resize', closeMenu);
+    };
+  }, [editorContextMenu]);
+
+  useEffect(
+    () => () => {
+      if (base64DecodeErrorToastTimerRef.current !== null) {
+        window.clearTimeout(base64DecodeErrorToastTimerRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
 
     const handleNavigate = (event: Event) => {
       const customEvent = event as CustomEvent<{
@@ -545,26 +1024,8 @@ export function Editor({
       if (customEvent.detail?.tabId !== tab.id) {
         return;
       }
-
-      const editor = editorRef.current;
-      if (!editor) {
-        return;
-      }
-
       const text = customEvent.detail?.text ?? '';
-      const selection = editor.getSelection();
-      if (!selection) {
-        return;
-      }
-
-      editor.executeEdits('rutar-paste', [
-        {
-          range: selection,
-          text,
-          forceMoveMarkers: true,
-        },
-      ]);
-      editor.focus();
+      applySelectionEdit('rutar-paste', text);
     };
 
     const handleClipboardAction = async (event: Event) => {
@@ -581,26 +1042,19 @@ export function Editor({
         return;
       }
 
-      const editor = editorRef.current;
-      const model = editor?.getModel();
-      const selection = editor?.getSelection();
-      if (!editor || !model || !selection || selection.isEmpty()) {
+      const selectedText = getSelectedEditorText();
+      if (!selectedText) {
         return;
       }
 
-      const selectedText = model.getValueInRange(selection);
-      if (selectedText && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(selectedText);
+      try {
+        await writePlainTextToClipboard(selectedText);
+      } catch (error) {
+        console.warn('Failed to write selection to clipboard from toolbar action:', error);
       }
 
       if (action === 'cut') {
-        editor.executeEdits('rutar-cut', [
-          {
-            range: selection,
-            text: '',
-            forceMoveMarkers: true,
-          },
-        ]);
+        applySelectionEdit('rutar-cut', '');
       }
     };
 
@@ -660,7 +1114,14 @@ export function Editor({
       window.removeEventListener(EDITOR_FIND_OPEN_EVENT, handleEditorFindOpen as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [ensureEditorModelLoaded, tab.id]);
+  }, [
+    applySelectionEdit,
+    ensureEditorModelLoaded,
+    getSelectedEditorText,
+    resolveCurrentTab,
+    tab.id,
+    writePlainTextToClipboard,
+  ]);
 
   return (
     <div
@@ -670,6 +1131,54 @@ export function Editor({
       data-monaco-backend-version={engineStateRef.current.lastAppliedBackendVersion}
     >
       <div ref={containerRef} className="h-full w-full" />
+      <EditorContextMenu
+        editorContextMenu={editorContextMenu}
+        editorContextMenuRef={editorContextMenuRef}
+        submenuPanelRefs={submenuPanelRefs}
+        editSubmenuStyle={editSubmenuStyle}
+        sortSubmenuStyle={sortSubmenuStyle}
+        convertSubmenuStyle={convertSubmenuStyle}
+        bookmarkSubmenuStyle={bookmarkSubmenuStyle}
+        editSubmenuPositionClassName={editSubmenuPositionClassName}
+        sortSubmenuPositionClassName={sortSubmenuPositionClassName}
+        convertSubmenuPositionClassName={convertSubmenuPositionClassName}
+        bookmarkSubmenuPositionClassName={bookmarkSubmenuPositionClassName}
+        cleanupMenuItems={cleanupMenuItems}
+        sortMenuItems={sortMenuItems}
+        copyLabel={copyLabel}
+        cutLabel={cutLabel}
+        pasteLabel={pasteLabel}
+        deleteLabel={deleteLabel}
+        selectAllLabel={selectAllLabel}
+        selectCurrentLineLabel={selectCurrentLineLabel}
+        addCurrentLineToBookmarkLabel={addCurrentLineToBookmarkLabel}
+        editMenuLabel={editMenuLabel}
+        sortMenuLabel={sortMenuLabel}
+        convertMenuLabel={convertMenuLabel}
+        convertBase64EncodeLabel={convertBase64EncodeLabel}
+        convertBase64DecodeLabel={convertBase64DecodeLabel}
+        copyBase64EncodeResultLabel={copyBase64EncodeResultLabel}
+        copyBase64DecodeResultLabel={copyBase64DecodeResultLabel}
+        bookmarkMenuLabel={bookmarkMenuLabel}
+        addBookmarkLabel={addBookmarkLabel}
+        removeBookmarkLabel={removeBookmarkLabel}
+        hasContextBookmark={hasContextBookmark}
+        onSelectCurrentLine={handleSelectCurrentLineFromContext}
+        onAddCurrentLineBookmark={handleAddCurrentLineBookmarkFromContext}
+        onEditorAction={(action) => {
+          void handleEditorContextMenuAction(action);
+        }}
+        isEditorActionDisabled={isEditorContextMenuActionDisabled}
+        onUpdateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
+        onCleanup={handleCleanupDocumentFromContext}
+        onConvert={handleConvertSelectionFromContext}
+        onAddBookmark={handleAddBookmarkFromContext}
+        onRemoveBookmark={handleRemoveBookmarkFromContext}
+      />
+      <EditorBase64DecodeToast
+        visible={showBase64DecodeErrorToast}
+        message={base64DecodeFailedToastLabel}
+      />
     </div>
   );
 }
