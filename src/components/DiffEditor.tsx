@@ -168,7 +168,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         wordWrap: settings.wordWrap ? 'on' : 'off',
         tabSize: settings.tabWidth,
         insertSpaces: settings.tabIndentMode === 'spaces',
-        minimap: { enabled: !largeFileMode },
+        minimap: { enabled: settings.minimap && !largeFileMode },
         smoothScrolling: !largeFileMode,
         bracketPairColorization: {
           enabled: !largeFileMode,
@@ -188,6 +188,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       settings.fontSize,
       settings.showLineNumbers,
       settings.wordWrap,
+      settings.minimap,
       settings.tabWidth,
       settings.tabIndentMode,
     ]

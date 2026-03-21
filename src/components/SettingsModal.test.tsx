@@ -110,6 +110,15 @@ describe("SettingsModal", () => {
     });
   });
 
+  it("toggles minimap switch from appearance settings", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+    fireEvent.click(screen.getByRole("button", { name: /Appearance/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show Minimap" }));
+    await waitFor(() => {
+      expect(useStore.getState().settings.minimap).toBe(false);
+    });
+  });
   it("registers and unregisters Windows context menu from general tab", async () => {
     setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     useStore.getState().toggleSettings(true);

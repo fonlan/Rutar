@@ -243,6 +243,49 @@ describe('DiffEditor (Monaco)', () => {
     });
   });
 
+  it('does not recreate pane editors when toggling minimap', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+      settings: {
+        ...useStore.getState().settings,
+        minimap: true,
+      },
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.createCallCount).toBe(2);
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+    });
+    act(() => {
+      useStore.getState().updateSettings({ minimap: false });
+    });
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          minimap: {
+            enabled: false,
+          },
+        })
+      );
+      expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          minimap: {
+            enabled: false,
+          },
+        })
+      );
+    });
+    expect(monacoDiffMockState.createCallCount).toBe(2);
+  });
   it('does not recreate pane editors when toggling wordWrap', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });

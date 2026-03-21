@@ -262,6 +262,7 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
             config.new_file_line_ending.as_str(),
         )),
         word_wrap: config.word_wrap,
+        minimap: config.minimap,
         double_click_close_tab: config.double_click_close_tab,
         show_line_numbers: config.show_line_numbers,
         highlight_current_line: config.highlight_current_line,
@@ -1058,6 +1059,9 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
         config.word_wrap = word_wrap;
     }
 
+    if let Some(minimap) = partial.minimap {
+        config.minimap = minimap;
+    }
     if let Some(double_click_close_tab) = partial.double_click_close_tab {
         config.double_click_close_tab = double_click_close_tab;
     }
@@ -1454,6 +1458,7 @@ mod tests {
             tab_indent_mode: "invalid".to_string(),
             new_file_line_ending: "bad".to_string(),
             word_wrap: true,
+            minimap: false,
             double_click_close_tab: true,
             show_line_numbers: true,
             highlight_current_line: true,
@@ -1496,6 +1501,7 @@ mod tests {
             normalized.new_file_line_ending,
             default_line_ending().label()
         );
+        assert!(!normalized.minimap);
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
         assert_eq!(

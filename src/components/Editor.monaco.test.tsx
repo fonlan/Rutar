@@ -292,6 +292,36 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
   });
 
+  it('does not recreate Monaco editor when toggling minimap', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        minimap: true,
+      },
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+      expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      useStore.getState().updateSettings({ minimap: false });
+    });
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          minimap: {
+            enabled: false,
+          },
+        })
+      );
+    });
+    expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
   it('does not rebind model when cursor position updates', async () => {
     const tab = createTab();
     useStore.setState({

@@ -241,7 +241,7 @@ export function Editor({
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
       wordWrap: settings.wordWrap ? 'on' : 'off',
-      minimap: { enabled: !tab.largeFileMode },
+      minimap: { enabled: settings.minimap && !tab.largeFileMode },
       smoothScrolling: !tab.largeFileMode,
       bracketPairColorization: {
         enabled: !tab.largeFileMode,
@@ -373,7 +373,7 @@ export function Editor({
       wordWrap: settings.wordWrap ? 'on' : 'off',
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
-      minimap: { enabled: !tab.largeFileMode },
+      minimap: { enabled: settings.minimap && !tab.largeFileMode },
       smoothScrolling: !tab.largeFileMode,
       bracketPairColorization: {
         enabled: !tab.largeFileMode,
@@ -394,6 +394,7 @@ export function Editor({
     settings.tabWidth,
     settings.theme,
     settings.wordWrap,
+    settings.minimap,
     tab.largeFileMode,
   ]);
 

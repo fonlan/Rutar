@@ -149,6 +149,8 @@ export type I18nKey =
   | 'settings.doubleClickCloseTabDesc'
   | 'settings.showLineNumbers'
   | 'settings.showLineNumbersDesc'
+  | 'settings.minimap'
+  | 'settings.minimapDesc'
   | 'settings.newFileLineEnding'
   | 'settings.newFileLineEndingDesc'
   | 'settings.wordWrapDesc'
@@ -405,6 +407,8 @@ const zhCN: Messages = {
   'settings.doubleClickCloseTabDesc': '双击顶部标签页可直接关闭。',
   'settings.showLineNumbers': '显示行号',
   'settings.showLineNumbersDesc': '在编辑器左侧显示每行行号。',
+  'settings.minimap': '显示缩略图',
+  'settings.minimapDesc': '在编辑器右侧显示代码缩略图（Minimap）。',
   'settings.newFileLineEnding': '新建文件换行符',
   'settings.newFileLineEndingDesc': '控制新建空白文件的默认换行符。',
   'settings.wordWrapDesc': '超过容器宽度时自动换行，减少横向滚动。',
@@ -660,6 +664,8 @@ const enUS: Messages = {
   'settings.doubleClickCloseTabDesc': 'Double-click a tab in the title bar to close it.',
   'settings.showLineNumbers': 'Show Line Numbers',
   'settings.showLineNumbersDesc': 'Show line numbers in the editor gutter.',
+  'settings.minimap': 'Show Minimap',
+  'settings.minimapDesc': 'Show the Monaco minimap on the right side of the editor.',
   'settings.newFileLineEnding': 'New File Line Ending',
   'settings.newFileLineEndingDesc': 'Choose the default line ending for newly created empty files.',
   'settings.wordWrapDesc': 'Wrap long lines to avoid horizontal scrolling.',

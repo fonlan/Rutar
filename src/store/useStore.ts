@@ -129,6 +129,7 @@ interface SettingsState {
   tabIndentMode: TabIndentMode;
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
+  minimap: boolean;
   doubleClickCloseTab: boolean;
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
@@ -216,6 +217,7 @@ export const useStore = create<AppState>((set) => ({
     tabIndentMode: 'tabs',
     newFileLineEnding: defaultNewFileLineEnding,
     wordWrap: false,
+    minimap: true,
     doubleClickCloseTab: true,
     showLineNumbers: true,
     highlightCurrentLine: true,

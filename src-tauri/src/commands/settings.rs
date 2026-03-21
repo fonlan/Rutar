@@ -59,6 +59,9 @@ fn default_new_file_line_ending() -> String {
 fn default_tab_indent_mode() -> String {
     "tabs".to_string()
 }
+fn default_minimap() -> bool {
+    true
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +94,8 @@ pub struct AppConfig {
     #[serde(default = "default_new_file_line_ending")]
     pub(super) new_file_line_ending: String,
     pub(super) word_wrap: bool,
+    #[serde(default = "default_minimap")]
+    pub(super) minimap: bool,
     pub(super) double_click_close_tab: bool,
     pub(super) show_line_numbers: bool,
     pub(super) highlight_current_line: bool,
@@ -131,6 +136,7 @@ pub struct PartialAppConfig {
     pub(super) tab_indent_mode: Option<String>,
     pub(super) new_file_line_ending: Option<String>,
     pub(super) word_wrap: Option<bool>,
+    pub(super) minimap: Option<bool>,
     pub(super) double_click_close_tab: Option<bool>,
     pub(super) show_line_numbers: Option<bool>,
     pub(super) highlight_current_line: Option<bool>,
@@ -159,6 +165,7 @@ impl Default for AppConfig {
             tab_indent_mode: default_tab_indent_mode(),
             new_file_line_ending: default_new_file_line_ending(),
             word_wrap: false,
+            minimap: default_minimap(),
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             show_line_numbers: DEFAULT_SHOW_LINE_NUMBERS,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
@@ -267,6 +274,7 @@ mod tests {
         assert_eq!(config.tab_width, DEFAULT_TAB_WIDTH);
         assert_eq!(config.tab_indent_mode, "tabs");
         assert_eq!(config.new_file_line_ending, default_line_ending().label());
+        assert!(config.minimap);
         assert_eq!(config.single_instance_mode, DEFAULT_SINGLE_INSTANCE_MODE);
         assert!(config.remember_window_state);
         assert!(config.recent_search_keywords.is_empty());

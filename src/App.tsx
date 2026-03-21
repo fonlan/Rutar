@@ -87,6 +87,7 @@ interface AppConfig {
   tabIndentMode?: TabIndentMode;
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
+  minimap?: boolean;
   doubleClickCloseTab: boolean;
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
@@ -956,6 +957,7 @@ function App() {
           tabIndentMode: normalizeTabIndentMode(config.tabIndentMode),
           newFileLineEnding: normalizeLineEnding(config.newFileLineEnding),
           wordWrap: !!config.wordWrap,
+          minimap: config.minimap !== false,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
           showLineNumbers: config.showLineNumbers !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
@@ -1009,6 +1011,7 @@ function App() {
           tabIndentMode: settings.tabIndentMode,
           newFileLineEnding: settings.newFileLineEnding,
           wordWrap: settings.wordWrap,
+          minimap: settings.minimap,
           doubleClickCloseTab: settings.doubleClickCloseTab,
           showLineNumbers: settings.showLineNumbers,
           highlightCurrentLine: settings.highlightCurrentLine,
@@ -1041,6 +1044,7 @@ function App() {
     settings.language,
     settings.theme,
     settings.wordWrap,
+    settings.minimap,
     settings.doubleClickCloseTab,
     settings.showLineNumbers,
     settings.highlightCurrentLine,
