@@ -169,6 +169,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         tabSize: settings.tabWidth,
         insertSpaces: settings.tabIndentMode === 'spaces',
         minimap: { enabled: settings.minimap && !largeFileMode },
+        lineDecorationsWidth: 10,
         smoothScrolling: !largeFileMode,
         bracketPairColorization: {
           enabled: !largeFileMode,
@@ -343,6 +344,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const editor = monaco.editor.create(sourceHostRef.current, {
       automaticLayout: true,
       lineNumbersMinChars: 3,
+      lineDecorationsWidth: 10,
     });
     sourceEditorRef.current = editor;
     applyEditorOptions(editor, sourceTab);
@@ -398,6 +400,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const editor = monaco.editor.create(targetHostRef.current, {
       automaticLayout: true,
       lineNumbersMinChars: 3,
+      lineDecorationsWidth: 10,
     });
     targetEditorRef.current = editor;
     applyEditorOptions(editor, targetTab);

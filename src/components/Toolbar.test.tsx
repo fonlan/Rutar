@@ -10,7 +10,7 @@ import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } fro
 import { detectOutlineType, loadOutline } from "@/lib/outline";
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
 import { confirmTabClose, saveTab } from "@/lib/tabClose";
-import { QUICK_FIND_OPEN_EVENT } from "@/lib/quickFind";
+import { EDITOR_FIND_OPEN_EVENT } from "@/lib/editorFind";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -199,7 +199,7 @@ describe("Toolbar", () => {
     });
   });
 
-  it("dispatches quick-find-open on Ctrl+F and does not open advanced search", async () => {
+  it("dispatches editor-find-open on Ctrl+F and does not open advanced search", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
     await waitFor(() => {
@@ -207,15 +207,15 @@ describe("Toolbar", () => {
     });
 
     const advancedEvents: Array<{ mode: "find" | "replace" | "filter" }> = [];
-    const quickFindEvents: Array<{ tabId?: string }> = [];
+    const editorFindEvents: Array<{ tabId?: string }> = [];
     const advancedListener = (event: Event) => {
       advancedEvents.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
-    const quickFindListener = (event: Event) => {
-      quickFindEvents.push((event as CustomEvent).detail as { tabId?: string });
+    const editorFindListener = (event: Event) => {
+      editorFindEvents.push((event as CustomEvent).detail as { tabId?: string });
     };
     window.addEventListener("rutar:search-open", advancedListener as EventListener);
-    window.addEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
+    window.addEventListener(EDITOR_FIND_OPEN_EVENT, editorFindListener as EventListener);
 
     fireEvent.keyDown(window, {
       key: "f",
@@ -224,9 +224,9 @@ describe("Toolbar", () => {
     });
 
     expect(advancedEvents).toEqual([]);
-    expect(quickFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
+    expect(editorFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
     window.removeEventListener("rutar:search-open", advancedListener as EventListener);
-    window.removeEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
+    window.removeEventListener(EDITOR_FIND_OPEN_EVENT, editorFindListener as EventListener);
   });
 
   it("dispatches search-open find event on Ctrl+Shift+F", async () => {
@@ -300,17 +300,17 @@ describe("Toolbar", () => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
     const advancedEvents: Array<{ mode: "find" | "replace" | "filter" }> = [];
-    const quickFindEvents: Array<{ tabId?: string }> = [];
+    const editorFindEvents: Array<{ tabId?: string }> = [];
     const advancedListener = (event: Event) => {
       advancedEvents.push((event as CustomEvent).detail as { mode: "find" | "replace" | "filter" });
     };
-    const quickFindListener = (event: Event) => {
-      quickFindEvents.push((event as CustomEvent).detail as { tabId?: string });
+    const editorFindListener = (event: Event) => {
+      editorFindEvents.push((event as CustomEvent).detail as { tabId?: string });
     };
     window.addEventListener("rutar:search-open", advancedListener as EventListener);
-    window.addEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
-    const quickFindWrapper = screen.getByTitle((title) => title.includes("Quick Find"));
-    fireEvent.click(quickFindWrapper.querySelector("button") as HTMLButtonElement);
+    window.addEventListener(EDITOR_FIND_OPEN_EVENT, editorFindListener as EventListener);
+    const editorFindWrapper = screen.getByTitle((title) => title.includes("Quick Find"));
+    fireEvent.click(editorFindWrapper.querySelector("button") as HTMLButtonElement);
     const advancedFindWrapper = screen.getByTitle((title) => title.includes("Advanced Search"));
     fireEvent.click(advancedFindWrapper.querySelector("button") as HTMLButtonElement);
     const replaceWrapper = screen.getByTitle((title) => title.includes("Replace"));
@@ -318,9 +318,9 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(advancedEvents).toEqual([{ mode: "find" }, { mode: "replace" }]);
     });
-    expect(quickFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
+    expect(editorFindEvents[0]).toEqual({ tabId: "tab-toolbar" });
     window.removeEventListener("rutar:search-open", advancedListener as EventListener);
-    window.removeEventListener(QUICK_FIND_OPEN_EVENT, quickFindListener as EventListener);
+    window.removeEventListener(EDITOR_FIND_OPEN_EVENT, editorFindListener as EventListener);
   });
 
   it("toggles line numbers on Alt+L", async () => {

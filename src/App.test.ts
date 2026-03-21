@@ -76,13 +76,6 @@ vi.mock('@/components/Toolbar', () => ({
   Toolbar: () => React.createElement('div', { 'data-testid': 'mock-toolbar' }),
 }));
 
-vi.mock('@/components/QuickFindOverlay', () => ({
-  QuickFindOverlay: ({ tab }: { tab: FileTab | null }) =>
-    React.createElement('div', {
-      'data-testid': 'mock-quick-find-overlay',
-      'data-tab-id': tab?.id ?? 'none',
-    }),
-}));
 
 vi.mock('@/components/Editor', () => ({
   Editor: ({ tab }: { tab: FileTab }) => {

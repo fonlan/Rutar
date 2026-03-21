@@ -120,7 +120,6 @@ export function useEditorNavigationAndRefreshEffects({
         : 0;
       const targetVisibleIndex = Math.min(Math.max(0, targetLine - 1), Math.max(0, tabLineCount - 1));
       const shouldMoveCaretToLineStart = detail.source === 'outline';
-      const shouldPreserveExternalFocus = detail.source === 'quick-find';
       const targetCaretColumn = shouldMoveCaretToLineStart ? 1 : targetColumn;
       setActiveLineNumber(targetLine);
       setCursorPosition(tabId, targetLine, targetCaretColumn);
@@ -137,7 +136,7 @@ export function useEditorNavigationAndRefreshEffects({
 
         setCaretToLineColumn(contentRef.current, lineForCaret, columnForCaret, {
           preserveScrollPosition: !(wordWrap && !isHugeEditableMode),
-          focusInput: !shouldPreserveExternalFocus,
+          focusInput: true,
         });
         setCursorPosition(tabId, targetLine, columnForCaret);
       };
@@ -163,9 +162,7 @@ export function useEditorNavigationAndRefreshEffects({
       });
 
       const targetScrollTop = alignScrollOffset((targetLine - 1) * itemSize);
-      // In word-wrap mode we usually rely on caret-driven reveal from focused editor,
-      // but quick-find preserves external input focus so we need explicit scroll movement.
-      const useCaretDrivenVerticalReveal = wordWrap && !isHugeEditableMode && !shouldPreserveExternalFocus;
+      const useCaretDrivenVerticalReveal = wordWrap && !isHugeEditableMode;
       const applyTargetScrollTop = () => {
         if (navigationSerialRef.current !== navigationSerial) {
           return;
@@ -232,9 +229,7 @@ export function useEditorNavigationAndRefreshEffects({
         applyTargetScrollTop();
 
         if (contentRef.current) {
-          if (!shouldPreserveExternalFocus) {
-            contentRef.current.focus();
-          }
+          contentRef.current.focus();
           const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
 
           ensureSearchMatchVisibleHorizontally(
@@ -258,9 +253,7 @@ export function useEditorNavigationAndRefreshEffects({
 
       applyTargetScrollTop();
       if (contentRef.current) {
-        if (!shouldPreserveExternalFocus) {
-          contentRef.current.focus();
-        }
+        contentRef.current.focus();
         const listElement = listRef.current?._outerRef as HTMLDivElement | undefined;
 
         ensureSearchMatchVisibleHorizontally(

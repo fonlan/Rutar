@@ -2,7 +2,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { QUICK_FIND_OPEN_EVENT } from '@/lib/quickFind';
+import { EDITOR_FIND_OPEN_EVENT } from '@/lib/editorFind';
 import { type FileTab, useStore } from '@/store/useStore';
 import { Editor } from './Editor';
 
@@ -165,6 +165,7 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorCreate).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
+        lineDecorationsWidth: 10,
         find: {
           addExtraSpaceOnTop: false,
         },
@@ -198,7 +199,7 @@ describe('Editor (Monaco)', () => {
     });
   });
 
-  it('opens Monaco find widget on quick-find-open event', async () => {
+  it('opens Monaco find widget on editor-find-open event', async () => {
     const tab = createTab();
     useStore.setState({
       tabs: [tab],
@@ -210,7 +211,7 @@ describe('Editor (Monaco)', () => {
     });
     act(() => {
       window.dispatchEvent(
-        new CustomEvent(QUICK_FIND_OPEN_EVENT, {
+        new CustomEvent(EDITOR_FIND_OPEN_EVENT, {
           detail: { tabId: tab.id },
         })
       );

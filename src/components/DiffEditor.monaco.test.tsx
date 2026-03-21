@@ -196,6 +196,7 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
+          lineDecorationsWidth: 10,
           find: {
             addExtraSpaceOnTop: false,
           },
@@ -203,6 +204,7 @@ describe('DiffEditor (Monaco)', () => {
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
+          lineDecorationsWidth: 10,
           find: {
             addExtraSpaceOnTop: false,
           },

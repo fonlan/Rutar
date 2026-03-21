@@ -63,16 +63,6 @@ export type I18nKey =
   | 'toolbar.disabled.noSelectedText'
   | 'toolbar.disabled.noUndoHistory'
   | 'toolbar.disabled.noRedoHistory'
-  | 'quickFind.placeholder'
-  | 'quickFind.previous'
-  | 'quickFind.next'
-  | 'quickFind.close'
-  | 'quickFind.searching'
-  | 'quickFind.noMatches'
-  | 'quickFind.failedPrefix'
-  | 'quickFind.caseSensitive'
-  | 'quickFind.wholeWord'
-  | 'quickFind.regex'
   | 'preview.title'
   | 'preview.notMarkdown'
   | 'preview.loading'
@@ -321,16 +311,6 @@ const zhCN: Messages = {
   'toolbar.disabled.noSelectedText': '当前没有选中文本',
   'toolbar.disabled.noUndoHistory': '当前没有可撤销的操作',
   'toolbar.disabled.noRedoHistory': '当前没有可重做的操作',
-  'quickFind.placeholder': '快速搜索',
-  'quickFind.previous': '上一个',
-  'quickFind.next': '下一个',
-  'quickFind.close': '关闭快速搜索',
-  'quickFind.searching': '搜索中...',
-  'quickFind.noMatches': '未找到匹配项',
-  'quickFind.failedPrefix': '搜索失败：',
-  'quickFind.caseSensitive': '区分大小写',
-  'quickFind.wholeWord': '全字匹配',
-  'quickFind.regex': '正则表达式',
   'preview.title': 'Markdown 预览',
   'preview.notMarkdown': '仅支持 Markdown 文件预览。',
   'preview.loading': '正在渲染预览...',
@@ -578,16 +558,6 @@ const enUS: Messages = {
   'toolbar.disabled.noSelectedText': 'No selected text',
   'toolbar.disabled.noUndoHistory': 'No undo history',
   'toolbar.disabled.noRedoHistory': 'No redo history',
-  'quickFind.placeholder': 'Quick Find',
-  'quickFind.previous': 'Previous',
-  'quickFind.next': 'Next',
-  'quickFind.close': 'Close quick find',
-  'quickFind.searching': 'Searching...',
-  'quickFind.noMatches': 'No matches',
-  'quickFind.failedPrefix': 'Search failed:',
-  'quickFind.caseSensitive': 'Case Sensitive',
-  'quickFind.wholeWord': 'Match Whole Word',
-  'quickFind.regex': 'Use Regular Expression',
   'preview.title': 'Markdown Preview',
   'preview.notMarkdown': 'Preview is available for Markdown files only.',
   'preview.loading': 'Rendering preview...',

@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { QUICK_FIND_OPEN_EVENT, type QuickFindOpenEventDetail } from '@/lib/quickFind';
+import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
 import type { MonacoEngineState, MonacoTextEdit } from './monacoTypes';
@@ -252,6 +252,7 @@ export function Editor({
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
       glyphMargin: false,
+      lineDecorationsWidth: 10,
       folding: !tab.largeFileMode,
       scrollBeyondLastLine: false,
       find: {
@@ -375,6 +376,7 @@ export function Editor({
       insertSpaces: settings.tabIndentMode === 'spaces',
       minimap: { enabled: settings.minimap && !tab.largeFileMode },
       smoothScrolling: !tab.largeFileMode,
+      lineDecorationsWidth: 10,
       bracketPairColorization: {
         enabled: !tab.largeFileMode,
       },
@@ -484,7 +486,6 @@ export function Editor({
         tabId?: string;
         line?: number;
         column?: number;
-        source?: string;
       }>;
 
       if (customEvent.detail?.tabId !== tab.id) {
@@ -501,9 +502,7 @@ export function Editor({
       editor.setPosition({ lineNumber, column });
       editor.revealPositionInCenter({ lineNumber, column });
 
-      if (customEvent.detail?.source !== 'quick-find') {
-        editor.focus();
-      }
+      editor.focus();
     };
 
     const handleForceRefresh = (event: Event) => {
@@ -608,8 +607,8 @@ export function Editor({
     const handleSearchClose = () => {
       editorRef.current?.focus();
     };
-    const handleQuickFindOpen = (event: Event) => {
-      const customEvent = event as CustomEvent<QuickFindOpenEventDetail>;
+    const handleEditorFindOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<EditorFindOpenEventDetail>;
       const targetTabId = customEvent.detail?.tabId;
       if (targetTabId && targetTabId !== tab.id) {
         return;
@@ -648,7 +647,7 @@ export function Editor({
     window.addEventListener('rutar:paste-text', handlePaste as EventListener);
     window.addEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
     window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
-    window.addEventListener(QUICK_FIND_OPEN_EVENT, handleQuickFindOpen as EventListener);
+    window.addEventListener(EDITOR_FIND_OPEN_EVENT, handleEditorFindOpen as EventListener);
     window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
 
     return () => {
@@ -658,7 +657,7 @@ export function Editor({
       window.removeEventListener('rutar:paste-text', handlePaste as EventListener);
       window.removeEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
-      window.removeEventListener(QUICK_FIND_OPEN_EVENT, handleQuickFindOpen as EventListener);
+      window.removeEventListener(EDITOR_FIND_OPEN_EVENT, handleEditorFindOpen as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
   }, [ensureEditorModelLoaded, tab.id]);

@@ -24,7 +24,7 @@ import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { isMarkdownTab } from '@/lib/markdown';
-import { dispatchQuickFindOpen } from '@/lib/quickFind';
+import { dispatchEditorFindOpen } from '@/lib/editorFind';
 import { cn } from '@/lib/utils';
 
 function dispatchEditorForceRefresh(
@@ -836,9 +836,9 @@ export function Toolbar() {
         console.warn('Paste command blocked. Use Ctrl+V in editor.');
     }, [activeDiffPanel, activeDiffTab, activeTab]);
 
-    const handleQuickFind = useCallback(() => {
+    const handleEditorFind = useCallback(() => {
         if (!activeTab) return;
-        dispatchQuickFindOpen({
+        dispatchEditorFindOpen({
             tabId: activeTab.id,
         });
     }, [activeTab]);
@@ -1017,7 +1017,7 @@ export function Toolbar() {
                     return;
                 }
                 event.preventDefault();
-                handleQuickFind();
+                handleEditorFind();
                 return;
             }
             if (isKey('f') && event.shiftKey) {
@@ -1041,7 +1041,7 @@ export function Toolbar() {
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [
         activeTab,
-        handleQuickFind,
+        handleEditorFind,
         handleAdvancedFind,
         handleCloseActiveTab,
         handleNewFile,
@@ -1208,7 +1208,7 @@ export function Toolbar() {
             
             {/* Search Group */}
             <div className="w-[1px] h-4 bg-border mx-1" />
-            <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleQuickFind} disabled={!activeTab} />
+            <ToolbarBtn icon={Search} title={tr('toolbar.find')} onClick={handleEditorFind} disabled={!activeTab} />
             <ToolbarBtn icon={TextSearch} title={tr('toolbar.findAdvanced')} onClick={handleAdvancedFind} disabled={!activeTab} />
             <ToolbarBtn icon={Replace} title={tr('toolbar.replace')} onClick={() => void handleReplace()} disabled={!activeTab} />
             <ToolbarBtn icon={FilterIcon} title={filterTitle} onClick={handleFilter} disabled={!activeTab} />
