@@ -14,7 +14,7 @@
       {
         "label": "main",
         "title": "Rutar",
-        "width": 800,
+        "width": 960,
         "height": 600,
         "dragDropEnabled": true,
         "visible": false,
