@@ -1,6 +1,7 @@
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { type FileTab, useStore } from '@/store/useStore';
 import { Editor } from './Editor';
 
@@ -10,10 +11,15 @@ const monacoMockState = vi.hoisted(() => ({
   model: null as any,
   changeListener: null as null | ((event: unknown) => void),
   cursorListener: null as null | ((event: unknown) => void),
+  mouseDownListener: null as null | ((event: unknown) => void),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: vi.fn(async () => undefined),
 }));
 
 vi.mock('monaco-editor', () => {
@@ -32,6 +38,10 @@ vi.mock('monaco-editor', () => {
     getLanguageId() {
       return this.languageId;
     },
+    getLineContent(lineNumber: number) {
+      const lines = this.value.split('\n');
+      return lines[Math.max(1, lineNumber) - 1] ?? '';
+    },
   };
 
   const editorInstance = {
@@ -44,6 +54,12 @@ vi.mock('monaco-editor', () => {
     }),
     onDidChangeCursorPosition: vi.fn((listener: (event: unknown) => void) => {
       monacoMockState.cursorListener = listener;
+      return {
+        dispose: vi.fn(),
+      };
+    }),
+    onMouseDown: vi.fn((listener: (event: unknown) => void) => {
+      monacoMockState.mouseDownListener = listener;
       return {
         dispose: vi.fn(),
       };
@@ -101,12 +117,14 @@ function createTab(overrides: Partial<FileTab> = {}): FileTab {
 
 describe('Editor (Monaco)', () => {
   const initialStoreState = useStore.getState();
+  const openUrlMock = vi.mocked(openUrl);
 
   beforeEach(() => {
     vi.clearAllMocks();
     useStore.setState(initialStoreState, true);
     monacoMockState.changeListener = null;
     monacoMockState.cursorListener = null;
+    monacoMockState.mouseDownListener = null;
     monacoMockState.model.value = '';
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
@@ -260,5 +278,57 @@ describe('Editor (Monaco)', () => {
     });
 
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens http hyperlink on Ctrl/Cmd+click', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return 'Visit https://example.com/docs.';
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 1;
+      }
+      return undefined;
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.mouseDownListener).toBeTruthy();
+    });
+    monacoMockState.model.setValue('Visit https://example.com/docs.');
+
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    act(() => {
+      monacoMockState.mouseDownListener?.({
+        event: {
+          leftButton: true,
+          ctrlKey: true,
+          metaKey: false,
+          preventDefault,
+          stopPropagation,
+        },
+        target: {
+          position: {
+            lineNumber: 1,
+            column: 12,
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(openUrlMock).toHaveBeenCalledWith('https://example.com/docs');
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
   });
 });

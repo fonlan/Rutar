@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
@@ -9,6 +10,42 @@ export { editorTestUtils } from './editorUtils';
 
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
+const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
+
+function trimHttpUrlCandidate(rawUrl: string) {
+  if (!rawUrl) {
+    return '';
+  }
+
+  return rawUrl.replace(HTTP_URL_TRAILING_PUNCTUATION_PATTERN, '');
+}
+
+function getHttpUrlAtLineColumn(lineText: string, column: number) {
+  if (!lineText) {
+    return null;
+  }
+
+  const safeColumn = Math.max(0, Math.min(Math.floor(column), lineText.length));
+  const regex = new RegExp(HTTP_URL_PATTERN.source, 'gi');
+
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(lineText)) !== null) {
+    const rawUrl = match[0] ?? '';
+    const trimmedUrl = trimHttpUrlCandidate(rawUrl);
+    if (!trimmedUrl) {
+      continue;
+    }
+
+    const start = match.index;
+    const end = start + trimmedUrl.length;
+    if (safeColumn >= start && safeColumn <= end) {
+      return trimmedUrl;
+    }
+  }
+
+  return null;
+}
 
 function dispatchDocumentUpdated(tabId: string) {
   window.dispatchEvent(
@@ -267,10 +304,42 @@ export function Editor({
       };
       setCursorPosition(currentTabId, event.position.lineNumber, event.position.column);
     });
+    const mouseDownDisposable = editor.onMouseDown((event: monaco.editor.IEditorMouseEvent) => {
+      if (!event.event.leftButton) {
+        return;
+      }
+
+      if (!event.event.ctrlKey && !event.event.metaKey) {
+        return;
+      }
+
+      const position = event.target.position;
+      if (!position) {
+        return;
+      }
+
+      const model = editor.getModel();
+      if (!model) {
+        return;
+      }
+
+      const lineText = model.getLineContent(position.lineNumber);
+      const url = getHttpUrlAtLineColumn(lineText, position.column - 1);
+      if (!url) {
+        return;
+      }
+
+      event.event.preventDefault();
+      event.event.stopPropagation();
+      void openUrl(url).catch((error) => {
+        console.error('Failed to open hyperlink in Monaco editor:', error);
+      });
+    });
 
     return () => {
       contentDisposable.dispose();
       cursorDisposable.dispose();
+      mouseDownDisposable.dispose();
 
       const activeTabId = activeTabIdRef.current;
       if (activeTabId) {
