@@ -266,8 +266,27 @@ export function useEditorDocumentLoadEffects({
       }
       restoreCaretToSavedPosition();
     } else {
+      setLineTokens((prev) => (prev.length === 0 ? prev : []));
+      setStartLine((prev) => (prev === 0 ? prev : 0));
+      setPlainLines((prev) => (prev.length === 0 ? prev : []));
+      setPlainStartLine((prev) => (prev === 0 ? prev : 0));
       setTokenFallbackPlainLines((prev) => (prev.length === 0 ? prev : []));
       setTokenFallbackPlainStartLine((prev) => (prev === 0 ? prev : 0));
+      const emptyEditableSegment: EditorSegmentState = {
+        startLine: 0,
+        endLine: 0,
+        text: '',
+      };
+      editableSegmentRef.current = emptyEditableSegment;
+      setEditableSegment((prev) => (
+        prev.startLine === 0 && prev.endLine === 0 && prev.text.length === 0
+          ? prev
+          : emptyEditableSegment
+      ));
+      if (contentRef.current) {
+        setInputLayerText(contentRef.current, '');
+      }
+      syncedTextRef.current = '';
       const targetContentScrollTop = 0;
       const targetContentScrollLeft = 0;
       const targetContainerScrollTop = isHugeEditableMode

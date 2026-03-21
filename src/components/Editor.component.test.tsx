@@ -647,6 +647,195 @@ describe("Editor component", () => {
       await Promise.resolve();
     });
   });
+  it("clears stale backdrop tokens when switching to an unvisited tab with empty token payload", async () => {
+    const firstTab = createTab({
+      id: "tab-switch-unvisited-empty-token-first",
+      lineCount: 4,
+    });
+    const secondTab = createTab({
+      id: "tab-switch-unvisited-empty-token-second",
+      name: "untitled.txt",
+      path: "",
+      lineCount: 1,
+    });
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        const id = String(payload?.id ?? "");
+        if (id === firstTab.id) {
+          return "first-tab-line\n";
+        }
+        if (id === secondTab.id) {
+          return "";
+        }
+        return "fallback\n";
+      }
+      if (command === "get_syntax_token_lines") {
+        const id = String(payload?.id ?? "");
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (id === firstTab.id) {
+          return Array.from({ length: count }, (_, index) => [
+            {
+              text: `first-token-${startLine + index + 1}`,
+              type: "plain",
+            },
+          ]);
+        }
+        if (id === secondTab.id) {
+          return [];
+        }
+        return Array.from({ length: count }, (_, index) => [
+          {
+            text: `fallback-token-${startLine + index + 1}`,
+            type: "plain",
+          },
+        ]);
+      }
+      if (command === "get_visible_lines_chunk") {
+        const id = String(payload?.id ?? "");
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (id === secondTab.id) {
+          return Array.from({ length: count }, () => "");
+        }
+        return Array.from({ length: count }, (_, index) => `fallback-${startLine + index + 1}`);
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return 2;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: 2,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "convert_text_base64") {
+        return "";
+      }
+      if (command === "get_rectangular_selection_text") {
+        return "";
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+      return undefined;
+    });
+    const { container, rerender } = render(<Editor tab={firstTab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, "first-tab-line\n");
+    await waitFor(() => {
+      const backdrop = container.querySelector(".editor-backdrop-layer");
+      expect(backdrop?.textContent).toContain("first-token-1");
+    });
+    rerender(<Editor tab={secondTab} />);
+    await waitForEditorText(textarea, "");
+    await waitFor(() => {
+      const backdropText = container.querySelector(".editor-backdrop-layer")?.textContent ?? "";
+      expect(backdropText).not.toContain("first-token-1");
+    });
+  });
+  it("does not keep stale backdrop token text after clearing content in the same tab", async () => {
+    const tab = createTab({
+      id: "tab-same-tab-empty-token-ghost",
+      name: "untitled.txt",
+      path: "",
+      lineCount: 1,
+    });
+    let backendText = "ab";
+    invokeMock.mockImplementation(async (command: string, payload?: any) => {
+      if (command === "get_visible_lines") {
+        return backendText;
+      }
+      if (command === "get_syntax_token_lines") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (backendText.length === 0) {
+          return [];
+        }
+        return Array.from({ length: count }, () => [
+          {
+            text: "ghost-token-before-clear",
+            type: "plain",
+          },
+        ]);
+      }
+      if (command === "get_visible_lines_chunk") {
+        const startLine = Number(payload?.startLine ?? 0);
+        const endLine = Number(payload?.endLine ?? startLine + 1);
+        const count = Math.max(1, endLine - startLine);
+        if (backendText.length === 0) {
+          return Array.from({ length: count }, () => "");
+        }
+        return Array.from({ length: count }, () => backendText);
+      }
+      if (command === "find_matching_pair_offsets") {
+        return null;
+      }
+      if (
+        command === "edit_text" ||
+        command === "replace_line_range" ||
+        command === "cleanup_document"
+      ) {
+        return 1;
+      }
+      if (command === "toggle_line_comments") {
+        return {
+          changed: false,
+          lineCount: 1,
+          documentVersion: 1,
+          selectionStartChar: 0,
+          selectionEndChar: 0,
+        };
+      }
+      if (command === "convert_text_base64") {
+        return "";
+      }
+      if (command === "get_rectangular_selection_text") {
+        return "";
+      }
+      if (command === "get_unsaved_change_line_numbers") {
+        return [];
+      }
+      return undefined;
+    });
+    const { container } = render(<Editor tab={tab} />);
+    const textarea = await waitForEditorTextarea(container);
+    await waitForEditorText(textarea, "ab");
+    await waitFor(() => {
+      const backdropText = container.querySelector(".editor-backdrop-layer")?.textContent ?? "";
+      expect(backdropText).toContain("ghost-token-before-clear");
+    });
+    backendText = "";
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:force-refresh", {
+          detail: {
+            tabId: tab.id,
+            lineCount: 1,
+            preserveCaret: true,
+          },
+        }),
+      );
+    });
+    await waitForEditorText(textarea, "");
+    await waitFor(() => {
+      const backdropText = container.querySelector(".editor-backdrop-layer")?.textContent ?? "";
+      expect(backdropText).not.toContain("ghost-token-before-clear");
+    });
+  });
   it("uses plain-line fetching path when largeFileMode is enabled", async () => {
     const tab = createTab({
       id: "tab-large-file-mode",

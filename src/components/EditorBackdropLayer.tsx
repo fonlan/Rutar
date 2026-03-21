@@ -192,10 +192,10 @@ export function EditorBackdropLayer({
               >
                 {usePlainLineRendering
                   ? renderHighlightedPlainLine(plainLine, index + 1)
-                  : lineTokensArr.length > 0
-                  ? renderHighlightedTokens(lineTokensArr, index + 1)
                   : hasTokenFallbackLine
                   ? renderHighlightedPlainLine(tokenFallbackPlainLine, index + 1)
+                  : lineTokensArr.length > 0
+                  ? renderHighlightedTokens(lineTokensArr, index + 1)
                   : <span className="opacity-10 italic">...</span>}
               </div>
             </div>
