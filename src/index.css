@@ -57,16 +57,16 @@
 }
 
 .editor-line mark {
-  display: inline-block;
+  display: inline;
   margin: 0;
   padding: 0;
-  vertical-align: top;
+  vertical-align: baseline;
   border-radius: 0;
 }
 
 .editor-line mark > span {
-  display: inline-block;
-  vertical-align: top;
+  display: inline;
+  vertical-align: baseline;
 }
 
 /* Editable input layer: keep glyphs hidden while preserving native selection */
