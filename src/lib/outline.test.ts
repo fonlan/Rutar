@@ -35,10 +35,12 @@ describe("outline", () => {
         createTab({ syntaxOverride: "  RUST  " as unknown as FileTab["syntaxOverride"] })
       )
     ).toBe("rust");
-    expect(detectOutlineType(createTab({ syntaxOverride: "markdown" }))).toBe(null);
+    expect(detectOutlineType(createTab({ syntaxOverride: "markdown" }))).toBe("markdown");
   });
 
   it("detects outline type from extension", () => {
+    expect(detectOutlineType(createTab({ path: "C:\\repo\\README.md" }))).toBe("markdown");
+    expect(detectOutlineType(createTab({ path: "C:\\repo\\note.mdx" }))).toBe("markdown");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\data.jsonc" }))).toBe("json");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\main.rs" }))).toBe("rust");
     expect(detectOutlineType(createTab({ path: "C:\\repo\\a.yml" }))).toBe("yaml");

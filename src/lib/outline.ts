@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { FileTab, OutlineNode, OutlineType } from '@/store/useStore';
 
 const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
+  markdown: 'markdown',
   json: 'json',
   jsonc: 'json',
   yaml: 'yaml',
@@ -23,6 +24,17 @@ const OUTLINE_TYPE_BY_SYNTAX_KEY: Record<string, Exclude<OutlineType, null>> = {
 };
 
 const OUTLINE_TYPE_BY_EXTENSION: Record<string, Exclude<OutlineType, null>> = {
+  md: 'markdown',
+  markdown: 'markdown',
+  mdown: 'markdown',
+  mkd: 'markdown',
+  mkdn: 'markdown',
+  mdwn: 'markdown',
+  mdtxt: 'markdown',
+  mdtext: 'markdown',
+  rmd: 'markdown',
+  qmd: 'markdown',
+  mdx: 'markdown',
   json: 'json',
   jsonc: 'json',
   yaml: 'yaml',

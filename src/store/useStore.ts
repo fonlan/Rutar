@@ -84,6 +84,7 @@ export type AppTheme = 'light' | 'dark';
 export type TabIndentMode = 'tabs' | 'spaces';
 
 export type OutlineType =
+  | 'markdown'
   | 'json'
   | 'yaml'
   | 'xml'

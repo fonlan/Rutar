@@ -49,6 +49,7 @@ pub fn filter_outline_nodes_impl(nodes: Vec<OutlineNode>, keyword: String) -> Ve
 
 #[derive(Clone, Copy)]
 enum OutlineFileType {
+    Markdown,
     Json,
     Yaml,
     Xml,
@@ -80,6 +81,8 @@ fn truncate_preview(value: &str, max_len: usize) -> String {
 
 fn parse_outline_file_type(file_type: &str) -> Option<OutlineFileType> {
     match file_type.trim().to_lowercase().as_str() {
+        "markdown" | "md" | "mdown" | "mkd" | "mkdn" | "mdwn" | "mdtxt" | "mdtext" | "rmd"
+        | "qmd" | "mdx" => Some(OutlineFileType::Markdown),
         "json" => Some(OutlineFileType::Json),
         "yaml" | "yml" => Some(OutlineFileType::Yaml),
         "xml" => Some(OutlineFileType::Xml),
@@ -103,6 +106,7 @@ fn parse_outline_file_type(file_type: &str) -> Option<OutlineFileType> {
 
 fn get_outline_language(file_type: OutlineFileType) -> Option<Language> {
     match file_type {
+        OutlineFileType::Markdown => None,
         OutlineFileType::Json => Some(tree_sitter_json::LANGUAGE.into()),
         OutlineFileType::Yaml => Some(tree_sitter_yaml::LANGUAGE.into()),
         OutlineFileType::Xml => Some(tree_sitter_xml::LANGUAGE_XML.into()),
@@ -470,7 +474,8 @@ fn is_container_kind(file_type: OutlineFileType, kind: &str) -> bool {
                 || kind == "array"
                 || kind == "inline_table"
         }
-        OutlineFileType::Ini
+        OutlineFileType::Markdown
+        | OutlineFileType::Ini
         | OutlineFileType::Python
         | OutlineFileType::Javascript
         | OutlineFileType::Typescript
@@ -639,7 +644,8 @@ fn format_outline_label(
                 get_node_text_preview(node, source, 80)
             }
         }
-        OutlineFileType::Ini
+        OutlineFileType::Markdown
+        | OutlineFileType::Ini
         | OutlineFileType::Python
         | OutlineFileType::Javascript
         | OutlineFileType::Typescript
@@ -845,7 +851,8 @@ fn build_symbol_outline_node(
         OutlineFileType::Php => php::build_php_outline_node(node, source),
         OutlineFileType::Kotlin => kotlin::build_kotlin_outline_node(node, source),
         OutlineFileType::Swift => swift::build_swift_outline_node(node, source),
-        OutlineFileType::Json
+        OutlineFileType::Markdown
+        | OutlineFileType::Json
         | OutlineFileType::Yaml
         | OutlineFileType::Xml
         | OutlineFileType::Toml
@@ -921,6 +928,205 @@ fn parse_ini_outline(source: &str) -> Vec<OutlineNode> {
     roots
 }
 
+#[derive(Clone)]
+struct MarkdownHeadingCandidate {
+    level: usize,
+    label: String,
+    line: usize,
+    column: usize,
+}
+
+fn parse_markdown_fence_marker(line: &str) -> Option<char> {
+    let trimmed = line.trim_start();
+    let marker = trimmed.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let marker_len = trimmed.chars().take_while(|ch| *ch == marker).count();
+    if marker_len < 3 {
+        return None;
+    }
+    Some(marker)
+}
+
+fn parse_markdown_setext_level(line: &str) -> Option<usize> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.chars().all(|ch| ch == '=') {
+        return Some(1);
+    }
+    if trimmed.chars().all(|ch| ch == '-') {
+        return Some(2);
+    }
+    None
+}
+
+fn parse_markdown_atx_heading(line: &str, row: usize) -> Option<MarkdownHeadingCandidate> {
+    let trimmed = line.trim_start();
+    let level = trimmed.chars().take_while(|ch| *ch == '#').count();
+    if !(1..=6).contains(&level) {
+        return None;
+    }
+    let rest = &trimmed[level..];
+    if let Some(first_rest_char) = rest.chars().next() {
+        if !first_rest_char.is_whitespace() {
+            return None;
+        }
+    }
+
+    let mut label = rest.trim().to_string();
+    if !label.is_empty() {
+        let trimmed_end = label.trim_end().to_string();
+        let trailing_hash_count = trimmed_end
+            .chars()
+            .rev()
+            .take_while(|ch| *ch == '#')
+            .count();
+        if trailing_hash_count > 0 {
+            let split_index = trimmed_end.len().saturating_sub(trailing_hash_count);
+            let prefix = &trimmed_end[..split_index];
+            if prefix.chars().last().is_some_and(|ch| ch.is_whitespace()) {
+                label = prefix.trim_end().to_string();
+            } else {
+                label = trimmed_end;
+            }
+        } else {
+            label = trimmed_end;
+        }
+    }
+    if label.is_empty() {
+        label = "#".repeat(level);
+    }
+
+    let column = line
+        .chars()
+        .position(|ch| !ch.is_whitespace())
+        .map(|value| value + 1)
+        .unwrap_or(1);
+
+    Some(MarkdownHeadingCandidate {
+        level,
+        label: truncate_preview(&label, 120),
+        line: row + 1,
+        column,
+    })
+}
+
+fn get_mut_outline_node_by_path<'a>(
+    nodes: &'a mut [OutlineNode],
+    path: &[usize],
+) -> Option<&'a mut OutlineNode> {
+    let (index, remaining) = path.split_first()?;
+    let node = nodes.get_mut(*index)?;
+    if remaining.is_empty() {
+        Some(node)
+    } else {
+        get_mut_outline_node_by_path(&mut node.children, remaining)
+    }
+}
+
+fn parse_markdown_outline(source: &str) -> Vec<OutlineNode> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut headings: Vec<MarkdownHeadingCandidate> = Vec::new();
+    let mut active_fence_marker: Option<char> = None;
+    let mut row = 0usize;
+
+    while row < lines.len() {
+        let line = lines[row];
+
+        if let Some(marker) = parse_markdown_fence_marker(line) {
+            match active_fence_marker {
+                Some(active_marker) if active_marker == marker => {
+                    active_fence_marker = None;
+                    row += 1;
+                    continue;
+                }
+                Some(_) => {
+                    row += 1;
+                    continue;
+                }
+                None => {
+                    active_fence_marker = Some(marker);
+                    row += 1;
+                    continue;
+                }
+            }
+        }
+
+        if active_fence_marker.is_some() {
+            row += 1;
+            continue;
+        }
+
+        if let Some(atx_heading) = parse_markdown_atx_heading(line, row) {
+            headings.push(atx_heading);
+            row += 1;
+            continue;
+        }
+
+        if row + 1 < lines.len() {
+            let title_line = line.trim();
+            if !title_line.is_empty() {
+                if let Some(level) = parse_markdown_setext_level(lines[row + 1]) {
+                    let column = line
+                        .chars()
+                        .position(|ch| !ch.is_whitespace())
+                        .map(|value| value + 1)
+                        .unwrap_or(1);
+                    headings.push(MarkdownHeadingCandidate {
+                        level,
+                        label: truncate_preview(title_line, 120),
+                        line: row + 1,
+                        column,
+                    });
+                    row += 2;
+                    continue;
+                }
+            }
+        }
+
+        row += 1;
+    }
+
+    let mut roots: Vec<OutlineNode> = Vec::new();
+    let mut stack: Vec<(usize, Vec<usize>)> = Vec::new();
+
+    for heading in headings {
+        while let Some((level, _)) = stack.last() {
+            if *level < heading.level {
+                break;
+            }
+            stack.pop();
+        }
+
+        let heading_node = OutlineNode {
+            label: heading.label,
+            node_type: format!("heading{}", heading.level),
+            line: heading.line,
+            column: heading.column,
+            children: Vec::new(),
+        };
+
+        if let Some((_, parent_path)) = stack.last() {
+            if let Some(parent_node) = get_mut_outline_node_by_path(&mut roots, parent_path) {
+                parent_node.children.push(heading_node);
+                let mut next_path = parent_path.clone();
+                next_path.push(parent_node.children.len() - 1);
+                stack.push((heading.level, next_path));
+                continue;
+            }
+        }
+
+        roots.push(heading_node);
+        stack.clear();
+        stack.push((heading.level, vec![roots.len() - 1]));
+    }
+
+    roots
+}
+
 pub fn get_outline_impl(
     state: State<'_, AppState>,
     id: String,
@@ -933,6 +1139,9 @@ pub fn get_outline_impl(
 
         if matches!(outline_type, OutlineFileType::Ini) {
             return Ok(parse_ini_outline(&source));
+        }
+        if matches!(outline_type, OutlineFileType::Markdown) {
+            return Ok(parse_markdown_outline(&source));
         }
 
         let language = get_outline_language(outline_type)
@@ -999,7 +1208,8 @@ pub fn get_outline_impl(
 mod outline_tests {
     use super::{
         build_symbol_outline_node, build_tree_sitter_outline_node, parse_ini_outline,
-        parse_outline_file_type, parse_xml_outline, OutlineFileType, Parser,
+        parse_markdown_outline, parse_outline_file_type, parse_xml_outline, OutlineFileType,
+        Parser,
     };
 
     fn collect_outline_labels(node: &super::OutlineNode, labels: &mut Vec<String>) {
@@ -1011,6 +1221,14 @@ mod outline_tests {
 
     #[test]
     fn parse_outline_file_type_should_support_config_and_code_languages() {
+        assert!(matches!(
+            parse_outline_file_type("markdown"),
+            Some(OutlineFileType::Markdown)
+        ));
+        assert!(matches!(
+            parse_outline_file_type("mdx"),
+            Some(OutlineFileType::Markdown)
+        ));
         assert!(matches!(
             parse_outline_file_type("toml"),
             Some(OutlineFileType::Toml)
@@ -1087,6 +1305,45 @@ word_wrap = true
         assert_eq!(nodes[1].children[1].label, "word_wrap =");
     }
 
+    #[test]
+    fn markdown_outline_should_extract_nested_headings_and_skip_fenced_content() {
+        let source = r#"# Title
+
+## Overview
+### Details
+
+```markdown
+# ignored in code block
+```
+
+Sub heading
+---
+"#;
+        let nodes = parse_markdown_outline(source);
+        assert_eq!(nodes.len(), 1);
+
+        let root = &nodes[0];
+        assert_eq!(root.node_type, "heading1");
+        assert_eq!(root.label, "Title");
+
+        let overview = root
+            .children
+            .iter()
+            .find(|node| node.label == "Overview" && node.node_type == "heading2")
+            .expect("overview heading should exist");
+        assert!(overview
+            .children
+            .iter()
+            .any(|node| node.label == "Details" && node.node_type == "heading3"));
+        assert!(root
+            .children
+            .iter()
+            .any(|node| node.label == "Sub heading" && node.node_type == "heading2"));
+
+        let mut labels = Vec::new();
+        collect_outline_labels(root, &mut labels);
+        assert!(!labels.iter().any(|label| label.contains("ignored")));
+    }
     #[test]
     fn xml_outline_should_extract_element_hierarchy_and_attributes() {
         let source = r#"<?xml version="1.0" encoding="UTF-8"?>
