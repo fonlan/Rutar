@@ -70,6 +70,9 @@ export type I18nKey =
   | 'quickFind.searching'
   | 'quickFind.noMatches'
   | 'quickFind.failedPrefix'
+  | 'quickFind.caseSensitive'
+  | 'quickFind.wholeWord'
+  | 'quickFind.regex'
   | 'preview.title'
   | 'preview.notMarkdown'
   | 'preview.loading'
@@ -323,6 +326,9 @@ const zhCN: Messages = {
   'quickFind.searching': '搜索中...',
   'quickFind.noMatches': '未找到匹配项',
   'quickFind.failedPrefix': '搜索失败：',
+  'quickFind.caseSensitive': '区分大小写',
+  'quickFind.wholeWord': '全字匹配',
+  'quickFind.regex': '正则表达式',
   'preview.title': 'Markdown 预览',
   'preview.notMarkdown': '仅支持 Markdown 文件预览。',
   'preview.loading': '正在渲染预览...',
@@ -575,6 +581,9 @@ const enUS: Messages = {
   'quickFind.searching': 'Searching...',
   'quickFind.noMatches': 'No matches',
   'quickFind.failedPrefix': 'Search failed:',
+  'quickFind.caseSensitive': 'Case Sensitive',
+  'quickFind.wholeWord': 'Match Whole Word',
+  'quickFind.regex': 'Use Regular Expression',
   'preview.title': 'Markdown Preview',
   'preview.notMarkdown': 'Preview is available for Markdown files only.',
   'preview.loading': 'Rendering preview...',

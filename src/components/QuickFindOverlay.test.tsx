@@ -62,9 +62,9 @@ describe("QuickFindOverlay", () => {
 
   it("searches and navigates to match after input debounce", async () => {
     const tab = useStore.getState().tabs.find((entry) => entry.id === "tab-quick-find") ?? null;
-    const navigateEvents: Array<{ tabId?: string; line?: number; column?: number; length?: number }> = [];
+    const navigateEvents: Array<{ tabId?: string; line?: number; column?: number; length?: number; source?: string }> = [];
     const navigateListener = (event: Event) => {
-      navigateEvents.push((event as CustomEvent).detail as { tabId?: string; line?: number; column?: number; length?: number });
+      navigateEvents.push((event as CustomEvent).detail as { tabId?: string; line?: number; column?: number; length?: number; source?: string });
     };
     window.addEventListener("rutar:navigate-to-line", navigateListener as EventListener);
 
@@ -329,5 +329,114 @@ describe("QuickFindOverlay", () => {
       window.removeEventListener("rutar:navigate-to-line", stealFocusOnNavigate as EventListener);
       editorTextarea.remove();
     }
+  });
+
+  it("applies case-sensitive toggle to step request payload", async () => {
+    const tab = useStore.getState().tabs.find((entry) => entry.id === "tab-quick-find") ?? null;
+
+    invokeMock.mockResolvedValueOnce({
+      targetMatch: null,
+      documentVersion: 11,
+    });
+
+    render(<QuickFindOverlay tab={tab} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(QUICK_FIND_OPEN_EVENT, {
+          detail: { tabId: "tab-quick-find" },
+        })
+      );
+    });
+
+    const caseSensitiveButton = await screen.findByRole("button", { name: "Case Sensitive" });
+    fireEvent.click(caseSensitiveButton);
+    fireEvent.change(screen.getByPlaceholderText("Quick Find"), { target: { value: "Hello" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_step_from_cursor_in_document",
+        expect.objectContaining({
+          id: "tab-quick-find",
+          keyword: "Hello",
+          mode: "literal",
+          caseSensitive: true,
+          step: 1,
+        })
+      );
+    });
+  });
+
+  it("applies whole-word toggle as escaped regex payload", async () => {
+    const tab = useStore.getState().tabs.find((entry) => entry.id === "tab-quick-find") ?? null;
+
+    invokeMock.mockResolvedValueOnce({
+      targetMatch: null,
+      documentVersion: 12,
+    });
+
+    render(<QuickFindOverlay tab={tab} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(QUICK_FIND_OPEN_EVENT, {
+          detail: { tabId: "tab-quick-find" },
+        })
+      );
+    });
+
+    const wholeWordButton = await screen.findByRole("button", { name: "Match Whole Word" });
+    fireEvent.click(wholeWordButton);
+    fireEvent.change(screen.getByPlaceholderText("Quick Find"), { target: { value: "foo.bar" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_step_from_cursor_in_document",
+        expect.objectContaining({
+          id: "tab-quick-find",
+          keyword: "\\bfoo\\.bar\\b",
+          mode: "regex",
+          caseSensitive: false,
+          step: 1,
+        })
+      );
+    });
+  });
+
+  it("wraps regex mode keyword with whole-word boundary when both toggles are enabled", async () => {
+    const tab = useStore.getState().tabs.find((entry) => entry.id === "tab-quick-find") ?? null;
+
+    invokeMock.mockResolvedValueOnce({
+      targetMatch: null,
+      documentVersion: 13,
+    });
+
+    render(<QuickFindOverlay tab={tab} />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(QUICK_FIND_OPEN_EVENT, {
+          detail: { tabId: "tab-quick-find" },
+        })
+      );
+    });
+
+    const wholeWordButton = await screen.findByRole("button", { name: "Match Whole Word" });
+    const regexButton = screen.getByRole("button", { name: "Use Regular Expression" });
+    fireEvent.click(wholeWordButton);
+    fireEvent.click(regexButton);
+    fireEvent.change(screen.getByPlaceholderText("Quick Find"), { target: { value: "foo\\w+" } });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "search_step_from_cursor_in_document",
+        expect.objectContaining({
+          id: "tab-quick-find",
+          keyword: "\\b(?:foo\\w+)\\b",
+          mode: "regex",
+          step: 1,
+        })
+      );
+    });
   });
 });
