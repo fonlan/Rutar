@@ -95,10 +95,13 @@ function dispatchDiffHistoryAction(diffTabId: string, panel: DiffPanelSide, acti
     );
 }
 
-function dispatchDocumentUpdated(tabId: string) {
+function dispatchDocumentUpdated(tabId: string, options?: { skipEditorRefresh?: boolean }) {
     window.dispatchEvent(
         new CustomEvent('rutar:document-updated', {
-            detail: { tabId },
+            detail: {
+                tabId,
+                skipEditorRefresh: options?.skipEditorRefresh ?? false,
+            },
         })
     );
 }
@@ -740,7 +743,7 @@ export function Toolbar() {
             } else {
                 dispatchEditorForceRefresh(activeTab.id, result.lineCount, { preserveCaret: true });
             }
-            dispatchDocumentUpdated(activeTab.id);
+            dispatchDocumentUpdated(activeTab.id, { skipEditorRefresh: true });
         } catch (e) {
             console.warn(e);
         }
@@ -767,7 +770,7 @@ export function Toolbar() {
             } else {
                 dispatchEditorForceRefresh(activeTab.id, result.lineCount, { preserveCaret: true });
             }
-            dispatchDocumentUpdated(activeTab.id);
+            dispatchDocumentUpdated(activeTab.id, { skipEditorRefresh: true });
         } catch (e) {
             console.warn(e);
         }

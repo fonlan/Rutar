@@ -732,10 +732,15 @@ describe("Toolbar", () => {
     });
 
     const refreshEvents: Array<Record<string, unknown>> = [];
+    const updatedEvents: Array<Record<string, unknown>> = [];
     const refreshListener = (event: Event) => {
       refreshEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
     };
+    const updatedListener = (event: Event) => {
+      updatedEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
     window.addEventListener("rutar:force-refresh", refreshListener as EventListener);
+    window.addEventListener("rutar:document-updated", updatedListener as EventListener);
 
     render(<Toolbar />);
     await waitFor(() => {
@@ -763,7 +768,14 @@ describe("Toolbar", () => {
       })
     );
 
+    expect(updatedEvents).toContainEqual(
+      expect.objectContaining({
+        tabId: "tab-undo-caret",
+        skipEditorRefresh: true,
+      })
+    );
     window.removeEventListener("rutar:force-refresh", refreshListener as EventListener);
+    window.removeEventListener("rutar:document-updated", updatedListener as EventListener);
   });
 
   it("dispatches diff redo history action on Ctrl+Y when diff tab is active", async () => {

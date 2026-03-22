@@ -252,6 +252,60 @@ describe('Editor (Monaco)', () => {
     });
   });
 
+  it('keeps undo/redo force-refresh cursor restore when document-updated skips editor refresh', async () => {
+    const tab = createTab({ id: 'tab-force-refresh-skip' });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
+    });
+    monacoMockState.editorInstance.setPosition.mockClear();
+    vi.mocked(invoke).mockClear();
+    const refreshResolvers: Array<(value: string) => void> = [];
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return await new Promise<string>((resolve) => {
+          refreshResolvers.push(resolve);
+        });
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 1;
+      }
+      return undefined;
+    });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            restoreCursorLine: 4,
+            restoreCursorColumn: 7,
+          },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('rutar:document-updated', {
+          detail: {
+            tabId: tab.id,
+            skipEditorRefresh: true,
+          },
+        })
+      );
+    });
+    expect(refreshResolvers).toHaveLength(1);
+    act(() => {
+      refreshResolvers[0]?.('beta');
+    });
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.setPosition).toHaveBeenCalledWith({
+        lineNumber: 4,
+        column: 7,
+      });
+    });
+  });
   it('opens Monaco find widget on editor-find-open event', async () => {
     const tab = createTab();
     useStore.setState({

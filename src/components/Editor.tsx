@@ -1148,11 +1148,14 @@ export function Editor({
     };
 
     const handleDocumentUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabId?: string }>;
+      const customEvent = event as CustomEvent<{ tabId?: string; skipEditorRefresh?: boolean }>;
       if (customEvent.detail?.tabId !== tab.id) {
         return;
       }
 
+      if (customEvent.detail?.skipEditorRefresh) {
+        return;
+      }
       if (ignoreDocumentUpdatedCountRef.current > 0) {
         ignoreDocumentUpdatedCountRef.current -= 1;
         return;
