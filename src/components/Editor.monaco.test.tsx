@@ -73,6 +73,17 @@ vi.mock('monaco-editor', () => {
     getLineMaxColumn(lineNumber: number) {
       return this.getLineContent(lineNumber).length + 1;
     },
+    getOffsetAt(position: { lineNumber: number; column: number }) {
+      const lines = this.value.split('\n');
+      const safeLineNumber = Math.max(1, Math.min(position.lineNumber, Math.max(1, lines.length)));
+      let offset = 0;
+      for (let index = 0; index < safeLineNumber - 1; index += 1) {
+        offset += (lines[index] ?? '').length + 1;
+      }
+      const lineText = lines[safeLineNumber - 1] ?? '';
+      const safeColumn = Math.max(1, Math.min(position.column, lineText.length + 1));
+      return offset + safeColumn - 1;
+    },
   };
 
   monacoMockState.selection = createSelection(1, 1, 1, 1);
@@ -764,6 +775,117 @@ describe('Editor (Monaco)', () => {
     });
   });
 
+  it('highlights matching single and double quotes near caret', async () => {
+    const tab = createTab({ id: 'tab-monaco-quote-highlight' });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'get_document_text') {
+        return 'const first = "x";\nconst second = \'y\';';
+      }
+      if (command === 'find_matching_pair_offsets') {
+        const offset =
+          typeof args === 'object' && args !== null && 'offset' in args
+            ? Number((args as { offset?: unknown }).offset ?? 0)
+            : 0;
+        if (offset < 19) {
+          return {
+            leftOffset: 14,
+            rightOffset: 16,
+            leftLine: 1,
+            leftColumn: 15,
+            rightLine: 1,
+            rightColumn: 17,
+          };
+        }
+        return {
+          leftOffset: 34,
+          rightOffset: 36,
+          leftLine: 2,
+          leftColumn: 16,
+          rightLine: 2,
+          rightColumn: 18,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 2;
+      }
+      return undefined;
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.cursorListener).toBeTruthy();
+    });
+    monacoMockState.model.setValue('const first = "x";\nconst second = \'y\';');
+    monacoMockState.editorInstance.getPosition.mockReturnValue({
+      lineNumber: 1,
+      column: 16,
+    });
+    act(() => {
+      monacoMockState.cursorListener?.({
+        position: {
+          lineNumber: 1,
+          column: 16,
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'find_matching_pair_offsets',
+        expect.objectContaining({ offset: 15 })
+      );
+    });
+    const hasDoubleQuoteDecoration = monacoMockState.editorInstance.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{
+          range?: { startLineNumber?: number; startColumn?: number };
+          options?: { inlineClassName?: string };
+        }>;
+        return decorations.some(
+          (item) =>
+            item.options?.inlineClassName === 'rutar-matching-quote-highlight'
+            && item.range?.startLineNumber === 1
+            && item.range?.startColumn === 15
+        );
+      }
+    );
+    expect(hasDoubleQuoteDecoration).toBe(true);
+    monacoMockState.editorInstance.getPosition.mockReturnValue({
+      lineNumber: 2,
+      column: 17,
+    });
+    act(() => {
+      monacoMockState.cursorListener?.({
+        position: {
+          lineNumber: 2,
+          column: 17,
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'find_matching_pair_offsets',
+        expect.objectContaining({ offset: 35 })
+      );
+    });
+    const hasSingleQuoteDecoration = monacoMockState.editorInstance.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{
+          range?: { startLineNumber?: number; startColumn?: number };
+          options?: { inlineClassName?: string };
+        }>;
+        return decorations.some(
+          (item) =>
+            item.options?.inlineClassName === 'rutar-matching-quote-highlight'
+            && item.range?.startLineNumber === 2
+            && item.range?.startColumn === 16
+        );
+      }
+    );
+    expect(hasSingleQuoteDecoration).toBe(true);
+  });
   it('opens http hyperlink on Ctrl/Cmd+click', async () => {
     const tab = createTab();
     useStore.setState({

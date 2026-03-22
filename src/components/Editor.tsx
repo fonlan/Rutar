@@ -28,8 +28,20 @@ const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];
 const BOOKMARK_LINE_NUMBER_CLASS_NAME = 'rutar-bookmark-line-number-highlight';
+const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
 const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
 const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
+interface PairOffsetsResultPayload {
+  leftOffset: number;
+  rightOffset: number;
+  leftLine: number;
+  leftColumn: number;
+  rightLine: number;
+  rightColumn: number;
+}
+function isQuoteCharacter(value: string) {
+  return value === "'" || value === '"';
+}
 
 function trimHttpUrlCandidate(rawUrl: string) {
   if (!rawUrl) {
@@ -185,6 +197,8 @@ export function Editor({
   });
   const pendingFetchRequestIdRef = useRef(0);
   const bookmarkDecorationIdsRef = useRef<string[]>([]);
+  const quotePairDecorationIdsRef = useRef<string[]>([]);
+  const quotePairRequestSeqRef = useRef(0);
   const editorContextMenuRef = useRef<HTMLDivElement | null>(null);
   const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
     edit: null,
@@ -442,6 +456,108 @@ export function Editor({
       nextDecorations
     );
   }, [bookmarks]);
+  const clearQuotePairDecorations = useCallback((targetEditor: monaco.editor.IStandaloneCodeEditor | null) => {
+    quotePairRequestSeqRef.current += 1;
+    if (!targetEditor) {
+      quotePairDecorationIdsRef.current = [];
+      return;
+    }
+    if (quotePairDecorationIdsRef.current.length === 0) {
+      return;
+    }
+    quotePairDecorationIdsRef.current = targetEditor.deltaDecorations(quotePairDecorationIdsRef.current, []);
+  }, []);
+  const updateQuotePairDecorations = useCallback(async () => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model || tab.largeFileMode) {
+      clearQuotePairDecorations(editor ?? null);
+      return;
+    }
+
+    const selection = editor.getSelection();
+    if (selection && !selection.isEmpty()) {
+      clearQuotePairDecorations(editor);
+      return;
+    }
+
+    const position = editor.getPosition();
+    if (!position) {
+      clearQuotePairDecorations(editor);
+      return;
+    }
+
+    const text = model.getValue();
+    const offset = model.getOffsetAt(position);
+    const leftChar = offset > 0 ? text.charAt(offset - 1) : '';
+    const rightChar = offset < text.length ? text.charAt(offset) : '';
+    if (!isQuoteCharacter(leftChar) && !isQuoteCharacter(rightChar)) {
+      clearQuotePairDecorations(editor);
+      return;
+    }
+
+    const requestSeq = quotePairRequestSeqRef.current + 1;
+    quotePairRequestSeqRef.current = requestSeq;
+    try {
+      const payload = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
+        text,
+        offset,
+      });
+      if (quotePairRequestSeqRef.current !== requestSeq || editorRef.current !== editor) {
+        return;
+      }
+      if (!payload) {
+        clearQuotePairDecorations(editor);
+        return;
+      }
+
+      const leftQuote = text.charAt(payload.leftOffset);
+      const rightQuote = text.charAt(payload.rightOffset);
+      if (!isQuoteCharacter(leftQuote) || leftQuote !== rightQuote) {
+        clearQuotePairDecorations(editor);
+        return;
+      }
+
+      const lineCount = Math.max(1, model.getLineCount());
+      const leftLine = Math.max(1, Math.min(payload.leftLine, lineCount));
+      const rightLine = Math.max(1, Math.min(payload.rightLine, lineCount));
+      const leftColumn = Math.max(1, payload.leftColumn);
+      const rightColumn = Math.max(1, payload.rightColumn);
+      const nextDecorations: monaco.editor.IModelDeltaDecoration[] = [
+        {
+          range: {
+            startLineNumber: leftLine,
+            startColumn: leftColumn,
+            endLineNumber: leftLine,
+            endColumn: leftColumn + 1,
+          },
+          options: {
+            inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
+          },
+        },
+        {
+          range: {
+            startLineNumber: rightLine,
+            startColumn: rightColumn,
+            endLineNumber: rightLine,
+            endColumn: rightColumn + 1,
+          },
+          options: {
+            inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
+          },
+        },
+      ];
+      quotePairDecorationIdsRef.current = editor.deltaDecorations(
+        quotePairDecorationIdsRef.current,
+        nextDecorations
+      );
+    } catch (error) {
+      if (quotePairRequestSeqRef.current === requestSeq && editorRef.current === editor) {
+        clearQuotePairDecorations(editor);
+      }
+      console.error('Failed to resolve matching quote pair in Monaco editor:', error);
+    }
+  }, [clearQuotePairDecorations, tab.largeFileMode]);
   const triggerBase64DecodeErrorToast = useCallback(() => {
     if (base64DecodeErrorToastTimerRef.current !== null) {
       window.clearTimeout(base64DecodeErrorToastTimerRef.current);
@@ -774,6 +890,7 @@ export function Editor({
         column: event.position.column,
       };
       setCursorPosition(currentTabId, event.position.lineNumber, event.position.column);
+      void updateQuotePairDecorations();
     });
     const mouseDownDisposable = editor.onMouseDown((event: monaco.editor.IEditorMouseEvent) => {
       const targetType = event.target.type;
@@ -847,14 +964,17 @@ export function Editor({
         viewStateByTabId.set(activeTabId, editor.saveViewState() ?? null);
       }
 
+      clearQuotePairDecorations(editor);
       editor.dispose();
       editorRef.current = null;
       activeTabIdRef.current = null;
     };
   }, [
+    clearQuotePairDecorations,
     handleMonacoContextMenu,
     queueSyncEdits,
     setCursorPosition,
+    updateQuotePairDecorations,
   ]);
 
   useEffect(() => {
@@ -891,6 +1011,7 @@ export function Editor({
         addExtraSpaceOnTop: false,
       },
     });
+    void updateQuotePairDecorations();
   }, [
     settings.fontFamily,
     settings.fontSize,
@@ -902,6 +1023,7 @@ export function Editor({
     settings.minimap,
     settings.highlightCurrentLine,
     tab.largeFileMode,
+    updateQuotePairDecorations,
   ]);
 
   useEffect(() => {
@@ -954,7 +1076,7 @@ export function Editor({
     }
 
     editor.focus();
-  }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id]);
+  }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id, updateQuotePairDecorations]);
 
   useEffect(() => {
     const trackedTabIds = new Set(
@@ -1071,6 +1193,7 @@ export function Editor({
 
       void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh').then(() => {
         if (!restoreLine || !restoreColumn) {
+          void updateQuotePairDecorations();
           return;
         }
 
@@ -1082,6 +1205,7 @@ export function Editor({
           lineNumber: Math.max(1, restoreLine),
           column: Math.max(1, restoreColumn),
         });
+        void updateQuotePairDecorations();
       });
     };
 
@@ -1161,7 +1285,9 @@ export function Editor({
         return;
       }
 
-      void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh');
+      void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh').then(() => {
+        void updateQuotePairDecorations();
+      });
     };
 
     window.addEventListener('rutar:navigate-to-line', handleNavigate as EventListener);
@@ -1189,6 +1315,7 @@ export function Editor({
     getSelectedEditorText,
     resolveCurrentTab,
     tab.id,
+    updateQuotePairDecorations,
     writePlainTextToClipboard,
   ]);
 

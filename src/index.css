@@ -100,6 +100,10 @@
   background-color: rgba(245, 158, 11, 0.95);
 }
 
+.monaco-editor .rutar-matching-quote-highlight {
+  border-radius: 3px;
+  background-color: rgba(14, 165, 233, 0.22);
+}
 .dark .monaco-editor .rutar-diff-line-insert {
   background-color: rgba(52, 211, 153, 0.16);
 }
@@ -137,6 +141,9 @@
   background-color: rgba(251, 191, 36, 0.95);
 }
 
+.dark .monaco-editor .rutar-matching-quote-highlight {
+  background-color: rgba(125, 211, 252, 0.3);
+}
 /* 文本内容允许选择，行号不允许 */
 .editor-line {
   user-select: text !important;

@@ -8,6 +8,8 @@ import type { LineDiffComparisonResult } from './diffEditor.types';
 const monacoDiffMockState = {
   sourceChangeListener: null as null | ((event: unknown) => void),
   targetChangeListener: null as null | ((event: unknown) => void),
+  sourceCursorListener: null as null | ((event: unknown) => void),
+  targetCursorListener: null as null | ((event: unknown) => void),
   sourceContextMenuListener: null as null | ((event: unknown) => void),
   targetContextMenuListener: null as null | ((event: unknown) => void),
   sourceScrollListener: null as null | (() => void),
@@ -42,6 +44,17 @@ vi.mock('monaco-editor', () => {
       getValueInRange() {
         return this.value;
       },
+      getOffsetAt(position: { lineNumber: number; column: number }) {
+        const lines = this.value.split('\n');
+        const safeLineNumber = Math.max(1, Math.min(position.lineNumber, Math.max(1, lines.length)));
+        let offset = 0;
+        for (let index = 0; index < safeLineNumber - 1; index += 1) {
+          offset += (lines[index] ?? '').length + 1;
+        }
+        const lineText = lines[safeLineNumber - 1] ?? '';
+        const safeColumn = Math.max(1, Math.min(position.column, lineText.length + 1));
+        return offset + safeColumn - 1;
+      },
       isDisposed() {
         return false;
       },
@@ -69,7 +82,14 @@ vi.mock('monaco-editor', () => {
         return { dispose: vi.fn() };
       }),
       onDidFocusEditorWidget: vi.fn(() => ({ dispose: vi.fn() })),
-      onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeCursorPosition: vi.fn((listener: (event: unknown) => void) => {
+        if (side === 'source') {
+          monacoDiffMockState.sourceCursorListener = listener;
+        } else {
+          monacoDiffMockState.targetCursorListener = listener;
+        }
+        return { dispose: vi.fn() };
+      }),
       onDidScrollChange: vi.fn((listener: () => void) => {
         if (side === 'source') {
           monacoDiffMockState.sourceScrollListener = listener;
@@ -274,6 +294,8 @@ describe('DiffEditor (Monaco)', () => {
     });
     monacoDiffMockState.sourceChangeListener = null;
     monacoDiffMockState.targetChangeListener = null;
+    monacoDiffMockState.sourceCursorListener = null;
+    monacoDiffMockState.targetCursorListener = null;
     monacoDiffMockState.sourceContextMenuListener = null;
     monacoDiffMockState.targetContextMenuListener = null;
     monacoDiffMockState.sourceScrollListener = null;
@@ -1130,6 +1152,152 @@ describe('DiffEditor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.getModel().getValue()).toBe('left-1\nright-2\nleft-3');
     });
+  });
+  it('highlights matching quote pairs in both diff panes', async () => {
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'get_document_text') {
+        return 'const first = "x";\nconst second = \'y\';';
+      }
+      if (command === 'find_matching_pair_offsets') {
+        const offset =
+          typeof args === 'object' && args !== null && 'offset' in args
+            ? Number((args as { offset?: unknown }).offset ?? 0)
+            : 0;
+        if (offset < 19) {
+          return {
+            leftOffset: 14,
+            rightOffset: 16,
+            leftLine: 1,
+            leftColumn: 15,
+            rightLine: 1,
+            rightColumn: 17,
+          };
+        }
+        return {
+          leftOffset: 34,
+          rightOffset: 36,
+          leftLine: 2,
+          leftColumn: 16,
+          rightLine: 2,
+          rightColumn: 18,
+        };
+      }
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['const first = "x";', "const second = 'y';"],
+          alignedTargetLines: ['const first = "x";', "const second = 'y';"],
+          alignedSourcePresent: [true, true],
+          alignedTargetPresent: [true, true],
+          diffLineNumbers: [],
+          sourceDiffLineNumbers: [],
+          targetDiffLineNumbers: [],
+          alignedDiffKinds: [null, null],
+          sourceLineCount: 2,
+          targetLineCount: 2,
+          alignedLineCount: 2,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 2;
+      }
+      return undefined;
+    });
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', lineCount: 2 });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', lineCount: 2 });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload({
+        alignedSourceLines: ['const first = "x";', "const second = 'y';"],
+        alignedTargetLines: ['const first = "x";', "const second = 'y';"],
+        alignedSourcePresent: [true, true],
+        alignedTargetPresent: [true, true],
+        sourceLineCount: 2,
+        targetLineCount: 2,
+        alignedLineCount: 2,
+      }),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceCursorListener).toBeTruthy();
+      expect(monacoDiffMockState.targetCursorListener).toBeTruthy();
+    });
+    monacoDiffMockState.sourceEditor.getModel().setValue('const first = "x";\nconst second = \'y\';');
+    monacoDiffMockState.targetEditor.getModel().setValue('const first = "x";\nconst second = \'y\';');
+    monacoDiffMockState.sourceEditor.getSelection.mockReturnValue({
+      startLineNumber: 1,
+      startColumn: 16,
+      endLineNumber: 1,
+      endColumn: 16,
+      isEmpty: () => true,
+    });
+    monacoDiffMockState.targetEditor.getSelection.mockReturnValue({
+      startLineNumber: 2,
+      startColumn: 17,
+      endLineNumber: 2,
+      endColumn: 17,
+      isEmpty: () => true,
+    });
+    monacoDiffMockState.sourceEditor.setPosition({ lineNumber: 1, column: 16 });
+    monacoDiffMockState.targetEditor.setPosition({ lineNumber: 2, column: 17 });
+    act(() => {
+      monacoDiffMockState.sourceCursorListener?.({
+        position: {
+          lineNumber: 1,
+          column: 16,
+        },
+      });
+      monacoDiffMockState.targetCursorListener?.({
+        position: {
+          lineNumber: 2,
+          column: 17,
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'find_matching_pair_offsets',
+        expect.objectContaining({ offset: 15 })
+      );
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'find_matching_pair_offsets',
+        expect.objectContaining({ offset: 35 })
+      );
+    });
+    const sourceHasQuoteDecoration = monacoDiffMockState.sourceEditor.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{
+          range?: { startLineNumber?: number; startColumn?: number };
+          options?: { inlineClassName?: string };
+        }>;
+        return decorations.some(
+          (item) =>
+            item.options?.inlineClassName === 'rutar-matching-quote-highlight'
+            && item.range?.startLineNumber === 1
+            && item.range?.startColumn === 15
+        );
+      }
+    );
+    const targetHasQuoteDecoration = monacoDiffMockState.targetEditor.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{
+          range?: { startLineNumber?: number; startColumn?: number };
+          options?: { inlineClassName?: string };
+        }>;
+        return decorations.some(
+          (item) =>
+            item.options?.inlineClassName === 'rutar-matching-quote-highlight'
+            && item.range?.startLineNumber === 2
+            && item.range?.startColumn === 16
+        );
+      }
+    );
+    expect(sourceHasQuoteDecoration).toBe(true);
+    expect(targetHasQuoteDecoration).toBe(true);
   });
   it('highlights diff lines and paints overview markers on splitter', async () => {
     vi.mocked(invoke).mockImplementation(async (command: string) => {

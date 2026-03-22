@@ -78,6 +78,20 @@ const DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME =
   `${DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME} disabled:cursor-not-allowed disabled:opacity-50`;
 const DIFF_HEADER_ICON_BUTTON_CLASS_NAME =
   'rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent';
+const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
+
+interface PairOffsetsResultPayload {
+  leftOffset: number;
+  rightOffset: number;
+  leftLine: number;
+  leftColumn: number;
+  rightLine: number;
+  rightColumn: number;
+}
+
+function isQuoteCharacter(value: string) {
+  return value === "'" || value === '"';
+}
 
 const DIFF_KIND_META: Record<
   DiffLineKind,
@@ -508,6 +522,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const pendingFetchRequestRef = useRef({ source: 0, target: 0 });
   const sourceDecorationIdsRef = useRef<string[]>([]);
   const targetDecorationIdsRef = useRef<string[]>([]);
+  const sourceQuoteDecorationIdsRef = useRef<string[]>([]);
+  const targetQuoteDecorationIdsRef = useRef<string[]>([]);
+  const quotePairRequestSeqRef = useRef({ source: 0, target: 0 });
   const sourceViewZoneIdsRef = useRef<string[]>([]);
   const targetViewZoneIdsRef = useRef<string[]>([]);
   const sharedScrollRef = useRef<HTMLDivElement | null>(null);
@@ -922,6 +939,112 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [tab.diffPayload]
   );
 
+  const clearPaneQuotePairDecorations = useCallback(
+    (side: ActivePanel, targetEditor: monaco.editor.IStandaloneCodeEditor | null) => {
+      quotePairRequestSeqRef.current[side] += 1;
+      const decorationIdsRef = side === 'source' ? sourceQuoteDecorationIdsRef : targetQuoteDecorationIdsRef;
+      if (!targetEditor) {
+        decorationIdsRef.current = [];
+        return;
+      }
+      if (decorationIdsRef.current.length === 0) {
+        return;
+      }
+      decorationIdsRef.current = targetEditor.deltaDecorations(decorationIdsRef.current, []);
+    },
+    []
+  );
+  const updatePaneQuotePairDecorations = useCallback(
+    async (side: ActivePanel) => {
+      const editor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      const paneTab = side === 'source' ? sourceTab : targetTab;
+      const model = editor?.getModel();
+      if (!editor || !model || paneTab?.largeFileMode) {
+        clearPaneQuotePairDecorations(side, editor ?? null);
+        return;
+      }
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        clearPaneQuotePairDecorations(side, editor);
+        return;
+      }
+      const position = editor.getPosition();
+      if (!position) {
+        clearPaneQuotePairDecorations(side, editor);
+        return;
+      }
+      const text = model.getValue();
+      const offset = model.getOffsetAt(position);
+      const leftChar = offset > 0 ? text.charAt(offset - 1) : '';
+      const rightChar = offset < text.length ? text.charAt(offset) : '';
+      if (!isQuoteCharacter(leftChar) && !isQuoteCharacter(rightChar)) {
+        clearPaneQuotePairDecorations(side, editor);
+        return;
+      }
+      const requestSeq = quotePairRequestSeqRef.current[side] + 1;
+      quotePairRequestSeqRef.current[side] = requestSeq;
+      try {
+        const payload = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
+          text,
+          offset,
+        });
+        if (quotePairRequestSeqRef.current[side] !== requestSeq) {
+          return;
+        }
+        const currentEditor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+        if (!currentEditor || currentEditor !== editor) {
+          return;
+        }
+        if (!payload) {
+          clearPaneQuotePairDecorations(side, editor);
+          return;
+        }
+        const leftQuote = text.charAt(payload.leftOffset);
+        const rightQuote = text.charAt(payload.rightOffset);
+        if (!isQuoteCharacter(leftQuote) || leftQuote !== rightQuote) {
+          clearPaneQuotePairDecorations(side, editor);
+          return;
+        }
+        const lineCount = Math.max(1, model.getLineCount());
+        const leftLine = Math.max(1, Math.min(payload.leftLine, lineCount));
+        const rightLine = Math.max(1, Math.min(payload.rightLine, lineCount));
+        const leftColumn = Math.max(1, payload.leftColumn);
+        const rightColumn = Math.max(1, payload.rightColumn);
+        const nextDecorations: monaco.editor.IModelDeltaDecoration[] = [
+          {
+            range: {
+              startLineNumber: leftLine,
+              startColumn: leftColumn,
+              endLineNumber: leftLine,
+              endColumn: leftColumn + 1,
+            },
+            options: {
+              inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
+            },
+          },
+          {
+            range: {
+              startLineNumber: rightLine,
+              startColumn: rightColumn,
+              endLineNumber: rightLine,
+              endColumn: rightColumn + 1,
+            },
+            options: {
+              inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
+            },
+          },
+        ];
+        const decorationIdsRef = side === 'source' ? sourceQuoteDecorationIdsRef : targetQuoteDecorationIdsRef;
+        decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, nextDecorations);
+      } catch (error) {
+        if (quotePairRequestSeqRef.current[side] === requestSeq) {
+          clearPaneQuotePairDecorations(side, editor);
+        }
+        console.error(`Failed to resolve matching quote pair for ${side} diff pane:`, error);
+      }
+    },
+    [clearPaneQuotePairDecorations, sourceTab, targetTab]
+  );
   const applyEditorOptions = useCallback(
     (editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
       const largeFileMode = Boolean(paneTab?.largeFileMode);
@@ -1343,7 +1466,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     if (targetEditorRef.current) {
       applyEditorOptions(targetEditorRef.current, targetTab);
     }
-  }, [applyEditorOptions, settings.theme, sourceTab, targetTab]);
+    void updatePaneQuotePairDecorations('source');
+    void updatePaneQuotePairDecorations('target');
+  }, [applyEditorOptions, settings.theme, sourceTab, targetTab, updatePaneQuotePairDecorations]);
   useEffect(() => {
     diffRefreshSequenceRef.current = diffRefreshSequenceRef.current + 1;
     clearScheduledDiffRefresh();
@@ -1446,6 +1571,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       }
 
       setCursorPosition(sourceTab.id, event.position.lineNumber, event.position.column);
+      void updatePaneQuotePairDecorations('source');
     });
 
     const scrollDisposable = editor.onDidScrollChange(() => {
@@ -1465,6 +1591,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
       sourceDecorationIdsRef.current = editor.deltaDecorations(sourceDecorationIdsRef.current, []);
+      clearPaneQuotePairDecorations('source', editor);
       editor.changeViewZones((accessor) => {
         sourceViewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
       });
@@ -1474,12 +1601,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       sourceModelRef.current = null;
     };
   }, [
+    clearPaneQuotePairDecorations,
     handlePaneMonacoContextMenu,
     queueSyncEdits,
     refreshSharedScrollMetrics,
     setCursorPosition,
     syncPanelsFromEditorScroll,
     tab.diffPayload.sourceTabId,
+    updatePaneQuotePairDecorations,
   ]);
 
   useEffect(() => {
@@ -1530,6 +1659,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       }
 
       setCursorPosition(targetTab.id, event.position.lineNumber, event.position.column);
+      void updatePaneQuotePairDecorations('target');
     });
 
     const scrollDisposable = editor.onDidScrollChange(() => {
@@ -1549,6 +1679,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
       targetDecorationIdsRef.current = editor.deltaDecorations(targetDecorationIdsRef.current, []);
+      clearPaneQuotePairDecorations('target', editor);
       editor.changeViewZones((accessor) => {
         targetViewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
       });
@@ -1558,12 +1689,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       targetModelRef.current = null;
     };
   }, [
+    clearPaneQuotePairDecorations,
     handlePaneMonacoContextMenu,
     queueSyncEdits,
     refreshSharedScrollMetrics,
     setCursorPosition,
     syncPanelsFromEditorScroll,
     tab.diffPayload.targetTabId,
+    updatePaneQuotePairDecorations,
   ]);
 
   useEffect(() => {
@@ -1576,6 +1709,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       sourceEditor.setModel(null);
       sourceModelRef.current = null;
       applyPaneDiffPlaceholderZones('source');
+      clearPaneQuotePairDecorations('source', sourceEditor);
       return;
     }
 
@@ -1589,13 +1723,15 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     sourceEditor.setModel(model);
     applyPaneDiffDecorations('source');
     applyPaneDiffPlaceholderZones('source');
+    void updatePaneQuotePairDecorations('source');
     void ensurePaneLoaded('source', sourceTab).finally(() => {
       applyPaneDiffDecorations('source');
       applyPaneDiffPlaceholderZones('source');
       refreshSharedScrollMetrics();
       syncPanelsFromEditorScroll(activePanel);
+      void updatePaneQuotePairDecorations('source');
     });
-  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, ensurePaneLoaded, refreshSharedScrollMetrics, sourceLanguage, sourceTab, syncPanelsFromEditorScroll]);
+  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, clearPaneQuotePairDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, sourceLanguage, sourceTab, syncPanelsFromEditorScroll, updatePaneQuotePairDecorations]);
 
   useEffect(() => {
     const targetEditor = targetEditorRef.current;
@@ -1607,6 +1743,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       targetEditor.setModel(null);
       targetModelRef.current = null;
       applyPaneDiffPlaceholderZones('target');
+      clearPaneQuotePairDecorations('target', targetEditor);
       return;
     }
 
@@ -1620,13 +1757,15 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     targetEditor.setModel(model);
     applyPaneDiffDecorations('target');
     applyPaneDiffPlaceholderZones('target');
+    void updatePaneQuotePairDecorations('target');
     void ensurePaneLoaded('target', targetTab).finally(() => {
       applyPaneDiffDecorations('target');
       applyPaneDiffPlaceholderZones('target');
       refreshSharedScrollMetrics();
       syncPanelsFromEditorScroll(activePanel);
+      void updatePaneQuotePairDecorations('target');
     });
-  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, ensurePaneLoaded, refreshSharedScrollMetrics, syncPanelsFromEditorScroll, targetLanguage, targetTab]);
+  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, clearPaneQuotePairDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, syncPanelsFromEditorScroll, targetLanguage, targetTab, updatePaneQuotePairDecorations]);
 
   useEffect(() => {
     const handleDiffHistoryAction = async (event: Event) => {
@@ -1751,6 +1890,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           applyPaneDiffDecorations('source');
           refreshSharedScrollMetrics();
           syncPanelsFromEditorScroll(activePanel);
+          void updatePaneQuotePairDecorations('source');
         });
       }
 
@@ -1760,6 +1900,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           applyPaneDiffDecorations('target');
           refreshSharedScrollMetrics();
           syncPanelsFromEditorScroll(activePanel);
+          void updatePaneQuotePairDecorations('target');
         });
       }
       if (shouldRefreshDiff) {
@@ -1789,6 +1930,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     syncPanelsFromEditorScroll,
     tab.id,
     targetTab,
+    updatePaneQuotePairDecorations,
     updateTab,
   ]);
 
