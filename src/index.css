@@ -34,6 +34,20 @@
   background-clip: padding-box;
 }
 
+.monaco-editor .view-overlays .current-line,
+.monaco-editor .margin-view-overlays .current-line,
+.monaco-editor .margin-view-overlays .current-line-margin {
+  background-color: rgba(14, 116, 144, 0.2) !important;
+  border: none !important;
+}
+
+.dark .monaco-editor .view-overlays .current-line,
+.dark .monaco-editor .margin-view-overlays .current-line,
+.dark .monaco-editor .margin-view-overlays .current-line-margin {
+  background-color: rgba(56, 189, 248, 0.2) !important;
+  border: none !important;
+}
+
 .monaco-editor .rutar-diff-line-insert {
   background-color: rgba(16, 185, 129, 0.14);
 }

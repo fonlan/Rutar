@@ -713,6 +713,7 @@ export function Editor({
       occurrencesHighlight: tab.largeFileMode ? 'off' : 'singleFile',
       selectionHighlight: !tab.largeFileMode,
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
+      renderLineHighlight: settings.highlightCurrentLine ? 'line' : 'none',
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
       glyphMargin: false,
@@ -883,6 +884,7 @@ export function Editor({
       occurrencesHighlight: tab.largeFileMode ? 'off' : 'singleFile',
       selectionHighlight: !tab.largeFileMode,
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
+      renderLineHighlight: settings.highlightCurrentLine ? 'line' : 'none',
       folding: !tab.largeFileMode,
       contextmenu: false,
       find: {
@@ -898,6 +900,7 @@ export function Editor({
     settings.theme,
     settings.wordWrap,
     settings.minimap,
+    settings.highlightCurrentLine,
     tab.largeFileMode,
   ]);
 

@@ -218,6 +218,7 @@ describe('Editor (Monaco)', () => {
       expect.anything(),
       expect.objectContaining({
         lineDecorationsWidth: 10,
+        renderLineHighlight: 'line',
         find: {
           addExtraSpaceOnTop: false,
         },
@@ -369,6 +370,34 @@ describe('Editor (Monaco)', () => {
           minimap: {
             enabled: false,
           },
+        })
+      );
+    });
+    expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
+  it('does not recreate Monaco editor when toggling current line highlight', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        highlightCurrentLine: true,
+      },
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+      expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      useStore.getState().updateSettings({ highlightCurrentLine: false });
+    });
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderLineHighlight: 'none',
         })
       );
     });
