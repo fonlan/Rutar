@@ -55,6 +55,7 @@ vi.mock('monaco-editor', () => {
   const buildEditor = (side: 'source' | 'target') => {
     let model = createModel();
     let scrollTop = 0;
+    let position = { lineNumber: 1, column: 1 };
     let nextZoneId = 1;
     const existingZoneIds = new Set<string>();
     const editor = {
@@ -141,7 +142,14 @@ vi.mock('monaco-editor', () => {
         endColumn: 1,
         isEmpty: () => false,
       })),
-      getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
+      getPosition: vi.fn(() => ({ ...position })),
+      setPosition: vi.fn((nextPosition: { lineNumber: number; column: number }) => {
+        position = {
+          lineNumber: nextPosition.lineNumber,
+          column: nextPosition.column,
+        };
+      }),
+      revealLineInCenter: vi.fn(),
       executeEdits: vi.fn(),
       focus: vi.fn(),
       dispose: vi.fn(),
@@ -528,6 +536,88 @@ describe('DiffEditor (Monaco)', () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith('save_file', { id: targetTab.id });
     });
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('save_file', { id: sourceTab.id });
+  });
+  it('disables diff navigation buttons when compare result has no diff rows', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload({
+        alignedSourceLines: ['same'],
+        alignedTargetLines: ['same'],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        alignedDiffKinds: [null],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      }),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    const previousButton = await screen.findByRole('button', { name: 'Previous Diff Line' });
+    const nextButton = screen.getByRole('button', { name: 'Next Diff Line' });
+    expect(previousButton).toBeDisabled();
+    expect(nextButton).toBeDisabled();
+  });
+  it('navigates diff rows even when a row exists on only one side', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload({
+        alignedSourceLines: ['same', '', 'left-only', 'tail'],
+        alignedTargetLines: ['same', 'right-only', '', 'tail'],
+        alignedSourcePresent: [true, false, true, true],
+        alignedTargetPresent: [true, true, false, true],
+        alignedDiffKinds: [null, 'insert', 'delete', null],
+        diffLineNumbers: [2, 3],
+        sourceDiffLineNumbers: [2],
+        targetDiffLineNumbers: [2],
+        sourceLineCount: 3,
+        targetLineCount: 3,
+        alignedLineCount: 4,
+      }),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    const previousButton = await screen.findByRole('button', { name: 'Previous Diff Line' });
+    const nextButton = screen.getByRole('button', { name: 'Next Diff Line' });
+    expect(previousButton).toBeEnabled();
+    expect(nextButton).toBeEnabled();
+    expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+    expect(monacoDiffMockState.targetEditor).toBeTruthy();
+
+    act(() => {
+      monacoDiffMockState.targetEditor.setPosition({ lineNumber: 1, column: 1 });
+    });
+    fireEvent.click(nextButton);
+    expect(monacoDiffMockState.targetEditor.setPosition).toHaveBeenLastCalledWith({
+      lineNumber: 2,
+      column: 1,
+    });
+    expect(monacoDiffMockState.sourceEditor.revealLineInCenter).toHaveBeenLastCalledWith(2);
+
+    act(() => {
+      monacoDiffMockState.sourceEditor.setPosition({ lineNumber: 3, column: 1 });
+    });
+    fireEvent.click(previousButton);
+    expect(monacoDiffMockState.sourceEditor.setPosition).toHaveBeenLastCalledWith({
+      lineNumber: 2,
+      column: 1,
+    });
+    expect(monacoDiffMockState.targetEditor.revealLineInCenter).toHaveBeenLastCalledWith(3);
   });
   it('does not recreate pane editors when toggling minimap', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Save } from 'lucide-react';
+import { ArrowDown, ArrowUp, Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
@@ -76,6 +76,8 @@ const DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME =
   'w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 const DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME =
   `${DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME} disabled:cursor-not-allowed disabled:opacity-50`;
+const DIFF_HEADER_ICON_BUTTON_CLASS_NAME =
+  'rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent';
 
 const DIFF_KIND_META: Record<
   DiffLineKind,
@@ -214,6 +216,48 @@ function buildDiffOverviewSegments(
   }
 
   return segments;
+}
+function resolveAlignedRowIndexFromPaneLine(present: boolean[], lineNumber: number) {
+  const directIndex = findAlignedRowIndexByLineNumber(present, lineNumber);
+  if (directIndex >= 0) {
+    return directIndex;
+  }
+
+  let currentLine = 0;
+  let lastPresentIndex = -1;
+  for (let index = 0; index < present.length; index += 1) {
+    if (!present[index]) {
+      continue;
+    }
+    currentLine += 1;
+    lastPresentIndex = index;
+    if (currentLine >= lineNumber) {
+      return index;
+    }
+  }
+
+  if (lastPresentIndex >= 0) {
+    return lastPresentIndex;
+  }
+  return Math.max(0, present.length - 1);
+}
+function resolvePaneLineNumberFromAlignedRow(present: boolean[], rowIndex: number, lineCount: number) {
+  const safeLineCount = Math.max(1, lineCount);
+  const safeRowIndex = Math.max(0, Math.min(rowIndex, Math.max(0, present.length - 1)));
+  let lineNumber = 0;
+  for (let index = 0; index <= safeRowIndex; index += 1) {
+    if (!present[index]) {
+      if (index === safeRowIndex) {
+        return Math.min(safeLineCount, Math.max(1, lineNumber + 1));
+      }
+      continue;
+    }
+    lineNumber += 1;
+    if (index === safeRowIndex) {
+      return Math.min(safeLineCount, Math.max(1, lineNumber));
+    }
+  }
+  return Math.min(safeLineCount, Math.max(1, lineNumber || 1));
 }
 function buildDiffPlaceholderZoneSpecs(
   payload: DiffTabPayload,
@@ -494,6 +538,17 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [diffPresentation.alignedLineCount, diffPresentation.rowKinds]
   );
 
+  const diffRowIndexes = useMemo(
+    () =>
+      diffPresentation.rowKinds.reduce<number[]>((indexes, kind, index) => {
+        if (kind) {
+          indexes.push(index);
+        }
+        return indexes;
+      }, []),
+    [diffPresentation.rowKinds]
+  );
+  const hasDiffRows = diffRowIndexes.length > 0;
   const clearScheduledDiffRefresh = useCallback(() => {
     if (diffRefreshTimerRef.current !== null) {
       window.clearTimeout(diffRefreshTimerRef.current);
@@ -1009,6 +1064,111 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [sourceTab, targetTab, updateTab]
   );
 
+  const navigateToDiffRow = useCallback(
+    (side: ActivePanel, direction: 'previous' | 'next') => {
+      if (diffRowIndexes.length === 0) {
+        return;
+      }
+
+      const oppositeSide: ActivePanel = side === 'source' ? 'target' : 'source';
+      const sideEditor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      const oppositeEditor = oppositeSide === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      const effectiveSide: ActivePanel = sideEditor ? side : (oppositeEditor ? oppositeSide : side);
+      const effectiveEditor = effectiveSide === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      if (!effectiveEditor) {
+        return;
+      }
+
+      const effectivePresent =
+        effectiveSide === 'source'
+          ? tab.diffPayload.alignedSourcePresent
+          : tab.diffPayload.alignedTargetPresent;
+      const currentLineNumber = Math.max(1, effectiveEditor.getPosition()?.lineNumber ?? 1);
+      const currentRowIndex = resolveAlignedRowIndexFromPaneLine(effectivePresent, currentLineNumber);
+
+      let targetRowIndex = diffRowIndexes[0] ?? 0;
+      if (direction === 'previous') {
+        for (let index = diffRowIndexes.length - 1; index >= 0; index -= 1) {
+          const rowIndex = diffRowIndexes[index];
+          if (rowIndex < currentRowIndex) {
+            targetRowIndex = rowIndex;
+            break;
+          }
+        }
+        if (targetRowIndex >= currentRowIndex) {
+          targetRowIndex = diffRowIndexes[diffRowIndexes.length - 1] ?? targetRowIndex;
+        }
+      } else {
+        for (const rowIndex of diffRowIndexes) {
+          if (rowIndex > currentRowIndex) {
+            targetRowIndex = rowIndex;
+            break;
+          }
+        }
+        if (targetRowIndex <= currentRowIndex) {
+          targetRowIndex = diffRowIndexes[0] ?? targetRowIndex;
+        }
+      }
+
+      const sourceEditor = sourceEditorRef.current;
+      const targetEditor = targetEditorRef.current;
+      const sourceLineCount = Math.max(
+        1,
+        sourceEditor?.getModel()?.getLineCount() ?? 0,
+        tab.diffPayload.sourceLineCount
+      );
+      const targetLineCount = Math.max(
+        1,
+        targetEditor?.getModel()?.getLineCount() ?? 0,
+        tab.diffPayload.targetLineCount
+      );
+      const sourceLineNumber = resolvePaneLineNumberFromAlignedRow(
+        tab.diffPayload.alignedSourcePresent,
+        targetRowIndex,
+        sourceLineCount
+      );
+      const targetLineNumber = resolvePaneLineNumberFromAlignedRow(
+        tab.diffPayload.alignedTargetPresent,
+        targetRowIndex,
+        targetLineCount
+      );
+
+      sourceEditor?.revealLineInCenter(sourceLineNumber);
+      targetEditor?.revealLineInCenter(targetLineNumber);
+
+      const focusEditor = side === 'source' ? sourceEditor : targetEditor;
+      const focusLineNumber = side === 'source' ? sourceLineNumber : targetLineNumber;
+      const focusTab = side === 'source' ? sourceTab : targetTab;
+      if (focusEditor) {
+        focusEditor.setPosition({ lineNumber: focusLineNumber, column: 1 });
+        focusEditor.focus();
+        setActivePanel(side);
+        if (focusTab) {
+          setCursorPosition(focusTab.id, focusLineNumber, 1);
+        }
+        return;
+      }
+
+      if (effectiveSide === 'source' && sourceEditor) {
+        sourceEditor.setPosition({ lineNumber: sourceLineNumber, column: 1 });
+        sourceEditor.focus();
+        setActivePanel('source');
+        if (sourceTab) {
+          setCursorPosition(sourceTab.id, sourceLineNumber, 1);
+        }
+        return;
+      }
+      if (effectiveSide === 'target' && targetEditor) {
+        targetEditor.setPosition({ lineNumber: targetLineNumber, column: 1 });
+        targetEditor.focus();
+        setActivePanel('target');
+        if (targetTab) {
+          setCursorPosition(targetTab.id, targetLineNumber, 1);
+        }
+      }
+    },
+    [diffRowIndexes, setCursorPosition, sourceTab, tab.diffPayload, targetTab]
+  );
   const copySelectionToOtherPane = useCallback(
     async (fromSide: ActivePanel) => {
       const toSide: ActivePanel = fromSide === 'source' ? 'target' : 'source';
@@ -1680,7 +1840,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           {sourceTab?.isDirty ? <span className="text-amber-500">*</span> : null}
           <button
             type="button"
-            className="rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+            className={DIFF_HEADER_ICON_BUTTON_CLASS_NAME}
             aria-label={tr('diffEditor.save')}
             title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('source')}
@@ -1688,11 +1848,31 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           >
             <Save className="h-3.5 w-3.5" />
           </button>
+          <button
+            type="button"
+            className={DIFF_HEADER_ICON_BUTTON_CLASS_NAME}
+            aria-label={tr('diffEditor.previousDiffLine')}
+            title={tr('diffEditor.previousDiffLine')}
+            onClick={() => navigateToDiffRow('source', 'previous')}
+            disabled={!hasDiffRows}
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
         </div>
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+            className={DIFF_HEADER_ICON_BUTTON_CLASS_NAME}
+            aria-label={tr('diffEditor.nextDiffLine')}
+            title={tr('diffEditor.nextDiffLine')}
+            onClick={() => navigateToDiffRow('target', 'next')}
+            disabled={!hasDiffRows}
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className={DIFF_HEADER_ICON_BUTTON_CLASS_NAME}
             aria-label={tr('diffEditor.save')}
             title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('target')}
