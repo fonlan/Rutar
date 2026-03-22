@@ -843,6 +843,20 @@ export function Editor({
     });
 
     editorRef.current = editor;
+    const editorDomNode = containerRef.current;
+    const suppressFindWidgetHoverTooltip = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (!target.closest('.find-widget')) {
+        return;
+      }
+      // Monaco find-widget tooltip comes from delayed mouseover hover service.
+      // Stop propagation in capture phase to fully disable those tooltip popups.
+      event.stopPropagation();
+    };
+    editorDomNode?.addEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
 
     const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
       if (applyingRemoteTextRef.current) {
@@ -958,6 +972,7 @@ export function Editor({
       cursorDisposable.dispose();
       mouseDownDisposable.dispose();
       contextMenuDisposable.dispose();
+      editorDomNode?.removeEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
 
       const activeTabId = activeTabIdRef.current;
       if (activeTabId) {
