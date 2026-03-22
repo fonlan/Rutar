@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
@@ -47,6 +48,12 @@ interface DiffOverviewSegment {
   heightPercent: number;
 }
 
+interface DiffContextMenuState {
+  panel: ActivePanel;
+  x: number;
+  y: number;
+  hasSelection: boolean;
+}
 interface DerivedDiffPresentation {
   alignedLineCount: number;
   rowKinds: Array<DiffLineKind | null>;
@@ -56,8 +63,15 @@ interface DerivedDiffPresentation {
 
 const DIFF_SPLITTER_WIDTH_PX = 20;
 const DIFF_SHARED_SCROLLBAR_WIDTH_PX = 10;
+const DIFF_CONTEXT_MENU_WIDTH_PX = 176;
+const DIFF_CONTEXT_MENU_HEIGHT_PX = 148;
+const DIFF_CONTEXT_MENU_VIEWPORT_PADDING_PX = 8;
 const SCROLL_SYNC_EPSILON = 0.5;
 const DIFF_REFRESH_DEBOUNCE_MS = 180;
+const DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME =
+  'w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+const DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME =
+  `${DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME} disabled:cursor-not-allowed disabled:opacity-50`;
 
 const DIFF_KIND_META: Record<
   DiffLineKind,
@@ -392,7 +406,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
   const [ratio, setRatio] = useState(0.5);
   const [resizing, setResizing] = useState(false);
+  const [diffContextMenu, setDiffContextMenu] = useState<DiffContextMenuState | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const diffContextMenuRef = useRef<HTMLDivElement | null>(null);
   const sourceHostRef = useRef<HTMLDivElement | null>(null);
   const targetHostRef = useRef<HTMLDivElement | null>(null);
   const sourceEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -645,6 +661,97 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     }
   }, [refreshSharedScrollMetrics, setEditorScrollTopFromRatio]);
 
+  const getPaneEditor = useCallback(
+    (side: ActivePanel) => (side === 'source' ? sourceEditorRef.current : targetEditorRef.current),
+    []
+  );
+  const hasPaneSelection = useCallback(
+    (side: ActivePanel) => {
+      const selection = getPaneEditor(side)?.getSelection();
+      return !!selection && !selection.isEmpty();
+    },
+    [getPaneEditor]
+  );
+  const getPaneSelectedText = useCallback(
+    (side: ActivePanel) => {
+      const editor = getPaneEditor(side);
+      const model = editor?.getModel();
+      const selection = editor?.getSelection();
+      if (!editor || !model || !selection || selection.isEmpty()) {
+        return '';
+      }
+      return model.getValueInRange(selection);
+    },
+    [getPaneEditor]
+  );
+  const applyPaneSelectionEdit = useCallback(
+    (side: ActivePanel, source: string, text: string) => {
+      const editor = getPaneEditor(side);
+      const selection = editor?.getSelection();
+      if (!editor || !selection) {
+        return false;
+      }
+      editor.executeEdits(source, [
+        {
+          range: selection,
+          text,
+          forceMoveMarkers: true,
+        },
+      ]);
+      editor.focus();
+      return true;
+    },
+    [getPaneEditor]
+  );
+  const writePlainTextToClipboard = useCallback(async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    throw new Error('Clipboard write is not supported.');
+  }, []);
+  const readPlainTextFromClipboard = useCallback(async () => {
+    if (navigator.clipboard?.readText) {
+      return navigator.clipboard.readText();
+    }
+    throw new Error('Clipboard read is not supported.');
+  }, []);
+  const handlePaneMonacoContextMenu = useCallback(
+    (side: ActivePanel, event: monaco.editor.IEditorMouseEvent) => {
+      event.event.preventDefault();
+      event.event.stopPropagation();
+      const targetType = event.target.type;
+      if (
+        targetType === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS
+        || targetType === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+        || targetType === monaco.editor.MouseTargetType.SCROLLBAR
+        || targetType === monaco.editor.MouseTargetType.OVERVIEW_RULER
+        || targetType === monaco.editor.MouseTargetType.OUTSIDE_EDITOR
+      ) {
+        setDiffContextMenu(null);
+        return;
+      }
+      const browserEvent = event.event.browserEvent as MouseEvent | undefined;
+      const rawClientX = browserEvent?.clientX ?? 0;
+      const rawClientY = browserEvent?.clientY ?? 0;
+      const boundedX = Math.min(
+        rawClientX,
+        window.innerWidth - DIFF_CONTEXT_MENU_WIDTH_PX - DIFF_CONTEXT_MENU_VIEWPORT_PADDING_PX
+      );
+      const boundedY = Math.min(
+        rawClientY,
+        window.innerHeight - DIFF_CONTEXT_MENU_HEIGHT_PX - DIFF_CONTEXT_MENU_VIEWPORT_PADDING_PX
+      );
+      setActivePanel(side);
+      setDiffContextMenu({
+        panel: side,
+        x: Math.max(DIFF_CONTEXT_MENU_VIEWPORT_PADDING_PX, boundedX),
+        y: Math.max(DIFF_CONTEXT_MENU_VIEWPORT_PADDING_PX, boundedY),
+        hasSelection: hasPaneSelection(side),
+      });
+    },
+    [hasPaneSelection]
+  );
   const applyPaneDiffDecorations = useCallback(
     (side: ActivePanel) => {
       const editor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
@@ -699,6 +806,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         folding: !largeFileMode,
         scrollBeyondLastLine: false,
+        contextmenu: false,
         scrollbar: {
           vertical: 'hidden',
           verticalScrollbarSize: 0,
@@ -906,10 +1014,83 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [applyLiveDiffResult, setActivePanel, sourceTab, tab.diffPayload, targetTab, updateTab]
   );
+  const handleDiffContextMenuAction = useCallback(
+    async (action: 'copy' | 'cut' | 'paste' | 'copyToOther') => {
+      if (!diffContextMenu) {
+        return;
+      }
+      const panel = diffContextMenu.panel;
+      if (action === 'copyToOther') {
+        setDiffContextMenu(null);
+        await copySelectionToOtherPane(panel);
+        return;
+      }
+      if (action === 'paste') {
+        try {
+          const clipboardText = await readPlainTextFromClipboard();
+          applyPaneSelectionEdit(panel, 'rutar-diff-context-paste', clipboardText);
+        } catch (error) {
+          console.warn('Failed to read clipboard text for diff context-menu paste:', error);
+        }
+        setDiffContextMenu(null);
+        return;
+      }
+      const selectedText = getPaneSelectedText(panel);
+      if (!selectedText) {
+        setDiffContextMenu(null);
+        return;
+      }
+      try {
+        await writePlainTextToClipboard(selectedText);
+      } catch (error) {
+        console.warn('Failed to write selected text to clipboard from diff context menu:', error);
+      }
+      if (action === 'cut') {
+        applyPaneSelectionEdit(panel, 'rutar-diff-context-cut', '');
+      }
+      setDiffContextMenu(null);
+    },
+    [
+      applyPaneSelectionEdit,
+      copySelectionToOtherPane,
+      diffContextMenu,
+      getPaneSelectedText,
+      readPlainTextFromClipboard,
+      writePlainTextToClipboard,
+    ]
+  );
 
   useEffect(() => {
     setActiveDiffPanel(tab.id, activePanel);
   }, [activePanel, setActiveDiffPanel, tab.id]);
+  useEffect(() => {
+    if (!diffContextMenu) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      const targetNode = event.target as Node | null;
+      if (targetNode && diffContextMenuRef.current?.contains(targetNode)) {
+        return;
+      }
+      setDiffContextMenu(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setDiffContextMenu(null);
+      }
+    };
+    const handleWindowBlur = () => {
+      setDiffContextMenu(null);
+    };
+    window.addEventListener('mousedown', handlePointerDown, true);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [diffContextMenu]);
 
   useEffect(() => {
     monaco.editor.setTheme(settings.theme === 'dark' ? 'vs-dark' : 'vs');
@@ -981,6 +1162,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       automaticLayout: true,
       lineNumbersMinChars: 3,
       lineDecorationsWidth: 10,
+      contextmenu: false,
     });
     sourceEditorRef.current = editor;
     applyEditorOptions(editor, sourceTab);
@@ -1027,18 +1209,29 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const contentSizeDisposable = editor.onDidContentSizeChange(() => {
       refreshSharedScrollMetrics();
     });
+    const contextMenuDisposable = editor.onContextMenu((event: monaco.editor.IEditorMouseEvent) => {
+      handlePaneMonacoContextMenu('source', event);
+    });
     return () => {
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();
       scrollDisposable.dispose();
       contentSizeDisposable.dispose();
+      contextMenuDisposable.dispose();
       sourceDecorationIdsRef.current = editor.deltaDecorations(sourceDecorationIdsRef.current, []);
       editor.dispose();
       sourceEditorRef.current = null;
       sourceModelRef.current = null;
     };
-  }, [queueSyncEdits, refreshSharedScrollMetrics, setCursorPosition, syncPanelsFromEditorScroll, tab.diffPayload.sourceTabId]);
+  }, [
+    handlePaneMonacoContextMenu,
+    queueSyncEdits,
+    refreshSharedScrollMetrics,
+    setCursorPosition,
+    syncPanelsFromEditorScroll,
+    tab.diffPayload.sourceTabId,
+  ]);
 
   useEffect(() => {
     if (!targetHostRef.current || targetEditorRef.current) {
@@ -1049,6 +1242,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       automaticLayout: true,
       lineNumbersMinChars: 3,
       lineDecorationsWidth: 10,
+      contextmenu: false,
     });
     targetEditorRef.current = editor;
     applyEditorOptions(editor, targetTab);
@@ -1095,18 +1289,29 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     const contentSizeDisposable = editor.onDidContentSizeChange(() => {
       refreshSharedScrollMetrics();
     });
+    const contextMenuDisposable = editor.onContextMenu((event: monaco.editor.IEditorMouseEvent) => {
+      handlePaneMonacoContextMenu('target', event);
+    });
     return () => {
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();
       scrollDisposable.dispose();
       contentSizeDisposable.dispose();
+      contextMenuDisposable.dispose();
       targetDecorationIdsRef.current = editor.deltaDecorations(targetDecorationIdsRef.current, []);
       editor.dispose();
       targetEditorRef.current = null;
       targetModelRef.current = null;
     };
-  }, [queueSyncEdits, refreshSharedScrollMetrics, setCursorPosition, syncPanelsFromEditorScroll, tab.diffPayload.targetTabId]);
+  }, [
+    handlePaneMonacoContextMenu,
+    queueSyncEdits,
+    refreshSharedScrollMetrics,
+    setCursorPosition,
+    syncPanelsFromEditorScroll,
+    tab.diffPayload.targetTabId,
+  ]);
 
   useEffect(() => {
     const sourceEditor = sourceEditorRef.current;
@@ -1376,35 +1581,23 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           {sourceTab?.isDirty ? <span className="text-amber-500">*</span> : null}
           <button
             type="button"
-            className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
+            className="rounded border border-border/60 p-1.5 hover:bg-accent"
+            aria-label={tr('diffEditor.save')}
+            title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('source')}
           >
-            {tr('diffEditor.save')}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
-            onClick={() => void copySelectionToOtherPane('source')}
-          >
-            {tr('diffEditor.copyToRight')}
-          </button>
-          <button
-            type="button"
-            className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
-            onClick={() => void copySelectionToOtherPane('target')}
-          >
-            {tr('diffEditor.copyToLeft')}
+            <Save className="h-3.5 w-3.5" />
           </button>
         </div>
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
+            className="rounded border border-border/60 p-1.5 hover:bg-accent"
+            aria-label={tr('diffEditor.save')}
+            title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('target')}
           >
-            {tr('diffEditor.save')}
+            <Save className="h-3.5 w-3.5" />
           </button>
           {targetTab?.isDirty ? <span className="text-amber-500">*</span> : null}
           <span className="truncate">{targetTitle}</span>
@@ -1473,6 +1666,63 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           <div ref={targetHostRef} className="h-full w-full" />
         </div>
       </div>
+      {diffContextMenu && (
+        <div
+          ref={diffContextMenuRef}
+          role="menu"
+          data-testid="diff-editor-context-menu"
+          className="fixed z-[90] w-44 rounded-md border border-border bg-background/95 p-1 shadow-xl backdrop-blur-sm"
+          style={{ left: diffContextMenu.x, top: diffContextMenu.y }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME}
+            onClick={() => {
+              void handleDiffContextMenuAction('copy');
+            }}
+            disabled={!diffContextMenu.hasSelection}
+          >
+            {tr('diffEditor.copy')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME}
+            onClick={() => {
+              void handleDiffContextMenuAction('cut');
+            }}
+            disabled={!diffContextMenu.hasSelection}
+          >
+            {tr('diffEditor.cut')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME}
+            onClick={() => {
+              void handleDiffContextMenuAction('paste');
+            }}
+          >
+            {tr('diffEditor.paste')}
+          </button>
+          <div className="my-1 h-px bg-border" />
+          <button
+            type="button"
+            role="menuitem"
+            className={DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME}
+            onClick={() => {
+              void handleDiffContextMenuAction('copyToOther');
+            }}
+          >
+            {diffContextMenu.panel === 'source' ? tr('diffEditor.copyToRight') : tr('diffEditor.copyToLeft')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

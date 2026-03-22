@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
@@ -8,6 +8,8 @@ import type { LineDiffComparisonResult } from './diffEditor.types';
 const monacoDiffMockState = {
   sourceChangeListener: null as null | ((event: unknown) => void),
   targetChangeListener: null as null | ((event: unknown) => void),
+  sourceContextMenuListener: null as null | ((event: unknown) => void),
+  targetContextMenuListener: null as null | ((event: unknown) => void),
   sourceScrollListener: null as null | (() => void),
   targetScrollListener: null as null | (() => void),
   sourceContentSizeListener: null as null | (() => void),
@@ -34,6 +36,9 @@ vi.mock('monaco-editor', () => {
       },
       getLineCount() {
         return Math.max(1, this.value.split('\n').length);
+      },
+      getValueInRange() {
+        return this.value;
       },
       isDisposed() {
         return false;
@@ -73,6 +78,14 @@ vi.mock('monaco-editor', () => {
           monacoDiffMockState.sourceContentSizeListener = listener;
         } else {
           monacoDiffMockState.targetContentSizeListener = listener;
+        }
+        return { dispose: vi.fn() };
+      }),
+      onContextMenu: vi.fn((listener: (event: unknown) => void) => {
+        if (side === 'source') {
+          monacoDiffMockState.sourceContextMenuListener = listener;
+        } else {
+          monacoDiffMockState.targetContextMenuListener = listener;
         }
         return { dispose: vi.fn() };
       }),
@@ -121,6 +134,14 @@ vi.mock('monaco-editor', () => {
       parse: (value: string) => ({ toString: () => value }),
     },
     editor: {
+      MouseTargetType: {
+        CONTENT_TEXT: 6,
+        GUTTER_LINE_NUMBERS: 2,
+        GUTTER_GLYPH_MARGIN: 3,
+        SCROLLBAR: 11,
+        OVERVIEW_RULER: 10,
+        OUTSIDE_EDITOR: 13,
+      },
       create: vi.fn(() => {
         monacoDiffMockState.createCallCount += 1;
         if (monacoDiffMockState.createCallCount % 2 === 1) {
@@ -178,14 +199,43 @@ function createDiffPayload(overrides: Partial<DiffTabPayload> = {}): DiffTabPayl
   };
 }
 
+function openPaneContextMenu(side: 'source' | 'target') {
+  const listener = side === 'source'
+    ? monacoDiffMockState.sourceContextMenuListener
+    : monacoDiffMockState.targetContextMenuListener;
+  expect(listener).toBeTruthy();
+  act(() => {
+    listener?.({
+      target: {
+        type: 6,
+      },
+      event: {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        browserEvent: {
+          clientX: 120,
+          clientY: 96,
+        },
+      },
+    });
+  });
+}
 describe('DiffEditor (Monaco)', () => {
   const initialStoreState = useStore.getState();
 
   beforeEach(() => {
     vi.clearAllMocks();
     useStore.setState(initialStoreState, true);
+    useStore.setState({
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
     monacoDiffMockState.sourceChangeListener = null;
     monacoDiffMockState.targetChangeListener = null;
+    monacoDiffMockState.sourceContextMenuListener = null;
+    monacoDiffMockState.targetContextMenuListener = null;
     monacoDiffMockState.sourceScrollListener = null;
     monacoDiffMockState.targetScrollListener = null;
     monacoDiffMockState.sourceContentSizeListener = null;
@@ -480,6 +530,140 @@ describe('DiffEditor (Monaco)', () => {
     expect(monacoDiffMockState.createCallCount).toBe(2);
   });
 
+  it('shows diff context menu items as copy cut paste and copy-to-other-side', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+    });
+    openPaneContextMenu('source');
+    let menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+      'Copy',
+      'Cut',
+      'Paste',
+      'Copy to Right',
+    ]);
+    openPaneContextMenu('target');
+    menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+      'Copy',
+      'Cut',
+      'Paste',
+      'Copy to Left',
+    ]);
+  });
+  it('copies rows to the other pane from diff context menu action', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', lineCount: 1 });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', lineCount: 1 });
+    const initialDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1'],
+      alignedTargetLines: ['right-1'],
+      alignedSourcePresent: [true],
+      alignedTargetPresent: [true],
+      diffLineNumbers: [1],
+      sourceDiffLineNumbers: [1],
+      targetDiffLineNumbers: [1],
+      alignedDiffKinds: ['modify'],
+      sourceLineCount: 1,
+      targetLineCount: 1,
+      alignedLineCount: 1,
+    };
+    const copiedDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1'],
+      alignedTargetLines: ['left-1'],
+      alignedSourcePresent: [true],
+      alignedTargetPresent: [true],
+      diffLineNumbers: [],
+      sourceDiffLineNumbers: [],
+      targetDiffLineNumbers: [],
+      alignedDiffKinds: [null],
+      sourceLineCount: 1,
+      targetLineCount: 1,
+      alignedLineCount: 1,
+    };
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'get_document_text') {
+        const payload = (args ?? {}) as { id?: string };
+        return payload.id === sourceTab.id ? 'left-1' : 'right-1';
+      }
+      if (command === 'compare_documents_by_line') {
+        return initialDiff;
+      }
+      if (command === 'apply_aligned_diff_panel_copy') {
+        return {
+          changed: true,
+          lineDiff: copiedDiff,
+        };
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: copiedDiff,
+          sourceIsDirty: false,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 1;
+      }
+      if (command === 'undo') {
+        return { lineCount: 1, cursorLine: 1, cursorColumn: 1 };
+      }
+      return undefined;
+    });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(initialDiff),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+    });
+    monacoDiffMockState.sourceEditor.getSelection.mockReturnValue({
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 2,
+      isEmpty: () => false,
+    });
+    monacoDiffMockState.sourceEditor.getPosition.mockReturnValue({
+      lineNumber: 1,
+      column: 1,
+    });
+    openPaneContextMenu('source');
+    const menu = await screen.findByRole('menu');
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Copy to Right' }));
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'apply_aligned_diff_panel_copy',
+        expect.objectContaining({
+          fromSide: 'source',
+          toSide: 'target',
+          startRowIndex: 0,
+          endRowIndex: 0,
+        })
+      );
+    });
+  });
   it('copies selected source rows to the right pane at the same aligned rows', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', lineCount: 3 });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', lineCount: 2 });
@@ -509,10 +693,12 @@ describe('DiffEditor (Monaco)', () => {
       targetLineCount: 3,
       alignedLineCount: 3,
     };
+    let sourceText = 'left-1\nleft-2\nleft-3';
+    let targetText = 'right-1\nright-3';
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
       if (command === 'get_document_text') {
         const payload = (args ?? {}) as { id?: string };
-        return payload.id === sourceTab.id ? 'left-1\nleft-2\nleft-3' : 'right-1\nright-3';
+        return payload.id === sourceTab.id ? sourceText : targetText;
       }
       if (command === 'compare_documents_by_line') {
         return initialDiff;
@@ -524,6 +710,8 @@ describe('DiffEditor (Monaco)', () => {
         };
       }
       if (command === 'apply_aligned_diff_edit') {
+        sourceText = 'left-1\nleft-2\nleft-3';
+        targetText = 'right-1\nleft-2\nleft-3';
         return {
           lineDiff: copiedDiff,
           sourceIsDirty: false,
@@ -547,7 +735,7 @@ describe('DiffEditor (Monaco)', () => {
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
-    const { getByRole } = render(<DiffEditor tab={diffTab} />);
+    render(<DiffEditor tab={diffTab} />);
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
@@ -563,8 +751,10 @@ describe('DiffEditor (Monaco)', () => {
       lineNumber: 2,
       column: 1,
     });
+    openPaneContextMenu('source');
+    const sourceMenu = await screen.findByRole('menu');
     await act(async () => {
-      fireEvent.click(getByRole('button', { name: 'Copy to Right' }));
+      fireEvent.click(within(sourceMenu).getByRole('menuitem', { name: 'Copy to Right' }));
     });
     await waitFor(() => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith(
@@ -618,10 +808,12 @@ describe('DiffEditor (Monaco)', () => {
       targetLineCount: 3,
       alignedLineCount: 3,
     };
+    let sourceText = 'left-1\nleft-3';
+    let targetText = 'right-1\nright-2\nright-3';
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
       if (command === 'get_document_text') {
         const payload = (args ?? {}) as { id?: string };
-        return payload.id === sourceTab.id ? 'left-1\nleft-3' : 'right-1\nright-2\nright-3';
+        return payload.id === sourceTab.id ? sourceText : targetText;
       }
       if (command === 'compare_documents_by_line') {
         return initialDiff;
@@ -633,6 +825,8 @@ describe('DiffEditor (Monaco)', () => {
         };
       }
       if (command === 'apply_aligned_diff_edit') {
+        sourceText = 'left-1\nright-2\nleft-3';
+        targetText = 'right-1\nright-2\nright-3';
         return {
           lineDiff: copiedDiff,
           sourceIsDirty: true,
@@ -656,7 +850,7 @@ describe('DiffEditor (Monaco)', () => {
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
-    const { getByRole } = render(<DiffEditor tab={diffTab} />);
+    render(<DiffEditor tab={diffTab} />);
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
@@ -672,8 +866,10 @@ describe('DiffEditor (Monaco)', () => {
       lineNumber: 2,
       column: 1,
     });
+    openPaneContextMenu('target');
+    const targetMenu = await screen.findByRole('menu');
     await act(async () => {
-      fireEvent.click(getByRole('button', { name: 'Copy to Left' }));
+      fireEvent.click(within(targetMenu).getByRole('menuitem', { name: 'Copy to Left' }));
     });
     await waitFor(() => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith(
