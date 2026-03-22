@@ -34,6 +34,60 @@
   background-clip: padding-box;
 }
 
+.monaco-editor .rutar-diff-line-insert {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+
+.monaco-editor .rutar-diff-line-delete {
+  background-color: rgba(239, 68, 68, 0.14);
+}
+
+.monaco-editor .rutar-diff-line-modify {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.monaco-editor .rutar-diff-gutter-insert {
+  border-left: 3px solid rgba(16, 185, 129, 0.9);
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.monaco-editor .rutar-diff-gutter-delete {
+  border-left: 3px solid rgba(239, 68, 68, 0.9);
+  background-color: rgba(239, 68, 68, 0.18);
+}
+
+.monaco-editor .rutar-diff-gutter-modify {
+  border-left: 3px solid rgba(245, 158, 11, 0.9);
+  background-color: rgba(245, 158, 11, 0.18);
+}
+
+.dark .monaco-editor .rutar-diff-line-insert {
+  background-color: rgba(52, 211, 153, 0.16);
+}
+
+.dark .monaco-editor .rutar-diff-line-delete {
+  background-color: rgba(248, 113, 113, 0.16);
+}
+
+.dark .monaco-editor .rutar-diff-line-modify {
+  background-color: rgba(251, 191, 36, 0.16);
+}
+
+.dark .monaco-editor .rutar-diff-gutter-insert {
+  border-left-color: rgba(52, 211, 153, 0.95);
+  background-color: rgba(52, 211, 153, 0.22);
+}
+
+.dark .monaco-editor .rutar-diff-gutter-delete {
+  border-left-color: rgba(248, 113, 113, 0.95);
+  background-color: rgba(248, 113, 113, 0.22);
+}
+
+.dark .monaco-editor .rutar-diff-gutter-modify {
+  border-left-color: rgba(251, 191, 36, 0.95);
+  background-color: rgba(251, 191, 36, 0.22);
+}
+
 /* 文本内容允许选择，行号不允许 */
 .editor-line {
   user-select: text !important;
@@ -94,42 +148,8 @@
   --editor-selection-fill: rgba(59, 130, 246, 0.3);
 }
 
-/* Editable input layer: keep glyphs hidden while preserving native selection */
-.editor-input-layer {
-  display: block;
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
-  border-radius: 0;
-  text-decoration: none;
-  text-indent: 0;
-  vertical-align: top;
-  overflow-wrap: normal;
-  word-break: normal;
-  tab-size: 4;
-  field-sizing: fixed;
-  overflow-anchor: none;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent;
-  caret-color: hsl(var(--foreground));
-}
 
-.editor-composition-text {
-  color: hsl(var(--foreground));
-  -webkit-text-fill-color: currentColor;
-}
 
-.editor-composition-text-composing {
-  text-decoration-line: underline;
-  text-decoration-style: dashed;
-  text-decoration-color: currentColor;
-  text-underline-offset: 2px;
-}
 
 select,
 option {
@@ -147,23 +167,13 @@ option {
   color: hsl(var(--foreground));
 }
 
-.editor-input-layer::selection {
-  background: transparent !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-}
 
-.editor-input-layer::-moz-selection {
-  background: transparent !important;
-  color: transparent !important;
-}
 
 .editor-scroll-stable {
   scrollbar-gutter: stable;
 }
 
-.editor-scroll-stable::-webkit-scrollbar-track,
-.editor-input-layer::-webkit-scrollbar-track {
+.editor-scroll-stable::-webkit-scrollbar-track {
   background: transparent;
 }
 

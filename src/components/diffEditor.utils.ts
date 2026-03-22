@@ -1,6 +1,5 @@
 import type { DiffTabPayload } from '@/store/useStore';
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
-import { editorTestUtils } from './editorUtils';
 export interface ViewportMetrics {
   topPercent: number;
   heightPercent: number;
@@ -34,12 +33,17 @@ export const SPLITTER_WIDTH_PX = 16;
 export const DEFAULT_VIEWPORT: ViewportMetrics = { topPercent: 0, heightPercent: 100 };
 export const PAIR_HIGHLIGHT_CLASS =
   'rounded-[2px] bg-sky-300/45 ring-1 ring-sky-500/45 dark:bg-sky-400/35 dark:ring-sky-300/45';
-const {
-  normalizeLineText,
-  dispatchDocumentUpdated: dispatchDocumentUpdatedFromEditorUtils,
-} = editorTestUtils;
+function normalizeLineText(value: string) {
+  return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
 
-export const dispatchDocumentUpdated = dispatchDocumentUpdatedFromEditorUtils;
+export function dispatchDocumentUpdated(tabId: string) {
+  window.dispatchEvent(
+    new CustomEvent('rutar:document-updated', {
+      detail: { tabId },
+    })
+  );
+}
 
 export function getParentDirectoryPath(filePath: string): string | null {
   const normalizedPath = filePath.trim();

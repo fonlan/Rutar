@@ -104,16 +104,26 @@ function dispatchDocumentUpdated(tabId: string) {
 }
 
 function getActiveEditorElement() {
-    return document.querySelector('.editor-input-layer') as HTMLTextAreaElement | null;
+    return document.querySelector('.monaco-editor textarea.inputarea') as HTMLTextAreaElement | null;
 }
 
 function getDiffPanelEditorElement(panel: DiffPanelSide) {
-    return document.querySelector(`textarea[data-diff-panel="${panel}"]`) as HTMLTextAreaElement | null;
+    const panelContainer = document.querySelector(`[data-diff-panel="${panel}"]`) as HTMLElement | null;
+    if (!panelContainer) {
+        return null;
+    }
+
+    return panelContainer.querySelector('.monaco-editor textarea.inputarea') as HTMLTextAreaElement | null;
 }
 
 function hasSelectionInEditorElement(element: HTMLTextAreaElement | null) {
     if (!element) {
         return false;
+    }
+
+    if (element.closest('.monaco-editor')) {
+        // Monaco keeps selection state in the editor model, not in DOM range/textarea offsets.
+        return true;
     }
 
     if (typeof element.selectionStart === 'number' && typeof element.selectionEnd === 'number') {

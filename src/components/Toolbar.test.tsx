@@ -1824,7 +1824,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab());
 
     const editor = document.createElement("textarea");
-    editor.className = "editor-input-layer";
+    editor.className = "monaco-editor inputarea";
     editor.value = "hello";
     document.body.appendChild(editor);
     editor.focus();
@@ -1870,7 +1870,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab());
 
     const editor = document.createElement("div");
-    editor.className = "editor-input-layer";
+    editor.className = "monaco-editor";
     editor.textContent = "fallback selection";
     document.body.appendChild(editor);
 
@@ -1904,7 +1904,7 @@ describe("Toolbar", () => {
     useStore.getState().addTab(createTab());
 
     const editor = document.createElement("div");
-    editor.className = "editor-input-layer";
+    editor.className = "monaco-editor";
     editor.textContent = "collapsed";
     document.body.appendChild(editor);
 
@@ -1965,7 +1965,7 @@ describe("Toolbar", () => {
   it("keeps cut/copy disabled after selectionchange when active tab is in large-file mode", async () => {
     useStore.getState().addTab(createTab({ largeFileMode: true }));
     const editor = document.createElement("textarea");
-    editor.className = "editor-input-layer";
+    editor.className = "monaco-editor inputarea";
     editor.value = "hello";
     document.body.appendChild(editor);
     editor.focus();
@@ -2026,7 +2026,7 @@ describe("Toolbar", () => {
   it("focuses editor element before paste action when editor is not active", async () => {
     useStore.getState().addTab(createTab());
     const editor = document.createElement("textarea");
-    editor.className = "editor-input-layer";
+    editor.className = "monaco-editor inputarea";
     document.body.appendChild(editor);
     const anotherInput = document.createElement("input");
     document.body.appendChild(anotherInput);

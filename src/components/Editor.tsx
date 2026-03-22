@@ -24,8 +24,6 @@ import {
 import type { MonacoEngineState, MonacoTextEdit } from './monacoTypes';
 import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 
-export { editorTestUtils } from './editorUtils';
-
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];

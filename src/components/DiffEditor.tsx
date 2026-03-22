@@ -1416,6 +1416,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       <div ref={rootRef} className="flex h-[calc(100%-2.75rem)] w-full overflow-hidden">
         <div
+          data-diff-panel="source"
           className={`h-full border-r border-border/40 ${activePanel === 'source' ? 'ring-1 ring-inset ring-blue-500/30' : ''}`}
           style={{ width: leftWidth }}
         >
@@ -1465,6 +1466,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           />
         </div>
         <div
+          data-diff-panel="target"
           className={`h-full border-l border-border/40 ${activePanel === 'target' ? 'ring-1 ring-inset ring-blue-500/30' : ''}`}
           style={{ width: rightWidth }}
         >
