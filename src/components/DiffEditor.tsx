@@ -483,6 +483,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const targetTabId = targetTab?.id ?? null;
   const sourceTitle = sourceTab?.name || tab.diffPayload.sourceName;
   const targetTitle = targetTab?.name || tab.diffPayload.targetName;
+  const sourceSaveEnabled = Boolean(sourceTab?.isDirty);
+  const targetSaveEnabled = Boolean(targetTab?.isDirty);
   const diffPresentation = useMemo(
     () => deriveDiffPresentation(tab.diffPayload),
     [tab.diffPayload]
@@ -992,7 +994,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const handleSavePanel = useCallback(
     async (side: ActivePanel) => {
       const paneTab = side === 'source' ? sourceTab : targetTab;
-      if (!paneTab) {
+      if (!paneTab || !paneTab.isDirty) {
         return;
       }
 
@@ -1678,10 +1680,11 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           {sourceTab?.isDirty ? <span className="text-amber-500">*</span> : null}
           <button
             type="button"
-            className="rounded border border-border/60 p-1.5 hover:bg-accent"
+            className="rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
             aria-label={tr('diffEditor.save')}
             title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('source')}
+            disabled={!sourceSaveEnabled}
           >
             <Save className="h-3.5 w-3.5" />
           </button>
@@ -1689,10 +1692,11 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="rounded border border-border/60 p-1.5 hover:bg-accent"
+            className="rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
             aria-label={tr('diffEditor.save')}
             title={tr('diffEditor.save')}
             onClick={() => void handleSavePanel('target')}
+            disabled={!targetSaveEnabled}
           >
             <Save className="h-3.5 w-3.5" />
           </button>

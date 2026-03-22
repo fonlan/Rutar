@@ -470,6 +470,65 @@ describe('DiffEditor (Monaco)', () => {
     });
   });
 
+  it('enables each header save button only when the corresponding pane is dirty', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', isDirty: false });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', isDirty: true });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      const saveButtons = screen.getAllByRole('button', { name: 'Save' });
+      expect(saveButtons).toHaveLength(2);
+      expect(saveButtons[0]).toBeDisabled();
+      expect(saveButtons[1]).toBeEnabled();
+    });
+    act(() => {
+      useStore.getState().updateTab(sourceTab.id, { isDirty: true });
+    });
+    await waitFor(() => {
+      const saveButtons = screen.getAllByRole('button', { name: 'Save' });
+      expect(saveButtons[0]).toBeEnabled();
+      expect(saveButtons[1]).toBeEnabled();
+    });
+    act(() => {
+      useStore.getState().updateTab(targetTab.id, { isDirty: false });
+    });
+    await waitFor(() => {
+      const saveButtons = screen.getAllByRole('button', { name: 'Save' });
+      expect(saveButtons[0]).toBeEnabled();
+      expect(saveButtons[1]).toBeDisabled();
+    });
+  });
+  it('only saves the dirty pane when clicking diff header save buttons', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', isDirty: false });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', isDirty: true });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    const saveButtons = await screen.findAllByRole('button', { name: 'Save' });
+    expect(saveButtons[0]).toBeDisabled();
+    expect(saveButtons[1]).toBeEnabled();
+    fireEvent.click(saveButtons[0]);
+    fireEvent.click(saveButtons[1]);
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('save_file', { id: targetTab.id });
+    });
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('save_file', { id: sourceTab.id });
+  });
   it('does not recreate pane editors when toggling minimap', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
