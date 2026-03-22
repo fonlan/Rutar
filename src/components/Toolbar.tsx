@@ -958,6 +958,10 @@ export function Toolbar() {
             const key = event.key.toLowerCase();
             const code = event.code;
             const isKey = (letter: string) => key === letter || code === `Key${letter.toUpperCase()}`;
+            const preventDuplicateShortcutHandling = () => {
+                event.preventDefault();
+                event.stopPropagation();
+            };
 
             if (event.altKey && !event.ctrlKey && !event.metaKey && isKey('l')) {
                 event.preventDefault();
@@ -1011,13 +1015,13 @@ export function Toolbar() {
             }
 
             if (isKey('z') && !event.shiftKey) {
-                event.preventDefault();
+                preventDuplicateShortcutHandling();
                 void handleUndo();
                 return;
             }
 
             if (isKey('y') || (isKey('z') && event.shiftKey)) {
-                event.preventDefault();
+                preventDuplicateShortcutHandling();
                 void handleRedo();
                 return;
             }

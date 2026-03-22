@@ -505,6 +505,45 @@ describe("Toolbar", () => {
     });
   });
 
+  it("stops propagation for Ctrl+Z to avoid duplicate editor undo handlers", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-undo-propagation" }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_edit_history_state") {
+        return {
+          canUndo: true,
+          canRedo: true,
+          isDirty: true,
+        };
+      }
+      if (command === "undo") {
+        return {
+          lineCount: 20,
+        };
+      }
+      return undefined;
+    });
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-undo-propagation" });
+    });
+    const editorTarget = document.createElement("div");
+    document.body.appendChild(editorTarget);
+    const downstreamUndoListener = vi.fn();
+    editorTarget.addEventListener("keydown", downstreamUndoListener as EventListener);
+    const event = new KeyboardEvent("keydown", {
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editorTarget.dispatchEvent(event);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("undo", { id: "tab-undo-propagation" });
+    });
+    expect(downstreamUndoListener).not.toHaveBeenCalled();
+    editorTarget.remove();
+  });
   it("dispatches diff undo history action on Ctrl+Z when diff tab is active", async () => {
     useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
