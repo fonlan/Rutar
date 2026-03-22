@@ -120,7 +120,7 @@ describe("StatusBar", () => {
     });
   });
 
-  it("uses compact bordered dropdown control style aligned with settings", () => {
+  it("uses compact borderless dropdown control style in status bar", () => {
     const tab = createTab({ id: "tab-status-compact-select-style" });
     useStore.getState().addTab(tab);
     const { container } = render(<StatusBar />);
@@ -128,10 +128,10 @@ describe("StatusBar", () => {
     expect(selects.length).toBe(3);
     selects.forEach((select) => {
       expect(select.className).toContain("rounded-md");
-      expect(select.className).toContain("border");
-      expect(select.className).toContain("shadow-sm");
+      expect(select.className).toContain("border-none");
+      expect(select.className).not.toContain("border-input/80");
+      expect(select.className).not.toContain("shadow-sm");
       expect(select.className).toContain("focus-visible:ring-primary/30");
-      expect(select.className).not.toContain("border-none");
     });
   });
   it("shows newly added encoding options and supports selecting ANSI", async () => {

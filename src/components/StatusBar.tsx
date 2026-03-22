@@ -227,7 +227,7 @@ export function StatusBar() {
         ? tr('status.indentation.tabs')
         : `${tr('status.indentation.spaces')} ${effectiveIndentation.width}`;
     const statusSelectClassName =
-        'statusbar-select h-5 rounded-md border border-input/80 px-1.5 outline-none cursor-pointer appearance-none text-[10px] leading-none shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-primary/30';
+        'statusbar-select h-5 rounded-md border-none px-1.5 outline-none cursor-pointer appearance-none text-[10px] leading-none transition-colors focus-visible:ring-1 focus-visible:ring-primary/30';
     const statusOptionClassName = 'statusbar-option';
     const activeEncodingValue =
         encodingOptions.find((option) => option.value.toLowerCase() === activeTab.encoding.toLowerCase())?.value ??
