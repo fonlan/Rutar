@@ -14,6 +14,8 @@ const monacoDiffMockState = {
   targetScrollListener: null as null | (() => void),
   sourceContentSizeListener: null as null | (() => void),
   targetContentSizeListener: null as null | (() => void),
+  sourceViewZoneHistory: [] as Array<Array<{ afterLineNumber: number; heightInLines: number }>>,
+  targetViewZoneHistory: [] as Array<Array<{ afterLineNumber: number; heightInLines: number }>>,
   sourceEditor: null as any,
   targetEditor: null as any,
   createCallCount: 0,
@@ -53,6 +55,8 @@ vi.mock('monaco-editor', () => {
   const buildEditor = (side: 'source' | 'target') => {
     let model = createModel();
     let scrollTop = 0;
+    let nextZoneId = 1;
+    const existingZoneIds = new Set<string>();
     const editor = {
       updateOptions: vi.fn(),
       onDidChangeModelContent: vi.fn((listener: (event: unknown) => void) => {
@@ -96,6 +100,34 @@ vi.mock('monaco-editor', () => {
       deltaDecorations: vi.fn((_old: string[], decorations: unknown[]) =>
         decorations.map((__, index) => `${side}-decoration-${index}`)
       ),
+      changeViewZones: vi.fn((callback: (accessor: {
+        addZone: (zone: { afterLineNumber: number; heightInLines: number }) => string;
+        removeZone: (id: string) => void;
+      }) => void) => {
+        const added: Array<{ afterLineNumber: number; heightInLines: number }> = [];
+        callback({
+          addZone: (zone: { afterLineNumber: number; heightInLines: number }) => {
+            const zoneId = `${side}-zone-${nextZoneId}`;
+            nextZoneId += 1;
+            existingZoneIds.add(zoneId);
+            added.push({
+              afterLineNumber: zone.afterLineNumber,
+              heightInLines: zone.heightInLines,
+            });
+            return zoneId;
+          },
+          removeZone: (id: string) => {
+            existingZoneIds.delete(id);
+          },
+        });
+        if (added.length > 0) {
+          if (side === 'source') {
+            monacoDiffMockState.sourceViewZoneHistory.push(added);
+          } else {
+            monacoDiffMockState.targetViewZoneHistory.push(added);
+          }
+        }
+      }),
       getLayoutInfo: vi.fn(() => ({ height: 320 })),
       getScrollHeight: vi.fn(() => 1200),
       getScrollTop: vi.fn(() => scrollTop),
@@ -240,6 +272,8 @@ describe('DiffEditor (Monaco)', () => {
     monacoDiffMockState.targetScrollListener = null;
     monacoDiffMockState.sourceContentSizeListener = null;
     monacoDiffMockState.targetContentSizeListener = null;
+    monacoDiffMockState.sourceViewZoneHistory = [];
+    monacoDiffMockState.targetViewZoneHistory = [];
     monacoDiffMockState.sourceEditor = null;
     monacoDiffMockState.targetEditor = null;
     monacoDiffMockState.createCallCount = 0;
@@ -1004,9 +1038,74 @@ describe('DiffEditor (Monaco)', () => {
 
     expect(sourceDecorationHasKinds).toBe(true);
     expect(targetDecorationHasKind).toBe(true);
-    expect(container.querySelectorAll('[data-testid="diff-overview-marker"]').length).toBeGreaterThan(0);
+    const markerColors = Array.from(
+      container.querySelectorAll('[data-testid="diff-overview-marker"]')
+    ).map((marker) => (marker as HTMLDivElement).style.backgroundColor);
+    expect(markerColors).toEqual(
+      expect.arrayContaining(['rgba(239, 68, 68, 0.88)', 'rgba(245, 158, 11, 0.88)'])
+    );
   });
 
+  it('adds virtual placeholder rows for missing-side alignment', async () => {
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return 'same\nline-two\nline-three';
+      }
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['same', '', 'line-two', 'line-three'],
+          alignedTargetLines: ['same', 'inserted-line', '', 'line-three'],
+          alignedSourcePresent: [true, false, true, true],
+          alignedTargetPresent: [true, true, false, true],
+          diffLineNumbers: [2, 3],
+          sourceDiffLineNumbers: [2],
+          targetDiffLineNumbers: [2],
+          alignedDiffKinds: [null, 'insert', 'delete', null],
+          sourceLineCount: 3,
+          targetLineCount: 3,
+          alignedLineCount: 4,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 3;
+      }
+      return undefined;
+    });
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload({
+        alignedSourceLines: ['same', '', 'line-two', 'line-three'],
+        alignedTargetLines: ['same', 'inserted-line', '', 'line-three'],
+        alignedSourcePresent: [true, false, true, true],
+        alignedTargetPresent: [true, true, false, true],
+        diffLineNumbers: [2, 3],
+        sourceDiffLineNumbers: [2],
+        targetDiffLineNumbers: [2],
+        alignedDiffKinds: [null, 'insert', 'delete', null],
+        sourceLineCount: 3,
+        targetLineCount: 3,
+        alignedLineCount: 4,
+      }),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      const sourceHasPlaceholder = monacoDiffMockState.sourceViewZoneHistory.some((batch) =>
+        batch.some((zone) => zone.afterLineNumber === 1 && zone.heightInLines === 1)
+      );
+      const targetHasPlaceholder = monacoDiffMockState.targetViewZoneHistory.some((batch) =>
+        batch.some((zone) => zone.afterLineNumber === 2 && zone.heightInLines === 1)
+      );
+      expect(sourceHasPlaceholder).toBe(true);
+      expect(targetHasPlaceholder).toBe(true);
+    });
+  });
   it('uses one shared scrollbar in splitter and syncs both pane scroll positions', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });

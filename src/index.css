@@ -53,11 +53,11 @@
 }
 
 .monaco-editor .rutar-diff-line-delete {
-  background-color: rgba(239, 68, 68, 0.14);
+  background-color: rgba(245, 158, 11, 0.14);
 }
 
 .monaco-editor .rutar-diff-line-modify {
-  background-color: rgba(245, 158, 11, 0.14);
+  background-color: rgba(239, 68, 68, 0.14);
 }
 
 .monaco-editor .rutar-diff-gutter-insert {
@@ -66,15 +66,19 @@
 }
 
 .monaco-editor .rutar-diff-gutter-delete {
-  border-left: 3px solid rgba(239, 68, 68, 0.9);
-  background-color: rgba(239, 68, 68, 0.18);
-}
-
-.monaco-editor .rutar-diff-gutter-modify {
   border-left: 3px solid rgba(245, 158, 11, 0.9);
   background-color: rgba(245, 158, 11, 0.18);
 }
 
+.monaco-editor .rutar-diff-gutter-modify {
+  border-left: 3px solid rgba(239, 68, 68, 0.9);
+  background-color: rgba(239, 68, 68, 0.18);
+}
+
+.monaco-editor .rutar-diff-placeholder-zone {
+  pointer-events: none;
+  background-color: transparent;
+}
 .monaco-editor .rutar-bookmark-line-number-highlight {
   position: relative;
   box-sizing: border-box;
@@ -101,11 +105,11 @@
 }
 
 .dark .monaco-editor .rutar-diff-line-delete {
-  background-color: rgba(248, 113, 113, 0.16);
+  background-color: rgba(251, 191, 36, 0.16);
 }
 
 .dark .monaco-editor .rutar-diff-line-modify {
-  background-color: rgba(251, 191, 36, 0.16);
+  background-color: rgba(248, 113, 113, 0.16);
 }
 
 .dark .monaco-editor .rutar-diff-gutter-insert {
@@ -114,13 +118,13 @@
 }
 
 .dark .monaco-editor .rutar-diff-gutter-delete {
-  border-left-color: rgba(248, 113, 113, 0.95);
-  background-color: rgba(248, 113, 113, 0.22);
+  border-left-color: rgba(251, 191, 36, 0.95);
+  background-color: rgba(251, 191, 36, 0.22);
 }
 
 .dark .monaco-editor .rutar-diff-gutter-modify {
-  border-left-color: rgba(251, 191, 36, 0.95);
-  background-color: rgba(251, 191, 36, 0.22);
+  border-left-color: rgba(248, 113, 113, 0.95);
+  background-color: rgba(248, 113, 113, 0.22);
 }
 
 .dark .monaco-editor .rutar-bookmark-line-number-highlight {

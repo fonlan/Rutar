@@ -112,16 +112,16 @@ export function getDiffKindStyle(kind: DiffLineKind) {
       };
     case 'delete':
       return {
-        lineNumberClass: 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300',
-        rowBackgroundClass: 'bg-red-500/10 dark:bg-red-500/12',
-        markerClass: 'bg-red-500 dark:bg-red-400',
+        lineNumberClass: 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-300',
+        rowBackgroundClass: 'bg-amber-500/10 dark:bg-amber-500/12',
+        markerClass: 'bg-amber-500 dark:bg-amber-400',
       };
     case 'modify':
     default:
       return {
-        lineNumberClass: 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-300',
-        rowBackgroundClass: 'bg-amber-500/10 dark:bg-amber-500/12',
-        markerClass: 'bg-amber-500 dark:bg-amber-400',
+        lineNumberClass: 'bg-red-500/10 text-red-600 dark:bg-red-500/12 dark:text-red-300',
+        rowBackgroundClass: 'bg-red-500/10 dark:bg-red-500/12',
+        markerClass: 'bg-red-500 dark:bg-red-400',
       };
   }
 }
@@ -715,5 +715,4 @@ export const diffEditorTestUtils = {
   bindScrollerViewport,
   dispatchDocumentUpdated,
 };
-
 

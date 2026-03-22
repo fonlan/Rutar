@@ -60,6 +60,10 @@ interface DerivedDiffPresentation {
   sourceDecorations: PaneDiffDecoration[];
   targetDecorations: PaneDiffDecoration[];
 }
+interface DiffPlaceholderZoneSpec {
+  afterLineNumber: number;
+  heightInLines: number;
+}
 
 const DIFF_SPLITTER_WIDTH_PX = 20;
 const DIFF_SHARED_SCROLLBAR_WIDTH_PX = 10;
@@ -89,12 +93,12 @@ const DIFF_KIND_META: Record<
   delete: {
     lineClassName: 'rutar-diff-line-delete',
     gutterClassName: 'rutar-diff-gutter-delete',
-    markerColor: 'rgba(239, 68, 68, 0.88)',
+    markerColor: 'rgba(245, 158, 11, 0.88)',
   },
   modify: {
     lineClassName: 'rutar-diff-line-modify',
     gutterClassName: 'rutar-diff-gutter-modify',
-    markerColor: 'rgba(245, 158, 11, 0.88)',
+    markerColor: 'rgba(239, 68, 68, 0.88)',
   },
 };
 
@@ -210,6 +214,44 @@ function buildDiffOverviewSegments(
   }
 
   return segments;
+}
+function buildDiffPlaceholderZoneSpecs(
+  payload: DiffTabPayload,
+  side: ActivePanel
+): DiffPlaceholderZoneSpec[] {
+  const alignedLineCount = Math.max(
+    1,
+    payload.alignedLineCount || 0,
+    payload.alignedSourcePresent.length,
+    payload.alignedTargetPresent.length
+  );
+  const countsByAnchor = new Map<number, number>();
+  let sourceLineNumber = 0;
+  let targetLineNumber = 0;
+  for (let index = 0; index < alignedLineCount; index += 1) {
+    const sourcePresent = payload.alignedSourcePresent[index] !== false;
+    const targetPresent = payload.alignedTargetPresent[index] !== false;
+    if (!sourcePresent && targetPresent && side === 'source') {
+      const anchor = sourceLineNumber;
+      countsByAnchor.set(anchor, (countsByAnchor.get(anchor) ?? 0) + 1);
+    }
+    if (sourcePresent && !targetPresent && side === 'target') {
+      const anchor = targetLineNumber;
+      countsByAnchor.set(anchor, (countsByAnchor.get(anchor) ?? 0) + 1);
+    }
+    if (sourcePresent) {
+      sourceLineNumber += 1;
+    }
+    if (targetPresent) {
+      targetLineNumber += 1;
+    }
+  }
+  return Array.from(countsByAnchor.entries())
+    .sort(([leftAnchor], [rightAnchor]) => leftAnchor - rightAnchor)
+    .map(([afterLineNumber, heightInLines]) => ({
+      afterLineNumber,
+      heightInLines: Math.max(1, heightInLines),
+    }));
 }
 
 function buildDiffPayloadFromComparison(
@@ -422,6 +464,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const pendingFetchRequestRef = useRef({ source: 0, target: 0 });
   const sourceDecorationIdsRef = useRef<string[]>([]);
   const targetDecorationIdsRef = useRef<string[]>([]);
+  const sourceViewZoneIdsRef = useRef<string[]>([]);
+  const targetViewZoneIdsRef = useRef<string[]>([]);
   const sharedScrollRef = useRef<HTMLDivElement | null>(null);
   const sharedScrollContentRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncLockRef = useRef(false);
@@ -784,6 +828,42 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [diffPresentation.sourceDecorations, diffPresentation.targetDecorations]
   );
+  const applyPaneDiffPlaceholderZones = useCallback(
+    (side: ActivePanel) => {
+      const editor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      const viewZoneIdsRef = side === 'source' ? sourceViewZoneIdsRef : targetViewZoneIdsRef;
+      if (!editor) {
+        viewZoneIdsRef.current = [];
+        return;
+      }
+      const model = editor.getModel();
+      editor.changeViewZones((accessor) => {
+        viewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
+        viewZoneIdsRef.current = [];
+        if (!model) {
+          return;
+        }
+        const maxLineNumber = Math.max(1, model.getLineCount());
+        const zoneSpecs = buildDiffPlaceholderZoneSpecs(tab.diffPayload, side);
+        zoneSpecs.forEach((zoneSpec) => {
+          const zoneNode = document.createElement('div');
+          zoneNode.className = 'rutar-diff-placeholder-zone';
+          const safeAfterLineNumber = Math.max(
+            0,
+            Math.min(zoneSpec.afterLineNumber, maxLineNumber)
+          );
+          const zoneId = accessor.addZone({
+            afterLineNumber: safeAfterLineNumber,
+            heightInLines: zoneSpec.heightInLines,
+            domNode: zoneNode,
+            suppressMouseDown: true,
+          });
+          viewZoneIdsRef.current.push(zoneId);
+        });
+      });
+    },
+    [tab.diffPayload]
+  );
 
   const applyEditorOptions = useCallback(
     (editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
@@ -1115,7 +1195,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   useEffect(() => {
     applyPaneDiffDecorations('source');
     applyPaneDiffDecorations('target');
-  }, [applyPaneDiffDecorations]);
+    applyPaneDiffPlaceholderZones('source');
+    applyPaneDiffPlaceholderZones('target');
+  }, [applyPaneDiffDecorations, applyPaneDiffPlaceholderZones]);
   useEffect(() => {
     const sharedScrollElement = sharedScrollRef.current;
     if (!sharedScrollElement) {
@@ -1222,6 +1304,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
       sourceDecorationIdsRef.current = editor.deltaDecorations(sourceDecorationIdsRef.current, []);
+      editor.changeViewZones((accessor) => {
+        sourceViewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
+      });
+      sourceViewZoneIdsRef.current = [];
       editor.dispose();
       sourceEditorRef.current = null;
       sourceModelRef.current = null;
@@ -1302,6 +1388,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
       targetDecorationIdsRef.current = editor.deltaDecorations(targetDecorationIdsRef.current, []);
+      editor.changeViewZones((accessor) => {
+        targetViewZoneIdsRef.current.forEach((zoneId) => accessor.removeZone(zoneId));
+      });
+      targetViewZoneIdsRef.current = [];
       editor.dispose();
       targetEditorRef.current = null;
       targetModelRef.current = null;
@@ -1324,6 +1414,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     if (!sourceTab) {
       sourceEditor.setModel(null);
       sourceModelRef.current = null;
+      applyPaneDiffPlaceholderZones('source');
       return;
     }
 
@@ -1336,12 +1427,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     sourceModelRef.current = model;
     sourceEditor.setModel(model);
     applyPaneDiffDecorations('source');
+    applyPaneDiffPlaceholderZones('source');
     void ensurePaneLoaded('source', sourceTab).finally(() => {
       applyPaneDiffDecorations('source');
+      applyPaneDiffPlaceholderZones('source');
       refreshSharedScrollMetrics();
       syncPanelsFromEditorScroll(activePanel);
     });
-  }, [activePanel, applyPaneDiffDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, sourceLanguage, sourceTab, syncPanelsFromEditorScroll]);
+  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, ensurePaneLoaded, refreshSharedScrollMetrics, sourceLanguage, sourceTab, syncPanelsFromEditorScroll]);
 
   useEffect(() => {
     const targetEditor = targetEditorRef.current;
@@ -1352,6 +1445,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     if (!targetTab) {
       targetEditor.setModel(null);
       targetModelRef.current = null;
+      applyPaneDiffPlaceholderZones('target');
       return;
     }
 
@@ -1364,12 +1458,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     targetModelRef.current = model;
     targetEditor.setModel(model);
     applyPaneDiffDecorations('target');
+    applyPaneDiffPlaceholderZones('target');
     void ensurePaneLoaded('target', targetTab).finally(() => {
       applyPaneDiffDecorations('target');
+      applyPaneDiffPlaceholderZones('target');
       refreshSharedScrollMetrics();
       syncPanelsFromEditorScroll(activePanel);
     });
-  }, [activePanel, applyPaneDiffDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, syncPanelsFromEditorScroll, targetLanguage, targetTab]);
+  }, [activePanel, applyPaneDiffDecorations, applyPaneDiffPlaceholderZones, ensurePaneLoaded, refreshSharedScrollMetrics, syncPanelsFromEditorScroll, targetLanguage, targetTab]);
 
   useEffect(() => {
     const handleDiffHistoryAction = async (event: Event) => {
