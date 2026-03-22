@@ -411,7 +411,7 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           lineDecorationsWidth: 10,
-          renderLineHighlight: 'line',
+          renderLineHighlight: 'none',
           scrollbar: expect.objectContaining({
             vertical: 'hidden',
             verticalScrollbarSize: 0,
@@ -424,7 +424,7 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           lineDecorationsWidth: 10,
-          renderLineHighlight: 'line',
+          renderLineHighlight: 'none',
           scrollbar: expect.objectContaining({
             vertical: 'hidden',
             verticalScrollbarSize: 0,
@@ -565,7 +565,7 @@ describe('DiffEditor (Monaco)', () => {
 
     expect(monacoDiffMockState.createCallCount).toBe(2);
   });
-  it('does not recreate pane editors when toggling current line highlight', async () => {
+  it('keeps diff pane current line highlight disabled when toggling setting', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
     const diffTab = createFileTab({
@@ -586,11 +586,6 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.createCallCount).toBe(2);
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
-    });
-    act(() => {
-      useStore.getState().updateSettings({ highlightCurrentLine: false });
-    });
-    await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           renderLineHighlight: 'none',
@@ -599,6 +594,24 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           renderLineHighlight: 'none',
+        })
+      );
+    });
+    act(() => {
+      useStore.getState().updateSettings({ highlightCurrentLine: false });
+    });
+    act(() => {
+      useStore.getState().updateSettings({ highlightCurrentLine: true });
+    });
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.updateOptions).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderLineHighlight: 'line',
+        })
+      );
+      expect(monacoDiffMockState.targetEditor.updateOptions).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderLineHighlight: 'line',
         })
       );
     });

@@ -884,7 +884,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         occurrencesHighlight: largeFileMode ? 'off' : 'singleFile',
         selectionHighlight: !largeFileMode,
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
-        renderLineHighlight: settings.highlightCurrentLine ? 'line' : 'none',
+        renderLineHighlight: 'none',
         folding: !largeFileMode,
         scrollBeyondLastLine: false,
         contextmenu: false,
@@ -904,7 +904,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       settings.showLineNumbers,
       settings.wordWrap,
       settings.minimap,
-      settings.highlightCurrentLine,
       settings.tabWidth,
       settings.tabIndentMode,
     ]
