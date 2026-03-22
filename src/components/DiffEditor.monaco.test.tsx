@@ -1,12 +1,17 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import { DiffEditor } from './DiffEditor';
+import type { LineDiffComparisonResult } from './diffEditor.types';
 
 const monacoDiffMockState = {
   sourceChangeListener: null as null | ((event: unknown) => void),
   targetChangeListener: null as null | ((event: unknown) => void),
+  sourceScrollListener: null as null | (() => void),
+  targetScrollListener: null as null | (() => void),
+  sourceContentSizeListener: null as null | (() => void),
+  targetContentSizeListener: null as null | (() => void),
   sourceEditor: null as any,
   targetEditor: null as any,
   createCallCount: 0,
@@ -27,6 +32,9 @@ vi.mock('monaco-editor', () => {
       setValue(next: string) {
         this.value = next;
       },
+      getLineCount() {
+        return Math.max(1, this.value.split('\n').length);
+      },
       isDisposed() {
         return false;
       },
@@ -38,7 +46,8 @@ vi.mock('monaco-editor', () => {
   };
 
   const buildEditor = (side: 'source' | 'target') => {
-    const model = createModel();
+    let model = createModel();
+    let scrollTop = 0;
     const editor = {
       updateOptions: vi.fn(),
       onDidChangeModelContent: vi.fn((listener: (event: unknown) => void) => {
@@ -51,8 +60,35 @@ vi.mock('monaco-editor', () => {
       }),
       onDidFocusEditorWidget: vi.fn(() => ({ dispose: vi.fn() })),
       onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
-      setModel: vi.fn(),
+      onDidScrollChange: vi.fn((listener: () => void) => {
+        if (side === 'source') {
+          monacoDiffMockState.sourceScrollListener = listener;
+        } else {
+          monacoDiffMockState.targetScrollListener = listener;
+        }
+        return { dispose: vi.fn() };
+      }),
+      onDidContentSizeChange: vi.fn((listener: () => void) => {
+        if (side === 'source') {
+          monacoDiffMockState.sourceContentSizeListener = listener;
+        } else {
+          monacoDiffMockState.targetContentSizeListener = listener;
+        }
+        return { dispose: vi.fn() };
+      }),
+      setModel: vi.fn((nextModel: any) => {
+        model = nextModel;
+      }),
       getModel: vi.fn(() => model),
+      deltaDecorations: vi.fn((_old: string[], decorations: unknown[]) =>
+        decorations.map((__, index) => `${side}-decoration-${index}`)
+      ),
+      getLayoutInfo: vi.fn(() => ({ height: 320 })),
+      getScrollHeight: vi.fn(() => 1200),
+      getScrollTop: vi.fn(() => scrollTop),
+      setScrollTop: vi.fn((nextTop: number) => {
+        scrollTop = nextTop;
+      }),
       getSelection: vi.fn(() => ({
         startLineNumber: 1,
         startColumn: 1,
@@ -69,6 +105,18 @@ vi.mock('monaco-editor', () => {
   };
 
   return {
+    Range: class MockRange {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+      constructor(startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number) {
+        this.startLineNumber = startLineNumber;
+        this.startColumn = startColumn;
+        this.endLineNumber = endLineNumber;
+        this.endColumn = endColumn;
+      }
+    },
     Uri: {
       parse: (value: string) => ({ toString: () => value }),
     },
@@ -138,6 +186,10 @@ describe('DiffEditor (Monaco)', () => {
     useStore.setState(initialStoreState, true);
     monacoDiffMockState.sourceChangeListener = null;
     monacoDiffMockState.targetChangeListener = null;
+    monacoDiffMockState.sourceScrollListener = null;
+    monacoDiffMockState.targetScrollListener = null;
+    monacoDiffMockState.sourceContentSizeListener = null;
+    monacoDiffMockState.targetContentSizeListener = null;
     monacoDiffMockState.sourceEditor = null;
     monacoDiffMockState.targetEditor = null;
     monacoDiffMockState.createCallCount = 0;
@@ -145,6 +197,21 @@ describe('DiffEditor (Monaco)', () => {
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'get_document_text') {
         return 'line-1';
+      }
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['line-1'],
+          alignedTargetLines: ['line-1'],
+          alignedSourcePresent: [true],
+          alignedTargetPresent: [true],
+          diffLineNumbers: [],
+          sourceDiffLineNumbers: [],
+          targetDiffLineNumbers: [],
+          alignedDiffKinds: [null],
+          sourceLineCount: 1,
+          targetLineCount: 1,
+          alignedLineCount: 1,
+        };
       }
       if (command === 'apply_text_edits_by_line_column') {
         return 1;
@@ -178,6 +245,66 @@ describe('DiffEditor (Monaco)', () => {
     });
   });
 
+  it('refreshes diff metadata after source pane edits', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(<DiffEditor tab={diffTab} />);
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('compare_documents_by_line', {
+        sourceId: sourceTab.id,
+        targetId: targetTab.id,
+      });
+    });
+
+    const initialCompareCalls = vi.mocked(invoke).mock.calls.filter(
+      ([command]) => command === 'compare_documents_by_line'
+    ).length;
+
+    act(() => {
+      monacoDiffMockState.sourceChangeListener?.({
+        changes: [
+          {
+            range: {
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: 1,
+              endColumn: 1,
+            },
+            text: 'x',
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'apply_text_edits_by_line_column',
+        expect.objectContaining({
+          id: sourceTab.id,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const latestCompareCalls = vi.mocked(invoke).mock.calls.filter(
+        ([command]) => command === 'compare_documents_by_line'
+      ).length;
+      expect(latestCompareCalls).toBeGreaterThan(initialCompareCalls);
+    });
+  });
+
   it('keeps find widget overlay options without adding top spacer', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
@@ -186,17 +313,24 @@ describe('DiffEditor (Monaco)', () => {
       tabType: 'diff',
       diffPayload: createDiffPayload(),
     }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
     });
+
     render(<DiffEditor tab={diffTab} />);
+
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           lineDecorationsWidth: 10,
+          scrollbar: expect.objectContaining({
+            vertical: 'hidden',
+            verticalScrollbarSize: 0,
+          }),
           find: {
             addExtraSpaceOnTop: false,
           },
@@ -205,6 +339,10 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           lineDecorationsWidth: 10,
+          scrollbar: expect.objectContaining({
+            vertical: 'hidden',
+            verticalScrollbarSize: 0,
+          }),
           find: {
             addExtraSpaceOnTop: false,
           },
@@ -212,6 +350,7 @@ describe('DiffEditor (Monaco)', () => {
       );
     });
   });
+
   it('handles toolbar diff undo event', async () => {
     const sourceTab = createFileTab({ id: 'tab-source' });
     const targetTab = createFileTab({ id: 'tab-target' });
@@ -253,6 +392,7 @@ describe('DiffEditor (Monaco)', () => {
       tabType: 'diff',
       diffPayload: createDiffPayload(),
     }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
     useStore.setState({
       tabs: [sourceTab, targetTab, diffTab],
       activeTabId: diffTab.id,
@@ -261,15 +401,19 @@ describe('DiffEditor (Monaco)', () => {
         minimap: true,
       },
     });
+
     render(<DiffEditor tab={diffTab} />);
+
     await waitFor(() => {
       expect(monacoDiffMockState.createCallCount).toBe(2);
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
     });
+
     act(() => {
       useStore.getState().updateSettings({ minimap: false });
     });
+
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -286,8 +430,10 @@ describe('DiffEditor (Monaco)', () => {
         })
       );
     });
+
     expect(monacoDiffMockState.createCallCount).toBe(2);
   });
+
   it('does not recreate pane editors when toggling wordWrap', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
@@ -332,5 +478,336 @@ describe('DiffEditor (Monaco)', () => {
     });
 
     expect(monacoDiffMockState.createCallCount).toBe(2);
+  });
+
+  it('copies selected source rows to the right pane at the same aligned rows', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', lineCount: 3 });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', lineCount: 2 });
+    const initialDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1', 'left-2', 'left-3'],
+      alignedTargetLines: ['right-1', '', 'right-3'],
+      alignedSourcePresent: [true, true, true],
+      alignedTargetPresent: [true, false, true],
+      diffLineNumbers: [1, 2, 3],
+      sourceDiffLineNumbers: [1, 2, 3],
+      targetDiffLineNumbers: [1, 2],
+      alignedDiffKinds: ['modify', 'delete', 'modify'],
+      sourceLineCount: 3,
+      targetLineCount: 2,
+      alignedLineCount: 3,
+    };
+    const copiedDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1', 'left-2', 'left-3'],
+      alignedTargetLines: ['right-1', 'left-2', 'left-3'],
+      alignedSourcePresent: [true, true, true],
+      alignedTargetPresent: [true, true, true],
+      diffLineNumbers: [1],
+      sourceDiffLineNumbers: [1],
+      targetDiffLineNumbers: [1],
+      alignedDiffKinds: ['modify', null, null],
+      sourceLineCount: 3,
+      targetLineCount: 3,
+      alignedLineCount: 3,
+    };
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'get_document_text') {
+        const payload = (args ?? {}) as { id?: string };
+        return payload.id === sourceTab.id ? 'left-1\nleft-2\nleft-3' : 'right-1\nright-3';
+      }
+      if (command === 'compare_documents_by_line') {
+        return initialDiff;
+      }
+      if (command === 'apply_aligned_diff_panel_copy') {
+        return {
+          changed: true,
+          lineDiff: copiedDiff,
+        };
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: copiedDiff,
+          sourceIsDirty: false,
+          targetIsDirty: true,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 3;
+      }
+      if (command === 'undo') {
+        return { lineCount: 1, cursorLine: 1, cursorColumn: 1 };
+      }
+      return undefined;
+    });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(initialDiff),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    const { getByRole } = render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+    });
+    monacoDiffMockState.sourceEditor.getSelection.mockReturnValue({
+      startLineNumber: 2,
+      startColumn: 1,
+      endLineNumber: 3,
+      endColumn: 7,
+      isEmpty: () => false,
+    });
+    monacoDiffMockState.sourceEditor.getPosition.mockReturnValue({
+      lineNumber: 2,
+      column: 1,
+    });
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Copy to Right' }));
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'apply_aligned_diff_panel_copy',
+        expect.objectContaining({
+          fromSide: 'source',
+          toSide: 'target',
+          startRowIndex: 1,
+          endRowIndex: 2,
+        })
+      );
+    });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+      'apply_aligned_diff_edit',
+      expect.objectContaining({
+        editedSide: 'target',
+        alignedTargetLines: ['right-1', 'left-2', 'left-3'],
+        alignedTargetPresent: [true, true, true],
+      })
+    );
+    await waitFor(() => {
+      expect(monacoDiffMockState.targetEditor.getModel().getValue()).toBe('right-1\nleft-2\nleft-3');
+    });
+  });
+  it('copies the target caret line to the left pane when no selection exists', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts', lineCount: 2 });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts', lineCount: 3 });
+    const initialDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1', '', 'left-3'],
+      alignedTargetLines: ['right-1', 'right-2', 'right-3'],
+      alignedSourcePresent: [true, false, true],
+      alignedTargetPresent: [true, true, true],
+      diffLineNumbers: [1, 2, 3],
+      sourceDiffLineNumbers: [1, 2],
+      targetDiffLineNumbers: [1, 2, 3],
+      alignedDiffKinds: ['modify', 'insert', 'modify'],
+      sourceLineCount: 2,
+      targetLineCount: 3,
+      alignedLineCount: 3,
+    };
+    const copiedDiff: LineDiffComparisonResult = {
+      alignedSourceLines: ['left-1', 'right-2', 'left-3'],
+      alignedTargetLines: ['right-1', 'right-2', 'right-3'],
+      alignedSourcePresent: [true, true, true],
+      alignedTargetPresent: [true, true, true],
+      diffLineNumbers: [1, 3],
+      sourceDiffLineNumbers: [1, 2, 3],
+      targetDiffLineNumbers: [1, 2, 3],
+      alignedDiffKinds: ['modify', null, 'modify'],
+      sourceLineCount: 3,
+      targetLineCount: 3,
+      alignedLineCount: 3,
+    };
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'get_document_text') {
+        const payload = (args ?? {}) as { id?: string };
+        return payload.id === sourceTab.id ? 'left-1\nleft-3' : 'right-1\nright-2\nright-3';
+      }
+      if (command === 'compare_documents_by_line') {
+        return initialDiff;
+      }
+      if (command === 'apply_aligned_diff_panel_copy') {
+        return {
+          changed: true,
+          lineDiff: copiedDiff,
+        };
+      }
+      if (command === 'apply_aligned_diff_edit') {
+        return {
+          lineDiff: copiedDiff,
+          sourceIsDirty: true,
+          targetIsDirty: false,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 3;
+      }
+      if (command === 'undo') {
+        return { lineCount: 1, cursorLine: 1, cursorColumn: 1 };
+      }
+      return undefined;
+    });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(initialDiff),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+    const { getByRole } = render(<DiffEditor tab={diffTab} />);
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor).toBeTruthy();
+      expect(monacoDiffMockState.targetEditor).toBeTruthy();
+    });
+    monacoDiffMockState.targetEditor.getSelection.mockReturnValue({
+      startLineNumber: 2,
+      startColumn: 1,
+      endLineNumber: 2,
+      endColumn: 1,
+      isEmpty: () => true,
+    });
+    monacoDiffMockState.targetEditor.getPosition.mockReturnValue({
+      lineNumber: 2,
+      column: 1,
+    });
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Copy to Left' }));
+    });
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'apply_aligned_diff_panel_copy',
+        expect.objectContaining({
+          fromSide: 'target',
+          toSide: 'source',
+          startRowIndex: 1,
+          endRowIndex: 1,
+        })
+      );
+    });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+      'apply_aligned_diff_edit',
+      expect.objectContaining({
+        editedSide: 'source',
+        alignedSourceLines: ['left-1', 'right-2', 'left-3'],
+        alignedSourcePresent: [true, true, true],
+      })
+    );
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.getModel().getValue()).toBe('left-1\nright-2\nleft-3');
+    });
+  });
+  it('highlights diff lines and paints overview markers on splitter', async () => {
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return 'keep\nline-2\nline-3';
+      }
+      if (command === 'compare_documents_by_line') {
+        return {
+          alignedSourceLines: ['keep', 'left-change', 'left-only'],
+          alignedTargetLines: ['keep', 'right-change', ''],
+          alignedSourcePresent: [true, true, true],
+          alignedTargetPresent: [true, true, false],
+          diffLineNumbers: [2, 3],
+          sourceDiffLineNumbers: [2, 3],
+          targetDiffLineNumbers: [2],
+          alignedDiffKinds: [null, 'modify', 'delete'],
+          sourceLineCount: 3,
+          targetLineCount: 2,
+          alignedLineCount: 3,
+        };
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 3;
+      }
+      return undefined;
+    });
+
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload({
+        alignedSourceLines: ['keep', 'left-change', 'left-only'],
+        alignedTargetLines: ['keep', 'right-change', ''],
+        alignedSourcePresent: [true, true, true],
+        alignedTargetPresent: [true, true, false],
+        alignedDiffKinds: [null, 'modify', 'delete'],
+        alignedLineCount: 3,
+      }),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(<DiffEditor tab={diffTab} />);
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.deltaDecorations).toHaveBeenCalled();
+      expect(monacoDiffMockState.targetEditor.deltaDecorations).toHaveBeenCalled();
+    });
+
+    const sourceDecorationHasKinds = monacoDiffMockState.sourceEditor.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{ options?: { className?: string } }>;
+        return decorations.some((item) => item.options?.className === 'rutar-diff-line-modify')
+          && decorations.some((item) => item.options?.className === 'rutar-diff-line-delete');
+      }
+    );
+    const targetDecorationHasKind = monacoDiffMockState.targetEditor.deltaDecorations.mock.calls.some(
+      (call: [unknown, unknown]) => {
+        const decorations = call[1] as Array<{ options?: { className?: string } }>;
+        return decorations.some((item) => item.options?.className === 'rutar-diff-line-modify');
+      }
+    );
+
+    expect(sourceDecorationHasKinds).toBe(true);
+    expect(targetDecorationHasKind).toBe(true);
+    expect(container.querySelectorAll('[data-testid="diff-overview-marker"]').length).toBeGreaterThan(0);
+  });
+
+  it('uses one shared scrollbar in splitter and syncs both pane scroll positions', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    const { container } = render(<DiffEditor tab={diffTab} />);
+    const sharedScrollbar = container.querySelector('[data-testid="diff-shared-scrollbar"]') as HTMLDivElement | null;
+    const separator = container.querySelector('[role="separator"]') as HTMLElement | null;
+
+    await waitFor(() => {
+      expect(sharedScrollbar).toBeTruthy();
+      expect(separator).toBeTruthy();
+    });
+
+    expect(separator?.parentElement?.style.width).toBe('20px');
+    const sharedScrollbarElement = sharedScrollbar as HTMLDivElement;
+    Object.defineProperty(sharedScrollbarElement, 'clientHeight', {
+      configurable: true,
+      value: 320,
+    });
+    sharedScrollbarElement.scrollTop = 180;
+
+    act(() => {
+      sharedScrollbarElement.dispatchEvent(new Event('scroll'));
+    });
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.setScrollTop).toHaveBeenCalled();
+      expect(monacoDiffMockState.targetEditor.setScrollTop).toHaveBeenCalled();
+    });
   });
 });

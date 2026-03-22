@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import {
+  extractActualLines,
+  findAlignedRowIndexByLineNumber,
+  normalizeLineDiffResult,
+} from './diffEditor.utils';
+import type { DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import type { MonacoTextEdit } from './monacoTypes';
 
 export { diffEditorTestUtils } from './diffEditor.utils';
@@ -14,12 +20,210 @@ interface HistoryActionResult {
   cursorColumn?: number;
 }
 
+interface ApplyAlignedDiffPanelCopyResult {
+  lineDiff: LineDiffComparisonResult;
+  changed: boolean;
+}
+interface ApplyAlignedDiffEditResult {
+  lineDiff: LineDiffComparisonResult;
+  sourceIsDirty: boolean;
+  targetIsDirty: boolean;
+}
 interface DiffEditorProps {
   tab: FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 }
 
 type ActivePanel = 'source' | 'target';
 
+interface PaneDiffDecoration {
+  lineNumber: number;
+  kind: DiffLineKind;
+}
+
+interface DiffOverviewSegment {
+  key: string;
+  kind: DiffLineKind;
+  topPercent: number;
+  heightPercent: number;
+}
+
+interface DerivedDiffPresentation {
+  alignedLineCount: number;
+  rowKinds: Array<DiffLineKind | null>;
+  sourceDecorations: PaneDiffDecoration[];
+  targetDecorations: PaneDiffDecoration[];
+}
+
+const DIFF_SPLITTER_WIDTH_PX = 20;
+const DIFF_SHARED_SCROLLBAR_WIDTH_PX = 10;
+const SCROLL_SYNC_EPSILON = 0.5;
+const DIFF_REFRESH_DEBOUNCE_MS = 180;
+
+const DIFF_KIND_META: Record<
+  DiffLineKind,
+  {
+    lineClassName: string;
+    gutterClassName: string;
+    markerColor: string;
+  }
+> = {
+  insert: {
+    lineClassName: 'rutar-diff-line-insert',
+    gutterClassName: 'rutar-diff-gutter-insert',
+    markerColor: 'rgba(16, 185, 129, 0.88)',
+  },
+  delete: {
+    lineClassName: 'rutar-diff-line-delete',
+    gutterClassName: 'rutar-diff-gutter-delete',
+    markerColor: 'rgba(239, 68, 68, 0.88)',
+  },
+  modify: {
+    lineClassName: 'rutar-diff-line-modify',
+    gutterClassName: 'rutar-diff-gutter-modify',
+    markerColor: 'rgba(245, 158, 11, 0.88)',
+  },
+};
+
+function toDiffLineKind(value: unknown): DiffLineKind | null {
+  if (value === 'insert' || value === 'delete' || value === 'modify') {
+    return value;
+  }
+  return null;
+}
+
+function resolveDiffKindAtAlignedRow(payload: DiffTabPayload, index: number): DiffLineKind | null {
+  const explicitKind = toDiffLineKind(payload.alignedDiffKinds?.[index]);
+  if (explicitKind) {
+    return explicitKind;
+  }
+
+  const sourcePresent = payload.alignedSourcePresent[index] !== false;
+  const targetPresent = payload.alignedTargetPresent[index] !== false;
+
+  if (sourcePresent && !targetPresent) {
+    return 'delete';
+  }
+  if (!sourcePresent && targetPresent) {
+    return 'insert';
+  }
+
+  const sourceLine = payload.alignedSourceLines[index] ?? '';
+  const targetLine = payload.alignedTargetLines[index] ?? '';
+  if (sourceLine !== targetLine) {
+    return 'modify';
+  }
+  return null;
+}
+
+function deriveDiffPresentation(payload: DiffTabPayload): DerivedDiffPresentation {
+  const alignedLineCount = Math.max(
+    1,
+    payload.alignedLineCount || 0,
+    payload.alignedSourceLines.length,
+    payload.alignedTargetLines.length,
+    payload.alignedSourcePresent.length,
+    payload.alignedTargetPresent.length,
+    Array.isArray(payload.alignedDiffKinds) ? payload.alignedDiffKinds.length : 0
+  );
+
+  const rowKinds: Array<DiffLineKind | null> = [];
+  const sourceDecorations: PaneDiffDecoration[] = [];
+  const targetDecorations: PaneDiffDecoration[] = [];
+  let sourceLineNumber = 0;
+  let targetLineNumber = 0;
+
+  for (let index = 0; index < alignedLineCount; index += 1) {
+    const sourcePresent = payload.alignedSourcePresent[index] !== false;
+    const targetPresent = payload.alignedTargetPresent[index] !== false;
+
+    if (sourcePresent) {
+      sourceLineNumber += 1;
+    }
+    if (targetPresent) {
+      targetLineNumber += 1;
+    }
+
+    const kind = resolveDiffKindAtAlignedRow(payload, index);
+    rowKinds.push(kind);
+    if (!kind) {
+      continue;
+    }
+
+    if (sourcePresent && sourceLineNumber > 0) {
+      sourceDecorations.push({ lineNumber: sourceLineNumber, kind });
+    }
+    if (targetPresent && targetLineNumber > 0) {
+      targetDecorations.push({ lineNumber: targetLineNumber, kind });
+    }
+  }
+
+  return {
+    alignedLineCount,
+    rowKinds,
+    sourceDecorations,
+    targetDecorations,
+  };
+}
+
+function buildDiffOverviewSegments(
+  rowKinds: Array<DiffLineKind | null>,
+  alignedLineCount: number
+): DiffOverviewSegment[] {
+  const safeLineCount = Math.max(1, alignedLineCount);
+  const segments: DiffOverviewSegment[] = [];
+
+  let index = 0;
+  while (index < rowKinds.length) {
+    const kind = rowKinds[index];
+    if (!kind) {
+      index += 1;
+      continue;
+    }
+
+    let endIndex = index;
+    while (endIndex + 1 < rowKinds.length && rowKinds[endIndex + 1] === kind) {
+      endIndex += 1;
+    }
+
+    segments.push({
+      key: `${kind}-${index}-${endIndex}`,
+      kind,
+      topPercent: (index / safeLineCount) * 100,
+      heightPercent: ((endIndex - index + 1) / safeLineCount) * 100,
+    });
+
+    index = endIndex + 1;
+  }
+
+  return segments;
+}
+
+function buildDiffPayloadFromComparison(
+  result: LineDiffComparisonResult,
+  sourceMeta: { id: string; name: string; path: string },
+  targetMeta: { id: string; name: string; path: string }
+): DiffTabPayload {
+  const normalized = normalizeLineDiffResult(result);
+  return {
+    sourceTabId: sourceMeta.id,
+    targetTabId: targetMeta.id,
+    sourceName: sourceMeta.name,
+    targetName: targetMeta.name,
+    sourcePath: sourceMeta.path,
+    targetPath: targetMeta.path,
+    alignedSourceLines: normalized.alignedSourceLines,
+    alignedTargetLines: normalized.alignedTargetLines,
+    alignedSourcePresent: normalized.alignedSourcePresent,
+    alignedTargetPresent: normalized.alignedTargetPresent,
+    diffLineNumbers: normalized.diffLineNumbers,
+    sourceDiffLineNumbers: normalized.sourceDiffLineNumbers,
+    targetDiffLineNumbers: normalized.targetDiffLineNumbers,
+    alignedDiffKinds: normalized.alignedDiffKinds,
+    sourceLineCount: Math.max(1, normalized.sourceLineCount),
+    targetLineCount: Math.max(1, normalized.targetLineCount),
+    alignedLineCount: Math.max(1, normalized.alignedLineCount),
+  };
+}
 function dispatchDocumentUpdated(tabId: string) {
   window.dispatchEvent(
     new CustomEvent('rutar:document-updated', {
@@ -117,6 +321,54 @@ function clampRatio(ratio: number) {
   return Math.max(0.2, Math.min(0.8, ratio));
 }
 
+function getSelectedMonacoLineRange(
+  selection: monaco.Selection | null,
+  position: monaco.Position | null
+) {
+  const fallbackLineNumber = Math.max(1, position?.lineNumber ?? selection?.startLineNumber ?? 1);
+  if (!selection || selection.isEmpty()) {
+    return {
+      startLineNumber: fallbackLineNumber,
+      endLineNumber: fallbackLineNumber,
+    };
+  }
+  const startLineNumber = Math.max(1, selection.startLineNumber);
+  const rawEndLineNumber = Math.max(startLineNumber, selection.endLineNumber);
+  const inclusiveEndLineNumber =
+    selection.endColumn <= 1 && rawEndLineNumber > startLineNumber
+      ? rawEndLineNumber - 1
+      : rawEndLineNumber;
+  return {
+    startLineNumber,
+    endLineNumber: Math.max(startLineNumber, inclusiveEndLineNumber),
+  };
+}
+function resolveAlignedRowRangeForSelection(
+  side: ActivePanel,
+  selection: monaco.Selection | null,
+  position: monaco.Position | null,
+  payload: DiffTabPayload
+) {
+  const present = side === 'source' ? payload.alignedSourcePresent : payload.alignedTargetPresent;
+  const { startLineNumber, endLineNumber } = getSelectedMonacoLineRange(selection, position);
+  const startRowIndex = findAlignedRowIndexByLineNumber(present, startLineNumber);
+  const endRowIndex = findAlignedRowIndexByLineNumber(present, endLineNumber);
+  if (startRowIndex < 0 || endRowIndex < 0) {
+    return null;
+  }
+  return {
+    startRowIndex: Math.min(startRowIndex, endRowIndex),
+    endRowIndex: Math.max(startRowIndex, endRowIndex),
+  };
+}
+function serializeActualDiffLines(
+  alignedLines: string[],
+  present: boolean[],
+  trailingNewline: boolean
+) {
+  const text = extractActualLines(alignedLines, present).join('\n');
+  return trailingNewline ? `${text}\n` : text;
+}
 export function DiffEditor({ tab }: DiffEditorProps) {
   const tabs = useStore((state) => state.tabs);
   const settings = useStore((state) => state.settings);
@@ -152,11 +404,279 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const syncChainRef = useRef<Promise<void>>(Promise.resolve());
   const ignoreDocumentUpdatedRef = useRef<Record<string, number>>({});
   const pendingFetchRequestRef = useRef({ source: 0, target: 0 });
+  const sourceDecorationIdsRef = useRef<string[]>([]);
+  const targetDecorationIdsRef = useRef<string[]>([]);
+  const sharedScrollRef = useRef<HTMLDivElement | null>(null);
+  const sharedScrollContentRef = useRef<HTMLDivElement | null>(null);
+  const scrollSyncLockRef = useRef(false);
+  const sharedScrollMetricsRef = useRef({
+    sourceMaxTop: 0,
+    targetMaxTop: 0,
+    sharedMaxTop: 0,
+  });
+  const diffRefreshTimerRef = useRef<number | null>(null);
+  const diffRefreshSequenceRef = useRef(0);
 
   const sourceLanguage = resolveMonacoLanguage(sourceTab);
   const targetLanguage = resolveMonacoLanguage(targetTab);
+  const sourceTabId = sourceTab?.id ?? null;
+  const targetTabId = targetTab?.id ?? null;
   const sourceTitle = sourceTab?.name || tab.diffPayload.sourceName;
   const targetTitle = targetTab?.name || tab.diffPayload.targetName;
+  const diffPresentation = useMemo(
+    () => deriveDiffPresentation(tab.diffPayload),
+    [tab.diffPayload]
+  );
+  const diffOverviewSegments = useMemo(
+    () => buildDiffOverviewSegments(diffPresentation.rowKinds, diffPresentation.alignedLineCount),
+    [diffPresentation.alignedLineCount, diffPresentation.rowKinds]
+  );
+
+  const clearScheduledDiffRefresh = useCallback(() => {
+    if (diffRefreshTimerRef.current !== null) {
+      window.clearTimeout(diffRefreshTimerRef.current);
+      diffRefreshTimerRef.current = null;
+    }
+  }, []);
+  const applyLiveDiffResult = useCallback(
+    (result: LineDiffComparisonResult) => {
+      const sourceMeta = {
+        id: sourceTab?.id ?? tab.diffPayload.sourceTabId,
+        name: sourceTab?.name ?? tab.diffPayload.sourceName,
+        path: sourceTab?.path ?? tab.diffPayload.sourcePath,
+      };
+      const targetMeta = {
+        id: targetTab?.id ?? tab.diffPayload.targetTabId,
+        name: targetTab?.name ?? tab.diffPayload.targetName,
+        path: targetTab?.path ?? tab.diffPayload.targetPath,
+      };
+      const nextPayload = buildDiffPayloadFromComparison(result, sourceMeta, targetMeta);
+      updateTab(tab.id, {
+        lineCount: Math.max(1, nextPayload.alignedLineCount),
+        diffPayload: nextPayload,
+      });
+    },
+    [
+      sourceTab?.id,
+      sourceTab?.name,
+      sourceTab?.path,
+      tab.diffPayload.sourceName,
+      tab.diffPayload.sourcePath,
+      tab.diffPayload.sourceTabId,
+      tab.id,
+      targetTab?.id,
+      targetTab?.name,
+      targetTab?.path,
+      tab.diffPayload.targetName,
+      tab.diffPayload.targetPath,
+      tab.diffPayload.targetTabId,
+      updateTab,
+    ]
+  );
+  const runDiffRefresh = useCallback(async () => {
+    if (!sourceTabId || !targetTabId) {
+      return;
+    }
+    const sequence = diffRefreshSequenceRef.current + 1;
+    diffRefreshSequenceRef.current = sequence;
+    try {
+      const result = await invoke<LineDiffComparisonResult>('compare_documents_by_line', {
+        sourceId: sourceTabId,
+        targetId: targetTabId,
+      });
+      if (diffRefreshSequenceRef.current !== sequence) {
+        return;
+      }
+      applyLiveDiffResult(result);
+    } catch (error) {
+      if (diffRefreshSequenceRef.current === sequence) {
+        console.error('Failed to refresh live diff metadata:', error);
+      }
+    }
+  }, [applyLiveDiffResult, sourceTabId, targetTabId]);
+  const scheduleDiffRefresh = useCallback(
+    (immediate = false) => {
+      clearScheduledDiffRefresh();
+      if (immediate) {
+        void runDiffRefresh();
+        return;
+      }
+      diffRefreshTimerRef.current = window.setTimeout(() => {
+        diffRefreshTimerRef.current = null;
+        void runDiffRefresh();
+      }, DIFF_REFRESH_DEBOUNCE_MS);
+    },
+    [clearScheduledDiffRefresh, runDiffRefresh]
+  );
+  const getEditorMaxScrollTop = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
+    const layoutHeight = Math.max(0, editor.getLayoutInfo().height);
+    return Math.max(0, editor.getScrollHeight() - layoutHeight);
+  }, []);
+
+  const refreshSharedScrollMetrics = useCallback(() => {
+    const sourceEditor = sourceEditorRef.current;
+    const targetEditor = targetEditorRef.current;
+    const sharedScrollElement = sharedScrollRef.current;
+    const sharedScrollContentElement = sharedScrollContentRef.current;
+    if (!sourceEditor || !targetEditor || !sharedScrollElement || !sharedScrollContentElement) {
+      return null;
+    }
+
+    const sourceMaxTop = getEditorMaxScrollTop(sourceEditor);
+    const targetMaxTop = getEditorMaxScrollTop(targetEditor);
+    const sharedMaxTop = Math.max(sourceMaxTop, targetMaxTop, 1);
+    const viewportHeight = Math.max(1, sharedScrollElement.clientHeight);
+    const nextContentHeight = Math.max(viewportHeight + sharedMaxTop, viewportHeight + 1);
+    const currentContentHeight = Number.parseFloat(sharedScrollContentElement.style.height || '0');
+    if (
+      !Number.isFinite(currentContentHeight)
+      || Math.abs(currentContentHeight - nextContentHeight) > SCROLL_SYNC_EPSILON
+    ) {
+      sharedScrollContentElement.style.height = `${nextContentHeight}px`;
+    }
+
+    sharedScrollMetricsRef.current = {
+      sourceMaxTop,
+      targetMaxTop,
+      sharedMaxTop,
+    };
+
+    return sharedScrollMetricsRef.current;
+  }, [getEditorMaxScrollTop]);
+
+  const setEditorScrollTopFromRatio = useCallback(
+    (editor: monaco.editor.IStandaloneCodeEditor, ratio: number) => {
+      const maxTop = getEditorMaxScrollTop(editor);
+      const nextTop = maxTop <= 0 ? 0 : maxTop * ratio;
+      if (Math.abs(editor.getScrollTop() - nextTop) <= SCROLL_SYNC_EPSILON) {
+        return;
+      }
+      editor.setScrollTop(nextTop);
+    },
+    [getEditorMaxScrollTop]
+  );
+
+  const setSharedScrollbarFromRatio = useCallback(
+    (ratio: number) => {
+      const sharedScrollElement = sharedScrollRef.current;
+      if (!sharedScrollElement) {
+        return;
+      }
+
+      const metrics = refreshSharedScrollMetrics();
+      if (!metrics) {
+        return;
+      }
+
+      const nextTop = metrics.sharedMaxTop <= 0 ? 0 : metrics.sharedMaxTop * ratio;
+      if (Math.abs(sharedScrollElement.scrollTop - nextTop) <= SCROLL_SYNC_EPSILON) {
+        return;
+      }
+      sharedScrollElement.scrollTop = nextTop;
+    },
+    [refreshSharedScrollMetrics]
+  );
+
+  const syncPanelsFromEditorScroll = useCallback(
+    (side: ActivePanel) => {
+      if (scrollSyncLockRef.current) {
+        return;
+      }
+
+      const sourceEditor = sourceEditorRef.current;
+      const targetEditor = targetEditorRef.current;
+      if (!sourceEditor || !targetEditor) {
+        return;
+      }
+
+      const metrics = refreshSharedScrollMetrics();
+      if (!metrics) {
+        return;
+      }
+
+      const ratio =
+        side === 'source'
+          ? metrics.sourceMaxTop <= 0
+            ? 0
+            : sourceEditor.getScrollTop() / metrics.sourceMaxTop
+          : metrics.targetMaxTop <= 0
+            ? 0
+            : targetEditor.getScrollTop() / metrics.targetMaxTop;
+
+      scrollSyncLockRef.current = true;
+      try {
+        if (side === 'source') {
+          setEditorScrollTopFromRatio(targetEditor, ratio);
+        } else {
+          setEditorScrollTopFromRatio(sourceEditor, ratio);
+        }
+        setSharedScrollbarFromRatio(ratio);
+      } finally {
+        scrollSyncLockRef.current = false;
+      }
+    },
+    [refreshSharedScrollMetrics, setEditorScrollTopFromRatio, setSharedScrollbarFromRatio]
+  );
+
+  const syncPanelsFromSharedScrollbar = useCallback(() => {
+    if (scrollSyncLockRef.current) {
+      return;
+    }
+
+    const sharedScrollElement = sharedScrollRef.current;
+    const sourceEditor = sourceEditorRef.current;
+    const targetEditor = targetEditorRef.current;
+    if (!sharedScrollElement || !sourceEditor || !targetEditor) {
+      return;
+    }
+
+    const metrics = refreshSharedScrollMetrics();
+    if (!metrics) {
+      return;
+    }
+
+    const ratio = metrics.sharedMaxTop <= 0 ? 0 : sharedScrollElement.scrollTop / metrics.sharedMaxTop;
+    scrollSyncLockRef.current = true;
+    try {
+      setEditorScrollTopFromRatio(sourceEditor, ratio);
+      setEditorScrollTopFromRatio(targetEditor, ratio);
+    } finally {
+      scrollSyncLockRef.current = false;
+    }
+  }, [refreshSharedScrollMetrics, setEditorScrollTopFromRatio]);
+
+  const applyPaneDiffDecorations = useCallback(
+    (side: ActivePanel) => {
+      const editor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
+      const decorationIdsRef = side === 'source' ? sourceDecorationIdsRef : targetDecorationIdsRef;
+      if (!editor) {
+        return;
+      }
+
+      const model = editor.getModel();
+      if (!model) {
+        decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, []);
+        return;
+      }
+
+      const paneDecorations = side === 'source'
+        ? diffPresentation.sourceDecorations
+        : diffPresentation.targetDecorations;
+      const nextDecorations = paneDecorations
+        .filter((item) => item.lineNumber >= 1 && item.lineNumber <= model.getLineCount())
+        .map((item) => ({
+          range: new monaco.Range(item.lineNumber, 1, item.lineNumber, 1),
+          options: {
+            isWholeLine: true,
+            className: DIFF_KIND_META[item.kind].lineClassName,
+            linesDecorationsClassName: DIFF_KIND_META[item.kind].gutterClassName,
+          },
+        }));
+
+      decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, nextDecorations);
+    },
+    [diffPresentation.sourceDecorations, diffPresentation.targetDecorations]
+  );
 
   const applyEditorOptions = useCallback(
     (editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
@@ -179,6 +699,11 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         folding: !largeFileMode,
         scrollBeyondLastLine: false,
+        scrollbar: {
+          vertical: 'hidden',
+          verticalScrollbarSize: 0,
+          alwaysConsumeMouseWheel: false,
+        },
         find: {
           addExtraSpaceOnTop: false,
         },
@@ -225,6 +750,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           ignoreDocumentUpdatedRef.current[paneTab.id] =
             (ignoreDocumentUpdatedRef.current[paneTab.id] ?? 0) + 1;
           dispatchDocumentUpdated(paneTab.id);
+          scheduleDiffRefresh();
 
           if (afterCursor) {
             setCursorPosition(paneTab.id, afterCursor.line, afterCursor.column);
@@ -234,7 +760,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           console.error(`Failed to sync ${side} Monaco diff edits:`, error);
         });
     },
-    [setCursorPosition, updateTab]
+    [scheduleDiffRefresh, setCursorPosition, updateTab]
   );
 
   const ensurePaneLoaded = useCallback(
@@ -271,7 +797,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         applyingRef.current = false;
       }
     },
-    []
+    [applyLiveDiffResult, setActivePanel, sourceTab, tab.diffPayload, targetTab, updateTab]
   );
 
   const handleSavePanel = useCallback(
@@ -293,33 +819,92 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const copySelectionToOtherPane = useCallback(
-    (fromSide: ActivePanel) => {
+    async (fromSide: ActivePanel) => {
+      const toSide: ActivePanel = fromSide === 'source' ? 'target' : 'source';
       const fromEditor = fromSide === 'source' ? sourceEditorRef.current : targetEditorRef.current;
-      const toEditor = fromSide === 'source' ? targetEditorRef.current : sourceEditorRef.current;
-      if (!fromEditor || !toEditor) {
+      const toEditor = toSide === 'target' ? targetEditorRef.current : sourceEditorRef.current;
+      const destinationTab = toSide === 'source' ? sourceTab : targetTab;
+      if (!fromEditor || !toEditor || !destinationTab) {
         return;
       }
 
-      const fromModel = fromEditor.getModel();
-      const toSelection = toEditor.getSelection();
-      if (!fromModel || !toSelection) {
+      const toModel = toEditor.getModel();
+      if (!toModel) {
         return;
       }
 
       const selection = fromEditor.getSelection();
-      const selectedText = selection ? fromModel.getValueInRange(selection) : '';
-      const textToCopy = selectedText || fromModel.getLineContent(fromEditor.getPosition()?.lineNumber ?? 1);
+      const position = fromEditor.getPosition();
+      const rowRange = resolveAlignedRowRangeForSelection(fromSide, selection, position, tab.diffPayload);
 
-      toEditor.executeEdits('rutar-diff-copy-side', [
-        {
-          range: toSelection,
-          text: textToCopy,
-          forceMoveMarkers: true,
-        },
-      ]);
-      toEditor.focus();
+      if (!rowRange) {
+        return;
+      }
+      const trailingNewline = toModel.getValue().endsWith('\n');
+      try {
+        const copiedResult = await invoke<ApplyAlignedDiffPanelCopyResult>('apply_aligned_diff_panel_copy', {
+          fromSide,
+          toSide,
+          startRowIndex: rowRange.startRowIndex,
+          endRowIndex: rowRange.endRowIndex,
+          alignedSourceLines: tab.diffPayload.alignedSourceLines,
+          alignedTargetLines: tab.diffPayload.alignedTargetLines,
+          alignedSourcePresent: tab.diffPayload.alignedSourcePresent,
+          alignedTargetPresent: tab.diffPayload.alignedTargetPresent,
+        });
+        if (!copiedResult?.changed) {
+          return;
+        }
+        const copiedLineDiff = normalizeLineDiffResult(copiedResult.lineDiff);
+        const appliedResult = await invoke<ApplyAlignedDiffEditResult>('apply_aligned_diff_edit', {
+          sourceId: tab.diffPayload.sourceTabId,
+          targetId: tab.diffPayload.targetTabId,
+          editedSide: toSide,
+          alignedSourceLines: copiedLineDiff.alignedSourceLines,
+          alignedTargetLines: copiedLineDiff.alignedTargetLines,
+          alignedSourcePresent: copiedLineDiff.alignedSourcePresent,
+          alignedTargetPresent: copiedLineDiff.alignedTargetPresent,
+          editedTrailingNewline: trailingNewline,
+        });
+        const appliedLineDiff = normalizeLineDiffResult(appliedResult.lineDiff);
+        const nextText =
+          toSide === 'source'
+            ? serializeActualDiffLines(
+                appliedLineDiff.alignedSourceLines,
+                appliedLineDiff.alignedSourcePresent,
+                trailingNewline
+              )
+            : serializeActualDiffLines(
+                appliedLineDiff.alignedTargetLines,
+                appliedLineDiff.alignedTargetPresent,
+                trailingNewline
+              );
+        const applyingRef = toSide === 'source' ? sourceApplyingRef : targetApplyingRef;
+        applyingRef.current = true;
+        try {
+          toModel.setValue(nextText);
+        } finally {
+          applyingRef.current = false;
+        }
+        updateTab(tab.diffPayload.sourceTabId, {
+          lineCount: Math.max(1, appliedLineDiff.sourceLineCount),
+          isDirty: appliedResult.sourceIsDirty,
+        });
+        updateTab(tab.diffPayload.targetTabId, {
+          lineCount: Math.max(1, appliedLineDiff.targetLineCount),
+          isDirty: appliedResult.targetIsDirty,
+        });
+        applyLiveDiffResult(appliedLineDiff);
+        ignoreDocumentUpdatedRef.current[destinationTab.id] =
+          (ignoreDocumentUpdatedRef.current[destinationTab.id] ?? 0) + 1;
+        dispatchDocumentUpdated(destinationTab.id);
+        setActivePanel(toSide);
+        toEditor.focus();
+      } catch (error) {
+        console.error(`Failed to copy ${fromSide} diff rows to ${toSide}:`, error);
+      }
     },
-    []
+    [applyLiveDiffResult, setActivePanel, sourceTab, tab.diffPayload, targetTab, updateTab]
   );
 
   useEffect(() => {
@@ -335,6 +920,57 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       applyEditorOptions(targetEditorRef.current, targetTab);
     }
   }, [applyEditorOptions, settings.theme, sourceTab, targetTab]);
+  useEffect(() => {
+    diffRefreshSequenceRef.current = diffRefreshSequenceRef.current + 1;
+    clearScheduledDiffRefresh();
+    scheduleDiffRefresh(true);
+    return () => {
+      diffRefreshSequenceRef.current = diffRefreshSequenceRef.current + 1;
+      clearScheduledDiffRefresh();
+    };
+  }, [clearScheduledDiffRefresh, scheduleDiffRefresh, sourceTabId, tab.id, targetTabId]);
+  useEffect(() => {
+    applyPaneDiffDecorations('source');
+    applyPaneDiffDecorations('target');
+  }, [applyPaneDiffDecorations]);
+  useEffect(() => {
+    const sharedScrollElement = sharedScrollRef.current;
+    if (!sharedScrollElement) {
+      return;
+    }
+    const handleSharedScroll = () => {
+      syncPanelsFromSharedScrollbar();
+    };
+    sharedScrollElement.addEventListener('scroll', handleSharedScroll, { passive: true });
+    return () => {
+      sharedScrollElement.removeEventListener('scroll', handleSharedScroll);
+    };
+  }, [syncPanelsFromSharedScrollbar]);
+  useEffect(() => {
+    const syncSharedMetrics = () => {
+      refreshSharedScrollMetrics();
+      syncPanelsFromEditorScroll(activePanel);
+    };
+    const rafId = window.requestAnimationFrame(syncSharedMetrics);
+    const handleWindowResize = () => {
+      syncSharedMetrics();
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, [
+    activePanel,
+    diffPresentation.alignedLineCount,
+    refreshSharedScrollMetrics,
+    ratio,
+    settings.fontSize,
+    settings.wordWrap,
+    sourceTab?.lineCount,
+    syncPanelsFromEditorScroll,
+    targetTab?.lineCount,
+  ]);
 
   useEffect(() => {
     if (!sourceHostRef.current || sourceEditorRef.current) {
@@ -348,6 +984,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     sourceEditorRef.current = editor;
     applyEditorOptions(editor, sourceTab);
+    window.requestAnimationFrame(() => {
+      refreshSharedScrollMetrics();
+    });
 
     const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
       if (sourceApplyingRef.current) {
@@ -382,15 +1021,24 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       setCursorPosition(sourceTab.id, event.position.lineNumber, event.position.column);
     });
 
+    const scrollDisposable = editor.onDidScrollChange(() => {
+      syncPanelsFromEditorScroll('source');
+    });
+    const contentSizeDisposable = editor.onDidContentSizeChange(() => {
+      refreshSharedScrollMetrics();
+    });
     return () => {
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();
+      scrollDisposable.dispose();
+      contentSizeDisposable.dispose();
+      sourceDecorationIdsRef.current = editor.deltaDecorations(sourceDecorationIdsRef.current, []);
       editor.dispose();
       sourceEditorRef.current = null;
       sourceModelRef.current = null;
     };
-  }, [queueSyncEdits, setCursorPosition, tab.diffPayload.sourceTabId]);
+  }, [queueSyncEdits, refreshSharedScrollMetrics, setCursorPosition, syncPanelsFromEditorScroll, tab.diffPayload.sourceTabId]);
 
   useEffect(() => {
     if (!targetHostRef.current || targetEditorRef.current) {
@@ -404,6 +1052,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     targetEditorRef.current = editor;
     applyEditorOptions(editor, targetTab);
+    window.requestAnimationFrame(() => {
+      refreshSharedScrollMetrics();
+    });
 
     const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
       if (targetApplyingRef.current) {
@@ -438,15 +1089,24 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       setCursorPosition(targetTab.id, event.position.lineNumber, event.position.column);
     });
 
+    const scrollDisposable = editor.onDidScrollChange(() => {
+      syncPanelsFromEditorScroll('target');
+    });
+    const contentSizeDisposable = editor.onDidContentSizeChange(() => {
+      refreshSharedScrollMetrics();
+    });
     return () => {
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();
+      scrollDisposable.dispose();
+      contentSizeDisposable.dispose();
+      targetDecorationIdsRef.current = editor.deltaDecorations(targetDecorationIdsRef.current, []);
       editor.dispose();
       targetEditorRef.current = null;
       targetModelRef.current = null;
     };
-  }, [queueSyncEdits, setCursorPosition, tab.diffPayload.targetTabId]);
+  }, [queueSyncEdits, refreshSharedScrollMetrics, setCursorPosition, syncPanelsFromEditorScroll, tab.diffPayload.targetTabId]);
 
   useEffect(() => {
     const sourceEditor = sourceEditorRef.current;
@@ -468,8 +1128,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     }
     sourceModelRef.current = model;
     sourceEditor.setModel(model);
-    void ensurePaneLoaded('source', sourceTab);
-  }, [ensurePaneLoaded, sourceLanguage, sourceTab]);
+    applyPaneDiffDecorations('source');
+    void ensurePaneLoaded('source', sourceTab).finally(() => {
+      applyPaneDiffDecorations('source');
+      refreshSharedScrollMetrics();
+      syncPanelsFromEditorScroll(activePanel);
+    });
+  }, [activePanel, applyPaneDiffDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, sourceLanguage, sourceTab, syncPanelsFromEditorScroll]);
 
   useEffect(() => {
     const targetEditor = targetEditorRef.current;
@@ -491,8 +1156,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     }
     targetModelRef.current = model;
     targetEditor.setModel(model);
-    void ensurePaneLoaded('target', targetTab);
-  }, [ensurePaneLoaded, targetLanguage, targetTab]);
+    applyPaneDiffDecorations('target');
+    void ensurePaneLoaded('target', targetTab).finally(() => {
+      applyPaneDiffDecorations('target');
+      refreshSharedScrollMetrics();
+      syncPanelsFromEditorScroll(activePanel);
+    });
+  }, [activePanel, applyPaneDiffDecorations, ensurePaneLoaded, refreshSharedScrollMetrics, syncPanelsFromEditorScroll, targetLanguage, targetTab]);
 
   useEffect(() => {
     const handleDiffHistoryAction = async (event: Event) => {
@@ -524,6 +1194,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           setCursorPosition(paneTab.id, result.cursorLine, result.cursorColumn);
         }
         dispatchDocumentUpdated(paneTab.id);
+        scheduleDiffRefresh();
       } catch (error) {
         console.error(`Diff ${action} failed:`, error);
       }
@@ -608,13 +1279,27 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         ignoreDocumentUpdatedRef.current[updatedTabId] -= 1;
         return;
       }
+      let shouldRefreshDiff = false;
 
       if (updatedTabId === sourceTab?.id) {
-        void ensurePaneLoaded('source', sourceTab);
+        shouldRefreshDiff = true;
+        void ensurePaneLoaded('source', sourceTab).finally(() => {
+          applyPaneDiffDecorations('source');
+          refreshSharedScrollMetrics();
+          syncPanelsFromEditorScroll(activePanel);
+        });
       }
 
       if (updatedTabId === targetTab?.id) {
-        void ensurePaneLoaded('target', targetTab);
+        shouldRefreshDiff = true;
+        void ensurePaneLoaded('target', targetTab).finally(() => {
+          applyPaneDiffDecorations('target');
+          refreshSharedScrollMetrics();
+          syncPanelsFromEditorScroll(activePanel);
+        });
+      }
+      if (shouldRefreshDiff) {
+        scheduleDiffRefresh(true);
       }
     };
 
@@ -629,7 +1314,19 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       window.removeEventListener('rutar:diff-clipboard-action', handleDiffClipboardAction as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
-  }, [ensurePaneLoaded, setCursorPosition, sourceTab, tab.id, targetTab, updateTab]);
+  }, [
+    activePanel,
+    applyPaneDiffDecorations,
+    ensurePaneLoaded,
+    refreshSharedScrollMetrics,
+    setCursorPosition,
+    scheduleDiffRefresh,
+    sourceTab,
+    syncPanelsFromEditorScroll,
+    tab.id,
+    targetTab,
+    updateTab,
+  ]);
 
   useEffect(() => {
     const rootElement = rootRef.current;
@@ -665,8 +1362,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     };
   }, [resizing]);
 
-  const leftWidth = `${ratio * 100}%`;
-  const rightWidth = `${(1 - ratio) * 100}%`;
+  const leftWidth = `calc(${ratio * 100}% - ${DIFF_SPLITTER_WIDTH_PX / 2}px)`;
+  const rightWidth = `calc(${(1 - ratio) * 100}% - ${DIFF_SPLITTER_WIDTH_PX / 2}px)`;
 
   return (
     <div className="h-full w-full overflow-hidden bg-background">
@@ -689,14 +1386,14 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           <button
             type="button"
             className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
-            onClick={() => copySelectionToOtherPane('source')}
+            onClick={() => void copySelectionToOtherPane('source')}
           >
             {tr('diffEditor.copyToRight')}
           </button>
           <button
             type="button"
             className="rounded border border-border/60 px-2 py-1 hover:bg-accent"
-            onClick={() => copySelectionToOtherPane('target')}
+            onClick={() => void copySelectionToOtherPane('target')}
           >
             {tr('diffEditor.copyToLeft')}
           </button>
@@ -725,14 +1422,48 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           <div ref={sourceHostRef} className="h-full w-full" />
         </div>
         <div
-          className="h-full w-1 cursor-col-resize bg-border/60 hover:bg-blue-400/50"
-          role="separator"
-          aria-label={tr('diffEditor.resizePanelsAriaLabel')}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            setResizing(true);
-          }}
-        />
+          className="relative h-full flex-none overflow-hidden border-x border-border/70 bg-muted/35"
+          style={{ width: DIFF_SPLITTER_WIDTH_PX }}
+        >
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            {diffOverviewSegments.map((segment) => (
+              <div
+                key={segment.key}
+                data-testid="diff-overview-marker"
+                className="absolute left-0 right-0"
+                style={{
+                  top: `${segment.topPercent}%`,
+                  height: `${segment.heightPercent}%`,
+                  minHeight: 2,
+                  backgroundColor: DIFF_KIND_META[segment.kind].markerColor,
+                }}
+              />
+            ))}
+          </div>
+          <div
+            ref={sharedScrollRef}
+            data-testid="diff-shared-scrollbar"
+            className="absolute inset-y-0 left-1/2 z-30 -translate-x-1/2 overflow-y-auto overflow-x-hidden rounded-full"
+            style={{ width: DIFF_SHARED_SCROLLBAR_WIDTH_PX }}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div ref={sharedScrollContentRef} style={{ width: 1, height: 1 }} />
+          </div>
+          <div
+            className="absolute inset-0 z-20 cursor-col-resize"
+            role="separator"
+            aria-label={tr('diffEditor.resizePanelsAriaLabel')}
+            onPointerDown={(event) => {
+              if (sharedScrollRef.current?.contains(event.target as Node)) {
+                return;
+              }
+              event.preventDefault();
+              setResizing(true);
+            }}
+          />
+        </div>
         <div
           className={`h-full border-l border-border/40 ${activePanel === 'target' ? 'ring-1 ring-inset ring-blue-500/30' : ''}`}
           style={{ width: rightWidth }}
