@@ -61,6 +61,27 @@
   background-color: rgba(245, 158, 11, 0.18);
 }
 
+.monaco-editor .rutar-bookmark-line-number-highlight {
+  position: relative;
+  box-sizing: border-box;
+  font-weight: 700 !important;
+  color: rgba(180, 83, 9, 0.95) !important;
+  background-color: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  border-radius: 4px;
+}
+
+.monaco-editor .rutar-bookmark-line-number-highlight::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: -6px;
+  width: 3px;
+  border-radius: 999px;
+  background-color: rgba(245, 158, 11, 0.95);
+}
+
 .dark .monaco-editor .rutar-diff-line-insert {
   background-color: rgba(52, 211, 153, 0.16);
 }
@@ -86,6 +107,16 @@
 .dark .monaco-editor .rutar-diff-gutter-modify {
   border-left-color: rgba(251, 191, 36, 0.95);
   background-color: rgba(251, 191, 36, 0.22);
+}
+
+.dark .monaco-editor .rutar-bookmark-line-number-highlight {
+  color: rgba(252, 211, 77, 0.98) !important;
+  background-color: rgba(180, 83, 9, 0.26);
+  border-color: rgba(251, 191, 36, 0.7);
+}
+
+.dark .monaco-editor .rutar-bookmark-line-number-highlight::before {
+  background-color: rgba(251, 191, 36, 0.95);
 }
 
 /* 文本内容允许选择，行号不允许 */

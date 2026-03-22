@@ -131,6 +131,9 @@ vi.mock('monaco-editor', () => {
     getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
     getSelection: vi.fn(() => monacoMockState.selection),
     executeEdits: vi.fn(),
+    deltaDecorations: vi.fn((_oldDecorations: string[], nextDecorations: unknown[]) =>
+      nextDecorations.map((_item, index) => `decoration-${index}`)
+    ),
     dispose: vi.fn(),
   };
 
@@ -548,6 +551,134 @@ describe('Editor (Monaco)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Current Line to Bookmark' }));
     expect(useStore.getState().bookmarksByTab[tab.id]).toEqual([3]);
     expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
+  });
+
+  it('toggles bookmark with line-number double click and applies gutter highlight decoration', async () => {
+    const tab = createTab({ id: 'tab-monaco-line-double-click-bookmark', lineCount: 5 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      bookmarkSidebarOpen: false,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.mouseDownListener).toBeTruthy();
+    });
+    monacoMockState.model.setValue('one\ntwo\nthree\nfour\nfive\n');
+
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    act(() => {
+      monacoMockState.mouseDownListener?.({
+        event: {
+          leftButton: true,
+          ctrlKey: false,
+          metaKey: false,
+          detail: 2,
+          browserEvent: {
+            detail: 2,
+          },
+          preventDefault,
+          stopPropagation,
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.GUTTER_LINE_NUMBERS,
+          position: {
+            lineNumber: 4,
+            column: 1,
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().bookmarksByTab[tab.id]).toEqual([4]);
+      expect(useStore.getState().bookmarkSidebarOpen).toBe(true);
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.deltaDecorations).toHaveBeenCalled();
+      const lastCall = monacoMockState.editorInstance.deltaDecorations.mock.calls.at(-1);
+      expect(lastCall?.[1]).toEqual([
+        expect.objectContaining({
+          options: expect.objectContaining({
+            lineNumberClassName: 'rutar-bookmark-line-number-highlight',
+          }),
+        }),
+      ]);
+      const firstDecoration = (lastCall?.[1] as Array<{ options?: Record<string, unknown> }> | undefined)?.[0];
+      expect(firstDecoration?.options?.linesDecorationsClassName).toBeUndefined();
+    });
+  });
+
+  it('removes bookmark when double-clicking a bookmarked line number again', async () => {
+    const tab = createTab({ id: 'tab-monaco-line-double-click-remove', lineCount: 4 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.mouseDownListener).toBeTruthy();
+    });
+    monacoMockState.model.setValue('one\ntwo\nthree\nfour\n');
+
+    const triggerDoubleClick = () => {
+      monacoMockState.mouseDownListener?.({
+        event: {
+          leftButton: true,
+          ctrlKey: false,
+          metaKey: false,
+          detail: 2,
+          browserEvent: {
+            detail: 2,
+          },
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.GUTTER_LINE_NUMBERS,
+          position: {
+            lineNumber: 2,
+            column: 1,
+          },
+        },
+      });
+    };
+
+    act(() => {
+      triggerDoubleClick();
+    });
+    await waitFor(() => {
+      expect(useStore.getState().bookmarksByTab[tab.id]).toEqual([2]);
+    });
+
+    act(() => {
+      triggerDoubleClick();
+    });
+    await waitFor(() => {
+      expect(useStore.getState().bookmarksByTab[tab.id]).toBeUndefined();
+    });
+
+    await waitFor(() => {
+      const lastCall = monacoMockState.editorInstance.deltaDecorations.mock.calls.at(-1);
+      expect(lastCall?.[1]).toEqual([]);
+    });
   });
 
   it('opens http hyperlink on Ctrl/Cmd+click', async () => {

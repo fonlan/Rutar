@@ -27,6 +27,7 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];
+const BOOKMARK_LINE_NUMBER_CLASS_NAME = 'rutar-bookmark-line-number-highlight';
 const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
 const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
 
@@ -183,6 +184,7 @@ export function Editor({
     lastAppliedBackendVersion: 0,
   });
   const pendingFetchRequestIdRef = useRef(0);
+  const bookmarkDecorationIdsRef = useRef<string[]>([]);
   const editorContextMenuRef = useRef<HTMLDivElement | null>(null);
   const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
     edit: null,
@@ -409,6 +411,37 @@ export function Editor({
     () => editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber),
     [bookmarks, editorContextMenu]
   );
+  const applyBookmarkDecorations = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    const model = editor.getModel();
+    if (!model) {
+      bookmarkDecorationIdsRef.current = editor.deltaDecorations(bookmarkDecorationIdsRef.current, []);
+      return;
+    }
+    const lineCount = Math.max(1, model.getLineCount());
+    const nextDecorations: monaco.editor.IModelDeltaDecoration[] = Array.from(new Set(bookmarks))
+      .map((lineNumber) => Math.floor(lineNumber))
+      .filter((lineNumber) => lineNumber >= 1 && lineNumber <= lineCount)
+      .sort((left, right) => left - right)
+      .map((lineNumber) => ({
+        range: {
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber,
+          endColumn: 1,
+        },
+        options: {
+          lineNumberClassName: BOOKMARK_LINE_NUMBER_CLASS_NAME,
+        },
+      }));
+    bookmarkDecorationIdsRef.current = editor.deltaDecorations(
+      bookmarkDecorationIdsRef.current,
+      nextDecorations
+    );
+  }, [bookmarks]);
   const triggerBase64DecodeErrorToast = useCallback(() => {
     if (base64DecodeErrorToastTimerRef.current !== null) {
       window.clearTimeout(base64DecodeErrorToastTimerRef.current);
@@ -742,6 +775,34 @@ export function Editor({
       setCursorPosition(currentTabId, event.position.lineNumber, event.position.column);
     });
     const mouseDownDisposable = editor.onMouseDown((event: monaco.editor.IEditorMouseEvent) => {
+      const targetType = event.target.type;
+      const clickDetail =
+        Number(event.event.detail ?? 0) ||
+        Number((event.event.browserEvent as MouseEvent | undefined)?.detail ?? 0);
+      const isLineNumberDoubleClick =
+        targetType === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS &&
+        event.event.leftButton &&
+        clickDetail >= 2;
+      if (isLineNumberDoubleClick) {
+        const model = editor.getModel();
+        const activeTabId = activeTabIdRef.current;
+        if (!model || !activeTabId) {
+          return;
+        }
+        const fallbackLine = editor.getPosition()?.lineNumber ?? cursorSnapshotRef.current.line ?? 1;
+        const rawLine = event.target.position?.lineNumber ?? fallbackLine;
+        const safeLine = Math.max(1, Math.min(Math.floor(rawLine), model.getLineCount()));
+        const store = useStore.getState();
+        const currentBookmarks = store.bookmarksByTab[activeTabId] ?? EMPTY_BOOKMARKS;
+        const hasBookmark = currentBookmarks.includes(safeLine);
+        store.toggleBookmark(activeTabId, safeLine);
+        if (!hasBookmark && !store.bookmarkSidebarOpen) {
+          store.toggleBookmarkSidebar(true);
+        }
+        event.event.preventDefault();
+        event.event.stopPropagation();
+        return;
+      }
       if (!event.event.leftButton) {
         return;
       }
@@ -794,6 +855,10 @@ export function Editor({
     queueSyncEdits,
     setCursorPosition,
   ]);
+
+  useEffect(() => {
+    applyBookmarkDecorations();
+  }, [applyBookmarkDecorations, tab.id]);
 
   useEffect(() => {
     const editor = editorRef.current;
