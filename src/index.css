@@ -203,12 +203,15 @@ option {
 }
 
 .statusbar-select {
-  background-color: hsl(var(--muted) / 0.5);
-  color: hsl(var(--muted-foreground));
+  background-color: transparent;
+  color: inherit;
 }
 
+.statusbar-select:hover {
+  background-color: hsl(var(--muted) / 0.35);
+}
 .statusbar-option {
-  background-color: hsl(var(--muted) / 0.5);
+  background-color: hsl(var(--background));
   color: hsl(var(--foreground));
 }
 
