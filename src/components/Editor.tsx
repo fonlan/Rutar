@@ -155,6 +155,31 @@ function resolveMonacoLanguage(fileTab: FileTab) {
   }
 }
 
+function resolveMainEditorModelUri(fileTab: FileTab) {
+  const filePath = fileTab.path.trim();
+  if (filePath.length > 0) {
+    return monaco.Uri.file(filePath);
+  }
+  return monaco.Uri.parse(`inmemory://rutar-main/${encodeURIComponent(fileTab.id)}`);
+}
+function areMonacoUrisEqual(left: monaco.Uri, right: monaco.Uri) {
+  return left.toString() === right.toString();
+}
+
+function clampMonacoPosition(
+  model: monaco.editor.ITextModel,
+  position: { lineNumber: number; column: number }
+) {
+  const lineCount = Math.max(1, model.getLineCount());
+  const lineNumber = Math.max(1, Math.min(Math.floor(position.lineNumber), lineCount));
+  const column = Math.max(1, Math.min(Math.floor(position.column), model.getLineMaxColumn(lineNumber)));
+
+  return {
+    lineNumber,
+    column,
+  };
+}
+
 async function getDocumentText(tabId: string, lineCountHint: number) {
   try {
     return await invoke<string>('get_document_text', { id: tabId });
@@ -1052,16 +1077,27 @@ export function Editor({
       viewStateByTabId.set(previousTabId, editor.saveViewState() ?? null);
     }
 
+    const targetModelUri = resolveMainEditorModelUri(tab);
     let model = modelByTabId.get(tab.id);
-    if (!model) {
-      model = monaco.editor.createModel('', monacoLanguage);
+    const previousModel = model ?? null;
+    let staleModelToDispose: monaco.editor.ITextModel | null = null;
+    if (!model || !areMonacoUrisEqual(model.uri, targetModelUri)) {
+      const existingModel = monaco.editor.getModel(targetModelUri);
+      const previousText =
+        previousModel && !previousModel.isDisposed() ? previousModel.getValue() : '';
+      model = existingModel ?? monaco.editor.createModel(previousText, monacoLanguage, targetModelUri);
       modelByTabId.set(tab.id, model);
       const currentTab =
         useStore
           .getState()
           .tabs
           .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab;
-      void ensureEditorModelLoaded(currentTab, 'bootstrap');
+      if (!existingModel) {
+        void ensureEditorModelLoaded(currentTab, 'bootstrap');
+      }
+      if (previousModel && previousModel !== model && !previousModel.isDisposed()) {
+        staleModelToDispose = previousModel;
+      }
     }
 
     if (model.getLanguageId() !== monacoLanguage) {
@@ -1069,6 +1105,7 @@ export function Editor({
     }
 
     editor.setModel(model);
+    staleModelToDispose?.dispose();
     activeTabIdRef.current = tab.id;
     engineStateRef.current = {
       modelId: tab.id,
@@ -1091,7 +1128,7 @@ export function Editor({
     }
 
     editor.focus();
-  }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id, updateQuotePairDecorations]);
+  }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id, tab.path, updateQuotePairDecorations]);
 
   useEffect(() => {
     const trackedTabIds = new Set(
@@ -1190,6 +1227,8 @@ export function Editor({
     const handleForceRefresh = (event: Event) => {
       const customEvent = event as CustomEvent<{
         tabId?: string;
+        preserveCaret?: boolean;
+        preserveScroll?: boolean;
         restoreCursorLine?: number;
         restoreCursorColumn?: number;
       }>;
@@ -1203,23 +1242,61 @@ export function Editor({
         return;
       }
 
+      const preserveCaret = customEvent.detail?.preserveCaret === true;
+      const preserveScroll = customEvent.detail?.preserveScroll === true;
       const restoreLine = customEvent.detail?.restoreCursorLine;
       const restoreColumn = customEvent.detail?.restoreCursorColumn;
+      const preservedViewState = preserveScroll ? editor.saveViewState() ?? null : null;
+      const currentPosition = editor.getPosition();
+      const savedCursor = useStore.getState().cursorPositionByTab[tab.id];
+      const preservedCursor = preserveCaret
+        ? {
+            lineNumber: currentPosition?.lineNumber ?? savedCursor?.line ?? cursorSnapshotRef.current.line,
+            column: currentPosition?.column ?? savedCursor?.column ?? cursorSnapshotRef.current.column,
+          }
+        : null;
 
       void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh').then(() => {
-        if (!restoreLine || !restoreColumn) {
+        const model = editor.getModel();
+        if (!model) {
           void updateQuotePairDecorations();
           return;
         }
 
-        editor.setPosition({
-          lineNumber: Math.max(1, restoreLine),
-          column: Math.max(1, restoreColumn),
-        });
-        editor.revealPositionInCenter({
-          lineNumber: Math.max(1, restoreLine),
-          column: Math.max(1, restoreColumn),
-        });
+        const hasExplicitRestoreCursor =
+          typeof restoreLine === 'number'
+          && Number.isFinite(restoreLine)
+          && typeof restoreColumn === 'number'
+          && Number.isFinite(restoreColumn);
+
+        const targetPosition = hasExplicitRestoreCursor
+          ? clampMonacoPosition(model, {
+              lineNumber: restoreLine,
+              column: restoreColumn,
+            })
+          : preservedCursor
+            ? clampMonacoPosition(model, preservedCursor)
+            : null;
+
+        if (preservedViewState) {
+          editor.restoreViewState(preservedViewState);
+        }
+
+        if (targetPosition) {
+          editor.setPosition(targetPosition);
+          cursorSnapshotRef.current = {
+            line: targetPosition.lineNumber,
+            column: targetPosition.column,
+          };
+          setCursorPosition(tab.id, targetPosition.lineNumber, targetPosition.column);
+
+          if (preserveScroll) {
+            editor.revealPositionInCenterIfOutsideViewport(targetPosition);
+          } else {
+            editor.revealPositionInCenter(targetPosition);
+          }
+        }
+
         void updateQuotePairDecorations();
       });
     };

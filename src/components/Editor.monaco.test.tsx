@@ -8,8 +8,19 @@ import { Editor } from './Editor';
 
 const monacoMockState = vi.hoisted(() => ({
   editorCreate: vi.fn(),
+  editorCreateModel: vi.fn(),
+  editorGetModel: vi.fn(() => null),
   editorInstance: null as any,
   model: null as any,
+  uriFile: vi.fn((path: string) => ({
+    scheme: 'file',
+    path,
+    toString: () => `file://${path}`,
+  })),
+  uriParse: vi.fn((value: string) => ({
+    value,
+    toString: () => value,
+  })),
   findActionRun: vi.fn(async () => undefined),
   changeListener: null as null | ((event: unknown) => void),
   cursorListener: null as null | ((event: unknown) => void),
@@ -50,6 +61,7 @@ vi.mock('monaco-editor', () => {
   const model = {
     value: '',
     languageId: 'plaintext',
+    uri: monacoMockState.uriFile('C:\\repo\\file.ts'),
     getValue() {
       return this.value;
     },
@@ -151,17 +163,28 @@ vi.mock('monaco-editor', () => {
   monacoMockState.editorInstance = editorInstance;
   monacoMockState.model = model;
   monacoMockState.editorCreate = vi.fn(() => editorInstance);
+  monacoMockState.editorCreateModel = vi.fn((value: string, languageId: string, uri?: unknown) => {
+    model.value = value;
+    model.languageId = languageId;
+    model.uri = (uri as typeof model.uri | undefined) ?? model.uri;
+    return model;
+  });
+  monacoMockState.editorGetModel = vi.fn(() => null);
 
   return {
     editor: {
       create: monacoMockState.editorCreate,
-      createModel: vi.fn(() => model),
+      createModel: monacoMockState.editorCreateModel,
       setModelLanguage: vi.fn((targetModel: { languageId: string }, languageId: string) => {
         targetModel.languageId = languageId;
       }),
       setTheme: vi.fn(),
-      getModel: vi.fn(() => null),
+      getModel: monacoMockState.editorGetModel,
       MouseTargetType: monacoMockState.mouseTargetType,
+    },
+    Uri: {
+      file: monacoMockState.uriFile,
+      parse: monacoMockState.uriParse,
     },
   };
 });
@@ -201,6 +224,10 @@ describe('Editor (Monaco)', () => {
     monacoMockState.model.value = '';
     monacoMockState.findActionRun.mockReset();
     monacoMockState.findActionRun.mockResolvedValue(undefined);
+    monacoMockState.editorInstance.saveViewState.mockReset();
+    monacoMockState.editorInstance.saveViewState.mockReturnValue(null);
+    monacoMockState.editorInstance.getPosition.mockReset();
+    monacoMockState.editorInstance.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'get_document_text') {
@@ -235,6 +262,10 @@ describe('Editor (Monaco)', () => {
         },
       })
     );
+    expect(monacoMockState.uriFile).toHaveBeenCalledWith(tab.path);
+    const uriResults = monacoMockState.uriFile.mock.results;
+    const modelUri = uriResults[uriResults.length - 1]?.value;
+    expect(monacoMockState.editorCreateModel).toHaveBeenCalledWith('', expect.any(String), modelUri);
   });
 
   it('handles navigate event and moves cursor', async () => {
@@ -308,7 +339,7 @@ describe('Editor (Monaco)', () => {
     });
     expect(refreshResolvers).toHaveLength(1);
     act(() => {
-      refreshResolvers[0]?.('beta');
+      refreshResolvers[0]?.('line-1\nline-2\nline-3\nline-4-data');
     });
     await waitFor(() => {
       expect(monacoMockState.editorInstance.setPosition).toHaveBeenCalledWith({
@@ -317,6 +348,80 @@ describe('Editor (Monaco)', () => {
       });
     });
   });
+
+  it('preserves current cursor and scroll on force-refresh and clamps to the refreshed document', async () => {
+    const tab = createTab({ id: 'tab-force-refresh-preserve', lineCount: 4 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
+    });
+
+    const savedViewState = { scrollTop: 240 };
+    monacoMockState.editorInstance.saveViewState.mockReturnValue(savedViewState);
+    monacoMockState.editorInstance.getPosition.mockReturnValue({
+      lineNumber: 4,
+      column: 12,
+    });
+    monacoMockState.editorInstance.restoreViewState.mockClear();
+    monacoMockState.editorInstance.setPosition.mockClear();
+    monacoMockState.editorInstance.revealPositionInCenter.mockClear();
+    monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport.mockClear();
+    vi.mocked(invoke).mockClear();
+
+    const refreshResolvers: Array<(value: string) => void> = [];
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text') {
+        return await new Promise<string>((resolve) => {
+          refreshResolvers.push(resolve);
+        });
+      }
+      if (command === 'apply_text_edits_by_line_column') {
+        return 1;
+      }
+      return undefined;
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:force-refresh', {
+          detail: {
+            tabId: tab.id,
+            preserveCaret: true,
+            preserveScroll: true,
+          },
+        })
+      );
+    });
+
+    expect(refreshResolvers).toHaveLength(1);
+
+    act(() => {
+      refreshResolvers[0]?.('short');
+    });
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.restoreViewState).toHaveBeenCalledWith(savedViewState);
+      expect(monacoMockState.editorInstance.setPosition).toHaveBeenCalledWith({
+        lineNumber: 1,
+        column: 6,
+      });
+      expect(monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport).toHaveBeenCalledWith({
+        lineNumber: 1,
+        column: 6,
+      });
+    });
+
+    expect(monacoMockState.editorInstance.revealPositionInCenter).not.toHaveBeenCalled();
+    expect(useStore.getState().cursorPositionByTab[tab.id]).toEqual({
+      line: 1,
+      column: 6,
+    });
+  });
+
   it('opens Monaco find widget on editor-find-open event', async () => {
     const tab = createTab();
     useStore.setState({
