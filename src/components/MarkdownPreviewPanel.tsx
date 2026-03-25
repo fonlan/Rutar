@@ -32,6 +32,19 @@ interface ScrollRatioState {
   left: number;
 }
 
+interface MermaidViewportState {
+  scale: number;
+}
+
+interface MermaidPanState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startScrollLeft: number;
+  startScrollTop: number;
+  viewport: HTMLDivElement;
+}
+
 type MermaidApi = {
   initialize: (options: Record<string, unknown>) => void;
   render: (id: string, text: string) => Promise<{ svg: string }>;
@@ -45,9 +58,21 @@ const EXTERNAL_OPEN_TARGET_PATTERN = /^(?:https?:|mailto:|tel:|data:|blob:)/i;
 const FILE_URL_PATTERN = /^file:/i;
 const FRAGMENT_LINK_PATTERN = /^#/;
 const MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE = 'data-rutar-open-target';
+const MERMAID_VIEWPORT_SELECTOR = '[data-mermaid-viewport]';
+const MERMAID_CANVAS_SELECTOR = '[data-mermaid-canvas]';
+const MERMAID_SVG_SELECTOR = `${MERMAID_CANVAS_SELECTOR} svg`;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
 const WINDOWS_FILE_URL_PATH_PATTERN = /^\/[a-zA-Z]:/;
 const UNC_PATH_PATTERN = /^\\\\/;
+const DEFAULT_MERMAID_VIEWPORT_STATE: MermaidViewportState = {
+  scale: 1,
+};
+const MIN_MERMAID_SCALE = 1;
+const MAX_MERMAID_SCALE = 4;
+const MERMAID_ZOOM_STEP = 1.18;
+const MERMAID_STATE_EPSILON = 0.001;
+const DEFAULT_MERMAID_BASE_WIDTH = 640;
+const DEFAULT_MERMAID_BASE_HEIGHT = 360;
 let mermaidApiPromise: Promise<MermaidApi> | null = null;
 
 function getParentDirectoryPath(filePath: string): string | null {
@@ -311,6 +336,200 @@ async function getMermaidApi() {
   return mermaidApiPromise;
 }
 
+function clampMermaidScale(value: number) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_MERMAID_VIEWPORT_STATE.scale;
+  }
+
+  return Math.max(MIN_MERMAID_SCALE, Math.min(MAX_MERMAID_SCALE, value));
+}
+
+function getMermaidSvgElement(viewport: HTMLElement) {
+  return viewport.querySelector<SVGSVGElement>(MERMAID_SVG_SELECTOR);
+}
+
+function readMermaidViewportState(viewport: HTMLElement): MermaidViewportState {
+  const scale = clampMermaidScale(Number(viewport.dataset.mermaidScale ?? '1'));
+  return {
+    scale,
+  };
+}
+
+function parseSvgLength(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.trim().match(/^([0-9]*\.?[0-9]+)/);
+  if (!match) {
+    return null;
+  }
+
+  const numericValue = Number(match[1]);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+}
+
+function readSvgViewBoxSize(svg: SVGSVGElement) {
+  const viewBox = svg.getAttribute('viewBox');
+  if (!viewBox) {
+    return null;
+  }
+
+  const parts = viewBox.trim().split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+
+  const width = parts[2];
+  const height = parts[3];
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return { width, height };
+}
+
+function measureMermaidBaseSize(viewport: HTMLDivElement, svg: SVGSVGElement) {
+  const rect = svg.getBoundingClientRect();
+  const attrWidth = parseSvgLength(svg.getAttribute('width'));
+  const attrHeight = parseSvgLength(svg.getAttribute('height'));
+  const viewBoxSize = readSvgViewBoxSize(svg);
+  const width = rect.width > 0
+    ? rect.width
+    : attrWidth
+      ?? viewBoxSize?.width
+      ?? (viewport.clientWidth > 0 ? viewport.clientWidth : DEFAULT_MERMAID_BASE_WIDTH);
+  const ratio = rect.width > 0 && rect.height > 0
+    ? rect.height / rect.width
+    : attrWidth && attrHeight && attrWidth > 0
+      ? attrHeight / attrWidth
+      : viewBoxSize && viewBoxSize.width > 0
+        ? viewBoxSize.height / viewBoxSize.width
+        : DEFAULT_MERMAID_BASE_HEIGHT / DEFAULT_MERMAID_BASE_WIDTH;
+  const height = rect.height > 0
+    ? rect.height
+    : attrHeight
+      ?? Math.max(1, width * ratio);
+
+  return {
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  };
+}
+
+function readMermaidBaseSize(viewport: HTMLElement) {
+  const baseWidth = Number(viewport.dataset.mermaidBaseWidth ?? '');
+  const baseHeight = Number(viewport.dataset.mermaidBaseHeight ?? '');
+  return {
+    width: Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : DEFAULT_MERMAID_BASE_WIDTH,
+    height: Number.isFinite(baseHeight) && baseHeight > 0 ? baseHeight : DEFAULT_MERMAID_BASE_HEIGHT,
+  };
+}
+
+function getMermaidViewportBounds(viewport: HTMLElement, scale: number) {
+  const baseSize = readMermaidBaseSize(viewport);
+  const viewportWidth = viewport.clientWidth;
+  const viewportHeight = viewport.clientHeight;
+  const contentWidth = baseSize.width * scale;
+  const contentHeight = baseSize.height * scale;
+
+  return {
+    maxScrollLeft: Math.max(0, contentWidth - viewportWidth),
+    maxScrollTop: Math.max(0, contentHeight - viewportHeight),
+  };
+}
+
+function canPanMermaidViewport(viewport: HTMLElement, scale: number) {
+  const bounds = getMermaidViewportBounds(viewport, scale);
+  return bounds.maxScrollLeft > 0.5 || bounds.maxScrollTop > 0.5;
+}
+
+function writeMermaidViewportState(
+  viewport: HTMLDivElement,
+  nextState: MermaidViewportState & {
+    scrollLeft?: number;
+    scrollTop?: number;
+  },
+) {
+  const scale = clampMermaidScale(nextState.scale);
+  const svg = getMermaidSvgElement(viewport);
+  if (!svg) {
+    return;
+  }
+
+  const baseSize = readMermaidBaseSize(viewport);
+  svg.style.width = `${baseSize.width * scale}px`;
+  svg.style.height = `${baseSize.height * scale}px`;
+  svg.style.maxWidth = 'none';
+
+  const bounds = getMermaidViewportBounds(viewport, scale);
+  const scrollLeft = scale <= 1 + MERMAID_STATE_EPSILON
+    ? 0
+    : Math.max(0, Math.min(bounds.maxScrollLeft, nextState.scrollLeft ?? viewport.scrollLeft));
+  const scrollTop = scale <= 1 + MERMAID_STATE_EPSILON
+    ? 0
+    : Math.max(0, Math.min(bounds.maxScrollTop, nextState.scrollTop ?? viewport.scrollTop));
+
+  viewport.dataset.mermaidScale = scale.toFixed(4);
+  viewport.dataset.mermaidCanPan = canPanMermaidViewport(viewport, scale) ? 'true' : 'false';
+  viewport.classList.toggle('is-zoomed', scale > 1 + MERMAID_STATE_EPSILON);
+  viewport.scrollLeft = scrollLeft;
+  viewport.scrollTop = scrollTop;
+
+  const host = viewport.closest('.mermaid-host');
+  const resetButton = host?.querySelector<HTMLButtonElement>('[data-mermaid-action="reset"]');
+  if (resetButton) {
+    resetButton.disabled = scale <= 1 + MERMAID_STATE_EPSILON;
+  }
+}
+
+function zoomMermaidViewport(
+  viewport: HTMLDivElement,
+  direction: 'in' | 'out',
+  anchor?: { clientX: number; clientY: number },
+) {
+  const currentState = readMermaidViewportState(viewport);
+  const scaleFactor = direction === 'in' ? MERMAID_ZOOM_STEP : 1 / MERMAID_ZOOM_STEP;
+  const nextScale = clampMermaidScale(currentState.scale * scaleFactor);
+  if (Math.abs(nextScale - currentState.scale) < MERMAID_STATE_EPSILON) {
+    return;
+  }
+
+  const rect = viewport.getBoundingClientRect();
+  const anchorX = anchor ? anchor.clientX - rect.left : rect.width / 2;
+  const anchorY = anchor ? anchor.clientY - rect.top : rect.height / 2;
+  const safeAnchorX = Number.isFinite(anchorX) ? anchorX : 0;
+  const safeAnchorY = Number.isFinite(anchorY) ? anchorY : 0;
+  const contentX = (viewport.scrollLeft + safeAnchorX) / currentState.scale;
+  const contentY = (viewport.scrollTop + safeAnchorY) / currentState.scale;
+
+  writeMermaidViewportState(viewport, {
+    scale: nextScale,
+    scrollLeft: contentX * nextScale - safeAnchorX,
+    scrollTop: contentY * nextScale - safeAnchorY,
+  });
+}
+
+function resetMermaidViewport(viewport: HTMLDivElement) {
+  writeMermaidViewportState(viewport, {
+    ...DEFAULT_MERMAID_VIEWPORT_STATE,
+    scrollLeft: 0,
+    scrollTop: 0,
+  });
+}
+
+function initializeMermaidViewport(viewport: HTMLDivElement) {
+  const svg = getMermaidSvgElement(viewport);
+  if (!svg) {
+    return;
+  }
+
+  const baseSize = measureMermaidBaseSize(viewport, svg);
+  viewport.dataset.mermaidBaseWidth = baseSize.width.toFixed(2);
+  viewport.dataset.mermaidBaseHeight = baseSize.height.toFixed(2);
+  resetMermaidViewport(viewport);
+}
+
 export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const language = useStore((state) => state.settings.language);
   const appTheme = useStore((state) => state.settings.theme);
@@ -326,6 +545,8 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const sourceScrollRef = useRef<HTMLElement | null>(null);
   const latestScrollRatioRef = useRef<ScrollRatioState>({ top: 0, left: 0 });
   const mermaidRenderVersionRef = useRef(0);
+  const mermaidPanStateRef = useRef<MermaidPanState | null>(null);
+  const mermaidPanCleanupRef = useRef<(() => void) | null>(null);
   const requestVersionRef = useRef(0);
   const hasLoadedOnceRef = useRef(false);
   const inFlightRefreshRef = useRef(false);
@@ -560,9 +781,36 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     return rewriteMarkdownPreviewHtml(parsedHtml, tab?.path);
   }, [deferredMarkdownSource, markdownEnabled, tab?.path]);
 
+  const stopMermaidPan = useCallback(() => {
+    mermaidPanCleanupRef.current?.();
+    mermaidPanCleanupRef.current = null;
+    mermaidPanStateRef.current = null;
+  }, []);
+
   const handlePreviewClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     const targetElement = event.target;
     if (!(targetElement instanceof Element)) {
+      return;
+    }
+
+    const mermaidActionElement = targetElement.closest<HTMLElement>('[data-mermaid-action]');
+    if (mermaidActionElement) {
+      const host = mermaidActionElement.closest('.mermaid-host');
+      const viewport = host?.querySelector<HTMLDivElement>(MERMAID_VIEWPORT_SELECTOR);
+      if (!viewport) {
+        return;
+      }
+
+      const action = mermaidActionElement.dataset.mermaidAction;
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === 'zoom-in') {
+        zoomMermaidViewport(viewport, 'in');
+      } else if (action === 'zoom-out') {
+        zoomMermaidViewport(viewport, 'out');
+      } else if (action === 'reset') {
+        resetMermaidViewport(viewport);
+      }
       return;
     }
 
@@ -598,11 +846,95 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     });
   }, []);
 
+  const handlePreviewPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const targetElement = event.target;
+    if (!(targetElement instanceof Element)) {
+      return;
+    }
+
+    if (targetElement.closest('[data-mermaid-action]')) {
+      return;
+    }
+
+    const viewport = targetElement.closest<HTMLDivElement>(MERMAID_VIEWPORT_SELECTOR);
+    if (!viewport) {
+      return;
+    }
+
+    const currentState = readMermaidViewportState(viewport);
+    if (!canPanMermaidViewport(viewport, currentState.scale)) {
+      return;
+    }
+
+    stopMermaidPan();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const pointerId = event.pointerId;
+    const cleanup = () => {
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', onPointerUp, true);
+      document.body.style.userSelect = '';
+      viewport.classList.remove('is-panning');
+      try {
+        viewport.releasePointerCapture(pointerId);
+      } catch {
+      }
+    };
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const panState = mermaidPanStateRef.current;
+      if (!panState || moveEvent.pointerId !== panState.pointerId) {
+        return;
+      }
+
+      writeMermaidViewportState(panState.viewport, {
+        scale: currentState.scale,
+        scrollLeft: panState.startScrollLeft - (moveEvent.clientX - panState.startClientX),
+        scrollTop: panState.startScrollTop - (moveEvent.clientY - panState.startClientY),
+      });
+    };
+
+    const onPointerUp = (endEvent: PointerEvent) => {
+      const panState = mermaidPanStateRef.current;
+      if (!panState || endEvent.pointerId !== panState.pointerId) {
+        return;
+      }
+
+      stopMermaidPan();
+    };
+
+    mermaidPanStateRef.current = {
+      pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: viewport.scrollLeft,
+      startScrollTop: viewport.scrollTop,
+      viewport,
+    };
+    mermaidPanCleanupRef.current = cleanup;
+    viewport.classList.add('is-panning');
+    document.body.style.userSelect = 'none';
+    try {
+      viewport.setPointerCapture(pointerId);
+    } catch {
+    }
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', onPointerUp, true);
+  }, [stopMermaidPan]);
+
   useEffect(() => {
     if (!open || !markdownEnabled || !renderedHtml) {
       return;
     }
 
+    stopMermaidPan();
     const articleElement = previewArticleRef.current;
     if (!articleElement) {
       return;
@@ -663,7 +995,72 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
             return;
           }
 
-          host.innerHTML = renderResult.svg;
+          const shell = document.createElement('div');
+          shell.className = 'mermaid-interactive-shell';
+
+          const controlRow = document.createElement('div');
+          controlRow.className = 'mermaid-control-row';
+
+          const zoomOutButton = document.createElement('button');
+          zoomOutButton.type = 'button';
+          zoomOutButton.className = 'mermaid-control-button';
+          zoomOutButton.dataset.mermaidAction = 'zoom-out';
+          zoomOutButton.textContent = '-';
+          zoomOutButton.title = t(language, 'preview.mermaid.zoomOut');
+          zoomOutButton.setAttribute('aria-label', t(language, 'preview.mermaid.zoomOut'));
+
+          const zoomInButton = document.createElement('button');
+          zoomInButton.type = 'button';
+          zoomInButton.className = 'mermaid-control-button';
+          zoomInButton.dataset.mermaidAction = 'zoom-in';
+          zoomInButton.textContent = '+';
+          zoomInButton.title = t(language, 'preview.mermaid.zoomIn');
+          zoomInButton.setAttribute('aria-label', t(language, 'preview.mermaid.zoomIn'));
+
+          const resetButton = document.createElement('button');
+          resetButton.type = 'button';
+          resetButton.className = 'mermaid-control-button mermaid-control-button-reset';
+          resetButton.dataset.mermaidAction = 'reset';
+          resetButton.textContent = t(language, 'preview.mermaid.resetView');
+          resetButton.title = t(language, 'preview.mermaid.resetView');
+          resetButton.setAttribute('aria-label', t(language, 'preview.mermaid.resetView'));
+
+          controlRow.appendChild(zoomOutButton);
+          controlRow.appendChild(zoomInButton);
+          controlRow.appendChild(resetButton);
+
+          const viewport = document.createElement('div');
+          viewport.className = 'mermaid-interactive-viewport';
+          viewport.dataset.mermaidViewport = 'true';
+          viewport.title = t(language, 'preview.mermaid.interactionHint');
+          viewport.setAttribute('aria-label', t(language, 'preview.mermaid.interactionHint'));
+
+          const canvas = document.createElement('div');
+          canvas.className = 'mermaid-interactive-canvas';
+          canvas.dataset.mermaidCanvas = 'true';
+          canvas.innerHTML = renderResult.svg;
+
+          zoomOutButton.addEventListener('click', (clickEvent) => {
+            clickEvent.preventDefault();
+            clickEvent.stopPropagation();
+            zoomMermaidViewport(viewport, 'out');
+          });
+          zoomInButton.addEventListener('click', (clickEvent) => {
+            clickEvent.preventDefault();
+            clickEvent.stopPropagation();
+            zoomMermaidViewport(viewport, 'in');
+          });
+          resetButton.addEventListener('click', (clickEvent) => {
+            clickEvent.preventDefault();
+            clickEvent.stopPropagation();
+            resetMermaidViewport(viewport);
+          });
+
+          viewport.appendChild(canvas);
+          shell.appendChild(controlRow);
+          shell.appendChild(viewport);
+          host.replaceChildren(shell);
+          initializeMermaidViewport(viewport);
           applyScrollRatio(latestScrollRatioRef.current);
         } catch (error) {
           if (cancelled || mermaidRenderVersionRef.current !== nextRenderVersion) {
@@ -690,7 +1087,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     };
   // Mermaid computes its SVG layout from the current preview width, so splitter drags
   // need to trigger a fresh render even when the markdown source itself is unchanged.
-  }, [appTheme, applyScrollRatio, markdownEnabled, open, previewWidthRatio, renderedHtml]);
+  }, [appTheme, applyScrollRatio, language, markdownEnabled, open, previewWidthRatio, renderedHtml, stopMermaidPan]);
 
   useEffect(() => {
     if (!open || !markdownEnabled) {
@@ -705,6 +1102,8 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       window.cancelAnimationFrame(rafId);
     };
   }, [applyScrollRatio, markdownEnabled, open, renderedHtml, previewWidthRatio]);
+
+  useEffect(() => stopMermaidPan, [stopMermaidPan]);
 
   const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!open) {
@@ -756,6 +1155,26 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   }, [open, setPreviewWidthRatio]);
 
   const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    const targetElement = event.target;
+    if (targetElement instanceof Element) {
+      const mermaidViewport = targetElement.closest<HTMLDivElement>(MERMAID_VIEWPORT_SELECTOR);
+      if (mermaidViewport) {
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          zoomMermaidViewport(mermaidViewport, event.deltaY < 0 ? 'in' : 'out', {
+            clientX: event.clientX,
+            clientY: event.clientY,
+          });
+          return;
+        }
+
+        if (canPanMermaidViewport(mermaidViewport, readMermaidViewportState(mermaidViewport).scale)) {
+          return;
+        }
+      }
+    }
+
     const sourceElement = sourceScrollRef.current;
     if (!sourceElement) {
       return;
@@ -826,6 +1245,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
               ref={previewArticleRef}
               className="markdown-preview"
               onClick={handlePreviewClick}
+              onPointerDown={handlePreviewPointerDown}
               dangerouslySetInnerHTML={{ __html: renderedHtml }}
             />
           )}

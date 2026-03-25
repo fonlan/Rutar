@@ -68,6 +68,10 @@ export type I18nKey =
   | 'preview.loading'
   | 'preview.empty'
   | 'preview.loadFailed'
+  | 'preview.mermaid.zoomIn'
+  | 'preview.mermaid.zoomOut'
+  | 'preview.mermaid.resetView'
+  | 'preview.mermaid.interactionHint'
   | 'bookmark.menu.title'
   | 'bookmark.add'
   | 'bookmark.remove'
@@ -316,6 +320,10 @@ const zhCN: Messages = {
   'preview.loading': '正在渲染预览...',
   'preview.empty': '当前 Markdown 文档为空。',
   'preview.loadFailed': '预览加载失败：',
+  'preview.mermaid.zoomIn': '放大 Mermaid 图',
+  'preview.mermaid.zoomOut': '缩小 Mermaid 图',
+  'preview.mermaid.resetView': '重置视图',
+  'preview.mermaid.interactionHint': '按住 Ctrl/Cmd 并滚轮缩放，拖拽可移动视图。',
   'bookmark.menu.title': '书签',
   'bookmark.add': '添加书签',
   'bookmark.remove': '删除书签',
@@ -563,6 +571,10 @@ const enUS: Messages = {
   'preview.loading': 'Rendering preview...',
   'preview.empty': 'This Markdown document is empty.',
   'preview.loadFailed': 'Failed to load preview:',
+  'preview.mermaid.zoomIn': 'Zoom in Mermaid diagram',
+  'preview.mermaid.zoomOut': 'Zoom out Mermaid diagram',
+  'preview.mermaid.resetView': 'Reset view',
+  'preview.mermaid.interactionHint': 'Hold Ctrl/Cmd and scroll to zoom, then drag to pan.',
   'bookmark.menu.title': 'Bookmark',
   'bookmark.add': 'Add Bookmark',
   'bookmark.remove': 'Remove Bookmark',

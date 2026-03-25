@@ -51,6 +51,13 @@ function getReactPointerDown(element: Element): ((event: unknown) => void) | und
   return propsKey ? (element as any)[propsKey]?.onPointerDown : undefined;
 }
 
+function setElementMetric(element: Element, key: string, value: number) {
+  Object.defineProperty(element, key, {
+    configurable: true,
+    value,
+  });
+}
+
 describe("MarkdownPreviewPanel", () => {
   let initialState: ReturnType<typeof useStore.getState>;
   const requestAnimationFrameSpy = vi
@@ -437,6 +444,90 @@ describe("MarkdownPreviewPanel", () => {
     });
 
     expect(document.querySelector(".mermaid-host svg")).not.toBeNull();
+  });
+
+  it("supports mermaid zoom, pan, and reset without forwarding ctrl+wheel to editor scrolling", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    const gestureArea = document.createElement("div");
+    gestureArea.setAttribute("data-rutar-gesture-area", "true");
+    const editorScroller = document.createElement("div");
+    editorScroller.className = "editor-scroll-stable";
+    gestureArea.appendChild(editorScroller);
+    document.body.appendChild(gestureArea);
+
+    Object.defineProperty(editorScroller, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(editorScroller, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(editorScroller, "scrollWidth", { configurable: true, value: 800 });
+    Object.defineProperty(editorScroller, "clientWidth", { configurable: true, value: 200 });
+    editorScroller.scrollTop = 100;
+    editorScroller.scrollLeft = 40;
+
+    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+
+    const viewport = document.querySelector(".mermaid-interactive-viewport") as HTMLDivElement;
+    const canvas = document.querySelector(".mermaid-interactive-canvas") as HTMLDivElement;
+    const svg = document.querySelector(".mermaid-host svg") as SVGSVGElement;
+    const resetButton = screen.getByRole("button", { name: "Reset view" });
+    expect(viewport).not.toBeNull();
+    expect(canvas).not.toBeNull();
+    expect(svg).not.toBeNull();
+
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 300,
+      width: 400,
+      height: 300,
+      toJSON: () => ({}),
+    } as DOMRect);
+    setElementMetric(viewport, "clientWidth", 400);
+    setElementMetric(viewport, "clientHeight", 300);
+    Object.defineProperty(viewport, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(viewport, "releasePointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    fireEvent.wheel(viewport, {
+      deltaY: -120,
+      ctrlKey: true,
+      clientX: 120,
+      clientY: 90,
+    });
+
+    expect(editorScroller.scrollTop).toBe(100);
+    expect(editorScroller.scrollLeft).toBe(40);
+    expect(Number(viewport.dataset.mermaidScale)).toBeGreaterThan(1);
+    expect(svg.style.width).not.toBe("");
+    expect(resetButton).not.toBeDisabled();
+
+    fireEvent.pointerDown(viewport, { pointerId: 21, clientX: 220, clientY: 180, button: 0 });
+    fireEvent.pointerMove(document, { pointerId: 21, clientX: 160, clientY: 130 });
+    fireEvent.pointerUp(document, { pointerId: 21 });
+
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    expect(svg.style.width).toContain("px");
+
+    fireEvent.click(resetButton);
+
+    expect(viewport.dataset.mermaidScale).toBe("1.0000");
+    expect(viewport.scrollLeft).toBe(0);
+    expect(viewport.scrollTop).toBe(0);
+
+    gestureArea.remove();
   });
 
   it("logs error when mermaid initialization throws", async () => {
