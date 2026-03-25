@@ -388,6 +388,57 @@ describe("MarkdownPreviewPanel", () => {
     });
   });
 
+  it("re-renders mermaid diagrams after dragging the preview splitter", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+
+    render(
+      <div data-testid="layout-root">
+        <MarkdownPreviewPanel open={true} tab={markdownTab} />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(mermaidInitializeMock).toHaveBeenCalledTimes(1);
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize markdown preview panel",
+      hidden: true,
+    });
+    const previewPanel = resizeHandle.closest("[aria-hidden]") as HTMLDivElement;
+    const parentElement = previewPanel.parentElement as HTMLDivElement;
+    vi.spyOn(parentElement, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 600,
+      width: 1000,
+      height: 600,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(resizeHandle, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(resizeHandle, "releasePointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    fireEvent.pointerDown(resizeHandle, { pointerId: 11, clientX: 600 });
+
+    await waitFor(() => {
+      expect(mermaidInitializeMock).toHaveBeenCalledTimes(2);
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(document.querySelector(".mermaid-host svg")).not.toBeNull();
+  });
+
   it("logs error when mermaid initialization throws", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");

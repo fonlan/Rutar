@@ -688,7 +688,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [appTheme, applyScrollRatio, markdownEnabled, open, renderedHtml]);
+  // Mermaid computes its SVG layout from the current preview width, so splitter drags
+  // need to trigger a fresh render even when the markdown source itself is unchanged.
+  }, [appTheme, applyScrollRatio, markdownEnabled, open, previewWidthRatio, renderedHtml]);
 
   useEffect(() => {
     if (!open || !markdownEnabled) {
