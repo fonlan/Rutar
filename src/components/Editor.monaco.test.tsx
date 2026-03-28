@@ -142,6 +142,7 @@ vi.mock('monaco-editor', () => {
     revealPositionInCenter: vi.fn(),
     revealPositionInCenterIfOutsideViewport: vi.fn(),
     revealLineInCenterIfOutsideViewport: vi.fn(),
+    layout: vi.fn(),
     focus: vi.fn(),
     getAction: vi.fn((actionId: string) => {
       if (actionId === 'actions.find') {
@@ -499,6 +500,7 @@ describe('Editor (Monaco)', () => {
       expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
       expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
     });
+    monacoMockState.editorInstance.layout.mockClear();
 
     act(() => {
       useStore.getState().updateSettings({ wordWrap: true });
@@ -508,8 +510,11 @@ describe('Editor (Monaco)', () => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
         })
       );
+      expect(monacoMockState.editorInstance.layout).toHaveBeenCalledTimes(1);
     });
 
     expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
@@ -531,6 +536,7 @@ describe('Editor (Monaco)', () => {
       expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
       expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
     });
+    monacoMockState.editorInstance.layout.mockClear();
     act(() => {
       useStore.getState().updateSettings({ minimap: false });
     });
@@ -542,9 +548,33 @@ describe('Editor (Monaco)', () => {
           },
         })
       );
+      expect(monacoMockState.editorInstance.layout).toHaveBeenCalledTimes(1);
     });
     expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+  });
+  it('uses Monaco viewport wrapping options when word wrap starts enabled', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        wordWrap: true,
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
+        })
+      );
+    });
   });
   it('does not recreate Monaco editor when toggling current line highlight', async () => {
     const tab = createTab();

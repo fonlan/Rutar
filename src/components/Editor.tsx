@@ -860,6 +860,8 @@ export function Editor({
       glyphMargin: false,
       lineDecorationsWidth: 10,
       folding: !tab.largeFileMode,
+      wrappingStrategy: tab.largeFileMode ? 'simple' : 'advanced',
+      scrollBeyondLastColumn: 0,
       scrollBeyondLastLine: false,
       contextmenu: false,
       find: {
@@ -1046,11 +1048,14 @@ export function Editor({
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
       renderLineHighlight: settings.highlightCurrentLine ? 'line' : 'none',
       folding: !tab.largeFileMode,
+      wrappingStrategy: tab.largeFileMode ? 'simple' : 'advanced',
+      scrollBeyondLastColumn: 0,
       contextmenu: false,
       find: {
         addExtraSpaceOnTop: false,
       },
     });
+    editor.layout();
     void updateQuotePairDecorations();
   }, [
     settings.fontFamily,

@@ -79,7 +79,6 @@ const DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME =
 const DIFF_HEADER_ICON_BUTTON_CLASS_NAME =
   'rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent';
 const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
-
 interface PairOffsetsResultPayload {
   leftOffset: number;
   rightOffset: number;
@@ -527,6 +526,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const quotePairRequestSeqRef = useRef({ source: 0, target: 0 });
   const sourceViewZoneIdsRef = useRef<string[]>([]);
   const targetViewZoneIdsRef = useRef<string[]>([]);
+  const settingsRef = useRef(settings);
   const sharedScrollRef = useRef<HTMLDivElement | null>(null);
   const sharedScrollContentRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncLockRef = useRef(false);
@@ -565,6 +565,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       }, []),
     [diffPresentation.rowKinds]
   );
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   const hasDiffRows = diffRowIndexes.length > 0;
   const clearScheduledDiffRefresh = useCallback(() => {
     if (diffRefreshTimerRef.current !== null) {
@@ -1046,16 +1049,17 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [clearPaneQuotePairDecorations, sourceTab, targetTab]
   );
   const applyEditorOptions = useCallback(
-    (editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
+    (_side: ActivePanel, editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
+      const currentSettings = settingsRef.current;
       const largeFileMode = Boolean(paneTab?.largeFileMode);
       editor.updateOptions({
-        fontFamily: settings.fontFamily,
-        fontSize: settings.fontSize,
-        lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-        wordWrap: settings.wordWrap ? 'on' : 'off',
-        tabSize: settings.tabWidth,
-        insertSpaces: settings.tabIndentMode === 'spaces',
-        minimap: { enabled: settings.minimap && !largeFileMode },
+        fontFamily: currentSettings.fontFamily,
+        fontSize: currentSettings.fontSize,
+        lineNumbers: currentSettings.showLineNumbers ? 'on' : 'off',
+        wordWrap: currentSettings.wordWrap ? 'on' : 'off',
+        tabSize: currentSettings.tabWidth,
+        insertSpaces: currentSettings.tabIndentMode === 'spaces',
+        minimap: { enabled: currentSettings.minimap && !largeFileMode },
         lineDecorationsWidth: 10,
         smoothScrolling: !largeFileMode,
         bracketPairColorization: {
@@ -1066,6 +1070,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         renderLineHighlight: 'none',
         folding: !largeFileMode,
+        wrappingStrategy: largeFileMode ? 'simple' : 'advanced',
+        scrollBeyondLastColumn: 0,
         scrollBeyondLastLine: false,
         contextmenu: false,
         scrollbar: {
@@ -1077,16 +1083,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           addExtraSpaceOnTop: false,
         },
       });
+      editor.layout();
     },
-    [
-      settings.fontFamily,
-      settings.fontSize,
-      settings.showLineNumbers,
-      settings.wordWrap,
-      settings.minimap,
-      settings.tabWidth,
-      settings.tabIndentMode,
-    ]
+    []
   );
 
   const queueSyncEdits = useCallback(
@@ -1461,14 +1460,27 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   useEffect(() => {
     monaco.editor.setTheme(settings.theme === 'dark' ? 'vs-dark' : 'vs');
     if (sourceEditorRef.current) {
-      applyEditorOptions(sourceEditorRef.current, sourceTab);
+      applyEditorOptions('source', sourceEditorRef.current, sourceTab);
     }
     if (targetEditorRef.current) {
-      applyEditorOptions(targetEditorRef.current, targetTab);
+      applyEditorOptions('target', targetEditorRef.current, targetTab);
     }
     void updatePaneQuotePairDecorations('source');
     void updatePaneQuotePairDecorations('target');
-  }, [applyEditorOptions, settings.theme, sourceTab, targetTab, updatePaneQuotePairDecorations]);
+  }, [
+    applyEditorOptions,
+    settings.fontFamily,
+    settings.fontSize,
+    settings.showLineNumbers,
+    settings.wordWrap,
+    settings.minimap,
+    settings.tabWidth,
+    settings.tabIndentMode,
+    settings.theme,
+    sourceTab,
+    targetTab,
+    updatePaneQuotePairDecorations,
+  ]);
   useEffect(() => {
     diffRefreshSequenceRef.current = diffRefreshSequenceRef.current + 1;
     clearScheduledDiffRefresh();
@@ -1535,7 +1547,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contextmenu: false,
     });
     sourceEditorRef.current = editor;
-    applyEditorOptions(editor, sourceTab);
+    applyEditorOptions('source', editor, sourceTab);
     window.requestAnimationFrame(() => {
       refreshSharedScrollMetrics();
     });
@@ -1623,7 +1635,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       contextmenu: false,
     });
     targetEditorRef.current = editor;
-    applyEditorOptions(editor, targetTab);
+    applyEditorOptions('target', editor, targetTab);
     window.requestAnimationFrame(() => {
       refreshSharedScrollMetrics();
     });

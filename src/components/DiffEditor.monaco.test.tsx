@@ -149,7 +149,9 @@ vi.mock('monaco-editor', () => {
           }
         }
       }),
-      getLayoutInfo: vi.fn(() => ({ height: 320 })),
+      getLayoutInfo: vi.fn(() => ({
+        height: 320,
+      })),
       getScrollHeight: vi.fn(() => 1200),
       getScrollTop: vi.fn(() => scrollTop),
       setScrollTop: vi.fn((nextTop: number) => {
@@ -169,6 +171,7 @@ vi.mock('monaco-editor', () => {
           column: nextPosition.column,
         };
       }),
+      layout: vi.fn(),
       revealLineInCenter: vi.fn(),
       executeEdits: vi.fn(),
       focus: vi.fn(),
@@ -666,6 +669,8 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
     });
+    monacoDiffMockState.sourceEditor.layout.mockClear();
+    monacoDiffMockState.targetEditor.layout.mockClear();
 
     act(() => {
       useStore.getState().updateSettings({ minimap: false });
@@ -686,6 +691,8 @@ describe('DiffEditor (Monaco)', () => {
           },
         })
       );
+      expect(monacoDiffMockState.sourceEditor.layout).toHaveBeenCalledTimes(1);
+      expect(monacoDiffMockState.targetEditor.layout).toHaveBeenCalledTimes(1);
     });
 
     expect(monacoDiffMockState.createCallCount).toBe(2);
@@ -716,6 +723,8 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor).toBeTruthy();
       expect(monacoDiffMockState.targetEditor).toBeTruthy();
     });
+    monacoDiffMockState.sourceEditor.layout.mockClear();
+    monacoDiffMockState.targetEditor.layout.mockClear();
 
     act(() => {
       useStore.getState().updateSettings({ wordWrap: true });
@@ -725,16 +734,59 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
         })
       );
+      expect(monacoDiffMockState.sourceEditor.layout).toHaveBeenCalledTimes(1);
+      expect(monacoDiffMockState.targetEditor.layout).toHaveBeenCalledTimes(1);
     });
 
     expect(monacoDiffMockState.createCallCount).toBe(2);
+  });
+  it('uses Monaco viewport wrapping options when diff pane word wrap starts enabled', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+      settings: {
+        ...useStore.getState().settings,
+        wordWrap: true,
+      },
+    });
+
+    render(<DiffEditor tab={diffTab} />);
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
+        })
+      );
+      expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'on',
+          wrappingStrategy: 'advanced',
+          scrollBeyondLastColumn: 0,
+        })
+      );
+    });
   });
   it('keeps diff pane current line highlight disabled when toggling setting', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
