@@ -4,6 +4,7 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import { defineRutarMonacoThemes } from './theme';
 
 declare global {
   interface Window {
@@ -133,4 +134,5 @@ export function setupMonacoEnvironment() {
 
   // Use Monaco's built-in language services and diagnostics without external LSP.
   configureMonacoBuiltinLanguageServices();
+  defineRutarMonacoThemes(monaco);
 }

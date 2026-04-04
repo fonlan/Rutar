@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
+import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import {
@@ -1458,7 +1459,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   }, [diffContextMenu]);
 
   useEffect(() => {
-    monaco.editor.setTheme(settings.theme === 'dark' ? 'vs-dark' : 'vs');
+    monaco.editor.setTheme(resolveRutarMonacoTheme(settings.theme));
     if (sourceEditorRef.current) {
       applyEditorOptions('source', sourceEditorRef.current, sourceTab);
     }

@@ -9,6 +9,7 @@ const setupMonacoMockState = vi.hoisted(() => {
     htmlWorkerCtor: createWorker('html'),
     jsonWorkerCtor: createWorker('json'),
     tsWorkerCtor: createWorker('ts'),
+    defineTheme: vi.fn(),
     tsDefaults: {
       setEagerModelSync: vi.fn(),
       setDiagnosticsOptions: vi.fn(),
@@ -42,6 +43,9 @@ vi.mock('monaco-editor/esm/vs/language/typescript/ts.worker?worker', () => ({
 }));
 
 vi.mock('monaco-editor', () => ({
+  editor: {
+    defineTheme: setupMonacoMockState.defineTheme,
+  },
   languages: {
     typescript: {
       typescriptDefaults: setupMonacoMockState.tsDefaults,
@@ -123,6 +127,55 @@ describe('setupMonacoEnvironment', () => {
         trailingCommas: 'ignore',
       })
     );
+    expect(setupMonacoMockState.defineTheme).toHaveBeenCalledTimes(2);
+    expect(setupMonacoMockState.defineTheme).toHaveBeenNthCalledWith(
+      1,
+      'rutar-vs',
+      expect.objectContaining({
+        base: 'vs',
+        inherit: true,
+        rules: expect.arrayContaining([
+          expect.objectContaining({
+            token: 'comment.yaml',
+            foreground: '6E7781',
+            fontStyle: 'italic',
+          }),
+          expect.objectContaining({
+            token: 'type.yaml',
+            foreground: 'A15C00',
+            fontStyle: 'bold',
+          }),
+          expect.objectContaining({
+            token: 'string.yaml',
+            foreground: '0F766E',
+          }),
+        ]),
+      })
+    );
+    expect(setupMonacoMockState.defineTheme).toHaveBeenNthCalledWith(
+      2,
+      'rutar-vs-dark',
+      expect.objectContaining({
+        base: 'vs-dark',
+        inherit: true,
+        rules: expect.arrayContaining([
+          expect.objectContaining({
+            token: 'comment.yaml',
+            foreground: '8B949E',
+            fontStyle: 'italic',
+          }),
+          expect.objectContaining({
+            token: 'type.yaml',
+            foreground: 'FFCB6B',
+            fontStyle: 'bold',
+          }),
+          expect.objectContaining({
+            token: 'string.yaml',
+            foreground: '8BD5CA',
+          }),
+        ]),
+      })
+    );
 
     setupMonacoEnvironment();
 
@@ -133,5 +186,6 @@ describe('setupMonacoEnvironment', () => {
     expect(setupMonacoMockState.tsDefaults.setCompilerOptions).toHaveBeenCalledTimes(1);
     expect(setupMonacoMockState.jsDefaults.setCompilerOptions).toHaveBeenCalledTimes(1);
     expect(setupMonacoMockState.jsonDefaults.setDiagnosticsOptions).toHaveBeenCalledTimes(1);
+    expect(setupMonacoMockState.defineTheme).toHaveBeenCalledTimes(2);
   });
 });

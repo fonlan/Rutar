@@ -5,6 +5,7 @@ import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
+import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
@@ -1029,7 +1030,7 @@ export function Editor({
       return;
     }
 
-    monaco.editor.setTheme(settings.theme === 'dark' ? 'vs-dark' : 'vs');
+    monaco.editor.setTheme(resolveRutarMonacoTheme(settings.theme));
     editor.updateOptions({
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
