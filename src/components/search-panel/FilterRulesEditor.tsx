@@ -346,36 +346,6 @@ export function FilterRulesEditor({
 }: FilterRulesEditorProps) {
   return (
     <div className="mt-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onAddFilterRule}
-          >
-            <CirclePlus className="h-3.5 w-3.5" />
-            {messages.filterAddRule}
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-            onClick={onClearFilterRules}
-            disabled={!hasAnyConfiguredFilterRule}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {messages.filterClearRules}
-          </button>
-        </div>
-        <button
-          type="button"
-          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-          onClick={onToggleResultPanelAndRefresh}
-          title={messages.filterRunHint}
-        >
-          {filterToggleLabel}
-        </button>
-      </div>
-
       <div className="rounded-md border border-border/70 p-2">
         <div className="mb-2 flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
@@ -462,6 +432,36 @@ export function FilterRulesEditor({
               : messages.filterGroupsEmptyHint}
           </span>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onClick={onAddFilterRule}
+          >
+            <CirclePlus className="h-3.5 w-3.5" />
+            {messages.filterAddRule}
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+            onClick={onClearFilterRules}
+            disabled={!hasAnyConfiguredFilterRule}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {messages.filterClearRules}
+          </button>
+        </div>
+        <button
+          type="button"
+          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+          onClick={onToggleResultPanelAndRefresh}
+          title={messages.filterRunHint}
+        >
+          {filterToggleLabel}
+        </button>
       </div>
 
       <div className="text-[11px] text-muted-foreground">{messages.filterRunHint}</div>

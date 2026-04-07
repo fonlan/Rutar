@@ -1889,6 +1889,40 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("renders filter action row below rule groups and above the rule list", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-search-filter-actions-order" }));
+    render(<SearchReplacePanel />);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "filter" },
+        })
+      );
+    });
+    const filterGroupNameInput = await screen.findByPlaceholderText("Rule group name");
+    const addRuleButton = screen.getByRole("button", { name: "Add Rule" });
+    const clearRulesButton = screen.getByRole("button", { name: "Clear Rules" });
+    const runFilterButton = screen.getByTitle("Click Filter to run current rules");
+    const filterRuleInput = screen.getByPlaceholderText("Filter keyword");
+    expect(
+      filterGroupNameInput.compareDocumentPosition(addRuleButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      filterGroupNameInput.compareDocumentPosition(clearRulesButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      filterGroupNameInput.compareDocumentPosition(runFilterButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      addRuleButton.compareDocumentPosition(filterRuleInput) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      clearRulesButton.compareDocumentPosition(filterRuleInput) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      runFilterButton.compareDocumentPosition(filterRuleInput) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+  });
   it("refreshes search results from result panel refresh action", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
