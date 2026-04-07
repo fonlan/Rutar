@@ -1,5 +1,10 @@
+import { useEffect } from 'react';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
-import { SEARCH_SIDEBAR_MAX_WIDTH, SEARCH_SIDEBAR_MIN_WIDTH } from './utils';
+import {
+  SEARCH_SIDEBAR_MAX_WIDTH,
+  SEARCH_SIDEBAR_MIN_WIDTH,
+  SEARCH_SIDEBAR_RIGHT_OFFSET,
+} from './utils';
 import { useSearchSidebarInteraction } from './useSearchSidebarInteraction';
 
 interface UseSearchSidebarFrameOptions {
@@ -13,6 +18,19 @@ export function useSearchSidebarFrame({
   searchSidebarWidth,
   setSearchSidebarWidth,
 }: UseSearchSidebarFrameOptions) {
+  useEffect(() => {
+    const rootStyle = document.documentElement.style;
+    const occludedRightPx = isOpen
+      ? Math.max(0, searchSidebarWidth + SEARCH_SIDEBAR_RIGHT_OFFSET)
+      : 0;
+
+    rootStyle.setProperty('--rutar-search-sidebar-occluded-right', `${occludedRightPx}px`);
+
+    return () => {
+      rootStyle.removeProperty('--rutar-search-sidebar-occluded-right');
+    };
+  }, [isOpen, searchSidebarWidth]);
+
   const {
     containerRef: searchSidebarContainerRef,
     isResizing: isSearchSidebarResizing,

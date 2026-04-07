@@ -4,6 +4,7 @@ import { SearchReplacePanel } from "./SearchReplacePanel";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { SEARCH_SIDEBAR_DEFAULT_WIDTH, SEARCH_SIDEBAR_RIGHT_OFFSET } from "@/components/search-panel/utils";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -56,6 +57,7 @@ describe("SearchReplacePanel", () => {
     vi.clearAllMocks();
     useStore.setState(initialState, true);
     useStore.getState().updateSettings({ language: "en-US" });
+    document.documentElement.style.removeProperty("--rutar-search-sidebar-occluded-right");
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -129,6 +131,32 @@ describe("SearchReplacePanel", () => {
 
     const replaceModeButton = screen.getByTitle("Switch to replace mode");
     expect(replaceModeButton.className).toContain("bg-primary/10");
+  });
+  it("syncs Monaco find-widget occluded width CSS variable while the search sidebar is open", async () => {
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+
+    expect(document.documentElement.style.getPropertyValue("--rutar-search-sidebar-occluded-right")).toBe("0px");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--rutar-search-sidebar-occluded-right")).toBe(
+        `${SEARCH_SIDEBAR_DEFAULT_WIDTH + SEARCH_SIDEBAR_RIGHT_OFFSET}px`
+      );
+    });
+
+    fireEvent.click(screen.getByTitle("Close"));
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--rutar-search-sidebar-occluded-right")).toBe("0px");
+    });
   });
 
   it("prevents native context menu on search sidebar root", async () => {
