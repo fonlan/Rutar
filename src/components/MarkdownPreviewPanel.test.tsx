@@ -219,7 +219,20 @@ describe("MarkdownPreviewPanel", () => {
   it("shows image context menu and copies preview images to the clipboard", async () => {
     const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
     invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
-    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    const panel = container.firstElementChild as HTMLDivElement | null;
+    expect(panel).not.toBeNull();
+    vi.spyOn(panel as HTMLDivElement, "getBoundingClientRect").mockReturnValue({
+      x: 800,
+      y: 100,
+      left: 800,
+      top: 100,
+      right: 1200,
+      bottom: 900,
+      width: 400,
+      height: 800,
+      toJSON: () => ({}),
+    } as DOMRect);
     const image = await screen.findByRole("img", { name: "Preview" });
     Object.defineProperty(image, "naturalWidth", { configurable: true, value: 3 });
     Object.defineProperty(image, "naturalHeight", { configurable: true, value: 2 });
@@ -242,16 +255,15 @@ describe("MarkdownPreviewPanel", () => {
       } as unknown as CanvasRenderingContext2D);
 
     try {
-      const menuEvent = new MouseEvent("contextmenu", {
-        bubbles: true,
-        cancelable: true,
+      fireEvent.contextMenu(image, {
         clientX: 160,
         clientY: 120,
       });
-      const dispatched = image.dispatchEvent(menuEvent);
-      expect(dispatched).toBe(false);
-      expect(menuEvent.defaultPrevented).toBe(true);
       const copyButton = await screen.findByRole("menuitem", { name: "Copy Image" });
+      const menu = copyButton.closest('[role="menu"]') as HTMLDivElement | null;
+      expect(menu).not.toBeNull();
+      expect(menu?.style.left).toBe("8px");
+      expect(menu?.style.top).toBe("20px");
       fireEvent.click(copyButton);
       await waitFor(() => {
         expect(drawImageMock).toHaveBeenCalledWith(image, 0, 0, 3, 2);

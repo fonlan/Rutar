@@ -831,17 +831,22 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       return;
     }
 
+    const panelRect = panelRef.current?.getBoundingClientRect();
+    if (!panelRect) {
+      setPreviewImageContextMenu(null);
+      return;
+    }
     event.stopPropagation();
     setPreviewImageContextMenu({
       x: clampPreviewContextMenuPosition(
-        event.clientX,
+        event.clientX - panelRect.left,
         PREVIEW_IMAGE_CONTEXT_MENU_WIDTH,
-        window.innerWidth,
+        panelRect.width,
       ),
       y: clampPreviewContextMenuPosition(
-        event.clientY,
+        event.clientY - panelRect.top,
         PREVIEW_IMAGE_CONTEXT_MENU_HEIGHT,
-        window.innerHeight,
+        panelRect.height,
       ),
       imageElement,
     });
@@ -1181,7 +1186,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           <div
             ref={previewImageContextMenuRef}
             role="menu"
-            className="fixed z-[90] w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+            className="absolute z-[90] w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
             style={{ left: previewImageContextMenu.x, top: previewImageContextMenu.y }}
             onContextMenu={(event) => {
               event.preventDefault();
