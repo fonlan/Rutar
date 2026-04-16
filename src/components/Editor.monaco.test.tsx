@@ -45,6 +45,10 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(async () => undefined),
 }));
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  message: vi.fn(async () => undefined),
+}));
+
 vi.mock('monaco-editor', () => {
   const createSelection = (
     startLineNumber: number,
@@ -241,12 +245,53 @@ function createTab(overrides: Partial<FileTab> = {}): FileTab {
   };
 }
 
+function createPasteEvent({
+  files = [],
+  text = '',
+}: {
+  files?: File[];
+  text?: string;
+}) {
+  const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+  const clipboardData = {
+    items: files.map((file) => ({
+      kind: 'file',
+      type: file.type,
+      getAsFile: () => file,
+    })),
+    files,
+    getData: (format: string) => (format === 'text/plain' ? text : ''),
+  };
+  Object.defineProperty(event, 'clipboardData', {
+    value: clipboardData,
+    configurable: true,
+  });
+  return event;
+}
+
+function stubFileReaderDataUrl(result: string) {
+  class MockFileReader {
+    result: string | ArrayBuffer | null = null;
+    error: DOMException | null = null;
+    onload: null | ((this: FileReader, event: ProgressEvent<FileReader>) => void) = null;
+    onerror: null | ((this: FileReader, event: ProgressEvent<FileReader>) => void) = null;
+
+    readAsDataURL(_blob: Blob) {
+      this.result = result;
+      this.onload?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>);
+    }
+  }
+
+  vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
+}
+
 describe('Editor (Monaco)', () => {
   const initialStoreState = useStore.getState();
   const openUrlMock = vi.mocked(openUrl);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     useStore.setState(initialStoreState, true);
     monacoMockState.changeListener = null;
     monacoMockState.cursorListener = null;
@@ -577,6 +622,102 @@ describe('Editor (Monaco)', () => {
       endColumn: 12,
     });
   });
+
+  it('converts pasted clipboard images into markdown base64 embeds for markdown tabs', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-image',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    stubFileReaderDataUrl('data:image/png;base64,Zm9v');
+    const { container } = render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+
+    const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+    expect(editorSurface).toBeTruthy();
+
+    monacoMockState.model.value = '';
+    monacoMockState.selection = {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+      isEmpty: () => true,
+    };
+    monacoMockState.editorInstance.executeEdits.mockClear();
+
+    const imageFile = new File(['png-bytes'], 'diagram.png', { type: 'image/png' });
+    const pasteEvent = createPasteEvent({ files: [imageFile] });
+
+    act(() => {
+      editorSurface?.dispatchEvent(pasteEvent);
+    });
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+        'rutar-markdown-toolbar',
+        [
+          {
+            range: {
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: 1,
+              endColumn: 1,
+            },
+            text: '![diagram](data:image/png;base64,Zm9v)',
+            forceMoveMarkers: true,
+          },
+        ]
+      );
+    });
+
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
+
+  it('does not intercept markdown paste when clipboard also carries plain text', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-text',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    stubFileReaderDataUrl('data:image/png;base64,Zm9v');
+    const { container } = render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+
+    const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+    expect(editorSurface).toBeTruthy();
+
+    monacoMockState.editorInstance.executeEdits.mockClear();
+    const imageFile = new File(['png-bytes'], 'diagram.png', { type: 'image/png' });
+    const pasteEvent = createPasteEvent({
+      files: [imageFile],
+      text: 'plain text paste',
+    });
+
+    act(() => {
+      editorSurface?.dispatchEvent(pasteEvent);
+    });
+
+    expect(monacoMockState.editorInstance.executeEdits).not.toHaveBeenCalled();
+    expect(pasteEvent.defaultPrevented).toBe(false);
+  });
+
   it('does not recreate Monaco editor when toggling wordWrap', async () => {
     const tab = createTab();
     useStore.setState({

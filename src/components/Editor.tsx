@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
+import { message } from '@tauri-apps/plugin-dialog';
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
+import { isMarkdownTab } from '@/lib/markdown';
 import {
   applyMarkdownToolbarAction,
   buildIndentationUnit,
@@ -38,6 +40,7 @@ const BOOKMARK_LINE_NUMBER_CLASS_NAME = 'rutar-bookmark-line-number-highlight';
 const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
 const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
 const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
+
 interface PairOffsetsResultPayload {
   leftOffset: number;
   rightOffset: number;
@@ -197,6 +200,68 @@ async function getDocumentText(tabId: string, lineCountHint: number) {
       endLine: Math.max(1, lineCountHint),
     });
   }
+}
+
+function resolveClipboardImageFile(clipboardEvent: ClipboardEvent) {
+  const clipboardData = clipboardEvent.clipboardData;
+  if (!clipboardData) {
+    return null;
+  }
+
+  const plainText = clipboardData.getData('text/plain');
+  if (plainText.trim().length > 0) {
+    return null;
+  }
+
+  for (const item of Array.from(clipboardData.items ?? [])) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+      continue;
+    }
+
+    const file = item.getAsFile();
+    if (file) {
+      return file;
+    }
+  }
+
+  for (const file of Array.from(clipboardData.files ?? [])) {
+    if (file.type.startsWith('image/')) {
+      return file;
+    }
+  }
+
+  return null;
+}
+
+function resolveClipboardImageAltText(file: File) {
+  const fileName = file.name.trim();
+  if (!fileName) {
+    return 'image';
+  }
+
+  const suffixIndex = fileName.lastIndexOf('.');
+  if (suffixIndex <= 0) {
+    return fileName;
+  }
+
+  return fileName.slice(0, suffixIndex) || fileName;
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('Failed to read clipboard image.'));
+    };
+    reader.onload = () => {
+      if (typeof reader.result !== 'string' || reader.result.length === 0) {
+        reject(new Error('Clipboard image data URL is empty.'));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function Editor({
@@ -950,6 +1015,48 @@ export function Editor({
       event.stopPropagation();
     };
     editorDomNode?.addEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
+    const handleEditorPaste = (event: ClipboardEvent) => {
+      const activeTabId = activeTabIdRef.current;
+      if (!activeTabId) {
+        return;
+      }
+
+      const currentTab =
+        useStore
+          .getState()
+          .tabs
+          .find((candidate) => candidate.id === activeTabId && candidate.tabType !== 'diff') ?? null;
+      if (!isMarkdownTab(currentTab)) {
+        return;
+      }
+
+      const imageFile = resolveClipboardImageFile(event);
+      if (!imageFile) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const language = useStore.getState().settings.language;
+      void readBlobAsDataUrl(imageFile)
+        .then((dataUrl) => {
+          applyMarkdownToolbarEdit({
+            type: 'insert_image_base64',
+            src: dataUrl,
+            alt: resolveClipboardImageAltText(imageFile),
+          });
+        })
+        .catch(async (error) => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('Failed to convert pasted clipboard image into markdown Base64 image:', error);
+          await message(`${t(language, 'markdownToolbar.image.base64Failed')} ${errorMessage}`, {
+            title: t(language, 'markdownToolbar.image'),
+            kind: 'warning',
+          });
+        });
+    };
+    editorDomNode?.addEventListener('paste', handleEditorPaste, true);
 
     const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
       if (applyingRemoteTextRef.current) {
@@ -1066,6 +1173,7 @@ export function Editor({
       mouseDownDisposable.dispose();
       contextMenuDisposable.dispose();
       editorDomNode?.removeEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
+      editorDomNode?.removeEventListener('paste', handleEditorPaste, true);
 
       const activeTabId = activeTabIdRef.current;
       if (activeTabId) {
@@ -1078,6 +1186,7 @@ export function Editor({
       activeTabIdRef.current = null;
     };
   }, [
+    applyMarkdownToolbarEdit,
     clearQuotePairDecorations,
     handleMonacoContextMenu,
     queueSyncEdits,
