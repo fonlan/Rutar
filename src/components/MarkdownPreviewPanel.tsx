@@ -1,4 +1,6 @@
+import { Image as TauriImage } from '@tauri-apps/api/image';
 import { invoke } from '@tauri-apps/api/core';
+import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { marked } from 'marked';
 import {
@@ -51,6 +53,12 @@ type MermaidApi = {
   render: (id: string, text: string) => Promise<{ svg: string }>;
 };
 
+interface PreviewImageContextMenuState {
+  x: number;
+  y: number;
+  imageElement: HTMLImageElement;
+}
+
 const MIN_PREVIEW_WIDTH_RATIO = 0.2;
 const MAX_PREVIEW_WIDTH_RATIO = 0.8;
 const LIVE_UPDATE_DEBOUNCE_MS = 140;
@@ -67,6 +75,9 @@ const MERMAID_ZOOM_STEP = 1.18;
 const MERMAID_STATE_EPSILON = 0.001;
 const DEFAULT_MERMAID_BASE_WIDTH = 640;
 const DEFAULT_MERMAID_BASE_HEIGHT = 360;
+const PREVIEW_IMAGE_CONTEXT_MENU_WIDTH = 160;
+const PREVIEW_IMAGE_CONTEXT_MENU_HEIGHT = 42;
+const PREVIEW_IMAGE_CONTEXT_MENU_PADDING = 8;
 let mermaidApiPromise: Promise<MermaidApi> | null = null;
 
 function syncMarkdownOpenTargetAttribute(
@@ -139,6 +150,40 @@ function clampPreviewRatio(value: number) {
   }
 
   return Math.max(MIN_PREVIEW_WIDTH_RATIO, Math.min(MAX_PREVIEW_WIDTH_RATIO, value));
+}
+
+function clampPreviewContextMenuPosition(value: number, menuSize: number, viewportSize: number) {
+  return Math.max(
+    PREVIEW_IMAGE_CONTEXT_MENU_PADDING,
+    Math.min(value, viewportSize - menuSize - PREVIEW_IMAGE_CONTEXT_MENU_PADDING),
+  );
+}
+
+async function copyMarkdownPreviewImageToClipboard(imageElement: HTMLImageElement) {
+  const imageWidth = Math.max(1, Math.round(imageElement.naturalWidth || imageElement.width || 0));
+  const imageHeight = Math.max(1, Math.round(imageElement.naturalHeight || imageElement.height || 0));
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    throw new Error('Markdown preview image is not ready to copy.');
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = imageWidth;
+  canvas.height = imageHeight;
+
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    throw new Error('Canvas 2D context is unavailable.');
+  }
+
+  context.drawImage(imageElement, 0, 0, imageWidth, imageHeight);
+  const imageData = context.getImageData(0, 0, imageWidth, imageHeight);
+  const clipboardImage = await TauriImage.new(Uint8Array.from(imageData.data), imageWidth, imageHeight);
+
+  try {
+    await writeImage(clipboardImage);
+  } finally {
+    await clipboardImage.close().catch(() => undefined);
+  }
 }
 
 function isMermaidCodeBlock(element: HTMLElement) {
@@ -372,11 +417,13 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [previewImageContextMenu, setPreviewImageContextMenu] = useState<PreviewImageContextMenuState | null>(null);
+  const [isCopyingPreviewImage, setIsCopyingPreviewImage] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizePreviewRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const previewArticleRef = useRef<HTMLElement | null>(null);
-  const sourceScrollRef = useRef<HTMLElement | null>(null);
+  const previewImageContextMenuRef = useRef<HTMLDivElement | null>(null);
   const latestScrollRatioRef = useRef<ScrollRatioState>({ top: 0, left: 0 });
   const mermaidRenderVersionRef = useRef(0);
   const mermaidPanStateRef = useRef<MermaidPanState | null>(null);
@@ -388,7 +435,6 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const refreshTimerRef = useRef<number | null>(null);
   const resizePendingRatioRef = useRef(clampPreviewRatio(previewWidthRatio));
   const resizeFrameRef = useRef<number | null>(null);
-  const activeTabId = tab?.id ?? null;
   const markdownEnabled = isMarkdownTab(tab);
   const deferredMarkdownSource = useDeferredValue(markdownSource);
 
@@ -430,10 +476,48 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!previewImageContextMenu) {
+      return;
+    }
+
+    const handleWindowPointerDown = (event: PointerEvent) => {
+      if (
+        previewImageContextMenuRef.current
+        && event.target instanceof Node
+        && previewImageContextMenuRef.current.contains(event.target)
+      ) {
+        return;
+      }
+
+      setPreviewImageContextMenu(null);
+    };
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      setPreviewImageContextMenu(null);
+    };
+
+    const handleWindowBlur = () => {
+      setPreviewImageContextMenu(null);
+    };
+
+    window.addEventListener('pointerdown', handleWindowPointerDown);
+    window.addEventListener('keydown', handleWindowKeyDown);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('pointerdown', handleWindowPointerDown);
+      window.removeEventListener('keydown', handleWindowKeyDown);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [previewImageContextMenu]);
   const handlePreviewScroll = useCallback(() => {
     const previewScroller = previewScrollRef.current;
-    const sourceElement = sourceScrollRef.current;
-    if (!previewScroller || !sourceElement) {
+    if (!previewScroller) {
       return;
     }
 
@@ -446,18 +530,8 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
 
     latestScrollRatioRef.current = ratios;
 
-    const sourceMaxTop = Math.max(0, sourceElement.scrollHeight - sourceElement.clientHeight);
-    const sourceMaxLeft = Math.max(0, sourceElement.scrollWidth - sourceElement.clientWidth);
-    const nextTop = sourceMaxTop * ratios.top;
-    const nextLeft = sourceMaxLeft * ratios.left;
 
-    if (Math.abs(sourceElement.scrollTop - nextTop) > 0.5) {
-      sourceElement.scrollTop = nextTop;
-    }
 
-    if (Math.abs(sourceElement.scrollLeft - nextLeft) > 0.5) {
-      sourceElement.scrollLeft = nextLeft;
-    }
   }, []);
 
   const clearRefreshTimer = useCallback(() => {
@@ -578,77 +652,6 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     };
   }, [clearRefreshTimer, loadMarkdownContent, markdownEnabled, open, tab]);
 
-  useEffect(() => {
-    if (!open || !activeTabId) {
-      return;
-    }
-
-    let sourceElement: HTMLElement | null = null;
-    let rafId = 0;
-
-    const syncFromEditor = () => {
-      if (!sourceElement) {
-        return;
-      }
-
-      const maxTop = Math.max(0, sourceElement.scrollHeight - sourceElement.clientHeight);
-      const maxLeft = Math.max(0, sourceElement.scrollWidth - sourceElement.clientWidth);
-      const ratios = {
-        top: maxTop > 0 ? sourceElement.scrollTop / maxTop : 0,
-        left: maxLeft > 0 ? sourceElement.scrollLeft / maxLeft : 0,
-      };
-
-      latestScrollRatioRef.current = ratios;
-      applyScrollRatio(ratios);
-    };
-
-    const bindSource = () => {
-      const nextSource = document.querySelector(
-        '[data-rutar-gesture-area="true"] .editor-scroll-stable'
-      ) as HTMLElement | null;
-      if (nextSource === sourceElement) {
-        return;
-      }
-
-      if (sourceElement) {
-        sourceElement.removeEventListener('scroll', syncFromEditor);
-      }
-
-      sourceElement = nextSource;
-      sourceScrollRef.current = nextSource;
-
-      if (sourceElement) {
-        sourceElement.addEventListener('scroll', syncFromEditor, { passive: true });
-        syncFromEditor();
-      }
-    };
-
-    const scheduleBind = () => {
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-
-      rafId = window.requestAnimationFrame(bindSource);
-    };
-
-    const observer = new MutationObserver(scheduleBind);
-    observer.observe(document.body, { childList: true, subtree: true });
-    scheduleBind();
-
-    return () => {
-      observer.disconnect();
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-
-      if (sourceElement) {
-        sourceElement.removeEventListener('scroll', syncFromEditor);
-      }
-
-      sourceScrollRef.current = null;
-    };
-  }, [activeTabId, applyScrollRatio, open]);
-
   const renderedHtml = useMemo(() => {
     if (!markdownEnabled || !deferredMarkdownSource) {
       return '';
@@ -657,6 +660,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     const parsedHtml = marked.parse(deferredMarkdownSource) as string;
     return rewriteMarkdownPreviewHtml(parsedHtml, tab?.path);
   }, [deferredMarkdownSource, markdownEnabled, tab?.path]);
+
 
   const stopMermaidPan = useCallback(() => {
     mermaidPanCleanupRef.current?.();
@@ -805,6 +809,52 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerUp, true);
   }, [stopMermaidPan]);
+  const handlePreviewContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const targetElement = event.target;
+    if (!(targetElement instanceof Element)) {
+      setPreviewImageContextMenu(null);
+      return;
+    }
+
+    const imageElement = targetElement.closest('img[src]');
+    if (!(imageElement instanceof HTMLImageElement) || !previewArticleRef.current?.contains(imageElement)) {
+      setPreviewImageContextMenu(null);
+      return;
+    }
+
+    event.stopPropagation();
+    setPreviewImageContextMenu({
+      x: clampPreviewContextMenuPosition(
+        event.clientX,
+        PREVIEW_IMAGE_CONTEXT_MENU_WIDTH,
+        window.innerWidth,
+      ),
+      y: clampPreviewContextMenuPosition(
+        event.clientY,
+        PREVIEW_IMAGE_CONTEXT_MENU_HEIGHT,
+        window.innerHeight,
+      ),
+      imageElement,
+    });
+  }, []);
+  const handleCopyPreviewImage = useCallback(async () => {
+    if (!previewImageContextMenu || isCopyingPreviewImage) {
+      return;
+    }
+
+    setIsCopyingPreviewImage(true);
+
+    try {
+      await copyMarkdownPreviewImageToClipboard(previewImageContextMenu.imageElement);
+    } catch (error) {
+      console.error('Failed to copy markdown preview image:', error);
+    } finally {
+      setIsCopyingPreviewImage(false);
+      setPreviewImageContextMenu(null);
+    }
+  }, [isCopyingPreviewImage, previewImageContextMenu]);
 
   useEffect(() => {
     if (!open || !markdownEnabled || !renderedHtml) {
@@ -1088,26 +1138,6 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       }
     }
 
-    const sourceElement = sourceScrollRef.current;
-    if (!sourceElement) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const maxTop = Math.max(0, sourceElement.scrollHeight - sourceElement.clientHeight);
-    const maxLeft = Math.max(0, sourceElement.scrollWidth - sourceElement.clientWidth);
-    const horizontalDelta = Math.abs(event.deltaX) > 0 ? event.deltaX : event.shiftKey ? event.deltaY : 0;
-    const nextTop = Math.max(0, Math.min(maxTop, sourceElement.scrollTop + event.deltaY));
-    const nextLeft = Math.max(0, Math.min(maxLeft, sourceElement.scrollLeft + horizontalDelta));
-
-    if (Math.abs(sourceElement.scrollTop - nextTop) > 0.5) {
-      sourceElement.scrollTop = nextTop;
-    }
-
-    if (Math.abs(sourceElement.scrollLeft - nextLeft) > 0.5) {
-      sourceElement.scrollLeft = nextLeft;
-    }
   }, []);
 
   return (
@@ -1123,7 +1153,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           ? 'border-l border-border opacity-100 pointer-events-auto'
           : 'border-l border-transparent opacity-0 pointer-events-none'
       )}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={handlePreviewContextMenu}
       style={{ width: open ? `${clampPreviewRatio(previewWidthRatio) * 100}%` : '0px' }}
     >
       <div
@@ -1140,6 +1170,30 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >
+        {previewImageContextMenu ? (
+          <div
+            ref={previewImageContextMenuRef}
+            role="menu"
+            className="fixed z-[90] w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+            style={{ left: previewImageContextMenu.x, top: previewImageContextMenu.y }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isCopyingPreviewImage}
+              onClick={() => {
+                void handleCopyPreviewImage();
+              }}
+            >
+              {tr('preview.copyImage')}
+            </button>
+          </div>
+        ) : null}
         <div
           className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1/2 cursor-col-resize"
           onPointerDown={handleResizePointerDown}

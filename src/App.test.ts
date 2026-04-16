@@ -4459,6 +4459,7 @@ describe('App component', () => {
         expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
       });
 
+      expect(document.body.querySelector('canvas')).toBeNull();
       vi.useFakeTimers();
       fakeTimersEnabled = true;
 
@@ -4497,6 +4498,7 @@ describe('App component', () => {
         });
       });
 
+      expect(document.body.querySelector('canvas')).not.toBeNull();
       act(() => {
         vi.advanceTimersByTime(220);
       });
@@ -4504,6 +4506,7 @@ describe('App component', () => {
       expect(canvasContext.beginPath).toHaveBeenCalled();
       expect(canvasContext.lineTo).toHaveBeenCalled();
       expect(canvasContext.clearRect).toHaveBeenCalled();
+      expect(document.body.querySelector('canvas')).toBeNull();
       expect(previewSequences.some((value) => value.length > 0)).toBe(true);
       expect(previewSequences.filter((value) => value === '').length).toBeGreaterThanOrEqual(2);
     } finally {

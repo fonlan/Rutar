@@ -212,32 +212,8 @@ describe("MarkdownPreviewPanel", () => {
     });
   });
 
-  it("forwards preview wheel events to editor scroller", async () => {
-    const markdownTab = createTab({ syntaxOverride: "markdown" });
-    const gestureArea = document.createElement("div");
-    gestureArea.setAttribute("data-rutar-gesture-area", "true");
-    const editorScroller = document.createElement("div");
-    editorScroller.className = "editor-scroll-stable";
-    gestureArea.appendChild(editorScroller);
-    document.body.appendChild(gestureArea);
-    Object.defineProperty(editorScroller, "scrollHeight", { configurable: true, value: 1200 });
-    Object.defineProperty(editorScroller, "clientHeight", { configurable: true, value: 300 });
-    Object.defineProperty(editorScroller, "scrollWidth", { configurable: true, value: 800 });
-    Object.defineProperty(editorScroller, "clientWidth", { configurable: true, value: 200 });
-    editorScroller.scrollTop = 100;
-    editorScroller.scrollLeft = 40;
-    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalled();
-    });
-    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
-    fireEvent.wheel(previewScroller, { deltaY: 60, deltaX: 25 });
-    expect(editorScroller.scrollTop).toBe(160);
-    expect(editorScroller.scrollLeft).toBe(65);
-    gestureArea.remove();
-  });
 
-  it("syncs editor scrolling when the preview scrollbar is dragged", async () => {
+  it.skip("legacy editor/preview scroll sync behavior", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     const gestureArea = document.createElement("div");
     gestureArea.setAttribute("data-rutar-gesture-area", "true");
@@ -272,6 +248,36 @@ describe("MarkdownPreviewPanel", () => {
     gestureArea.remove();
   });
 
+  it("keeps preview scroll ratio when rendered markdown content changes", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
+    Object.defineProperty(previewScroller, "scrollHeight", { configurable: true, value: 900 });
+    Object.defineProperty(previewScroller, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(previewScroller, "scrollWidth", { configurable: true, value: 700 });
+    Object.defineProperty(previewScroller, "clientWidth", { configurable: true, value: 300 });
+    previewScroller.scrollTop = 300;
+    previewScroller.scrollLeft = 200;
+    fireEvent.scroll(previewScroller);
+    invokeMock.mockResolvedValueOnce("# Updated\n\n## More");
+    Object.defineProperty(previewScroller, "scrollHeight", { configurable: true, value: 1500 });
+    Object.defineProperty(previewScroller, "scrollWidth", { configurable: true, value: 1100 });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:document-updated", {
+          detail: { tabId: markdownTab.id },
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+      expect(previewScroller.scrollTop).toBe(600);
+      expect(previewScroller.scrollLeft).toBe(400);
+    });
+  });
   it("keeps width ratio stable during drag and commits on pointerup", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     const { container } = render(
@@ -404,7 +410,7 @@ describe("MarkdownPreviewPanel", () => {
     expect(setPointerCaptureMock).not.toHaveBeenCalled();
   });
 
-  it("skips wheel forwarding when no editor scroller source is available", async () => {
+  it("allows native preview wheel scrolling when no mermaid zoom action is triggered", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     await waitFor(() => {

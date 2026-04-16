@@ -101,6 +101,7 @@ export type I18nKey =
   | 'preview.loading'
   | 'preview.empty'
   | 'preview.loadFailed'
+  | 'preview.copyImage'
   | 'preview.mermaid.zoomIn'
   | 'preview.mermaid.zoomOut'
   | 'preview.mermaid.resetView'
@@ -386,6 +387,7 @@ const zhCN: Messages = {
   'preview.loading': '正在渲染预览...',
   'preview.empty': '当前 Markdown 文档为空。',
   'preview.loadFailed': '预览加载失败：',
+  'preview.copyImage': '复制图片',
   'preview.mermaid.zoomIn': '放大 Mermaid 图',
   'preview.mermaid.zoomOut': '缩小 Mermaid 图',
   'preview.mermaid.resetView': '重置视图',
@@ -670,6 +672,7 @@ const enUS: Messages = {
   'preview.loading': 'Rendering preview...',
   'preview.empty': 'This Markdown document is empty.',
   'preview.loadFailed': 'Failed to load preview:',
+  'preview.copyImage': 'Copy Image',
   'preview.mermaid.zoomIn': 'Zoom in Mermaid diagram',
   'preview.mermaid.zoomOut': 'Zoom out Mermaid diagram',
   'preview.mermaid.resetView': 'Reset view',

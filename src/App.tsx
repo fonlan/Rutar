@@ -1272,6 +1272,7 @@ function App() {
     trailCanvas.style.opacity = '1';
 
     const trailContext = trailCanvas.getContext('2d');
+    let trailCanvasAttached = false;
 
     const syncTrailCanvasSize = () => {
       const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -1289,6 +1290,21 @@ function App() {
       }
     };
 
+    const attachTrailCanvas = () => {
+      if (trailCanvasAttached) {
+        return;
+      }
+      syncTrailCanvasSize();
+      document.body.appendChild(trailCanvas);
+      trailCanvasAttached = true;
+    };
+    const detachTrailCanvas = () => {
+      if (!trailCanvasAttached) {
+        return;
+      }
+      trailCanvas.remove();
+      trailCanvasAttached = false;
+    };
     const clearTrail = () => {
       if (!trailContext) {
         return;
@@ -1304,6 +1320,7 @@ function App() {
 
       state.clearTrailTimer = window.setTimeout(() => {
         clearTrail();
+        detachTrailCanvas();
         state.clearTrailTimer = null;
       }, 180);
     };
@@ -1334,8 +1351,6 @@ function App() {
       trailContext.stroke();
     };
 
-    syncTrailCanvasSize();
-    document.body.appendChild(trailCanvas);
 
     const releasePointerCaptureIfNeeded = () => {
       const captureTarget = state.pointerCaptureTarget;
@@ -1417,6 +1432,7 @@ function App() {
       state.trailLastY = event.clientY;
       state.sequence = '';
       state.movedEnough = false;
+      attachTrailCanvas();
       clearGesturePreview();
 
       if (state.clearTrailTimer !== null) {
@@ -1585,7 +1601,7 @@ function App() {
       clearGesturePreview();
 
       releasePointerCaptureIfNeeded();
-      trailCanvas.remove();
+      detachTrailCanvas();
     };
   }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
   
