@@ -5,6 +5,12 @@ import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
+import {
+  applyMarkdownToolbarAction,
+  buildIndentationUnit,
+  MARKDOWN_TOOLBAR_ACTION_EVENT,
+  type MarkdownToolbarAction,
+} from '@/lib/markdownToolbar';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
@@ -403,6 +409,65 @@ export function Editor({
     editor.focus();
     return true;
   }, []);
+  const applyMarkdownToolbarEdit = useCallback((action: MarkdownToolbarAction) => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    const selection = editor?.getSelection();
+    if (!editor || !model || !selection) {
+      return;
+    }
+
+    const startOffset = model.getOffsetAt({
+      lineNumber: selection.startLineNumber,
+      column: selection.startColumn,
+    });
+    const endOffset = model.getOffsetAt({
+      lineNumber: selection.endLineNumber,
+      column: selection.endColumn,
+    });
+    const result = applyMarkdownToolbarAction({
+      text: model.getValue(),
+      selectionStart: startOffset,
+      selectionEnd: endOffset,
+      action,
+      indentationUnit: buildIndentationUnit(settings.tabIndentMode, settings.tabWidth),
+    });
+    if (!result) {
+      return;
+    }
+
+    const rangeStart = model.getPositionAt(result.replaceStart);
+    const rangeEnd = model.getPositionAt(result.replaceEnd);
+    editor.executeEdits('rutar-markdown-toolbar', [
+      {
+        range: {
+          startLineNumber: rangeStart.lineNumber,
+          startColumn: rangeStart.column,
+          endLineNumber: rangeEnd.lineNumber,
+          endColumn: rangeEnd.column,
+        },
+        text: result.insertText,
+        forceMoveMarkers: true,
+      },
+    ]);
+
+    const nextModel = editor.getModel();
+    if (!nextModel) {
+      editor.focus();
+      return;
+    }
+
+    const nextSelectionStart = nextModel.getPositionAt(result.selectionStart);
+    const nextSelectionEnd = nextModel.getPositionAt(result.selectionEnd);
+    editor.setSelection({
+      startLineNumber: nextSelectionStart.lineNumber,
+      startColumn: nextSelectionStart.column,
+      endLineNumber: nextSelectionEnd.lineNumber,
+      endColumn: nextSelectionEnd.column,
+    });
+    editor.revealPositionInCenterIfOutsideViewport(nextSelectionEnd);
+    editor.focus();
+  }, [settings.tabIndentMode, settings.tabWidth]);
   const handleSelectAllFromContext = useCallback(() => {
     const editor = editorRef.current;
     const model = editor?.getModel();
@@ -1316,6 +1381,18 @@ export function Editor({
       applySelectionEdit('rutar-paste', text);
     };
 
+    const handleMarkdownToolbarAction = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        tabId?: string;
+        action?: MarkdownToolbarAction;
+      }>;
+      if (customEvent.detail?.tabId !== tab.id || !customEvent.detail?.action) {
+        return;
+      }
+
+      applyMarkdownToolbarEdit(customEvent.detail.action);
+    };
+
     const handleClipboardAction = async (event: Event) => {
       const customEvent = event as CustomEvent<{
         tabId?: string;
@@ -1392,6 +1469,7 @@ export function Editor({
     window.addEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
     window.addEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
     window.addEventListener('rutar:paste-text', handlePaste as EventListener);
+    window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, handleMarkdownToolbarAction as EventListener);
     window.addEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
     window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
     window.addEventListener(EDITOR_FIND_OPEN_EVENT, handleEditorFindOpen as EventListener);
@@ -1402,12 +1480,14 @@ export function Editor({
       window.removeEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
       window.removeEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
       window.removeEventListener('rutar:paste-text', handlePaste as EventListener);
+      window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, handleMarkdownToolbarAction as EventListener);
       window.removeEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);
       window.removeEventListener(EDITOR_FIND_OPEN_EVENT, handleEditorFindOpen as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
   }, [
+    applyMarkdownToolbarEdit,
     applySelectionEdit,
     ensureEditorModelLoaded,
     getSelectedEditorText,

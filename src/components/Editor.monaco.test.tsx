@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { EDITOR_FIND_OPEN_EVENT } from '@/lib/editorFind';
+import { MARKDOWN_TOOLBAR_ACTION_EVENT } from '@/lib/markdownToolbar';
 import { type FileTab, useStore } from '@/store/useStore';
 import { Editor } from './Editor';
 
@@ -96,6 +97,29 @@ vi.mock('monaco-editor', () => {
       const safeColumn = Math.max(1, Math.min(position.column, lineText.length + 1));
       return offset + safeColumn - 1;
     },
+    getPositionAt(offset: number) {
+      const safeOffset = Math.max(0, Math.min(offset, this.value.length));
+      const lines = this.value.split('\n');
+      let remaining = safeOffset;
+      for (let index = 0; index < lines.length; index += 1) {
+        const lineText = lines[index] ?? '';
+        if (remaining <= lineText.length) {
+          return {
+            lineNumber: index + 1,
+            column: remaining + 1,
+          };
+        }
+        remaining -= lineText.length;
+        if (index < lines.length - 1) {
+          remaining -= 1;
+        }
+      }
+      const lastLine = lines[lines.length - 1] ?? '';
+      return {
+        lineNumber: Math.max(1, lines.length),
+        column: lastLine.length + 1,
+      };
+    },
   };
 
   monacoMockState.selection = createSelection(1, 1, 1, 1);
@@ -154,7 +178,20 @@ vi.mock('monaco-editor', () => {
     }),
     getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
     getSelection: vi.fn(() => monacoMockState.selection),
-    executeEdits: vi.fn(),
+    executeEdits: vi.fn((_source: string, edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => {
+      for (const edit of edits) {
+        const startOffset = model.getOffsetAt({
+          lineNumber: edit.range.startLineNumber,
+          column: edit.range.startColumn,
+        });
+        const endOffset = model.getOffsetAt({
+          lineNumber: edit.range.endLineNumber,
+          column: edit.range.endColumn,
+        });
+        model.value = model.value.slice(0, startOffset) + edit.text + model.value.slice(endOffset);
+      }
+      return true;
+    }),
     deltaDecorations: vi.fn((_oldDecorations: string[], nextDecorations: unknown[]) =>
       nextDecorations.map((_item, index) => `decoration-${index}`)
     ),
@@ -483,6 +520,63 @@ describe('Editor (Monaco)', () => {
     });
   });
 
+  it('applies markdown toolbar edits through the Monaco editor and restores selection', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-editor',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+    monacoMockState.model.value = '';
+    monacoMockState.selection = {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+      isEmpty: () => true,
+    };
+    monacoMockState.editorInstance.executeEdits.mockClear();
+    monacoMockState.editorInstance.setSelection.mockClear();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(MARKDOWN_TOOLBAR_ACTION_EVENT, {
+          detail: {
+            tabId: tab.id,
+            action: { type: 'toggle_bold' },
+          },
+        })
+      );
+    });
+    expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+      'rutar-markdown-toolbar',
+      [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: 1,
+            endColumn: 1,
+          },
+          text: '**bold text**',
+          forceMoveMarkers: true,
+        },
+      ]
+    );
+    expect(monacoMockState.editorInstance.setSelection).toHaveBeenCalledWith({
+      startLineNumber: 1,
+      startColumn: 3,
+      endLineNumber: 1,
+      endColumn: 12,
+    });
+  });
   it('does not recreate Monaco editor when toggling wordWrap', async () => {
     const tab = createTab();
     useStore.setState({

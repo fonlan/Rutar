@@ -75,6 +75,9 @@ vi.mock('@/components/TitleBar', () => ({
 vi.mock('@/components/Toolbar', () => ({
   Toolbar: () => React.createElement('div', { 'data-testid': 'mock-toolbar' }),
 }));
+vi.mock('@/components/MarkdownToolbar', () => ({
+  MarkdownToolbar: () => null,
+}));
 
 
 vi.mock('@/components/Editor', () => ({

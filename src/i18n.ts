@@ -63,6 +63,39 @@ export type I18nKey =
   | 'toolbar.disabled.noSelectedText'
   | 'toolbar.disabled.noUndoHistory'
   | 'toolbar.disabled.noRedoHistory'
+  | 'markdownToolbar.heading'
+  | 'markdownToolbar.heading.body'
+  | 'markdownToolbar.heading.h1'
+  | 'markdownToolbar.heading.h2'
+  | 'markdownToolbar.heading.h3'
+  | 'markdownToolbar.heading.h4'
+  | 'markdownToolbar.heading.h5'
+  | 'markdownToolbar.heading.h6'
+  | 'markdownToolbar.orderedList'
+  | 'markdownToolbar.unorderedList'
+  | 'markdownToolbar.taskList'
+  | 'markdownToolbar.blockquote'
+  | 'markdownToolbar.indent'
+  | 'markdownToolbar.outdent'
+  | 'markdownToolbar.codeBlock'
+  | 'markdownToolbar.table'
+  | 'markdownToolbar.horizontalRule'
+  | 'markdownToolbar.bold'
+  | 'markdownToolbar.italic'
+  | 'markdownToolbar.underline'
+  | 'markdownToolbar.strikethrough'
+  | 'markdownToolbar.superscript'
+  | 'markdownToolbar.subscript'
+  | 'markdownToolbar.inlineCode'
+  | 'markdownToolbar.textColor'
+  | 'markdownToolbar.backgroundColor'
+  | 'markdownToolbar.link'
+  | 'markdownToolbar.image'
+  | 'markdownToolbar.image.url'
+  | 'markdownToolbar.image.file'
+  | 'markdownToolbar.image.base64'
+  | 'markdownToolbar.image.insertFailed'
+  | 'markdownToolbar.image.base64Failed'
   | 'preview.title'
   | 'preview.notMarkdown'
   | 'preview.loading'
@@ -315,6 +348,39 @@ const zhCN: Messages = {
   'toolbar.disabled.noSelectedText': '当前没有选中文本',
   'toolbar.disabled.noUndoHistory': '当前没有可撤销的操作',
   'toolbar.disabled.noRedoHistory': '当前没有可重做的操作',
+  'markdownToolbar.heading': '段落/标题',
+  'markdownToolbar.heading.body': '正文',
+  'markdownToolbar.heading.h1': '一级标题',
+  'markdownToolbar.heading.h2': '二级标题',
+  'markdownToolbar.heading.h3': '三级标题',
+  'markdownToolbar.heading.h4': '四级标题',
+  'markdownToolbar.heading.h5': '五级标题',
+  'markdownToolbar.heading.h6': '六级标题',
+  'markdownToolbar.orderedList': '有序列表',
+  'markdownToolbar.unorderedList': '无序列表',
+  'markdownToolbar.taskList': '任务列表',
+  'markdownToolbar.blockquote': '引述',
+  'markdownToolbar.indent': '右缩进',
+  'markdownToolbar.outdent': '左缩进',
+  'markdownToolbar.codeBlock': '插入代码块',
+  'markdownToolbar.table': '插入表格',
+  'markdownToolbar.horizontalRule': '插入分隔线',
+  'markdownToolbar.bold': '粗体',
+  'markdownToolbar.italic': '斜体',
+  'markdownToolbar.underline': '下划线',
+  'markdownToolbar.strikethrough': '删除线',
+  'markdownToolbar.superscript': '上标',
+  'markdownToolbar.subscript': '下标',
+  'markdownToolbar.inlineCode': '行内代码',
+  'markdownToolbar.textColor': '文字颜色',
+  'markdownToolbar.backgroundColor': '背景颜色',
+  'markdownToolbar.link': '插入链接',
+  'markdownToolbar.image': '插入图片',
+  'markdownToolbar.image.url': '网络图片',
+  'markdownToolbar.image.file': '本地图片链接',
+  'markdownToolbar.image.base64': 'Base64 嵌入图片',
+  'markdownToolbar.image.insertFailed': '插入本地图片失败：',
+  'markdownToolbar.image.base64Failed': '生成 Base64 图片失败：',
   'preview.title': 'Markdown 预览',
   'preview.notMarkdown': '仅支持 Markdown 文件预览。',
   'preview.loading': '正在渲染预览...',
@@ -566,6 +632,39 @@ const enUS: Messages = {
   'toolbar.disabled.noSelectedText': 'No selected text',
   'toolbar.disabled.noUndoHistory': 'No undo history',
   'toolbar.disabled.noRedoHistory': 'No redo history',
+  'markdownToolbar.heading': 'Paragraph / Heading',
+  'markdownToolbar.heading.body': 'Body',
+  'markdownToolbar.heading.h1': 'Heading 1',
+  'markdownToolbar.heading.h2': 'Heading 2',
+  'markdownToolbar.heading.h3': 'Heading 3',
+  'markdownToolbar.heading.h4': 'Heading 4',
+  'markdownToolbar.heading.h5': 'Heading 5',
+  'markdownToolbar.heading.h6': 'Heading 6',
+  'markdownToolbar.orderedList': 'Ordered List',
+  'markdownToolbar.unorderedList': 'Unordered List',
+  'markdownToolbar.taskList': 'Task List',
+  'markdownToolbar.blockquote': 'Blockquote',
+  'markdownToolbar.indent': 'Indent Right',
+  'markdownToolbar.outdent': 'Indent Left',
+  'markdownToolbar.codeBlock': 'Insert Code Block',
+  'markdownToolbar.table': 'Insert Table',
+  'markdownToolbar.horizontalRule': 'Insert Horizontal Rule',
+  'markdownToolbar.bold': 'Bold',
+  'markdownToolbar.italic': 'Italic',
+  'markdownToolbar.underline': 'Underline',
+  'markdownToolbar.strikethrough': 'Strikethrough',
+  'markdownToolbar.superscript': 'Superscript',
+  'markdownToolbar.subscript': 'Subscript',
+  'markdownToolbar.inlineCode': 'Inline Code',
+  'markdownToolbar.textColor': 'Text Color',
+  'markdownToolbar.backgroundColor': 'Background Color',
+  'markdownToolbar.link': 'Insert Link',
+  'markdownToolbar.image': 'Insert Image',
+  'markdownToolbar.image.url': 'Remote Image',
+  'markdownToolbar.image.file': 'Local Image Link',
+  'markdownToolbar.image.base64': 'Embed Image as Base64',
+  'markdownToolbar.image.insertFailed': 'Failed to insert local image:',
+  'markdownToolbar.image.base64Failed': 'Failed to encode image as Base64:',
   'preview.title': 'Markdown Preview',
   'preview.notMarkdown': 'Preview is available for Markdown files only.',
   'preview.loading': 'Rendering preview...',

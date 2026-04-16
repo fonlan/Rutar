@@ -143,6 +143,10 @@ pub fn convert_text_base64(text: String, action: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+pub fn encode_image_file_as_data_url(path: String) -> Result<String, String> {
+    editing::encode_image_file_as_data_url_impl(path)
+}
+#[tauri::command]
 pub fn find_matching_pair_offsets(
     text: String,
     offset: usize,
@@ -192,6 +196,16 @@ pub fn get_rectangular_selection_text(
 mod tests {
     use super::*;
 
+    use std::fs;
+
+    fn create_temp_image_path(extension: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "rutar-image-command-{}.{}",
+            uuid::Uuid::new_v4(),
+            extension
+        ))
+    }
+
     #[test]
     fn convert_text_base64_should_delegate_to_impl() {
         let source = "Hello, 世界".to_string();
@@ -210,6 +224,18 @@ mod tests {
         assert_eq!(decoded_by_command, decoded_by_impl);
     }
 
+    #[test]
+    fn encode_image_file_as_data_url_should_delegate_to_impl() {
+        let path = create_temp_image_path("png");
+        fs::write(&path, b"img-bytes").expect("test image file should be written");
+        let via_command = encode_image_file_as_data_url(path.to_string_lossy().to_string())
+            .expect("wrapper should succeed");
+        let via_impl =
+            editing::encode_image_file_as_data_url_impl(path.to_string_lossy().to_string())
+                .expect("impl should succeed");
+        assert_eq!(via_command, via_impl);
+        fs::remove_file(&path).expect("test image file should be removed");
+    }
     #[test]
     fn find_matching_pair_offsets_should_delegate_to_impl() {
         let text = "fn(a[1])".to_string();

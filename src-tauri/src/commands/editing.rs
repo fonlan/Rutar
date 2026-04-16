@@ -1,6 +1,7 @@
 use super::*;
 use crate::state::CursorSnapshot;
 use base64::Engine as _;
+use std::path::Path;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -277,7 +278,10 @@ fn line_column_to_char_index_utf16(rope: &Rope, line_number: usize, column: usiz
 }
 
 #[cfg(test)]
-fn apply_line_column_edits_to_text_for_test(source: &str, edits: Vec<LineColumnTextEdit>) -> String {
+fn apply_line_column_edits_to_text_for_test(
+    source: &str,
+    edits: Vec<LineColumnTextEdit>,
+) -> String {
     let mut rope = Rope::from_str(source);
     let mut sorted_edits = edits;
     sorted_edits.sort_by(|left, right| {
@@ -355,7 +359,8 @@ pub(super) fn apply_text_edits_by_line_column_impl(
                     build_cursor_snapshot(before_cursor_line, before_cursor_column);
             }
             if index == 0 {
-                operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
+                operation.after_cursor =
+                    build_cursor_snapshot(after_cursor_line, after_cursor_column);
             }
 
             apply_operation(&mut doc, &operation)?;
@@ -864,6 +869,34 @@ fn decode_base64_utf8(value: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "Invalid UTF-8 text".to_string())
 }
 
+fn image_extension_to_mime(path: &Path) -> Result<&'static str, String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .ok_or_else(|| "Image file extension is required".to_string())?;
+    match extension.as_str() {
+        "png" => Ok("image/png"),
+        "jpg" | "jpeg" => Ok("image/jpeg"),
+        "gif" => Ok("image/gif"),
+        "webp" => Ok("image/webp"),
+        "svg" => Ok("image/svg+xml"),
+        "bmp" => Ok("image/bmp"),
+        _ => Err(format!("Unsupported image file extension: {extension}")),
+    }
+}
+pub(super) fn encode_image_file_as_data_url_impl(path: String) -> Result<String, String> {
+    let trimmed_path = path.trim();
+    if trimmed_path.is_empty() {
+        return Err("Image path is required".to_string());
+    }
+    let file_path = Path::new(trimmed_path);
+    let mime = image_extension_to_mime(file_path)?;
+    let bytes =
+        fs::read(file_path).map_err(|error| format!("Failed to read image file: {error}"))?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(format!("data:{mime};base64,{encoded}"))
+}
 pub(super) fn convert_text_base64_impl(text: String, action: String) -> Result<String, String> {
     match action.as_str() {
         "base64_encode" => Ok(encode_base64_utf8(&text)),
@@ -1363,10 +1396,69 @@ pub(super) fn format_document_impl(
 mod tests {
     use super::{
         apply_line_column_edits_to_text_for_test, cleanup_document_lines,
-        find_matching_pair_offsets_impl, line_column_to_char_index_utf16, utf16_column_to_char_offset,
-        DocumentCleanupAction, LineColumnTextEdit,
+        encode_image_file_as_data_url_impl, find_matching_pair_offsets_impl,
+        line_column_to_char_index_utf16, utf16_column_to_char_offset, DocumentCleanupAction,
+        LineColumnTextEdit,
     };
     use ropey::Rope;
+    use std::fs;
+
+    fn create_temp_image_path(extension: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "rutar-image-encode-{}.{}",
+            uuid::Uuid::new_v4(),
+            extension
+        ))
+    }
+
+    #[test]
+    fn encode_image_file_as_data_url_should_use_expected_mime_prefixes() {
+        let cases = [
+            ("png", "image/png"),
+            ("jpg", "image/jpeg"),
+            ("jpeg", "image/jpeg"),
+            ("gif", "image/gif"),
+            ("webp", "image/webp"),
+            ("svg", "image/svg+xml"),
+            ("bmp", "image/bmp"),
+        ];
+        for (extension, mime) in cases {
+            let path = create_temp_image_path(extension);
+            fs::write(&path, b"img-bytes").expect("test image file should be written");
+            let result = encode_image_file_as_data_url_impl(path.to_string_lossy().to_string())
+                .expect("image encoding should succeed");
+            assert!(
+                result.starts_with(&format!("data:{mime};base64,")),
+                "expected prefix for {extension}, got {result}"
+            );
+            fs::remove_file(&path).expect("test image file should be removed");
+        }
+    }
+
+    #[test]
+    fn encode_image_file_as_data_url_should_reject_empty_path() {
+        let error = encode_image_file_as_data_url_impl("   ".to_string())
+            .expect_err("empty path should fail");
+        assert_eq!(error, "Image path is required");
+    }
+
+    #[test]
+    fn encode_image_file_as_data_url_should_reject_unsupported_extension() {
+        let path = create_temp_image_path("txt");
+        fs::write(&path, b"not-an-image").expect("test file should be written");
+        let error = encode_image_file_as_data_url_impl(path.to_string_lossy().to_string())
+            .expect_err("unsupported extension should fail");
+        assert_eq!(error, "Unsupported image file extension: txt");
+        fs::remove_file(&path).expect("test file should be removed");
+    }
+
+    #[test]
+    fn encode_image_file_as_data_url_should_report_missing_files() {
+        let path = create_temp_image_path("png");
+        let error = encode_image_file_as_data_url_impl(path.to_string_lossy().to_string())
+            .expect_err("missing file should fail");
+        assert!(error.starts_with("Failed to read image file:"));
+    }
 
     #[test]
     fn remove_empty_lines_should_drop_blank_lines_and_keep_terminal_newline() {

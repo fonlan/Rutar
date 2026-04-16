@@ -226,6 +226,7 @@ pub fn run() {
             commands::editing_commands::replace_line_range,
             commands::editing_commands::toggle_line_comments,
             commands::editing_commands::convert_text_base64,
+            commands::editing_commands::encode_image_file_as_data_url,
             commands::editing_commands::find_matching_pair_offsets,
             commands::editing_commands::replace_rectangular_selection_text,
             commands::editing_commands::get_rectangular_selection_text,

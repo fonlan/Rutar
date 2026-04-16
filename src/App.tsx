@@ -5,6 +5,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
+import { MarkdownToolbar } from '@/components/MarkdownToolbar';
 import { t } from '@/i18n';
 import { openFilePaths } from '@/lib/openFile';
 import {
@@ -1719,6 +1720,7 @@ function App() {
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden" data-rutar-app-root="true">
       <TitleBar />
       <Toolbar />
+      <MarkdownToolbar />
       <Suspense fallback={null}>
         <SettingsModal />
         <TabCloseConfirmModal />
