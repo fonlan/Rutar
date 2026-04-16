@@ -16,6 +16,11 @@ export interface FileTab {
   diffPayload?: DiffTabPayload;
 }
 
+export interface FolderEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+}
 export type DiffPanelSide = 'source' | 'target';
 
 export interface DiffTabPayload {
@@ -172,7 +177,7 @@ interface AppState {
   cursorPositionByTab: Record<string, CursorPosition>;
   bookmarksByTab: TabBookmarks;
   folderPath: string | null;
-  folderEntries: any[];
+  folderEntries: FolderEntry[];
 
   addTab: (tab: FileTab) => void;
   closeTab: (id: string) => void;
@@ -183,7 +188,7 @@ interface AppState {
   toggleSettings: (open?: boolean) => void;
   updateSettings: (updates: Partial<SettingsState>) => void;
   
-  setFolder: (path: string | null, entries: any[]) => void;
+  setFolder: (path: string | null, entries: FolderEntry[]) => void;
   toggleSidebar: (open?: boolean) => void;
   setSidebarWidth: (width: number) => void;
   toggleOutline: (open?: boolean) => void;
@@ -417,4 +422,3 @@ export const useStore = create<AppState>((set) => ({
     };
   }),
 }));
-

@@ -1,18 +1,24 @@
-import { useStore } from '@/store/useStore';
+import { useStore, type FolderEntry } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { File, Folder, ChevronRight, ChevronDown, FolderOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { openFilePath } from '@/lib/openFile';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { t } from '@/i18n';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 600;
 
+interface FolderTreeChangePayload {
+    rootPath?: string;
+    directoryPaths?: string[];
+}
+
 export function Sidebar() {
     const folderPath = useStore((state) => state.folderPath);
     const folderEntries = useStore((state) => state.folderEntries);
+    const setFolder = useStore((state) => state.setFolder);
     const sidebarOpen = useStore((state) => state.sidebarOpen);
     const sidebarWidth = useStore((state) => state.sidebarWidth);
     const setSidebarWidth = useStore((state) => state.setSidebarWidth);
@@ -25,6 +31,48 @@ export function Sidebar() {
         maxWidth: SIDEBAR_MAX_WIDTH,
         onWidthChange: setSidebarWidth,
     });
+
+    const refreshRootEntries = useCallback(async () => {
+        if (!folderPath) {
+            return;
+        }
+
+        try {
+            const result = await invoke<FolderEntry[] | null>('read_dir_if_directory', { path: folderPath });
+            if (result === null) {
+                setFolder(null, []);
+                return;
+            }
+
+            setFolder(folderPath, result);
+        } catch (error) {
+            console.error('Failed to refresh root folder tree:', error);
+        }
+    }, [folderPath, setFolder]);
+
+    useEffect(() => {
+        if (!folderPath) {
+            return;
+        }
+
+        const handleFolderTreeChanged = (event: Event) => {
+            const payload = (event as CustomEvent<FolderTreeChangePayload>).detail;
+            if (payload?.rootPath !== folderPath) {
+                return;
+            }
+
+            if (!payload.directoryPaths?.includes(folderPath)) {
+                return;
+            }
+
+            void refreshRootEntries();
+        };
+
+        window.addEventListener('rutar:folder-tree-changed', handleFolderTreeChanged as EventListener);
+        return () => {
+            window.removeEventListener('rutar:folder-tree-changed', handleFolderTreeChanged as EventListener);
+        };
+    }, [folderPath, refreshRootEntries]);
 
     if (!sidebarOpen || !folderPath) return null;
 
@@ -67,22 +115,28 @@ export function Sidebar() {
     );
 }
 
-function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
+function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [children, setChildren] = useState<any[]>([]);
+    const [children, setChildren] = useState<FolderEntry[]>([]);
+    const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
     const activeTabId = useStore((state) => state.activeTabId);
     const setActiveTab = useStore((state) => state.setActiveTab);
     const tabs = useStore((state) => state.tabs);
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
 
+    const loadChildren = useCallback(async () => {
+        const result = await invoke<FolderEntry[]>('read_dir', { path: entry.path });
+        setChildren(result);
+        setHasLoadedChildren(true);
+    }, [entry.path]);
+
     const handleToggle = useCallback(async (event?: { stopPropagation?: () => void }) => {
         event?.stopPropagation?.();
         if (entry.is_dir) {
-            if (!isOpen && children.length === 0) {
+            if (!isOpen && !hasLoadedChildren) {
                 try {
-                    const result = await invoke<any[]>('read_dir', { path: entry.path });
-                    setChildren(result);
+                    await loadChildren();
                 } catch (e) {
                     console.error(e);
                 }
@@ -101,7 +155,29 @@ function FileEntry({ entry, level = 0 }: { entry: any, level?: number }) {
                 }
             }
         }
-    }, [entry, isOpen, children.length, tabs, setActiveTab]);
+    }, [entry, hasLoadedChildren, isOpen, loadChildren, tabs, setActiveTab]);
+
+    useEffect(() => {
+        if (!entry.is_dir || !isOpen) {
+            return;
+        }
+
+        const handleFolderTreeChanged = (event: Event) => {
+            const payload = (event as CustomEvent<FolderTreeChangePayload>).detail;
+            if (!payload?.directoryPaths?.includes(entry.path)) {
+                return;
+            }
+
+            void loadChildren().catch((error) => {
+                console.error('Failed to refresh folder tree node:', error);
+            });
+        };
+
+        window.addEventListener('rutar:folder-tree-changed', handleFolderTreeChanged as EventListener);
+        return () => {
+            window.removeEventListener('rutar:folder-tree-changed', handleFolderTreeChanged as EventListener);
+        };
+    }, [entry.is_dir, entry.path, isOpen, loadChildren]);
     const isActiveFile = !entry.is_dir
         && Boolean(activeTabId)
         && tabs.some((tab) => tab.id === activeTabId && tab.path === entry.path);

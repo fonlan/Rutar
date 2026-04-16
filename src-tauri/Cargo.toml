@@ -70,6 +70,7 @@ font-kit = "0.14"
 base64 = "0.22"
 tauri-plugin-clipboard-manager = { version = "2.3.2", default-features = false }
 similar = "2.7"
+notify = "6.1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

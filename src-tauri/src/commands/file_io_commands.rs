@@ -125,6 +125,18 @@ pub fn read_dir_if_directory(path: String) -> Result<Option<Vec<DirEntry>>, Stri
 }
 
 #[tauri::command]
+pub fn watch_folder_tree(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    file_io::watch_folder_tree_impl(app, state, path)
+}
+#[tauri::command]
+pub fn clear_folder_tree_watch(state: State<'_, AppState>) {
+    file_io::clear_folder_tree_watch_impl(state)
+}
+#[tauri::command]
 pub fn path_exists(path: String) -> bool {
     file_io::path_exists_impl(path)
 }

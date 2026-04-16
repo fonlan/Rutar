@@ -1,6 +1,19 @@
 use super::*;
 use crate::state::FileFingerprint;
+use notify::{
+    event::{ModifyKind, RenameMode},
+    Event, EventKind, RecursiveMode, Watcher,
+};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
+use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderTreeChangeEventPayload {
+    root_path: String,
+    directory_paths: Vec<String>,
+}
 
 struct DiskFileSnapshot {
     rope: Rope,
@@ -1016,6 +1029,113 @@ pub(super) fn open_in_file_manager_impl(path: String) -> Result<(), String> {
     Err("Opening file manager is not supported on this platform".to_string())
 }
 
+fn should_emit_folder_refresh_for_event_kind(event_kind: &EventKind) -> bool {
+    matches!(
+        event_kind,
+        EventKind::Create(_)
+            | EventKind::Remove(_)
+            | EventKind::Modify(ModifyKind::Name(
+                RenameMode::Any
+                    | RenameMode::Both
+                    | RenameMode::From
+                    | RenameMode::To
+                    | RenameMode::Other
+            ))
+    )
+}
+
+fn collect_folder_refresh_directories(root_path: &std::path::Path, event: &Event) -> Vec<PathBuf> {
+    if !should_emit_folder_refresh_for_event_kind(&event.kind) {
+        return Vec::new();
+    }
+
+    let mut directories = BTreeSet::new();
+
+    for changed_path in &event.paths {
+        let refresh_directory = if changed_path == root_path {
+            Some(root_path.to_path_buf())
+        } else {
+            changed_path.parent().map(|path| path.to_path_buf())
+        };
+
+        let Some(refresh_directory) = refresh_directory else {
+            continue;
+        };
+
+        if refresh_directory.starts_with(root_path) {
+            directories.insert(refresh_directory);
+        }
+    }
+
+    directories.into_iter().collect()
+}
+
+pub(super) fn watch_folder_tree_impl(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let root_path = PathBuf::from(&path);
+
+    if !root_path.is_dir() {
+        return Err("Path is not a directory".to_string());
+    }
+
+    if state
+        .watched_folder_path()
+        .as_ref()
+        .map(|current_path| current_path == &root_path)
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    let root_path_for_callback = root_path.clone();
+    let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
+        let event = match result {
+            Ok(event) => event,
+            Err(error) => {
+                eprintln!("failed to watch folder tree event: {error}");
+                return;
+            }
+        };
+
+        let refresh_directories =
+            collect_folder_refresh_directories(root_path_for_callback.as_path(), &event);
+        if refresh_directories.is_empty() {
+            return;
+        }
+
+        let Some(window) = app.get_webview_window("main") else {
+            return;
+        };
+
+        let payload = FolderTreeChangeEventPayload {
+            root_path: root_path_for_callback.to_string_lossy().to_string(),
+            directory_paths: refresh_directories
+                .into_iter()
+                .map(|directory| directory.to_string_lossy().to_string())
+                .collect(),
+        };
+
+        if let Err(error) = window.emit("rutar://folder-tree-changed", payload) {
+            eprintln!("failed to emit folder tree change event: {error}");
+        }
+    })
+    .map_err(|error| error.to_string())?;
+
+    watcher
+        .watch(root_path.as_path(), RecursiveMode::Recursive)
+        .map_err(|error| error.to_string())?;
+
+    state.replace_folder_watch(root_path, watcher);
+    Ok(())
+}
+
+pub(super) fn clear_folder_tree_watch_impl(state: State<'_, AppState>) {
+    state.clear_folder_watch();
+}
+
 pub(super) async fn get_word_count_info_impl(
     state: State<'_, AppState>,
     id: String,
@@ -1064,12 +1184,14 @@ pub(super) fn detect_document_indentation_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        count_word_stats, detect_indentation_from_rope, measure_document_size_bytes,
-        normalize_encoding_label,
+        collect_folder_refresh_directories, count_word_stats, detect_indentation_from_rope,
+        measure_document_size_bytes, normalize_encoding_label,
     };
     use crate::state::LineEnding;
     use encoding_rs::Encoding;
+    use notify::{event::CreateKind, event::DataChange, event::ModifyKind, Event, EventKind};
     use ropey::Rope;
+    use std::path::Path;
 
     #[test]
     fn word_count_should_treat_cjk_characters_individually() {
@@ -1156,5 +1278,39 @@ mod tests {
 
         assert_eq!(utf8_bytes, 5);
         assert_eq!(gbk_crlf_bytes, 5);
+    }
+
+    #[test]
+    fn folder_refresh_directories_should_return_parent_directories_for_create_events() {
+        let root_path = Path::new("C:\\repo");
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![
+                root_path.join("src").join("main.ts"),
+                root_path.join("README.md"),
+            ],
+            attrs: Default::default(),
+        };
+
+        let directories = collect_folder_refresh_directories(root_path, &event);
+
+        assert_eq!(
+            directories,
+            vec![root_path.to_path_buf(), root_path.join("src")]
+        );
+    }
+
+    #[test]
+    fn folder_refresh_directories_should_ignore_non_name_modify_events() {
+        let root_path = Path::new("C:\\repo");
+        let event = Event {
+            kind: EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            paths: vec![root_path.join("src").join("main.ts")],
+            attrs: Default::default(),
+        };
+
+        let directories = collect_folder_refresh_directories(root_path, &event);
+
+        assert!(directories.is_empty());
     }
 }

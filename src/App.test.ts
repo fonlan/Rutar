@@ -238,6 +238,9 @@ function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
     if (command === 'read_dir_if_directory') {
       return null;
     }
+    if (command === 'watch_folder_tree' || command === 'clear_folder_tree_watch') {
+      return undefined;
+    }
     if (command === 'new_file') {
       return createFileTab({ id: 'startup-file-id', name: 'untitled.txt', path: 'untitled.txt' });
     }
@@ -1360,6 +1363,63 @@ describe('App component', () => {
     }
   });
 
+  it('syncs folder tree watch command with current folder path', async () => {
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('clear_folder_tree_watch');
+    });
+
+    act(() => {
+      useStore.getState().setFolder('C:\\repo\\watched', []);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('watch_folder_tree', { path: 'C:\\repo\\watched' });
+    });
+  });
+  it('dispatches window folder-tree-changed event from tauri listener payload', async () => {
+    let folderTreeHandler: ((event: { payload?: unknown }) => void) | null = null;
+    vi.mocked(listen).mockImplementation(async (eventName, callback) => {
+      if (eventName === 'rutar://folder-tree-changed') {
+        folderTreeHandler = callback as (event: { payload?: unknown }) => void;
+      }
+      return () => undefined;
+    });
+
+    const windowEventSpy = vi.fn();
+    window.addEventListener('rutar:folder-tree-changed', windowEventSpy as EventListener);
+
+    try {
+      render(React.createElement(App));
+
+      await waitFor(() => {
+        expect(folderTreeHandler).toBeTruthy();
+      });
+
+      act(() => {
+        folderTreeHandler?.({
+          payload: {
+            rootPath: 'C:\\repo',
+            directoryPaths: ['C:\\repo', 'C:\\repo\\src'],
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(windowEventSpy).toHaveBeenCalledTimes(1);
+      });
+
+      const dispatchedEvent = windowEventSpy.mock.calls[0]?.[0] as CustomEvent | undefined;
+      expect(dispatchedEvent?.detail).toEqual({
+        rootPath: 'C:\\repo',
+        directoryPaths: ['C:\\repo', 'C:\\repo\\src'],
+      });
+    } finally {
+      window.removeEventListener('rutar:folder-tree-changed', windowEventSpy as EventListener);
+    }
+  });
   it('opens incoming paths from single-instance event and ignores empty payload', async () => {
     let openPathsHandler: ((event: { payload?: unknown }) => Promise<void> | void) | null = null;
     vi.mocked(listen).mockImplementation(async (eventName, callback) => {

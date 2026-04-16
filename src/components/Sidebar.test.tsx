@@ -123,6 +123,70 @@ describe("Sidebar", () => {
     });
     expect(screen.getByText("index.ts")).toBeInTheDocument();
   });
+
+  it("refreshes root folder entries when folder-tree-changed targets the opened folder", async () => {
+    invokeMock.mockResolvedValueOnce([
+      { path: "C:\\repo\\project\\new.ts", name: "new.ts", is_dir: false },
+    ]);
+    useStore.setState({
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\old.ts", name: "old.ts", is_dir: false }],
+    });
+
+    render(<Sidebar />);
+    expect(screen.getByText("old.ts")).toBeInTheDocument();
+
+    fireEvent(
+      window,
+      new CustomEvent("rutar:folder-tree-changed", {
+        detail: {
+          rootPath: "C:\\repo\\project",
+          directoryPaths: ["C:\\repo\\project"],
+        },
+      })
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\project" });
+    });
+    expect(screen.getByText("new.ts")).toBeInTheDocument();
+    expect(screen.queryByText("old.ts")).toBeNull();
+  });
+
+  it("refreshes expanded directory children when folder-tree-changed targets that directory", async () => {
+    invokeMock
+      .mockResolvedValueOnce([{ path: "C:\\repo\\project\\src\\index.ts", name: "index.ts", is_dir: false }])
+      .mockResolvedValueOnce([{ path: "C:\\repo\\project\\src\\app.ts", name: "app.ts", is_dir: false }]);
+    useStore.setState({
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\src", name: "src", is_dir: true }],
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByText("src"));
+
+    await waitFor(() => {
+      expect(screen.getByText("index.ts")).toBeInTheDocument();
+    });
+
+    fireEvent(
+      window,
+      new CustomEvent("rutar:folder-tree-changed", {
+        detail: {
+          rootPath: "C:\\repo\\project",
+          directoryPaths: ["C:\\repo\\project\\src"],
+        },
+      })
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenLastCalledWith("read_dir", { path: "C:\\repo\\project\\src" });
+    });
+    expect(screen.getByText("app.ts")).toBeInTheDocument();
+    expect(screen.queryByText("index.ts")).toBeNull();
+  });
   it("prevents native context menu on sidebar root", () => {
     useStore.setState({
       sidebarOpen: true,

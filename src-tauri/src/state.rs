@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use encoding_rs::Encoding;
+use notify::RecommendedWatcher;
 use ropey::Rope;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -139,6 +140,13 @@ pub struct AppState {
     pub documents: DashMap<String, Document>,
     pub syntax_request_serials: DashMap<String, u64>,
     startup_paths: Mutex<Vec<String>>,
+    folder_watch: Mutex<Option<FolderWatchState>>,
+}
+
+struct FolderWatchState {
+    root_path: PathBuf,
+    #[allow(dead_code)]
+    watcher: RecommendedWatcher,
 }
 
 impl AppState {
@@ -147,6 +155,7 @@ impl AppState {
             documents: DashMap::new(),
             syntax_request_serials: DashMap::new(),
             startup_paths: Mutex::new(startup_paths),
+            folder_watch: Mutex::new(None),
         }
     }
 
@@ -156,6 +165,30 @@ impl AppState {
             .lock()
             .expect("failed to lock startup paths");
         std::mem::take(&mut *paths)
+    }
+
+    pub fn watched_folder_path(&self) -> Option<PathBuf> {
+        self.folder_watch
+            .lock()
+            .expect("failed to lock folder watch state")
+            .as_ref()
+            .map(|watch_state| watch_state.root_path.clone())
+    }
+
+    pub fn replace_folder_watch(&self, root_path: PathBuf, watcher: RecommendedWatcher) {
+        let mut watch_state = self
+            .folder_watch
+            .lock()
+            .expect("failed to lock folder watch state");
+        *watch_state = Some(FolderWatchState { root_path, watcher });
+    }
+
+    pub fn clear_folder_watch(&self) {
+        let mut watch_state = self
+            .folder_watch
+            .lock()
+            .expect("failed to lock folder watch state");
+        *watch_state = None;
     }
 }
 

@@ -108,6 +108,10 @@ interface WindowsFileAssociationStatus {
   extensions: string[];
 }
 
+interface FolderTreeChangePayload {
+  rootPath?: string;
+  directoryPaths?: string[];
+}
 const Editor = lazy(async () => ({
   default: (await import('@/components/Editor')).Editor,
 }));
@@ -227,6 +231,7 @@ function App() {
   const settings = useStore((state) => state.settings);
   const updateSettings = useStore((state) => state.updateSettings);
   const setFolder = useStore((state) => state.setFolder);
+  const folderPath = useStore((state) => state.folderPath);
   const sidebarOpen = useStore((state) => state.sidebarOpen);
   const outlineOpen = useStore((state) => state.outlineOpen);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
@@ -729,11 +734,76 @@ function App() {
       cancelled = true;
     };
   }, [openIncomingPaths]);
+  useEffect(() => {
+    let cancelled = false;
+    const syncFolderTreeWatch = async () => {
+      try {
+        if (!folderPath) {
+          await invoke('clear_folder_tree_watch');
+          return;
+        }
+
+        await invoke('watch_folder_tree', { path: folderPath });
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to sync folder tree watch:', error);
+        }
+      }
+    };
+
+    void syncFolderTreeWatch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [folderPath]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
 
+    const setupFolderTreeChangeListener = async () => {
+      try {
+        const unsubscribe = await listen<FolderTreeChangePayload>('rutar://folder-tree-changed', (event) => {
+          const payload = event.payload;
+          const rootPath = typeof payload?.rootPath === 'string' ? payload.rootPath : null;
+          const directoryPaths = Array.isArray(payload?.directoryPaths)
+            ? payload.directoryPaths.filter((value): value is string => typeof value === 'string')
+            : [];
+
+          if (!rootPath || directoryPaths.length === 0) {
+            return;
+          }
+
+          window.dispatchEvent(
+            new CustomEvent<FolderTreeChangePayload>('rutar:folder-tree-changed', {
+              detail: {
+                rootPath,
+                directoryPaths,
+              },
+            })
+          );
+        });
+        if (disposed) {
+          unsubscribe();
+          return;
+        }
+        unlisten = unsubscribe;
+      } catch (error) {
+        console.error('Failed to listen folder tree change event:', error);
+      }
+    };
+    void setupFolderTreeChangeListener();
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
     const setupSingleInstanceOpenListener = async () => {
       try {
         const unsubscribe = await listen<string[]>('rutar://open-paths', async (event) => {
