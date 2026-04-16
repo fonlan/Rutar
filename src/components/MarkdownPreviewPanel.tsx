@@ -430,6 +430,36 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     }
   }, []);
 
+  const handlePreviewScroll = useCallback(() => {
+    const previewScroller = previewScrollRef.current;
+    const sourceElement = sourceScrollRef.current;
+    if (!previewScroller || !sourceElement) {
+      return;
+    }
+
+    const previewMaxTop = Math.max(0, previewScroller.scrollHeight - previewScroller.clientHeight);
+    const previewMaxLeft = Math.max(0, previewScroller.scrollWidth - previewScroller.clientWidth);
+    const ratios = {
+      top: previewMaxTop > 0 ? previewScroller.scrollTop / previewMaxTop : 0,
+      left: previewMaxLeft > 0 ? previewScroller.scrollLeft / previewMaxLeft : 0,
+    };
+
+    latestScrollRatioRef.current = ratios;
+
+    const sourceMaxTop = Math.max(0, sourceElement.scrollHeight - sourceElement.clientHeight);
+    const sourceMaxLeft = Math.max(0, sourceElement.scrollWidth - sourceElement.clientWidth);
+    const nextTop = sourceMaxTop * ratios.top;
+    const nextLeft = sourceMaxLeft * ratios.left;
+
+    if (Math.abs(sourceElement.scrollTop - nextTop) > 0.5) {
+      sourceElement.scrollTop = nextTop;
+    }
+
+    if (Math.abs(sourceElement.scrollLeft - nextLeft) > 0.5) {
+      sourceElement.scrollLeft = nextLeft;
+    }
+  }, []);
+
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
       window.clearTimeout(refreshTimerRef.current);
@@ -1120,6 +1150,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
         <div
           ref={previewScrollRef}
           className="preview-scroll-shared flex-1 overflow-auto px-5 py-4"
+          onScroll={handlePreviewScroll}
           onWheel={handlePreviewWheel}
         >
           {!tab ? (

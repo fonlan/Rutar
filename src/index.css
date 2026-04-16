@@ -241,14 +241,7 @@ option {
 }
 
 .preview-scroll-shared {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.preview-scroll-shared::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+  scrollbar-gutter: stable;
 }
 
 .markdown-preview {
