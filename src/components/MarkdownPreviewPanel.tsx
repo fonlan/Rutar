@@ -371,7 +371,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const [markdownSource, setMarkdownSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const resizePreviewRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const previewArticleRef = useRef<HTMLElement | null>(null);
   const sourceScrollRef = useRef<HTMLElement | null>(null);
@@ -384,9 +386,22 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const inFlightRefreshRef = useRef(false);
   const pendingRefreshRef = useRef(false);
   const refreshTimerRef = useRef<number | null>(null);
+  const resizePendingRatioRef = useRef(clampPreviewRatio(previewWidthRatio));
+  const resizeFrameRef = useRef<number | null>(null);
   const activeTabId = tab?.id ?? null;
   const markdownEnabled = isMarkdownTab(tab);
   const deferredMarkdownSource = useDeferredValue(markdownSource);
+
+  const updateResizePreviewLine = useCallback((clientX: number, top: number, height: number) => {
+    const previewLine = resizePreviewRef.current;
+    if (!previewLine) {
+      return;
+    }
+
+    previewLine.style.left = `${Math.round(clientX)}px`;
+    previewLine.style.top = `${Math.round(top)}px`;
+    previewLine.style.height = `${Math.round(height)}px`;
+  }, []);
 
   const applyScrollRatio = useCallback((ratioState: ScrollRatioState) => {
     const scroller = previewScrollRef.current;
@@ -937,6 +952,17 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
 
   useEffect(() => stopMermaidPan, [stopMermaidPan]);
 
+  useEffect(() => {
+    resizePendingRatioRef.current = clampPreviewRatio(previewWidthRatio);
+  }, [previewWidthRatio]);
+
+  useEffect(() => () => {
+    if (resizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    }
+  }, []);
+
   const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!open) {
       return;
@@ -953,25 +979,50 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     const pointerId = event.pointerId;
     resizeHandleElement.setPointerCapture(pointerId);
     const containerRect = parentElement.getBoundingClientRect();
-
-    const updateRatio = (clientX: number) => {
-      const nextWidth = containerRect.right - clientX;
-      const nextRatio = clampPreviewRatio(nextWidth / containerRect.width);
-      setPreviewWidthRatio(nextRatio);
+    const nextPreviewState = {
+      clientX: event.clientX,
+      top: containerRect.top,
+      height: containerRect.height,
     };
 
-    updateRatio(event.clientX);
+    const computeRatio = (clientX: number) => {
+      const nextWidth = containerRect.right - clientX;
+      return clampPreviewRatio(nextWidth / containerRect.width);
+    };
+
+    resizePendingRatioRef.current = computeRatio(event.clientX);
+    updateResizePreviewLine(
+      nextPreviewState.clientX,
+      nextPreviewState.top,
+      nextPreviewState.height
+    );
+    setIsResizing(true);
 
     const onPointerMove = (moveEvent: PointerEvent) => {
-      updateRatio(moveEvent.clientX);
+      resizePendingRatioRef.current = computeRatio(moveEvent.clientX);
+
+      if (resizeFrameRef.current !== null) {
+        return;
+      }
+
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        updateResizePreviewLine(moveEvent.clientX, containerRect.top, containerRect.height);
+      });
     };
 
     const cleanup = () => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
       document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('pointerup', cleanup, true);
       document.removeEventListener('pointercancel', cleanup, true);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      setIsResizing(false);
+      setPreviewWidthRatio(resizePendingRatioRef.current);
       try {
         resizeHandleElement.releasePointerCapture(pointerId);
       } catch {
@@ -984,7 +1035,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', cleanup, true);
     document.addEventListener('pointercancel', cleanup, true);
-  }, [open, setPreviewWidthRatio]);
+  }, [open, setPreviewWidthRatio, updateResizePreviewLine]);
 
   const handlePreviewWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     const targetElement = event.target;
@@ -1034,7 +1085,10 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       ref={panelRef}
       aria-hidden={!open}
       className={cn(
-        'relative h-full shrink-0 overflow-hidden bg-background/95 transition-[width,opacity,border-color] duration-200 ease-out',
+        // Width animation causes repeated Monaco wrap/layout recalculation when adjacent
+        // sidebars change size, which is especially expensive for markdown tabs that
+        // contain very long base64 image lines under word-wrap mode.
+        'relative h-full shrink-0 overflow-hidden bg-background/95 transition-[opacity,border-color] duration-200 ease-out',
         open
           ? 'border-l border-border opacity-100 pointer-events-auto'
           : 'border-l border-transparent opacity-0 pointer-events-none'
@@ -1048,6 +1102,14 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >
+        <div
+          ref={resizePreviewRef}
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none fixed bottom-auto top-0 z-[85] w-px bg-primary/70 shadow-[0_0_0_1px_rgba(59,130,246,0.2)]',
+            isResizing ? 'opacity-100' : 'opacity-0'
+          )}
+        />
         <div
           className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1/2 cursor-col-resize"
           onPointerDown={handleResizePointerDown}

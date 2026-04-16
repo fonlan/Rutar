@@ -6,6 +6,7 @@ interface UseResizableSidebarWidthOptions {
   maxWidth: number;
   onWidthChange: (nextWidth: number) => void;
   resizeEdge?: 'right' | 'left';
+  liveResize?: boolean;
 }
 
 function clampWidth(value: number, minWidth: number, maxWidth: number) {
@@ -18,9 +19,11 @@ export function useResizableSidebarWidth({
   maxWidth,
   onWidthChange,
   resizeEdge = 'right',
+  liveResize = true,
 }: UseResizableSidebarWidthOptions) {
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewIndicatorRef = useRef<HTMLDivElement>(null);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(width);
   const currentWidthRef = useRef(width);
@@ -35,12 +38,32 @@ export function useResizableSidebarWidth({
     }
   }, []);
 
+  const applyPreviewIndicator = useCallback(
+    (nextWidth: number) => {
+      const previewIndicator = previewIndicatorRef.current;
+      const container = containerRef.current;
+      if (!previewIndicator || !container) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const left =
+        resizeEdge === 'right' ? rect.left + nextWidth : rect.right - nextWidth;
+
+      previewIndicator.style.left = `${Math.round(left)}px`;
+      previewIndicator.style.top = `${Math.round(rect.top)}px`;
+      previewIndicator.style.height = `${Math.round(rect.height)}px`;
+    },
+    [resizeEdge]
+  );
+
   useEffect(() => {
     if (isResizing) {
       return;
     }
 
     const nextWidth = clampWidth(width, minWidth, maxWidth);
+    pendingWidthRef.current = nextWidth;
     applyWidthToContainer(nextWidth);
   }, [applyWidthToContainer, isResizing, maxWidth, minWidth, width]);
 
@@ -74,13 +97,22 @@ export function useResizableSidebarWidth({
 
       rafRef.current = window.requestAnimationFrame(() => {
         rafRef.current = null;
-        applyWidthToContainer(pendingWidthRef.current);
+        currentWidthRef.current = pendingWidthRef.current;
+        if (liveResize) {
+          applyWidthToContainer(pendingWidthRef.current);
+          return;
+        }
+
+        applyPreviewIndicator(pendingWidthRef.current);
       });
     };
 
     const stopResize = () => {
+      const finalWidth = pendingWidthRef.current;
+      currentWidthRef.current = finalWidth;
       setIsResizing(false);
-      onWidthChange(currentWidthRef.current);
+      applyWidthToContainer(finalWidth);
+      onWidthChange(finalWidth);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -98,7 +130,16 @@ export function useResizableSidebarWidth({
       window.removeEventListener('pointerup', stopResize);
       window.removeEventListener('pointercancel', stopResize);
     };
-  }, [applyWidthToContainer, isResizing, maxWidth, minWidth, onWidthChange, resizeEdge]);
+  }, [
+    applyPreviewIndicator,
+    applyWidthToContainer,
+    isResizing,
+    liveResize,
+    maxWidth,
+    minWidth,
+    onWidthChange,
+    resizeEdge,
+  ]);
 
   const startResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -106,15 +147,21 @@ export function useResizableSidebarWidth({
       dragStartXRef.current = event.clientX;
       const startWidth = clampWidth(currentWidthRef.current, minWidth, maxWidth);
       dragStartWidthRef.current = startWidth;
+      currentWidthRef.current = startWidth;
       pendingWidthRef.current = startWidth;
-      applyWidthToContainer(startWidth);
+      if (liveResize) {
+        applyWidthToContainer(startWidth);
+      } else {
+        applyPreviewIndicator(startWidth);
+      }
       setIsResizing(true);
     },
-    [applyWidthToContainer, maxWidth, minWidth]
+    [applyPreviewIndicator, applyWidthToContainer, liveResize, maxWidth, minWidth]
   );
 
   return {
     containerRef,
+    previewIndicatorRef,
     isResizing,
     startResize,
   };

@@ -25,11 +25,12 @@ export function Sidebar() {
     const toggleSidebar = useStore((state) => state.toggleSidebar);
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
-    const { containerRef, isResizing, startResize } = useResizableSidebarWidth({
+    const { containerRef, previewIndicatorRef, isResizing, startResize } = useResizableSidebarWidth({
         width: sidebarWidth,
         minWidth: SIDEBAR_MIN_WIDTH,
         maxWidth: SIDEBAR_MAX_WIDTH,
         onWidthChange: setSidebarWidth,
+        liveResize: false,
     });
 
     const refreshRootEntries = useCallback(async () => {
@@ -101,6 +102,14 @@ export function Sidebar() {
                     <FileEntry key={entry.path} entry={entry} />
                 ))}
             </div>
+            <div
+                ref={previewIndicatorRef}
+                aria-hidden="true"
+                className={cn(
+                    'pointer-events-none fixed bottom-auto top-0 z-[80] w-px bg-primary/70 shadow-[0_0_0_1px_rgba(59,130,246,0.2)]',
+                    isResizing ? 'opacity-100' : 'opacity-0'
+                )}
+            />
             <div
                 role="separator"
                 aria-orientation="vertical"

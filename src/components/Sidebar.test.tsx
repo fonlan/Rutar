@@ -256,4 +256,46 @@ describe("Sidebar", () => {
 
     errorSpy.mockRestore();
   });
+
+  it("keeps file tree width stable during drag and commits on pointerup", async () => {
+    useStore.setState({
+      sidebarOpen: true,
+      sidebarWidth: 240,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\a.ts", name: "a.ts", is_dir: false }],
+    });
+
+    const { container } = render(<Sidebar />);
+    const root = container.firstElementChild as HTMLDivElement | null;
+    expect(root).not.toBeNull();
+    vi.spyOn(root as HTMLDivElement, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 480,
+      top: 0,
+      right: 240,
+      bottom: 480,
+      left: 0,
+      toJSON: () => ({}),
+    });
+
+    const separator = screen.getByRole("separator", { name: "Resize file tree sidebar" });
+
+    fireEvent.pointerDown(separator, { clientX: 100 });
+    await waitFor(() => {
+      expect(document.body.style.cursor).toBe("col-resize");
+    });
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 180 }));
+
+    expect((root as HTMLDivElement).style.width).toBe("240px");
+    expect(useStore.getState().sidebarWidth).toBe(240);
+
+    window.dispatchEvent(new Event("pointerup"));
+
+    await waitFor(() => {
+      expect(useStore.getState().sidebarWidth).toBe(320);
+    });
+    expect((root as HTMLDivElement).style.width).toBe("320px");
+  });
 });

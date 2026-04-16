@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useResizableSidebarWidth } from "./useResizableSidebarWidth";
@@ -214,5 +214,68 @@ describe("useResizableSidebarWidth", () => {
 
     rerender({ width: 50 });
     expect(container.style.width).toBe("200px");
+  });
+
+  it("supports ghost preview mode without resizing the container until pointerup", async () => {
+    const onWidthChange = vi.fn();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+
+    const { result } = renderHook(() =>
+      useResizableSidebarWidth({
+        width: 240,
+        minWidth: 200,
+        maxWidth: 400,
+        onWidthChange,
+        liveResize: false,
+      })
+    );
+
+    const container = document.createElement("div");
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 12,
+      width: 240,
+      height: 320,
+      top: 12,
+      right: 240,
+      bottom: 332,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    const previewIndicator = document.createElement("div");
+
+    act(() => {
+      result.current.containerRef.current = container;
+      result.current.previewIndicatorRef.current = previewIndicator;
+    });
+    container.style.width = "240px";
+
+    await act(async () => {
+      result.current.startResize({
+        preventDefault: vi.fn(),
+        clientX: 100,
+      } as unknown as ReactPointerEvent<HTMLDivElement>);
+    });
+    await waitFor(() => {
+      expect(document.body.style.cursor).toBe("col-resize");
+    });
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 180 }));
+    });
+
+    expect(container.style.width).toBe("240px");
+    expect(previewIndicator.style.left).toBe("320px");
+    expect(previewIndicator.style.top).toBe("12px");
+    expect(previewIndicator.style.height).toBe("320px");
+
+    act(() => {
+      window.dispatchEvent(new Event("pointerup"));
+    });
+
+    expect(onWidthChange).toHaveBeenCalledWith(320);
   });
 });

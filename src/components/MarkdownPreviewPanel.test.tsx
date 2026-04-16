@@ -237,9 +237,9 @@ describe("MarkdownPreviewPanel", () => {
     gestureArea.remove();
   });
 
-  it("updates width ratio when dragging resize handle", async () => {
+  it("keeps width ratio stable during drag and commits on pointerup", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    render(
+    const { container } = render(
       <div data-testid="layout-root">
         <MarkdownPreviewPanel open={true} tab={markdownTab} />
       </div>
@@ -272,13 +272,36 @@ describe("MarkdownPreviewPanel", () => {
       configurable: true,
       value: vi.fn(),
     });
+
     fireEvent.pointerDown(resizeHandle, { pointerId: 7, clientX: 600 });
-    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.4, 4);
+    const resizePreview = container.querySelector(
+      ".pointer-events-none.fixed.w-px.bg-primary\\/70"
+    ) as HTMLDivElement | null;
+    expect(resizePreview).not.toBeNull();
+    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.5, 4);
+    expect(resizePreview?.style.left).toBe("600px");
+
     fireEvent.pointerMove(document, { pointerId: 7, clientX: 20 });
-    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.8, 4);
+    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.5, 4);
+    expect(resizePreview?.style.left).toBe("20px");
+
     fireEvent.pointerUp(document, { pointerId: 7 });
+    expect(useStore.getState().markdownPreviewWidthRatio).toBeCloseTo(0.8, 4);
     expect(document.body.style.cursor).toBe("");
     expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("does not animate preview width changes from surrounding layout updates", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const panel = container.firstElementChild as HTMLDivElement | null;
+    expect(panel).not.toBeNull();
+    expect(panel?.className).toContain("transition-[opacity,border-color]");
+    expect(panel?.className).not.toContain("transition-[width,opacity,border-color]");
   });
 
   it("ignores resize handle pointerdown when preview panel is closed", async () => {
@@ -399,6 +422,12 @@ describe("MarkdownPreviewPanel", () => {
       value: vi.fn(),
     });
     fireEvent.pointerDown(resizeHandle, { pointerId: 11, clientX: 600 });
+    expect(mermaidInitializeMock).toHaveBeenCalledTimes(1);
+    expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    fireEvent.pointerMove(document, { pointerId: 11, clientX: 520 });
+    expect(mermaidInitializeMock).toHaveBeenCalledTimes(1);
+    expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(document, { pointerId: 11 });
     await waitFor(() => {
       expect(mermaidInitializeMock).toHaveBeenCalledTimes(2);
       expect(mermaidRenderMock).toHaveBeenCalledTimes(2);
