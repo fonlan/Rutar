@@ -7,6 +7,7 @@ type SearchResultItemsProps = SearchPanelOverlaysOptions['searchResultItemsProps
 interface UseSearchPanelOverlayOptionsOptions {
   cancelPendingBatchLoad: SearchPanelOverlaysOptions['onCancelPendingBatchLoad'];
   copyLabel: SearchPanelOverlaysOptions['copyLabel'];
+  copyPlainTextResultEntries: SearchResultItemsProps['copyPlainTextResultEntries'];
   copyPlainTextResults: SearchPanelOverlaysOptions['copyPlainTextResults'];
   cutLabel: SearchPanelOverlaysOptions['cutLabel'];
   displayTotalFilterMatchedLineCountText: SearchPanelOverlaysOptions['displayTotalFilterMatchedLineCountText'];
@@ -61,6 +62,7 @@ interface UseSearchPanelOverlayOptionsOptions {
 export function useSearchPanelOverlayOptions({
   cancelPendingBatchLoad,
   copyLabel,
+  copyPlainTextResultEntries,
   copyPlainTextResults,
   cutLabel,
   displayTotalFilterMatchedLineCountText,
@@ -113,6 +115,8 @@ export function useSearchPanelOverlayOptions({
 }: UseSearchPanelOverlayOptionsOptions): SearchPanelOverlaysOptions {
   const searchResultItemsProps = useMemo(
     () => ({
+      copyLabel,
+      copyPlainTextResultEntries,
       filterMatches,
       filterRulesPayloadLength,
       fontFamily,
@@ -129,6 +133,8 @@ export function useSearchPanelOverlayOptions({
       visibleMatches,
     }),
     [
+      copyLabel,
+      copyPlainTextResultEntries,
       filterMatches,
       filterRulesPayloadLength,
       fontFamily,

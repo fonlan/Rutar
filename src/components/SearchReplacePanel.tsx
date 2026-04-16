@@ -710,6 +710,7 @@ export function SearchReplacePanel() {
   });
 
   const {
+    copyPlainTextResultEntries,
     copyPlainTextResults,
     displayTotalFilterMatchedLineCount,
     displayTotalFilterMatchedLineCountText,
@@ -763,6 +764,7 @@ export function SearchReplacePanel() {
   const searchPanelOverlaysOptions = useSearchPanelOverlayOptions({
     cancelPendingBatchLoad,
     copyLabel: inputContextCopyLabel,
+    copyPlainTextResultEntries,
     copyPlainTextResults,
     cutLabel: inputContextCutLabel,
     displayTotalFilterMatchedLineCountText,

@@ -37,6 +37,82 @@ function getReactOnClick(element: Element): (() => void) | undefined {
   const propsKey = Object.keys(element as object).find((key) => key.startsWith("__reactProps$"));
   return propsKey ? (element as any)[propsKey]?.onClick : undefined;
 }
+const multiLineSearchMatches = [
+  {
+    start: 0,
+    end: 4,
+    startChar: 0,
+    endChar: 4,
+    text: "todo",
+    line: 1,
+    column: 1,
+    lineText: "todo item one",
+  },
+  {
+    start: 10,
+    end: 14,
+    startChar: 0,
+    endChar: 4,
+    text: "todo",
+    line: 2,
+    column: 1,
+    lineText: "todo item two",
+  },
+  {
+    start: 20,
+    end: 24,
+    startChar: 0,
+    endChar: 4,
+    text: "todo",
+    line: 3,
+    column: 1,
+    lineText: "todo item three",
+  },
+];
+function mockSearchResults(matches = multiLineSearchMatches) {
+  invokeMock.mockImplementation(async (command: string) => {
+    if (command === "load_filter_rule_groups_config") {
+      return [];
+    }
+    if (command === "search_count_in_document") {
+      return {
+        totalMatches: matches.length,
+        matchedLines: matches.length,
+        documentVersion: 1,
+      };
+    }
+    if (command === "search_in_document_chunk") {
+      return {
+        matches,
+        documentVersion: 1,
+        nextOffset: null,
+      };
+    }
+    if (command === "get_document_version") {
+      return 1;
+    }
+    return [];
+  });
+}
+async function openSearchResultsPanel(keyword = "todo") {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent("rutar:search-open", {
+        detail: { mode: "find" },
+      })
+    );
+  });
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText("Find text")).toBeInTheDocument();
+  });
+  fireEvent.change(screen.getByPlaceholderText("Find text"), {
+    target: { value: keyword },
+  });
+  fireEvent.click(screen.getByTitle("Expand results"));
+  await waitFor(() => {
+    expect(screen.getByTitle("Line 3, Col 1")).toBeInTheDocument();
+  });
+}
 
 describe("SearchReplacePanel", () => {
   let initialState: ReturnType<typeof useStore.getState>;
@@ -2075,6 +2151,88 @@ describe("SearchReplacePanel", () => {
     });
   });
 
+  it("supports ctrl-click multi-selection and copying selected search result rows", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+    mockSearchResults();
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+    await openSearchResultsPanel();
+    const line1 = screen.getByTitle("Line 1, Col 1");
+    const line2 = screen.getByTitle("Line 2, Col 1");
+    const line3 = screen.getByTitle("Line 3, Col 1");
+    fireEvent.click(line1);
+    fireEvent.click(line3, { ctrlKey: true });
+    expect(line1).toHaveAttribute("data-result-selected", "true");
+    expect(line2).toHaveAttribute("data-result-selected", "false");
+    expect(line3).toHaveAttribute("data-result-selected", "true");
+    fireEvent.contextMenu(line3, { clientX: 180, clientY: 210 });
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy" }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("todo item one\ntodo item three");
+    });
+  });
+  it("supports shift-click range selection and copying selected search result rows", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+    mockSearchResults();
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+    await openSearchResultsPanel();
+    const line1 = screen.getByTitle("Line 1, Col 1");
+    const line2 = screen.getByTitle("Line 2, Col 1");
+    const line3 = screen.getByTitle("Line 3, Col 1");
+    fireEvent.click(line1);
+    fireEvent.click(line3, { shiftKey: true });
+    expect(line1).toHaveAttribute("data-result-selected", "true");
+    expect(line2).toHaveAttribute("data-result-selected", "true");
+    expect(line3).toHaveAttribute("data-result-selected", "true");
+    fireEvent.contextMenu(line2, { clientX: 190, clientY: 220 });
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy" }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("todo item one\ntodo item two\ntodo item three");
+    });
+  });
+  it("supports drag multi-selection and copying selected search result rows", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+    mockSearchResults();
+    useStore.getState().addTab(createTab());
+    render(<SearchReplacePanel />);
+    await openSearchResultsPanel();
+    const line1 = screen.getByTitle("Line 1, Col 1");
+    const line2 = screen.getByTitle("Line 2, Col 1");
+    const line3 = screen.getByTitle("Line 3, Col 1");
+    fireEvent.mouseDown(line1, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(line3, { buttons: 1 });
+    fireEvent.mouseUp(window);
+    expect(line1).toHaveAttribute("data-result-selected", "true");
+    expect(line2).toHaveAttribute("data-result-selected", "true");
+    expect(line3).toHaveAttribute("data-result-selected", "true");
+    fireEvent.contextMenu(line2, { clientX: 200, clientY: 230 });
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy" }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("todo item one\ntodo item two\ntodo item three");
+    });
+  });
   it("shows copy failure message when clipboard write throws", async () => {
     const writeTextMock = vi.fn(async () => {
       throw new Error("clipboard-failed");

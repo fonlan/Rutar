@@ -150,6 +150,23 @@ export function useSearchResultPanelControls({
     }
   }, [messages, plainTextResultEntries, setErrorMessage, setFeedbackMessage]);
 
+  const copyPlainTextResultEntries = useCallback(async (entries: string[]) => {
+    if (entries.length === 0) {
+      setFeedbackMessage(messages.copyResultsEmpty);
+      setErrorMessage(null);
+      return;
+    }
+
+    try {
+      await writePlainTextToClipboard(entries.join('\n'));
+      setFeedbackMessage(messages.copyResultsSuccess(entries.length));
+      setErrorMessage(null);
+    } catch (error) {
+      const readableError = error instanceof Error ? error.message : 'Unknown error';
+      setErrorMessage(`${messages.copyResultsFailed}: ${readableError}`);
+    }
+  }, [messages, setErrorMessage, setFeedbackMessage]);
+
   const handleClearResultFilter = useCallback(() => {
     setResultFilterKeyword('');
     setAppliedResultFilterKeyword('');
@@ -253,6 +270,7 @@ export function useSearchResultPanelControls({
   ]);
 
   return {
+    copyPlainTextResultEntries,
     copyPlainTextResults,
     filterToggleLabel,
     handleClearResultFilter,
