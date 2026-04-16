@@ -2,14 +2,26 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Image as TauriImage } from "@tauri-apps/api/image";
+import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
 
-const { convertFileSrcMock, mermaidInitializeMock, mermaidRenderMock } = vi.hoisted(() => ({
+const {
+  convertFileSrcMock,
+  mermaidInitializeMock,
+  mermaidRenderMock,
+  tauriImageNewMock,
+  clipboardWriteImageMock,
+  clipboardImageCloseMock,
+} = vi.hoisted(() => ({
   convertFileSrcMock: vi.fn(),
   mermaidInitializeMock: vi.fn(),
   mermaidRenderMock: vi.fn(),
+  tauriImageNewMock: vi.fn(),
+  clipboardWriteImageMock: vi.fn(),
+  clipboardImageCloseMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -17,6 +29,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/image", () => ({
+  Image: {
+    new: tauriImageNewMock,
+  },
+}));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  writeImage: clipboardWriteImageMock,
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(async () => undefined),
 }));
@@ -30,6 +50,8 @@ vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
 
 const invokeMock = vi.mocked(invoke);
 const convertFileSrcApiMock = vi.mocked(convertFileSrc);
+const tauriImageNewApiMock = vi.mocked(TauriImage.new);
+const writeImageMock = vi.mocked(writeImage);
 const openUrlMock = vi.mocked(openUrl);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
@@ -88,6 +110,11 @@ describe("MarkdownPreviewPanel", () => {
     invokeMock.mockResolvedValue("# Hello");
     mermaidInitializeMock.mockImplementation(() => undefined);
     mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
+    clipboardImageCloseMock.mockResolvedValue(undefined);
+    tauriImageNewApiMock.mockResolvedValue({
+      close: clipboardImageCloseMock,
+    } as unknown as Awaited<ReturnType<typeof TauriImage.new>>);
+    writeImageMock.mockResolvedValue(undefined);
   });
 
   it("shows no active document message when tab is missing", () => {
@@ -189,6 +216,68 @@ describe("MarkdownPreviewPanel", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("shows image context menu and copies preview images to the clipboard", async () => {
+    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    const image = await screen.findByRole("img", { name: "Preview" });
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 3 });
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 2 });
+    const drawImageMock = vi.fn();
+    const getImageDataMock = vi.fn(() => ({
+      data: Uint8ClampedArray.from([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 255, 0, 255,
+        255, 0, 255, 255,
+        0, 255, 255, 255,
+      ]),
+    }));
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({
+        drawImage: drawImageMock,
+        getImageData: getImageDataMock,
+      } as unknown as CanvasRenderingContext2D);
+
+    try {
+      const menuEvent = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 160,
+        clientY: 120,
+      });
+      const dispatched = image.dispatchEvent(menuEvent);
+      expect(dispatched).toBe(false);
+      expect(menuEvent.defaultPrevented).toBe(true);
+      const copyButton = await screen.findByRole("menuitem", { name: "Copy Image" });
+      fireEvent.click(copyButton);
+      await waitFor(() => {
+        expect(drawImageMock).toHaveBeenCalledWith(image, 0, 0, 3, 2);
+        expect(getImageDataMock).toHaveBeenCalledWith(0, 0, 3, 2);
+        expect(tauriImageNewApiMock).toHaveBeenCalledWith(
+          Uint8Array.from([
+            255, 0, 0, 255,
+            0, 255, 0, 255,
+            0, 0, 255, 255,
+            255, 255, 0, 255,
+            255, 0, 255, 255,
+            0, 255, 255, 255,
+          ]),
+          3,
+          2,
+        );
+        expect(writeImageMock).toHaveBeenCalledTimes(1);
+        expect(clipboardImageCloseMock).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "Copy Image" })).toBeNull();
+      });
+    } finally {
+      getContextSpy.mockRestore();
+    }
+  });
   it("refreshes content when current tab emits document-updated event", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);

@@ -160,11 +160,14 @@ function clampPreviewContextMenuPosition(value: number, menuSize: number, viewpo
 }
 
 async function copyMarkdownPreviewImageToClipboard(imageElement: HTMLImageElement) {
-  const imageWidth = Math.max(1, Math.round(imageElement.naturalWidth || imageElement.width || 0));
-  const imageHeight = Math.max(1, Math.round(imageElement.naturalHeight || imageElement.height || 0));
-  if (imageWidth <= 0 || imageHeight <= 0) {
+  const rawImageWidth = imageElement.naturalWidth || imageElement.width || 0;
+  const rawImageHeight = imageElement.naturalHeight || imageElement.height || 0;
+  if (rawImageWidth <= 0 || rawImageHeight <= 0) {
     throw new Error('Markdown preview image is not ready to copy.');
   }
+
+  const imageWidth = Math.max(1, Math.round(rawImageWidth));
+  const imageHeight = Math.max(1, Math.round(rawImageHeight));
 
   const canvas = document.createElement('canvas');
   canvas.width = imageWidth;
@@ -476,6 +479,10 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     }
   }, []);
 
+  useEffect(() => {
+    setPreviewImageContextMenu(null);
+    setIsCopyingPreviewImage(false);
+  }, [markdownSource, open, tab?.id]);
   useEffect(() => {
     if (!previewImageContextMenu) {
       return;
