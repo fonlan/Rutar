@@ -1096,20 +1096,20 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       onContextMenu={(event) => event.preventDefault()}
       style={{ width: open ? `${clampPreviewRatio(previewWidthRatio) * 100}%` : '0px' }}
     >
+      <div
+        ref={resizePreviewRef}
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none fixed bottom-auto top-0 z-[85] w-px bg-primary/70 shadow-[0_0_0_1px_rgba(59,130,246,0.2)]',
+          isResizing ? 'opacity-100' : 'opacity-0'
+        )}
+      />
       <section
         className={cn(
           'relative flex h-full w-full flex-col transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >
-        <div
-          ref={resizePreviewRef}
-          aria-hidden="true"
-          className={cn(
-            'pointer-events-none fixed bottom-auto top-0 z-[85] w-px bg-primary/70 shadow-[0_0_0_1px_rgba(59,130,246,0.2)]',
-            isResizing ? 'opacity-100' : 'opacity-0'
-          )}
-        />
         <div
           className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1/2 cursor-col-resize"
           onPointerDown={handleResizePointerDown}

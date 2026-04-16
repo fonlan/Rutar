@@ -291,6 +291,25 @@ describe("MarkdownPreviewPanel", () => {
     expect(document.body.style.userSelect).toBe("");
   });
 
+  it("renders the resize preview line outside the transformed preview section", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalled();
+    });
+
+    const panel = container.firstElementChild as HTMLDivElement | null;
+    const section = panel?.querySelector("section") as HTMLElement | null;
+    const resizePreview = panel?.querySelector(
+      ".pointer-events-none.fixed.w-px.bg-primary\\/70"
+    ) as HTMLDivElement | null;
+
+    expect(panel).not.toBeNull();
+    expect(section).not.toBeNull();
+    expect(resizePreview).not.toBeNull();
+    expect(section?.contains(resizePreview as Node)).toBe(false);
+  });
+
   it("does not animate preview width changes from surrounding layout updates", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
