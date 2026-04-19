@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { message } from '@tauri-apps/plugin-dialog';
-import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
+import {
+  readImage as readClipboardImage,
+  readText as readClipboardText,
+} from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -202,14 +205,27 @@ async function getDocumentText(tabId: string, lineCountHint: number) {
   }
 }
 
+function clipboardEventHasTextPayload(clipboardData: DataTransfer) {
+  return (
+    clipboardData.getData('text/plain').trim().length > 0
+    || clipboardData.getData('text/html').trim().length > 0
+  );
+}
+function clipboardHasImageFlavor(clipboardData: Pick<DataTransfer, 'items' | 'files'>) {
+  const items = Array.from(clipboardData.items ?? []);
+  const files = Array.from(clipboardData.files ?? []);
+  return (
+    items.some((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    || files.some((file) => file.type.startsWith('image/'))
+  );
+}
 function resolveClipboardImageFile(clipboardEvent: ClipboardEvent) {
   const clipboardData = clipboardEvent.clipboardData;
   if (!clipboardData) {
     return null;
   }
 
-  const plainText = clipboardData.getData('text/plain');
-  if (plainText.trim().length > 0) {
+  if (clipboardEventHasTextPayload(clipboardData) && !clipboardHasImageFlavor(clipboardData)) {
     return null;
   }
 
@@ -233,6 +249,20 @@ function resolveClipboardImageFile(clipboardEvent: ClipboardEvent) {
   return null;
 }
 
+function isMonacoEditorTextFocused(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  container: HTMLElement | null
+) {
+  if (editor.hasTextFocus()) {
+    return true;
+  }
+  const activeElement = document.activeElement;
+  return (
+    activeElement instanceof HTMLTextAreaElement
+    && activeElement.classList.contains('inputarea')
+    && !!container?.contains(activeElement)
+  );
+}
 function resolveClipboardImageAltText(file: File) {
   const fileName = file.name.trim();
   if (!fileName) {
@@ -264,6 +294,44 @@ function readBlobAsDataUrl(blob: Blob) {
   });
 }
 
+function encodeRgbaImageAsPngDataUrl(rgba: Uint8Array, width: number, height: number) {
+  const imageWidth = Math.floor(width);
+  const imageHeight = Math.floor(height);
+  if (!Number.isFinite(imageWidth) || !Number.isFinite(imageHeight) || imageWidth <= 0 || imageHeight <= 0) {
+    throw new Error('Clipboard image dimensions are invalid.');
+  }
+  const expectedLength = imageWidth * imageHeight * 4;
+  if (rgba.length !== expectedLength) {
+    throw new Error(`Clipboard image RGBA payload length mismatch: expected ${expectedLength}, got ${rgba.length}.`);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = imageWidth;
+  canvas.height = imageHeight;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas 2D context is unavailable.');
+  }
+  const imageData = context.createImageData(imageWidth, imageHeight);
+  imageData.data.set(rgba);
+  context.putImageData(imageData, 0, 0);
+  const dataUrl = canvas.toDataURL('image/png');
+  if (!dataUrl.startsWith('data:image/png;base64,')) {
+    throw new Error('Failed to encode clipboard image as PNG data URL.');
+  }
+  return dataUrl;
+}
+async function readNativeClipboardImageAsDataUrl() {
+  const clipboardImage = await readClipboardImage();
+  try {
+    const [size, rgba] = await Promise.all([
+      clipboardImage.size(),
+      clipboardImage.rgba(),
+    ]);
+    return encodeRgbaImageAsPngDataUrl(rgba, size.width, size.height);
+  } finally {
+    await clipboardImage.close().catch(() => undefined);
+  }
+}
 export function Editor({
   tab,
 }: {
@@ -304,6 +372,7 @@ export function Editor({
     bookmark: null,
   });
   const base64DecodeErrorToastTimerRef = useRef<number | null>(null);
+  const pasteFromClipboardRef = useRef<((source: string) => Promise<void>) | null>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
   const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
     Record<EditorSubmenuKey, EditorSubmenuVerticalAlign>
@@ -533,6 +602,59 @@ export function Editor({
     editor.revealPositionInCenterIfOutsideViewport(nextSelectionEnd);
     editor.focus();
   }, [settings.tabIndentMode, settings.tabWidth]);
+  const insertNativeClipboardImageAsMarkdown = useCallback(async () => {
+    const currentTab = resolveCurrentTab();
+    if (!isMarkdownTab(currentTab)) {
+      return false;
+    }
+    const dataUrl = await readNativeClipboardImageAsDataUrl();
+    applyMarkdownToolbarEdit({
+      type: 'insert_image_base64',
+      src: dataUrl,
+      alt: 'image',
+    });
+    return true;
+  }, [applyMarkdownToolbarEdit, resolveCurrentTab]);
+  const pasteFromClipboard = useCallback(async (source: string) => {
+    const language = useStore.getState().settings.language;
+    const currentTab = resolveCurrentTab();
+    const isMarkdownTarget = isMarkdownTab(currentTab);
+    if (isMarkdownTarget) {
+      try {
+        if (await insertNativeClipboardImageAsMarkdown()) {
+          return;
+        }
+      } catch (imageError) {
+        console.warn('Failed to read clipboard image for markdown paste:', imageError);
+      }
+    }
+    let clipboardText: string | null = null;
+    try {
+      clipboardText = await readPlainTextFromClipboard();
+    } catch (textError) {
+      if (!isMarkdownTarget) {
+        console.warn('Failed to read clipboard text for paste:', textError);
+        await message(`${t(language, 'toolbar.paste')} ${textError instanceof Error ? textError.message : String(textError)}`, {
+          title: t(language, 'toolbar.paste'),
+          kind: 'warning',
+        });
+        return;
+      }
+      await message(`${t(language, 'toolbar.paste')} ${textError instanceof Error ? textError.message : String(textError)}`, {
+        title: t(language, 'toolbar.paste'),
+        kind: 'warning',
+      });
+      return;
+    }
+    if (clipboardText !== null && clipboardText.trim().length > 0) {
+      applySelectionEdit(source, clipboardText);
+      return;
+    }
+    if (clipboardText !== null) {
+      applySelectionEdit(source, clipboardText);
+    }
+  }, [applySelectionEdit, insertNativeClipboardImageAsMarkdown, readPlainTextFromClipboard, resolveCurrentTab]);
+  pasteFromClipboardRef.current = pasteFromClipboard;
   const handleSelectAllFromContext = useCallback(() => {
     const editor = editorRef.current;
     const model = editor?.getModel();
@@ -794,12 +916,7 @@ export function Editor({
         return;
       }
       if (action === 'paste') {
-        try {
-          const clipboardText = await readPlainTextFromClipboard();
-          applySelectionEdit('rutar-context-paste', clipboardText);
-        } catch (error) {
-          console.warn('Failed to read clipboard text for context-menu paste:', error);
-        }
+        await pasteFromClipboard('rutar-context-paste');
         setEditorContextMenu(null);
         return;
       }
@@ -828,7 +945,7 @@ export function Editor({
       getSelectedEditorText,
       handleSelectAllFromContext,
       isEditorContextMenuActionDisabled,
-      readPlainTextFromClipboard,
+      pasteFromClipboard,
       writePlainTextToClipboard,
     ]
   );
@@ -1015,9 +1132,31 @@ export function Editor({
       event.stopPropagation();
     };
     editorDomNode?.addEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
+    const insertClipboardImageDataUrl = (dataUrlPromise: Promise<string>, alt: string) => {
+      const language = useStore.getState().settings.language;
+      void dataUrlPromise
+        .then((dataUrl) => {
+          applyMarkdownToolbarEdit({
+            type: 'insert_image_base64',
+            src: dataUrl,
+            alt,
+          });
+        })
+        .catch(async (error) => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('Failed to convert pasted clipboard image into markdown Base64 image:', error);
+          await message(`${t(language, 'markdownToolbar.image.base64Failed')} ${errorMessage}`, {
+            title: t(language, 'markdownToolbar.image'),
+            kind: 'warning',
+          });
+        });
+    };
     const handleEditorPaste = (event: ClipboardEvent) => {
       const activeTabId = activeTabIdRef.current;
       if (!activeTabId) {
+        return;
+      }
+      if (!isMonacoEditorTextFocused(editor, editorDomNode)) {
         return;
       }
 
@@ -1031,32 +1170,25 @@ export function Editor({
       }
 
       const imageFile = resolveClipboardImageFile(event);
-      if (!imageFile) {
+      if (imageFile) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertClipboardImageDataUrl(
+          readBlobAsDataUrl(imageFile),
+          resolveClipboardImageAltText(imageFile)
+        );
+        return;
+      }
+      const pasteFromClipboard = pasteFromClipboardRef.current;
+      if (!pasteFromClipboard) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
-
-      const language = useStore.getState().settings.language;
-      void readBlobAsDataUrl(imageFile)
-        .then((dataUrl) => {
-          applyMarkdownToolbarEdit({
-            type: 'insert_image_base64',
-            src: dataUrl,
-            alt: resolveClipboardImageAltText(imageFile),
-          });
-        })
-        .catch(async (error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error('Failed to convert pasted clipboard image into markdown Base64 image:', error);
-          await message(`${t(language, 'markdownToolbar.image.base64Failed')} ${errorMessage}`, {
-            title: t(language, 'markdownToolbar.image'),
-            kind: 'warning',
-          });
-        });
+      void pasteFromClipboard('rutar-paste');
     };
-    editorDomNode?.addEventListener('paste', handleEditorPaste, true);
+    window.addEventListener('paste', handleEditorPaste, true);
 
     const contentDisposable = editor.onDidChangeModelContent((event: monaco.editor.IModelContentChangedEvent) => {
       if (applyingRemoteTextRef.current) {
@@ -1173,7 +1305,7 @@ export function Editor({
       mouseDownDisposable.dispose();
       contextMenuDisposable.dispose();
       editorDomNode?.removeEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
-      editorDomNode?.removeEventListener('paste', handleEditorPaste, true);
+      window.removeEventListener('paste', handleEditorPaste, true);
 
       const activeTabId = activeTabIdRef.current;
       if (activeTabId) {
@@ -1512,7 +1644,11 @@ export function Editor({
       }
 
       const action = customEvent.detail?.action;
-      if (!action || action === 'paste') {
+      if (!action) {
+        return;
+      }
+      if (action === 'paste') {
+        await pasteFromClipboard('rutar-toolbar-paste');
         return;
       }
 
@@ -1600,6 +1736,7 @@ export function Editor({
     applySelectionEdit,
     ensureEditorModelLoaded,
     getSelectedEditorText,
+    pasteFromClipboard,
     resolveCurrentTab,
     tab.id,
     updateQuotePairDecorations,

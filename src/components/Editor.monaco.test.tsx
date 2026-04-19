@@ -1,6 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import {
+  readImage as readClipboardImage,
+  readText as readClipboardText,
+} from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { EDITOR_FIND_OPEN_EVENT } from '@/lib/editorFind';
 import { MARKDOWN_TOOLBAR_ACTION_EVENT } from '@/lib/markdownToolbar';
@@ -49,6 +53,10 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   message: vi.fn(async () => undefined),
 }));
 
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readImage: vi.fn(),
+  readText: vi.fn(async () => ''),
+}));
 vi.mock('monaco-editor', () => {
   const createSelection = (
     startLineNumber: number,
@@ -172,6 +180,7 @@ vi.mock('monaco-editor', () => {
     revealLineInCenterIfOutsideViewport: vi.fn(),
     layout: vi.fn(),
     focus: vi.fn(),
+    hasTextFocus: vi.fn(() => true),
     getAction: vi.fn((actionId: string) => {
       if (actionId === 'actions.find') {
         return {
@@ -247,20 +256,36 @@ function createTab(overrides: Partial<FileTab> = {}): FileTab {
 
 function createPasteEvent({
   files = [],
+  items,
   text = '',
+  html = '',
 }: {
   files?: File[];
+  items?: Array<{
+    kind: string;
+    type: string;
+    getAsFile: () => File | null;
+  }>;
   text?: string;
+  html?: string;
 }) {
   const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
   const clipboardData = {
-    items: files.map((file) => ({
+    items: items ?? files.map((file) => ({
       kind: 'file',
       type: file.type,
       getAsFile: () => file,
     })),
     files,
-    getData: (format: string) => (format === 'text/plain' ? text : ''),
+    getData: (format: string) => {
+      if (format === 'text/plain') {
+        return text;
+      }
+      if (format === 'text/html') {
+        return html;
+      }
+      return '';
+    },
   };
   Object.defineProperty(event, 'clipboardData', {
     value: clipboardData,
@@ -285,6 +310,13 @@ function stubFileReaderDataUrl(result: string) {
   vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
 }
 
+function focusMonacoInputArea(editorSurface: Element) {
+  const inputArea = document.createElement('textarea');
+  inputArea.className = 'inputarea';
+  editorSurface.appendChild(inputArea);
+  inputArea.focus();
+  return inputArea;
+}
 describe('Editor (Monaco)', () => {
   const initialStoreState = useStore.getState();
   const openUrlMock = vi.mocked(openUrl);
@@ -311,7 +343,10 @@ describe('Editor (Monaco)', () => {
     monacoMockState.editorInstance.saveViewState.mockReturnValue(null);
     monacoMockState.editorInstance.getPosition.mockReset();
     monacoMockState.editorInstance.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
+    monacoMockState.editorInstance.hasTextFocus.mockReset();
+    monacoMockState.editorInstance.hasTextFocus.mockReturnValue(true);
 
+    vi.mocked(readClipboardImage).mockRejectedValue(new Error('No clipboard image'));
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'get_document_text') {
         return 'alpha';
@@ -682,7 +717,162 @@ describe('Editor (Monaco)', () => {
     expect(pasteEvent.defaultPrevented).toBe(true);
   });
 
-  it('does not intercept markdown paste when clipboard also carries plain text', async () => {
+  it('converts native clipboard images into markdown base64 embeds when WebView paste data is empty', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-native-image',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 2, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+      ])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const putImageDataMock = vi.fn();
+    const imageData = {
+      data: new Uint8ClampedArray(8),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: putImageDataMock,
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,bmF0aXZl');
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+      expect(editorSurface).toBeTruthy();
+      monacoMockState.model.value = '';
+      monacoMockState.selection = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+        isEmpty: () => true,
+      };
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      const pasteEvent = createPasteEvent({});
+      act(() => {
+        editorSurface?.dispatchEvent(pasteEvent);
+      });
+      await waitFor(() => {
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          [
+            {
+              range: {
+                startLineNumber: 1,
+                startColumn: 1,
+                endLineNumber: 1,
+                endColumn: 1,
+              },
+              text: '![image](data:image/png;base64,bmF0aXZl)',
+              forceMoveMarkers: true,
+            },
+          ]
+        );
+      });
+      expect(pasteEvent.defaultPrevented).toBe(true);
+      expect(imageData.data).toEqual(Uint8ClampedArray.from([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+      ]));
+      expect(putImageDataMock).toHaveBeenCalledWith(imageData, 0, 0);
+      expect(toDataUrlSpy).toHaveBeenCalledWith('image/png');
+      expect(clipboardImage.close).toHaveBeenCalled();
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('uses native clipboard image data when WebView exposes an image item without a File', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-empty-image-item',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([0, 0, 255, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,aXRlbQ==');
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+      expect(editorSurface).toBeTruthy();
+      monacoMockState.model.value = '';
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      const pasteEvent = createPasteEvent({
+        items: [
+          {
+            kind: 'file',
+            type: 'image/png',
+            getAsFile: () => null,
+          },
+        ],
+      });
+      act(() => {
+        editorSurface?.dispatchEvent(pasteEvent);
+      });
+      await waitFor(() => {
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,aXRlbQ==)',
+            }),
+          ])
+        );
+      });
+      expect(pasteEvent.defaultPrevented).toBe(true);
+      expect(readClipboardImage).toHaveBeenCalled();
+      expect(clipboardImage.close).toHaveBeenCalled();
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('still converts markdown paste images when clipboard also carries plain text', async () => {
     const tab = createTab({
       id: 'tab-markdown-paste-text',
       name: 'note.md',
@@ -714,10 +904,404 @@ describe('Editor (Monaco)', () => {
       editorSurface?.dispatchEvent(pasteEvent);
     });
 
-    expect(monacoMockState.editorInstance.executeEdits).not.toHaveBeenCalled();
-    expect(pasteEvent.defaultPrevented).toBe(false);
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+        'rutar-markdown-toolbar',
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: '![diagram](data:image/png;base64,Zm9v)',
+          }),
+        ])
+      );
+    });
+    expect(pasteEvent.defaultPrevented).toBe(true);
   });
 
+  it('still reads native clipboard images when markdown paste carries html content', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-html',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([8, 9, 10, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,aHRtbC1pbWFnZQ==');
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+      expect(editorSurface).toBeTruthy();
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      const pasteEvent = createPasteEvent({
+        html: '<strong>html paste</strong>',
+      });
+      act(() => {
+        editorSurface?.dispatchEvent(pasteEvent);
+      });
+      await waitFor(() => {
+        expect(readClipboardImage).toHaveBeenCalled();
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,aHRtbC1pbWFnZQ==)',
+            }),
+          ])
+        );
+      });
+      expect(pasteEvent.defaultPrevented).toBe(true);
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('reads native clipboard image on markdown Ctrl+V when clipboard exposes only html flavor', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-paste-html-native-only',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([21, 22, 23, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,aHRtbC1vbmx5LW5hdGl2ZQ==');
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+      expect(editorSurface).toBeTruthy();
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      const pasteEvent = createPasteEvent({
+        items: [],
+        files: [],
+        html: '<img src="tauri://asset/preview.png">',
+      });
+      act(() => {
+        editorSurface?.dispatchEvent(pasteEvent);
+      });
+      await waitFor(() => {
+        expect(readClipboardImage).toHaveBeenCalled();
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,aHRtbC1vbmx5LW5hdGl2ZQ==)',
+            }),
+          ])
+        );
+      });
+      expect(pasteEvent.defaultPrevented).toBe(true);
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('handles toolbar paste action by converting native clipboard images into markdown base64 embeds', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-toolbar-paste-native-image',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([255, 255, 255, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,dG9vbGJhcg==');
+    try {
+      render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      monacoMockState.model.value = '';
+      monacoMockState.selection = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+        isEmpty: () => true,
+      };
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent('rutar:editor-clipboard-action', {
+            detail: { tabId: tab.id, action: 'paste' },
+          })
+        );
+      });
+      await waitFor(() => {
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,dG9vbGJhcg==)',
+            }),
+          ])
+        );
+      });
+      expect(readClipboardImage).toHaveBeenCalled();
+      expect(clipboardImage.close).toHaveBeenCalled();
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('prefers native clipboard images over text flavors during markdown toolbar paste', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-toolbar-paste-image-over-text',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([12, 34, 56, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,cHJlZmVyLWltYWdl');
+    try {
+      render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      monacoMockState.model.value = '';
+      monacoMockState.selection = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+        isEmpty: () => true,
+      };
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent('rutar:editor-clipboard-action', {
+            detail: { tabId: tab.id, action: 'paste' },
+          })
+        );
+      });
+      await waitFor(() => {
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,cHJlZmVyLWltYWdl)',
+            }),
+          ])
+        );
+      });
+      expect(monacoMockState.model.value).not.toContain('alpha');
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('uses the native clipboard image path for markdown window paste when the Monaco input area is focused', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-keyboard-paste-image',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    const clipboardImage = {
+      size: vi.fn(async () => ({ width: 1, height: 1 })),
+      rgba: vi.fn(async () => Uint8Array.from([4, 5, 6, 255])),
+      close: vi.fn(async () => undefined),
+    };
+    vi.mocked(readClipboardImage).mockResolvedValue(
+      clipboardImage as unknown as Awaited<ReturnType<typeof readClipboardImage>>
+    );
+    const imageData = {
+      data: new Uint8ClampedArray(4),
+    };
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        createImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+    const toDataUrlSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,a2V5Ym9hcmQ=');
+    try {
+      const { container } = render(<Editor tab={tab} />);
+      await waitFor(() => {
+        expect(monacoMockState.editorCreate).toHaveBeenCalled();
+      });
+      const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+      expect(editorSurface).toBeTruthy();
+      focusMonacoInputArea(editorSurface as Element);
+      monacoMockState.model.value = '';
+      monacoMockState.selection = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+        isEmpty: () => true,
+      };
+      monacoMockState.editorInstance.executeEdits.mockClear();
+      const pasteEvent = createPasteEvent({});
+      await act(async () => {
+        window.dispatchEvent(pasteEvent);
+      });
+      await waitFor(() => {
+        expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+          'rutar-markdown-toolbar',
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: '![image](data:image/png;base64,a2V5Ym9hcmQ=)',
+            }),
+          ])
+        );
+      });
+      expect(pasteEvent.defaultPrevented).toBe(true);
+      expect(readClipboardImage).toHaveBeenCalled();
+      expect(clipboardImage.close).toHaveBeenCalled();
+    } finally {
+      getContextSpy.mockRestore();
+      toDataUrlSpy.mockRestore();
+    }
+  });
+  it('keeps markdown window paste text working when the native clipboard has no image', async () => {
+    const tab = createTab({
+      id: 'tab-markdown-keyboard-paste-text',
+      name: 'note.md',
+      path: 'C:\\repo\\note.md',
+      syntaxOverride: 'markdown',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    vi.mocked(readClipboardImage).mockRejectedValue(new Error('No clipboard image'));
+    vi.mocked(readClipboardText).mockResolvedValue('plain keyboard paste');
+    const { container } = render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+    const editorSurface = container.querySelector('[data-monaco-engine-state] > div');
+    expect(editorSurface).toBeTruthy();
+    focusMonacoInputArea(editorSurface as Element);
+    monacoMockState.model.value = '';
+    monacoMockState.selection = {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+      isEmpty: () => true,
+    };
+    monacoMockState.editorInstance.executeEdits.mockClear();
+    const pasteEvent = createPasteEvent({});
+    await act(async () => {
+      window.dispatchEvent(pasteEvent);
+    });
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+        'rutar-paste',
+        [
+          {
+            range: expect.objectContaining({
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: 1,
+              endColumn: 1,
+            }),
+            text: 'plain keyboard paste',
+            forceMoveMarkers: true,
+          },
+        ]
+      );
+    });
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
   it('does not recreate Monaco editor when toggling wordWrap', async () => {
     const tab = createTab();
     useStore.setState({
