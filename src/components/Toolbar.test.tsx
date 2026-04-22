@@ -2433,7 +2433,15 @@ describe("Toolbar", () => {
     expect(openFilePathMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not open recent file context menu on right click", async () => {
+  it("shows recent file context menu actions on right click", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({
       recentFiles: ["C:\\repo\\recent-context.ts"],
@@ -2446,14 +2454,25 @@ describe("Toolbar", () => {
 
     const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
     fireEvent.click(openFileButtons[1]);
-    const recentItemRow = await screen.findByTitle("C:\\repo\\recent-context.ts");
+    const recentItemButton = await screen.findByTitle("C:\\repo\\recent-context.ts");
     const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    const dispatched = recentItemRow.dispatchEvent(event);
+    const dispatched = recentItemButton.dispatchEvent(event);
 
     expect(dispatched).toBe(false);
     expect(event.defaultPrevented).toBe(true);
-    expect(screen.queryByRole("button", { name: "Open Containing Folder" })).toBeNull();
-    expect(invokeMock).not.toHaveBeenCalledWith("open_in_file_manager", expect.anything());
+    fireEvent.click(await screen.findByRole("button", { name: "Copy Path" }));
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("C:\\repo\\recent-context.ts");
+    });
+    expect(screen.queryByRole("button", { name: "Copy Path" })).toBeNull();
+
+    fireEvent.contextMenu(recentItemButton);
+    fireEvent.click(await screen.findByRole("button", { name: "Open Containing Folder" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("open_in_file_manager", { path: "C:\\repo\\recent-context.ts" });
+    });
   });
 
   it("opens file from primary split button using dialog result", async () => {
@@ -2680,6 +2699,40 @@ describe("Toolbar", () => {
     });
   });
 
+  it("shows recent folder context menu actions on right click", async () => {
+    const writeTextMock = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFolders: ["C:\\repo\\folder-context"],
+    });
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+    const openFolderButtons = screen.getAllByTitle("Open Folder");
+    fireEvent.click(openFolderButtons[1]);
+    const recentFolderButton = await screen.findByTitle("C:\\repo\\folder-context");
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    const dispatched = recentFolderButton.dispatchEvent(event);
+    expect(dispatched).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy Path" }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith("C:\\repo\\folder-context");
+    });
+    expect(screen.queryByRole("button", { name: "Copy Path" })).toBeNull();
+    fireEvent.contextMenu(recentFolderButton);
+    fireEvent.click(await screen.findByRole("button", { name: "Open Containing Folder" }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("open_in_file_manager", { path: "C:\\repo\\folder-context" });
+    });
+  });
   it("shows toast and removes recent folder when split-menu target folder is missing", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({

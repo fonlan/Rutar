@@ -169,6 +169,12 @@ interface SplitMenuItemContextState {
     y: number;
 }
 
+interface SplitMenuItemContextAction {
+    id: string;
+    label: string;
+    onSelect: (path: string) => void | Promise<void>;
+}
+
 const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canUndo: false,
     canRedo: false,
@@ -247,6 +253,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const recentMissingFileRemovedText = tr('toolbar.recent.missingFileRemoved');
     const recentMissingFolderRemovedText = tr('toolbar.recent.missingFolderRemoved');
     const removeRecentItemText = tr('bookmark.remove');
+    const copyPathText = tr('titleBar.copyPath');
     const openContainingFolderText = tr('titleBar.openContainingFolder');
     const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
     const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
@@ -450,6 +457,18 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
         [recentFolders]
     );
 
+    const copyRecentPathToClipboard = useCallback(async (path: string) => {
+        if (!navigator.clipboard?.writeText) {
+            console.error('Clipboard API unavailable for recent path copy.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(path);
+        } catch (error) {
+            console.error('Failed to copy recent path:', error);
+        }
+    }, []);
     const runStructuredFormat = useCallback(async (mode: 'beautify' | 'minify') => {
         if (!activeTab) {
             return;
@@ -631,6 +650,43 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
         }
     }, []);
 
+    const handleOpenRecentFolderInFileManager = useCallback(async (path: string) => {
+        try {
+            await invoke('open_in_file_manager', { path });
+        } catch (error) {
+            console.error('Failed to open recent folder in file manager:', error);
+        }
+    }, []);
+    const recentFileContextActions = useMemo<SplitMenuItemContextAction[]>(
+        () => [
+            {
+                id: 'copy-path',
+                label: copyPathText,
+                onSelect: copyRecentPathToClipboard,
+            },
+            {
+                id: 'open-containing-folder',
+                label: openContainingFolderText,
+                onSelect: handleOpenRecentFileContainingFolder,
+            },
+        ],
+        [copyPathText, copyRecentPathToClipboard, handleOpenRecentFileContainingFolder, openContainingFolderText]
+    );
+    const recentFolderContextActions = useMemo<SplitMenuItemContextAction[]>(
+        () => [
+            {
+                id: 'copy-path',
+                label: copyPathText,
+                onSelect: copyRecentPathToClipboard,
+            },
+            {
+                id: 'open-containing-folder',
+                label: openContainingFolderText,
+                onSelect: handleOpenRecentFolderInFileManager,
+            },
+        ],
+        [copyPathText, copyRecentPathToClipboard, handleOpenRecentFolderInFileManager, openContainingFolderText]
+    );
     const handleSave = useCallback(async () => {
         if (!activeTab) return;
         try {
@@ -1111,6 +1167,11 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     }, []);
 
     const handleToolbarContextMenuCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        const target = event.target as Element | null;
+        if (target?.closest('[data-recent-item-context-target="true"]')) {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
     }, []);
@@ -1138,10 +1199,9 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 emptyText={noRecentFilesText}
                 clearText={clearRecentFilesText}
                 removeItemText={removeRecentItemText}
-                itemContextActionText={openContainingFolderText}
+                itemContextActions={recentFileContextActions}
                 items={recentFileItems}
                 onItemClick={handleOpenRecentFile}
-                onItemContextAction={handleOpenRecentFileContainingFolder}
                 onItemRemove={handleRemoveRecentFile}
                 onClear={() => {
                     updateSettings({ recentFiles: [] });
@@ -1162,6 +1222,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 emptyText={noRecentFoldersText}
                 clearText={clearRecentFoldersText}
                 removeItemText={removeRecentItemText}
+                itemContextActions={recentFolderContextActions}
                 items={recentFolderItems}
                 onItemClick={handleOpenRecentFolder}
                 onItemRemove={handleRemoveRecentFolder}
@@ -1330,10 +1391,9 @@ function ToolbarSplitMenu({
     emptyText,
     clearText,
     removeItemText,
-    itemContextActionText,
+    itemContextActions,
     items,
     onItemClick,
-    onItemContextAction,
     onItemRemove,
     onClear,
 }: {
@@ -1347,10 +1407,9 @@ function ToolbarSplitMenu({
     emptyText: string;
     clearText: string;
     removeItemText: string;
-    itemContextActionText?: string;
+    itemContextActions?: SplitMenuItemContextAction[];
     items: Array<{ path: string; name: string }>;
     onItemClick: (path: string) => void;
-    onItemContextAction?: (path: string) => void;
     onItemRemove: (path: string) => void;
     onClear: () => void;
 }) {
@@ -1363,6 +1422,7 @@ function ToolbarSplitMenu({
     });
     const [itemContextMenu, setItemContextMenu] = useState<SplitMenuItemContextState | null>(null);
     const itemContextMenuRef = useRef<HTMLDivElement>(null);
+    const hasItemContextActions = (itemContextActions?.length ?? 0) > 0;
 
     useEffect(() => {
         if (!menuOpen) {
@@ -1484,10 +1544,36 @@ function ToolbarSplitMenu({
                             {items.map((item) => (
                                 <div
                                     key={item.path}
+                                    data-recent-item-context-target="true"
                                     className="group flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground group-focus-within:bg-accent group-focus-within:text-accent-foreground"
                                     onClick={() => {
                                         setItemContextMenu(null);
                                         void onItemClick(item.path);
+                                    }}
+                                    onContextMenu={(event) => {
+                                        if (!hasItemContextActions) {
+                                            return;
+                                        }
+
+                                        event.preventDefault();
+                                        event.stopPropagation();
+
+                                        const menuWidth = 216;
+                                        const menuHeight = 8 + (itemContextActions?.length ?? 0) * 34;
+                                        const viewportPadding = 8;
+                                        const x = Math.max(
+                                            viewportPadding,
+                                            Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+                                        );
+                                        const y = Math.max(
+                                            viewportPadding,
+                                            Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+                                        );
+                                        setItemContextMenu({
+                                            path: item.path,
+                                            x,
+                                            y,
+                                        });
                                     }}
                                 >
                                     <button
@@ -1496,7 +1582,7 @@ function ToolbarSplitMenu({
                                         title={item.path}
                                         aria-label={item.path}
                                         onContextMenu={(event) => {
-                                            if (!onItemContextAction || !itemContextActionText) {
+                                            if (!hasItemContextActions) {
                                                 return;
                                             }
 
@@ -1504,7 +1590,7 @@ function ToolbarSplitMenu({
                                             event.stopPropagation();
 
                                             const menuWidth = 216;
-                                            const menuHeight = 38;
+                                            const menuHeight = 8 + (itemContextActions?.length ?? 0) * 34;
                                             const viewportPadding = 8;
                                             const x = Math.max(
                                                 viewportPadding,
@@ -1537,6 +1623,10 @@ function ToolbarSplitMenu({
                                             setItemContextMenu((current) => current?.path === item.path ? null : current);
                                             onItemRemove(item.path);
                                         }}
+                                        onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                        }}
                                     >
                                         <X className="h-3 w-3" />
                                     </button>
@@ -1555,7 +1645,7 @@ function ToolbarSplitMenu({
                 </div>
             )}
 
-            {menuOpen && itemContextMenu && onItemContextAction && itemContextActionText && (
+            {menuOpen && itemContextMenu && hasItemContextActions && (
                 <div
                     ref={itemContextMenuRef}
                     style={{
@@ -1566,17 +1656,20 @@ function ToolbarSplitMenu({
                     }}
                     className="z-[60] rounded-md border border-border bg-popover p-1 shadow-lg"
                 >
-                    <button
-                        type="button"
-                        className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            setItemContextMenu(null);
-                            void onItemContextAction(itemContextMenu.path);
-                        }}
-                    >
-                        {itemContextActionText}
-                    </button>
+                    {itemContextActions?.map((action) => (
+                        <button
+                            key={action.id}
+                            type="button"
+                            className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setItemContextMenu(null);
+                                void action.onSelect(itemContextMenu.path);
+                            }}
+                        >
+                            {action.label}
+                        </button>
+                    ))}
                 </div>
             )}
         </div>
