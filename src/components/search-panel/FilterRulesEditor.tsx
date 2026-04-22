@@ -2,9 +2,14 @@ import {
   ArrowDown,
   ArrowUp,
   CirclePlus,
+  Download,
+  FolderOpen,
   GripVertical,
   Palette,
+  Play,
+  Save,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -24,6 +29,12 @@ import {
   FILTER_MATCH_MODES,
   matchModeLabel,
 } from './utils';
+
+const SIDEBAR_ACTION_BUTTON_CLASS_NAME =
+  'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40';
+
+const SIDEBAR_PRIMARY_ACTION_BUTTON_CLASS_NAME =
+  'inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40';
 
 export interface FilterRulesEditorProps {
   messages: ReturnType<typeof getSearchPanelMessages>;
@@ -373,10 +384,12 @@ export function FilterRulesEditor({
           </div>
           <button
             type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={() => void onSaveFilterRuleGroup()}
+            title={messages.filterSaveGroup}
+            aria-label={messages.filterSaveGroup}
           >
-            {messages.filterSaveGroup}
+            <Save className="h-3.5 w-3.5" />
           </button>
         </div>
 
@@ -397,34 +410,45 @@ export function FilterRulesEditor({
           </select>
           <button
             type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={onLoadFilterRuleGroup}
+            title={messages.filterLoadGroup}
+            aria-label={messages.filterLoadGroup}
           >
-            {messages.filterLoadGroup}
+            <FolderOpen className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={cn(
+              SIDEBAR_ACTION_BUTTON_CLASS_NAME,
+              'hover:text-destructive'
+            )}
             onClick={() => void onDeleteFilterRuleGroup()}
+            title={messages.filterDeleteGroup}
+            aria-label={messages.filterDeleteGroup}
           >
-            {messages.filterDeleteGroup}
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={() => void onImportFilterRuleGroups()}
+            title={messages.filterImportGroups}
+            aria-label={messages.filterImportGroups}
           >
-            {messages.filterImportGroups}
+            <Upload className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={() => void onExportFilterRuleGroups()}
+            title={messages.filterExportGroups}
+            aria-label={messages.filterExportGroups}
           >
-            {messages.filterExportGroups}
+            <Download className="h-3.5 w-3.5" />
           </button>
           <span className="ml-auto text-[11px] text-muted-foreground">
             {normalizedFilterRuleGroups.length > 0
@@ -438,29 +462,32 @@ export function FilterRulesEditor({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={onAddFilterRule}
+            title={messages.filterAddRule}
+            aria-label={messages.filterAddRule}
           >
             <CirclePlus className="h-3.5 w-3.5" />
-            {messages.filterAddRule}
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+            className={SIDEBAR_ACTION_BUTTON_CLASS_NAME}
             onClick={onClearFilterRules}
             disabled={!hasAnyConfiguredFilterRule}
+            title={messages.filterClearRules}
+            aria-label={messages.filterClearRules}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {messages.filterClearRules}
           </button>
         </div>
         <button
           type="button"
-          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+          className={SIDEBAR_PRIMARY_ACTION_BUTTON_CLASS_NAME}
           onClick={onToggleResultPanelAndRefresh}
           title={messages.filterRunHint}
+          aria-label={filterToggleLabel}
         >
-          {filterToggleLabel}
+          <Play className="h-3.5 w-3.5" />
         </button>
       </div>
 
