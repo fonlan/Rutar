@@ -53,13 +53,6 @@ function dispatchSearchOpen(mode: 'find' | 'replace' | 'filter') {
     );
 }
 
-function dispatchEditorPaste(tabId: string, text: string) {
-    window.dispatchEvent(
-        new CustomEvent('rutar:paste-text', {
-            detail: { tabId, text },
-        })
-    );
-}
 
 function dispatchDiffPaste(diffTabId: string, panel: DiffPanelSide, text: string) {
     window.dispatchEvent(
@@ -833,13 +826,8 @@ export function Toolbar() {
         }
 
         if (activeTab) {
-            try {
-                const clipboardText = await readClipboardText();
-                dispatchEditorPaste(activeTab.id, clipboardText);
-                return;
-            } catch (error) {
-                console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
-            }
+            dispatchEditorClipboardAction(activeTab.id, action);
+            return;
         }
 
         if (runExecCommand('paste')) {

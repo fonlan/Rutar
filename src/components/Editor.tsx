@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
 import { isMarkdownTab } from '@/lib/markdown';
+import { createMonacoTextSnapshotFromChunks } from '@/lib/monacoTextSnapshot';
 import {
   applyMarkdownToolbarAction,
   buildIndentationUnit,
@@ -203,6 +204,11 @@ async function getDocumentText(tabId: string, lineCountHint: number) {
       endLine: Math.max(1, lineCountHint),
     });
   }
+}
+
+async function getDocumentTextBootstrapSnapshot(tabId: string) {
+  const chunks = await invoke<string[]>('get_document_text_chunks', { id: tabId });
+  return createMonacoTextSnapshotFromChunks(chunks);
 }
 
 function clipboardEventHasTextPayload(clipboardData: DataTransfer) {
@@ -436,6 +442,17 @@ export function Editor({
 
       const requestId = ++pendingFetchRequestIdRef.current;
       try {
+        if (reason === 'bootstrap') {
+          const snapshot = await getDocumentTextBootstrapSnapshot(targetTab.id);
+          if (requestId !== pendingFetchRequestIdRef.current || model.isDisposed()) {
+            return;
+          }
+
+          applyingRemoteTextRef.current = true;
+          model.setValue(snapshot);
+          return;
+        }
+
         const text = await getDocumentText(targetTab.id, Math.max(1, targetTab.lineCount));
         if (requestId !== pendingFetchRequestIdRef.current || model.isDisposed()) {
           return;

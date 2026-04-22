@@ -1,4 +1,5 @@
 import cargoManifest from "../src-tauri/Cargo.toml?raw";
+import capabilityConfig from "../src-tauri/capabilities/default.json";
 import tauriConfig from "../src-tauri/tauri.conf.json";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +15,9 @@ const config = tauriConfig as {
       };
     };
   };
+};
+const capability = capabilityConfig as {
+  permissions?: string[];
 };
 
 describe("tauri asset and image CSP config", () => {
@@ -40,5 +44,8 @@ describe("tauri asset and image CSP config", () => {
 
   it("keeps the tauri protocol-asset feature enabled for release builds", () => {
     expect(cargoManifest).toContain('protocol-asset');
+  });
+  it("allows clipboard image reads for markdown image paste", () => {
+    expect(capability.permissions).toContain("clipboard-manager:allow-read-image");
   });
 });

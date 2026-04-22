@@ -58,6 +58,21 @@ vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
   readText: vi.fn(async () => ''),
 }));
 vi.mock('monaco-editor', () => {
+  const readTextValue = (next: string | { read: () => string | null }) => {
+    if (typeof next === 'string') {
+      return next;
+    }
+
+    let result = '';
+    while (true) {
+      const chunk = next.read();
+      if (chunk === null) {
+        return result;
+      }
+      result += chunk;
+    }
+  };
+
   const createSelection = (
     startLineNumber: number,
     startColumn: number,
@@ -78,8 +93,8 @@ vi.mock('monaco-editor', () => {
     getValue() {
       return this.value;
     },
-    setValue(next: string) {
-      this.value = next;
+    setValue(next: string | { read: () => string | null }) {
+      this.value = readTextValue(next);
     },
     isDisposed() {
       return false;
@@ -348,6 +363,9 @@ describe('Editor (Monaco)', () => {
 
     vi.mocked(readClipboardImage).mockRejectedValue(new Error('No clipboard image'));
     vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text_chunks') {
+        return ['alpha'];
+      }
       if (command === 'get_document_text') {
         return 'alpha';
       }
@@ -367,8 +385,9 @@ describe('Editor (Monaco)', () => {
     render(<Editor tab={tab} />);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text_chunks', { id: tab.id });
     });
+    expect(monacoMockState.model.getValue()).toBe('alpha');
     expect(monacoMockState.editorCreate).toHaveBeenCalled();
     expect(monacoMockState.editorCreate).toHaveBeenCalledWith(
       expect.anything(),
@@ -420,7 +439,7 @@ describe('Editor (Monaco)', () => {
     });
     render(<Editor tab={tab} />);
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text_chunks', { id: tab.id });
     });
     monacoMockState.editorInstance.setPosition.mockClear();
     vi.mocked(invoke).mockClear();
@@ -475,7 +494,7 @@ describe('Editor (Monaco)', () => {
     });
     render(<Editor tab={tab} />);
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: tab.id });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text_chunks', { id: tab.id });
     });
 
     const savedViewState = { scrollTop: 240 };

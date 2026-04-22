@@ -1262,7 +1262,7 @@ describe("Toolbar", () => {
       .getByTitle((title) => title.includes("Undo (Ctrl+Z)"))
       .querySelector("button") as HTMLButtonElement;
     await waitFor(() => {
-      expect(undoButton).not.toBeDisabled();
+      expect(undoButton).toBeDisabled();
     });
 
     await act(async () => {
@@ -1907,8 +1907,8 @@ describe("Toolbar", () => {
     fireEvent.click(cutWrapper.querySelector("button") as HTMLButtonElement);
     fireEvent.click(copyWrapper.querySelector("button") as HTMLButtonElement);
 
-    expect(execCommandMock).toHaveBeenCalledWith("cut");
-    expect(execCommandMock).toHaveBeenCalledWith("copy");
+    expect(execCommandMock).not.toHaveBeenCalledWith("cut");
+    expect(execCommandMock).not.toHaveBeenCalledWith("copy");
 
     Object.defineProperty(document, "execCommand", {
       configurable: true,
@@ -1979,9 +1979,8 @@ describe("Toolbar", () => {
 
       const cutWrapper = screen.getByTitle((title) => title.includes("Cut"));
       const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
-      expect(cutWrapper.getAttribute("title")).toContain("No selected text");
-      expect(cutWrapper.querySelector("button")).toBeDisabled();
-      expect(copyWrapper.querySelector("button")).toBeDisabled();
+      expect(cutWrapper.querySelector("button")).not.toBeDisabled();
+      expect(copyWrapper.querySelector("button")).not.toBeDisabled();
     } finally {
       selection?.removeAllRanges();
       editor.remove();
@@ -2052,33 +2051,37 @@ describe("Toolbar", () => {
     }
   });
 
-  it("dispatches paste-text event from paste button", async () => {
+  it("dispatches editor clipboard paste action from paste button", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
 
-    const pasteEvents: Array<{ tabId: string; text: string }> = [];
+    const pasteEvents: Array<{ tabId: string; action: string }> = [];
     const listener = (event: Event) => {
-      pasteEvents.push((event as CustomEvent<{ tabId: string; text: string }>).detail);
+      pasteEvents.push((event as CustomEvent<{ tabId: string; action: string }>).detail);
     };
-    window.addEventListener("rutar:paste-text", listener as EventListener);
+    window.addEventListener("rutar:editor-clipboard-action", listener as EventListener);
 
     const pasteWrapper = screen.getByTitle("Paste");
     fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(pasteEvents[0]).toEqual({ tabId: "tab-toolbar", text: "" });
+      expect(pasteEvents[0]).toEqual({ tabId: "tab-toolbar", action: "paste" });
     });
-    window.removeEventListener("rutar:paste-text", listener as EventListener);
+    expect(readClipboardTextMock).not.toHaveBeenCalled();
+    window.removeEventListener("rutar:editor-clipboard-action", listener as EventListener);
   });
 
   it("focuses editor element before paste action when editor is not active", async () => {
     useStore.getState().addTab(createTab());
+    const editorHost = document.createElement("div");
+    editorHost.className = "monaco-editor";
     const editor = document.createElement("textarea");
-    editor.className = "monaco-editor inputarea";
-    document.body.appendChild(editor);
+    editor.className = "inputarea";
+    editorHost.appendChild(editor);
+    document.body.appendChild(editorHost);
     const anotherInput = document.createElement("input");
     document.body.appendChild(anotherInput);
     anotherInput.focus();
@@ -2097,14 +2100,18 @@ describe("Toolbar", () => {
     });
 
     focusSpy.mockRestore();
-    editor.remove();
+    editorHost.remove();
     anotherInput.remove();
   });
 
-  it("falls back to execCommand paste when clipboard read fails for active tab", async () => {
+  it("dispatches active-tab paste action without reading text clipboard", async () => {
     useStore.getState().addTab(createTab());
     readClipboardTextMock.mockRejectedValue(new Error("clipboard-read-failed-tab"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const pasteEvents: Array<{ tabId: string; action: string }> = [];
+    const listener = (event: Event) => {
+      pasteEvents.push((event as CustomEvent<{ tabId: string; action: string }>).detail);
+    };
+    window.addEventListener("rutar:editor-clipboard-action", listener as EventListener);
 
     render(<Toolbar />);
     await waitFor(() => {
@@ -2115,13 +2122,10 @@ describe("Toolbar", () => {
     fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Failed to read clipboard text via Tauri clipboard plugin:",
-        expect.objectContaining({ message: "clipboard-read-failed-tab" })
-      );
+      expect(pasteEvents[0]).toEqual({ tabId: "tab-toolbar", action: "paste" });
     });
-    expect(warnSpy).toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
-    warnSpy.mockRestore();
+    expect(readClipboardTextMock).not.toHaveBeenCalled();
+    window.removeEventListener("rutar:editor-clipboard-action", listener as EventListener);
   });
 
   it("falls back to execCommand paste when clipboard read fails for diff tab", async () => {

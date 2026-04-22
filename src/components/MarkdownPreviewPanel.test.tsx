@@ -2,8 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { Image as TauriImage } from "@tauri-apps/api/image";
-import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
 import { useStore, type FileTab } from "@/store/useStore";
@@ -12,16 +10,10 @@ const {
   convertFileSrcMock,
   mermaidInitializeMock,
   mermaidRenderMock,
-  tauriImageNewMock,
-  clipboardWriteImageMock,
-  clipboardImageCloseMock,
 } = vi.hoisted(() => ({
   convertFileSrcMock: vi.fn(),
   mermaidInitializeMock: vi.fn(),
   mermaidRenderMock: vi.fn(),
-  tauriImageNewMock: vi.fn(),
-  clipboardWriteImageMock: vi.fn(),
-  clipboardImageCloseMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -29,14 +21,6 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/image", () => ({
-  Image: {
-    new: tauriImageNewMock,
-  },
-}));
-vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
-  writeImage: clipboardWriteImageMock,
-}));
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(async () => undefined),
 }));
@@ -50,9 +34,8 @@ vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
 
 const invokeMock = vi.mocked(invoke);
 const convertFileSrcApiMock = vi.mocked(convertFileSrc);
-const tauriImageNewApiMock = vi.mocked(TauriImage.new);
-const writeImageMock = vi.mocked(writeImage);
 const openUrlMock = vi.mocked(openUrl);
+const MERMAID_HTML = '<pre><code class="language-mermaid">graph TD;A--&gt;B;\n</code></pre>';
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -107,14 +90,9 @@ describe("MarkdownPreviewPanel", () => {
     useStore.getState().updateSettings({ language: "en-US" });
     useStore.setState({ markdownPreviewWidthRatio: 0.5 });
     convertFileSrcApiMock.mockImplementation((filePath: string) => `http://asset.localhost/${encodeURIComponent(filePath)}`);
-    invokeMock.mockResolvedValue("# Hello");
+    invokeMock.mockResolvedValue("<h1>Hello</h1>");
     mermaidInitializeMock.mockImplementation(() => undefined);
     mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
-    clipboardImageCloseMock.mockResolvedValue(undefined);
-    tauriImageNewApiMock.mockResolvedValue({
-      close: clipboardImageCloseMock,
-    } as unknown as Awaited<ReturnType<typeof TauriImage.new>>);
-    writeImageMock.mockResolvedValue(undefined);
   });
 
   it("shows no active document message when tab is missing", () => {
@@ -124,16 +102,28 @@ describe("MarkdownPreviewPanel", () => {
 
   it("resolves relative markdown image paths through tauri asset URLs", async () => {
     const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "render_markdown_preview") {
+        return '<p><img src="./images/pic.png" alt="Preview"></p>';
+      }
+      if (
+        command === "encode_image_file_as_data_url"
+        && (args as { path?: string } | undefined)?.path === "C:\\repo\\docs\\images\\pic.png"
+      ) {
+        return "data:image/png;base64,Zm9v";
+      }
+      return "<h1>Hello</h1>";
+    });
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const image = await screen.findByRole("img", { name: "Preview" });
     expect(convertFileSrcApiMock).toHaveBeenCalledWith("C:\\repo\\docs\\images\\pic.png");
     expect(image.getAttribute("src")).toBe("http://asset.localhost/C%3A%5Crepo%5Cdocs%5Cimages%5Cpic.png");
+    expect(image.getAttribute("crossorigin")).toBe("anonymous");
   });
 
   it("keeps remote markdown image paths unchanged", async () => {
-    const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("![Remote](https://example.com/pic.png)");
+    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce('<p><img src="https://example.com/pic.png" alt="Remote"></p>');
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const image = await screen.findByRole("img", { name: "Remote" });
     expect(convertFileSrcApiMock).not.toHaveBeenCalled();
@@ -142,7 +132,7 @@ describe("MarkdownPreviewPanel", () => {
 
   it("keeps data url markdown images unchanged", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("![Inline](data:image/png;base64,Zm9v)");
+    invokeMock.mockResolvedValueOnce('<p><img src="data:image/png;base64,Zm9v" alt="Inline"></p>');
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const image = await screen.findByRole("img", { name: "Inline" });
     expect(convertFileSrcApiMock).not.toHaveBeenCalled();
@@ -161,7 +151,7 @@ describe("MarkdownPreviewPanel", () => {
 
   it("opens markdown hyperlinks with the system opener instead of navigating in-panel", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("[Docs](https://example.com/docs)");
+    invokeMock.mockResolvedValueOnce('<p><a href="https://example.com/docs">Docs</a></p>');
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const link = await screen.findByRole("link", { name: "Docs" });
     const event = new MouseEvent("click", { bubbles: true, cancelable: true });
@@ -174,8 +164,8 @@ describe("MarkdownPreviewPanel", () => {
   });
 
   it("opens clicked markdown images with the system opener using the original file target", async () => {
-    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce('<p><img src="./images/pic.png" alt="Preview"></p>');
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const image = await screen.findByRole("img", { name: "Preview" });
     const event = new MouseEvent("click", { bubbles: true, cancelable: true });
@@ -183,7 +173,7 @@ describe("MarkdownPreviewPanel", () => {
     expect(dispatched).toBe(false);
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => {
-      expect(openUrlMock).toHaveBeenCalledWith("file:///C:/repo/docs/images/pic.png");
+      expect(openUrlMock).toHaveBeenCalledWith("file:///C:/repo/images/pic.png");
     });
   });
 
@@ -216,9 +206,9 @@ describe("MarkdownPreviewPanel", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it("shows image context menu and copies preview images to the clipboard", async () => {
-    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("![Preview](./images/pic.png)");
+  it("shows image context menu and copies remote preview images to the clipboard", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce('<p><img src="https://example.com/pic.png" alt="Preview"></p>');
     const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     const panel = container.firstElementChild as HTMLDivElement | null;
     expect(panel).not.toBeNull();
@@ -253,52 +243,96 @@ describe("MarkdownPreviewPanel", () => {
         drawImage: drawImageMock,
         getImageData: getImageDataMock,
       } as unknown as CanvasRenderingContext2D);
-
     try {
-      fireEvent.contextMenu(image, {
+      const contextMenuEvent = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
         clientX: 160,
         clientY: 120,
       });
+      Object.defineProperty(contextMenuEvent, "target", {
+        configurable: true,
+        value: image,
+      });
+      fireEvent(panel as HTMLDivElement, contextMenuEvent);
       const copyButton = await screen.findByRole("menuitem", { name: "Copy Image" });
       const menu = copyButton.closest('[role="menu"]') as HTMLDivElement | null;
       expect(menu).not.toBeNull();
       expect(menu?.style.left).toBe("8px");
       expect(menu?.style.top).toBe("20px");
       fireEvent.click(copyButton);
+      expect(screen.queryByRole("button", { name: "Copy Image" })).toBeNull();
       await waitFor(() => {
         expect(drawImageMock).toHaveBeenCalledWith(image, 0, 0, 3, 2);
-        expect(getImageDataMock).toHaveBeenCalledWith(0, 0, 3, 2);
-        expect(tauriImageNewApiMock).toHaveBeenCalledWith(
-          Uint8Array.from([
+        expect(invokeMock).toHaveBeenCalledWith("copy_rgba_image_to_clipboard", {
+          rgba: [
             255, 0, 0, 255,
             0, 255, 0, 255,
             0, 0, 255, 255,
             255, 255, 0, 255,
             255, 0, 255, 255,
             0, 255, 255, 255,
-          ]),
-          3,
-          2,
-        );
-        expect(writeImageMock).toHaveBeenCalledTimes(1);
-        expect(clipboardImageCloseMock).toHaveBeenCalledTimes(1);
-      });
-      await waitFor(() => {
-        expect(screen.queryByRole("button", { name: "Copy Image" })).toBeNull();
+          ],
+          width: 3,
+          height: 2,
+        });
       });
     } finally {
       getContextSpy.mockRestore();
     }
+  });
+
+  it("copies local preview images to the clipboard from the rendered image element", async () => {
+    const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce('<p><img src="./images/pic.png" alt="Local Preview"></p>');
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    const panel = container.firstElementChild as HTMLDivElement | null;
+    expect(panel).not.toBeNull();
+    vi.spyOn(panel as HTMLDivElement, "getBoundingClientRect").mockReturnValue({
+      x: 800,
+      y: 100,
+      left: 800,
+      top: 100,
+      right: 1200,
+      bottom: 900,
+      width: 400,
+      height: 800,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const image = await screen.findByRole("img", { name: "Local Preview" });
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext");
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 160,
+      clientY: 120,
+    });
+    Object.defineProperty(contextMenuEvent, "target", {
+      configurable: true,
+      value: image,
+    });
+    fireEvent(panel as HTMLDivElement, contextMenuEvent);
+    const copyButton = await screen.findByRole("menuitem", { name: "Copy Image" });
+    fireEvent.click(copyButton);
+    expect(screen.queryByRole("button", { name: "Copy Image" })).toBeNull();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("copy_image_file_to_clipboard", {
+        path: "C:\\repo\\docs\\images\\pic.png",
+      });
+    });
+    expect(getContextSpy).not.toHaveBeenCalled();
+    expect(
+      invokeMock.mock.calls.some(([command]) => command === "copy_rgba_image_to_clipboard")
+    ).toBe(false);
+    getContextSpy.mockRestore();
   });
   it("refreshes content when current tab emits document-updated event", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledTimes(1);
-      expect(invokeMock).toHaveBeenLastCalledWith("get_visible_lines", {
+      expect(invokeMock).toHaveBeenLastCalledWith("render_markdown_preview", {
         id: markdownTab.id,
-        startLine: 0,
-        endLine: markdownTab.lineCount,
       });
     });
     act(() => {
@@ -311,6 +345,70 @@ describe("MarkdownPreviewPanel", () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("reuses cached preview html when switching back to an already loaded markdown tab", async () => {
+    const markdownTab = createTab({ id: "tab-markdown-cache", syntaxOverride: "markdown" });
+    const textTab = createTab({
+      id: "tab-text-cache",
+      name: "note.txt",
+      path: "C:\\repo\\note.txt",
+      syntaxOverride: "plain_text",
+    });
+    invokeMock.mockResolvedValueOnce("<h1>Cached Preview</h1>");
+
+    const { rerender } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await screen.findByRole("heading", { name: "Cached Preview" });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    rerender(<MarkdownPreviewPanel open={true} tab={textTab} />);
+    expect(screen.getByText("Preview is available for Markdown files only.")).toBeInTheDocument();
+
+    rerender(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    expect(screen.getByRole("heading", { name: "Cached Preview" })).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+  it("keeps cached mermaid preview DOM when switching away and back to the same markdown tab", async () => {
+    const markdownTab = createTab({ id: "tab-mermaid-cache", syntaxOverride: "markdown" });
+    const textTab = createTab({
+      id: "tab-text-after-mermaid-cache",
+      name: "note.txt",
+      path: "C:\\repo\\note.txt",
+      syntaxOverride: "plain_text",
+    });
+    invokeMock.mockResolvedValueOnce(MERMAID_HTML);
+
+    const { rerender } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('[data-preview-tab-id="tab-mermaid-cache"] .mermaid-host svg')).not.toBeNull();
+      expect(
+        document
+          .querySelector('[data-preview-tab-id="tab-mermaid-cache"]')
+          ?.getAttribute("data-rutar-mermaid-theme")
+      ).toBe("default");
+    });
+
+    const cachedArticle = document.querySelector(
+      '[data-preview-tab-id="tab-mermaid-cache"]'
+    ) as HTMLElement | null;
+    expect(cachedArticle).not.toBeNull();
+    expect(cachedArticle?.className).not.toContain("hidden");
+
+    rerender(<MarkdownPreviewPanel open={true} tab={textTab} />);
+    expect(document.querySelector('[data-preview-tab-id="tab-mermaid-cache"]')).toBe(cachedArticle);
+    expect(cachedArticle?.className).toContain("hidden");
+
+    rerender(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-preview-tab-id="tab-mermaid-cache"]')).toBe(cachedArticle);
+      expect(cachedArticle?.className).not.toContain("hidden");
+      expect(document.querySelector('[data-preview-tab-id="tab-mermaid-cache"] .mermaid-host svg')).not.toBeNull();
+    });
+    expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
   });
 
 
@@ -363,7 +461,7 @@ describe("MarkdownPreviewPanel", () => {
     previewScroller.scrollTop = 300;
     previewScroller.scrollLeft = 200;
     fireEvent.scroll(previewScroller);
-    invokeMock.mockResolvedValueOnce("# Updated\n\n## More");
+    invokeMock.mockResolvedValueOnce("<h1>Updated</h1><h2>More</h2>");
     Object.defineProperty(previewScroller, "scrollHeight", { configurable: true, value: 1500 });
     Object.defineProperty(previewScroller, "scrollWidth", { configurable: true, value: 1100 });
     act(() => {
@@ -530,7 +628,7 @@ describe("MarkdownPreviewPanel", () => {
 
   it("shows mermaid fallback block when mermaid render fails", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    invokeMock.mockResolvedValueOnce(MERMAID_HTML);
     mermaidRenderMock.mockRejectedValueOnce(new Error("render-boom"));
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     await waitFor(() => {
@@ -547,7 +645,7 @@ describe("MarkdownPreviewPanel", () => {
 
   it("re-renders mermaid diagrams after dragging the preview splitter", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    invokeMock.mockResolvedValueOnce(MERMAID_HTML);
     render(
       <div data-testid="layout-root">
         <MarkdownPreviewPanel open={true} tab={markdownTab} />
@@ -610,7 +708,7 @@ describe("MarkdownPreviewPanel", () => {
     Object.defineProperty(editorScroller, "clientWidth", { configurable: true, value: 200 });
     editorScroller.scrollTop = 100;
     editorScroller.scrollLeft = 40;
-    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    invokeMock.mockResolvedValueOnce(MERMAID_HTML);
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
     await waitFor(() => {
       expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
@@ -669,7 +767,7 @@ describe("MarkdownPreviewPanel", () => {
 
   it("logs error when mermaid initialization throws", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    invokeMock.mockResolvedValueOnce("```mermaid\ngraph TD;A-->B;\n```");
+    invokeMock.mockResolvedValueOnce(MERMAID_HTML);
     mermaidInitializeMock.mockImplementationOnce(() => {
       throw new Error("init-boom");
     });

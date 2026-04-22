@@ -39,6 +39,22 @@ pub fn get_document_text(state: State<'_, AppState>, id: String) -> Result<Strin
 }
 
 #[tauri::command]
+pub fn get_document_text_chunks(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<String>, String> {
+    file_io::get_document_text_chunks_impl(state, id)
+}
+
+#[tauri::command]
+pub async fn render_markdown_preview(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
+    file_io::render_markdown_preview_impl(state, id).await
+}
+
+#[tauri::command]
 pub fn get_bookmark_line_previews(
     state: State<'_, AppState>,
     id: String,

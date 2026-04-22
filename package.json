@@ -21,7 +21,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.563.0",
-    "marked": "^17.0.2",
     "mermaid": "^11.12.2",
     "monaco-editor": "^0.55.1",
     "react": "^19.1.0",

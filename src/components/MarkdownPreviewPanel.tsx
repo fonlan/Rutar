@@ -1,13 +1,8 @@
-import { Image as TauriImage } from '@tauri-apps/api/image';
 import { invoke } from '@tauri-apps/api/core';
-import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { marked } from 'marked';
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -16,14 +11,13 @@ import {
 } from 'react';
 import { t } from '@/i18n';
 import { isMarkdownTab } from '@/lib/markdown';
-import { resolveMarkdownImageSrc, resolveMarkdownOpenTarget } from '@/lib/markdownPaths';
+import {
+  fileUrlToNativePath,
+  resolveMarkdownImageSrc,
+  resolveMarkdownOpenTarget,
+} from '@/lib/markdownPaths';
 import { cn } from '@/lib/utils';
 import { type FileTab, useStore } from '@/store/useStore';
-
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
 
 interface MarkdownPreviewPanelProps {
   open: boolean;
@@ -57,6 +51,14 @@ interface PreviewImageContextMenuState {
   x: number;
   y: number;
   imageElement: HTMLImageElement;
+}
+interface CachedPreviewArticleProps {
+  active: boolean;
+  html: string;
+  onArticleElementChange: (tabId: string, element: HTMLElement | null) => void;
+  onClick: (event: ReactMouseEvent<HTMLElement>) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
+  tabId: string;
 }
 
 const MIN_PREVIEW_WIDTH_RATIO = 0.2;
@@ -123,6 +125,13 @@ function rewriteMarkdownPreviewHtml(html: string, tabPath: string | null | undef
     if (resolvedSrc && resolvedSrc !== rawSrc) {
       imageElement.setAttribute('src', resolvedSrc);
       didUpdate = true;
+
+      // Local markdown images are rewritten to Tauri asset URLs. Mark them as CORS-readable
+      // so copying through canvas pixel extraction does not fail on cross-origin taint.
+      if (imageElement.getAttribute('crossorigin') !== 'anonymous') {
+        imageElement.setAttribute('crossorigin', 'anonymous');
+        didUpdate = true;
+      }
     }
 
     if (syncMarkdownOpenTargetAttribute(imageElement, rawSrc, tabPath)) {
@@ -159,7 +168,24 @@ function clampPreviewContextMenuPosition(value: number, menuSize: number, viewpo
   );
 }
 
+function resolveMarkdownPreviewImageClipboardPath(imageElement: HTMLImageElement) {
+  const openTarget = imageElement.getAttribute(MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE);
+  if (!openTarget) {
+    return null;
+  }
+
+  return fileUrlToNativePath(openTarget);
+}
+
 async function copyMarkdownPreviewImageToClipboard(imageElement: HTMLImageElement) {
+  const nativeImagePath = resolveMarkdownPreviewImageClipboardPath(imageElement);
+  if (nativeImagePath) {
+    await invoke('copy_image_file_to_clipboard', {
+      path: nativeImagePath,
+    });
+    return;
+  }
+
   const rawImageWidth = imageElement.naturalWidth || imageElement.width || 0;
   const rawImageHeight = imageElement.naturalHeight || imageElement.height || 0;
   if (rawImageWidth <= 0 || rawImageHeight <= 0) {
@@ -180,13 +206,11 @@ async function copyMarkdownPreviewImageToClipboard(imageElement: HTMLImageElemen
 
   context.drawImage(imageElement, 0, 0, imageWidth, imageHeight);
   const imageData = context.getImageData(0, 0, imageWidth, imageHeight);
-  const clipboardImage = await TauriImage.new(Uint8Array.from(imageData.data), imageWidth, imageHeight);
-
-  try {
-    await writeImage(clipboardImage);
-  } finally {
-    await clipboardImage.close().catch(() => undefined);
-  }
+  await invoke('copy_rgba_image_to_clipboard', {
+    rgba: Array.from(imageData.data),
+    width: imageWidth,
+    height: imageHeight,
+  });
 }
 
 function isMermaidCodeBlock(element: HTMLElement) {
@@ -410,25 +434,71 @@ function initializeMermaidViewport(viewport: HTMLDivElement) {
   resetMermaidViewport(viewport);
 }
 
+function CachedPreviewArticle({
+  active,
+  html,
+  onArticleElementChange,
+  onClick,
+  onPointerDown,
+  tabId,
+}: CachedPreviewArticleProps) {
+  const articleRef = useRef<HTMLElement | null>(null);
+  const appliedHtmlRef = useRef('');
+  const syncInnerHtml = useCallback((element: HTMLElement | null) => {
+    if (!element || appliedHtmlRef.current === html) {
+      return;
+    }
+
+    element.innerHTML = html;
+    appliedHtmlRef.current = html;
+  }, [html]);
+  const handleArticleRef = useCallback((element: HTMLElement | null) => {
+    articleRef.current = element;
+    if (!element) {
+      appliedHtmlRef.current = '';
+      onArticleElementChange(tabId, null);
+      return;
+    }
+
+    syncInnerHtml(element);
+    onArticleElementChange(tabId, element);
+  }, [onArticleElementChange, syncInnerHtml, tabId]);
+
+  useEffect(() => {
+    syncInnerHtml(articleRef.current);
+  }, [syncInnerHtml]);
+
+  return (
+    <article
+      ref={handleArticleRef}
+      data-preview-tab-id={tabId}
+      className={cn('markdown-preview', active ? '' : 'hidden')}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+    />
+  );
+}
+
 export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const language = useStore((state) => state.settings.language);
   const appTheme = useStore((state) => state.settings.theme);
   const previewWidthRatio = useStore((state) => state.markdownPreviewWidthRatio);
   const setPreviewWidthRatio = useStore((state) => state.setMarkdownPreviewWidthRatio);
   const tr = (key: Parameters<typeof t>[1]) => t(language, key);
-  const [markdownSource, setMarkdownSource] = useState('');
+  const [previewHtmlByTabId, setPreviewHtmlByTabId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [previewImageContextMenu, setPreviewImageContextMenu] = useState<PreviewImageContextMenuState | null>(null);
-  const [isCopyingPreviewImage, setIsCopyingPreviewImage] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizePreviewRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
-  const previewArticleRef = useRef<HTMLElement | null>(null);
+  const previewArticleElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const previewImageContextMenuRef = useRef<HTMLDivElement | null>(null);
   const latestScrollRatioRef = useRef<ScrollRatioState>({ top: 0, left: 0 });
+  const previewHtmlCacheRef = useRef<Map<string, string>>(new Map());
   const mermaidRenderVersionRef = useRef(0);
+  const mermaidRenderSignatureByTabIdRef = useRef<Map<string, string>>(new Map());
   const mermaidPanStateRef = useRef<MermaidPanState | null>(null);
   const mermaidPanCleanupRef = useRef<(() => void) | null>(null);
   const requestVersionRef = useRef(0);
@@ -439,7 +509,22 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const resizePendingRatioRef = useRef(clampPreviewRatio(previewWidthRatio));
   const resizeFrameRef = useRef<number | null>(null);
   const markdownEnabled = isMarkdownTab(tab);
-  const deferredMarkdownSource = useDeferredValue(markdownSource);
+  const activePreviewHtmlSource = tab ? previewHtmlByTabId[tab.id] ?? '' : '';
+  const handlePreviewArticleElementChange = useCallback((tabId: string, element: HTMLElement | null) => {
+    if (element) {
+      previewArticleElementsRef.current.set(tabId, element);
+      return;
+    }
+
+    previewArticleElementsRef.current.delete(tabId);
+  }, []);
+  const getActivePreviewArticleElement = useCallback(() => {
+    if (!tab) {
+      return null;
+    }
+
+    return previewArticleElementsRef.current.get(tab.id) ?? null;
+  }, [tab]);
 
   const updateResizePreviewLine = useCallback((clientX: number, top: number, height: number) => {
     const previewLine = resizePreviewRef.current;
@@ -481,8 +566,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
 
   useEffect(() => {
     setPreviewImageContextMenu(null);
-    setIsCopyingPreviewImage(false);
-  }, [markdownSource, open, tab?.id]);
+  }, [activePreviewHtmlSource, open, tab?.id]);
   useEffect(() => {
     if (!previewImageContextMenu) {
       return;
@@ -550,7 +634,6 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
 
   const loadMarkdownContent = useCallback(async (options?: { preserveContent?: boolean }) => {
     if (!open || !tab || !markdownEnabled) {
-      setMarkdownSource('');
       setLoadError(null);
       setLoading(false);
       hasLoadedOnceRef.current = false;
@@ -572,19 +655,24 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     setLoadError(null);
 
     try {
-      const lineCount = Math.max(1, Number.isFinite(tab.lineCount) ? tab.lineCount : 1);
-      const source = await invoke<string>('get_visible_lines', {
+      const html = await invoke<string>('render_markdown_preview', {
         id: tab.id,
-        startLine: 0,
-        endLine: lineCount,
       });
 
       if (requestVersionRef.current !== currentRequestVersion) {
         return;
       }
 
-      const normalizedSource = typeof source === 'string' ? source : '';
-      setMarkdownSource((previous) => (previous === normalizedSource ? previous : normalizedSource));
+      const nextHtml = rewriteMarkdownPreviewHtml(typeof html === 'string' ? html : '', tab.path);
+      previewHtmlCacheRef.current.set(tab.id, nextHtml);
+      setPreviewHtmlByTabId((previous) => (
+        previous[tab.id] === nextHtml
+          ? previous
+          : {
+            ...previous,
+            [tab.id]: nextHtml,
+          }
+      ));
       hasLoadedOnceRef.current = true;
     } catch (error) {
       if (requestVersionRef.current !== currentRequestVersion) {
@@ -613,14 +701,32 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   useEffect(() => {
     clearRefreshTimer();
     pendingRefreshRef.current = false;
+    requestVersionRef.current += 1;
+
+    if (!open || !tab || !markdownEnabled) {
+      hasLoadedOnceRef.current = false;
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+
+    const cachedHtml = previewHtmlCacheRef.current.get(tab.id);
+    if (cachedHtml !== undefined) {
+      hasLoadedOnceRef.current = true;
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+
+    hasLoadedOnceRef.current = false;
     void loadMarkdownContent();
-  }, [clearRefreshTimer, loadMarkdownContent]);
+  }, [clearRefreshTimer, loadMarkdownContent, markdownEnabled, open, tab]);
 
   useEffect(() => {
     return () => {
       clearRefreshTimer();
     };
-  }, [loadMarkdownContent]);
+  }, [clearRefreshTimer]);
 
   useEffect(() => {
     if (!open || !tab || !markdownEnabled) {
@@ -658,16 +764,6 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       clearRefreshTimer();
     };
   }, [clearRefreshTimer, loadMarkdownContent, markdownEnabled, open, tab]);
-
-  const renderedHtml = useMemo(() => {
-    if (!markdownEnabled || !deferredMarkdownSource) {
-      return '';
-    }
-
-    const parsedHtml = marked.parse(deferredMarkdownSource) as string;
-    return rewriteMarkdownPreviewHtml(parsedHtml, tab?.path);
-  }, [deferredMarkdownSource, markdownEnabled, tab?.path]);
-
 
   const stopMermaidPan = useCallback(() => {
     mermaidPanCleanupRef.current?.();
@@ -826,7 +922,10 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     }
 
     const imageElement = targetElement.closest('img[src]');
-    if (!(imageElement instanceof HTMLImageElement) || !previewArticleRef.current?.contains(imageElement)) {
+    if (
+      !(imageElement instanceof HTMLImageElement)
+      || !getActivePreviewArticleElement()?.contains(imageElement)
+    ) {
       setPreviewImageContextMenu(null);
       return;
     }
@@ -850,43 +949,49 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       ),
       imageElement,
     });
-  }, []);
+  }, [getActivePreviewArticleElement]);
   const handleCopyPreviewImage = useCallback(async () => {
-    if (!previewImageContextMenu || isCopyingPreviewImage) {
+    if (!previewImageContextMenu) {
       return;
     }
 
-    setIsCopyingPreviewImage(true);
-
+    const imageElement = previewImageContextMenu.imageElement;
+    setPreviewImageContextMenu(null);
     try {
-      await copyMarkdownPreviewImageToClipboard(previewImageContextMenu.imageElement);
+      await copyMarkdownPreviewImageToClipboard(imageElement);
     } catch (error) {
       console.error('Failed to copy markdown preview image:', error);
-    } finally {
-      setIsCopyingPreviewImage(false);
-      setPreviewImageContextMenu(null);
     }
-  }, [isCopyingPreviewImage, previewImageContextMenu]);
+  }, [previewImageContextMenu]);
 
   useEffect(() => {
-    if (!open || !markdownEnabled || !renderedHtml) {
+    if (!open || !markdownEnabled || !activePreviewHtmlSource) {
       return;
     }
 
     stopMermaidPan();
-    const articleElement = previewArticleRef.current;
-    if (!articleElement) {
+    const articleElement = getActivePreviewArticleElement();
+    if (!tab || !articleElement) {
       return;
     }
 
+    const activeMermaidTheme = appTheme === 'dark' ? 'dark' : 'default';
+    const activeMermaidWidthRatio = clampPreviewRatio(previewWidthRatio).toFixed(4);
+    const activeMermaidRenderSignature = `${activeMermaidTheme}:${activeMermaidWidthRatio}`;
+    const rawMermaidCodeBlocks = Array.from(
+      articleElement.querySelectorAll<HTMLElement>('pre > code')
+    ).filter(isMermaidCodeBlock);
+    const shouldRerenderMermaid = rawMermaidCodeBlocks.length > 0
+      || mermaidRenderSignatureByTabIdRef.current.get(tab.id) !== activeMermaidRenderSignature;
+    if (!shouldRerenderMermaid) {
+      applyScrollRatio(latestScrollRatioRef.current);
+      return;
+    }
     const nextRenderVersion = mermaidRenderVersionRef.current + 1;
     mermaidRenderVersionRef.current = nextRenderVersion;
     let cancelled = false;
 
     const renderMermaidBlocks = async () => {
-      const rawMermaidCodeBlocks = Array.from(
-        articleElement.querySelectorAll<HTMLElement>('pre > code')
-      ).filter(isMermaidCodeBlock);
 
       rawMermaidCodeBlocks.forEach((codeElement) => {
         const preElement = codeElement.closest('pre');
@@ -906,6 +1011,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       );
 
       if (mermaidHosts.length === 0) {
+        articleElement.dataset.rutarMermaidTheme = activeMermaidTheme;
+        articleElement.dataset.rutarMermaidWidthRatio = activeMermaidWidthRatio;
+        mermaidRenderSignatureByTabIdRef.current.set(tab.id, activeMermaidRenderSignature);
         return;
       }
 
@@ -916,7 +1024,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: 'strict',
-        theme: appTheme === 'dark' ? 'dark' : 'default',
+        theme: activeMermaidTheme,
       });
 
       for (let index = 0; index < mermaidHosts.length; index += 1) {
@@ -1013,6 +1121,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           host.replaceChildren(fallback);
         }
       }
+      articleElement.dataset.rutarMermaidTheme = activeMermaidTheme;
+      articleElement.dataset.rutarMermaidWidthRatio = activeMermaidWidthRatio;
+      mermaidRenderSignatureByTabIdRef.current.set(tab.id, activeMermaidRenderSignature);
     };
 
     void renderMermaidBlocks().catch((error) => {
@@ -1026,7 +1137,17 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     };
   // Mermaid computes its SVG layout from the current preview width, so splitter drags
   // need to trigger a fresh render even when the markdown source itself is unchanged.
-  }, [appTheme, applyScrollRatio, language, markdownEnabled, open, previewWidthRatio, renderedHtml, stopMermaidPan]);
+  }, [
+    activePreviewHtmlSource,
+    appTheme,
+    applyScrollRatio,
+    getActivePreviewArticleElement,
+    language,
+    markdownEnabled,
+    open,
+    previewWidthRatio,
+    stopMermaidPan,
+  ]);
 
   useEffect(() => {
     if (!open || !markdownEnabled) {
@@ -1040,7 +1161,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [applyScrollRatio, markdownEnabled, open, renderedHtml, previewWidthRatio]);
+  }, [activePreviewHtmlSource, applyScrollRatio, markdownEnabled, open, previewWidthRatio]);
 
   useEffect(() => stopMermaidPan, [stopMermaidPan]);
 
@@ -1196,8 +1317,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
             <button
               type="button"
               role="menuitem"
-              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isCopyingPreviewImage}
+              className="w-full rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => {
                 void handleCopyPreviewImage();
               }}
@@ -1219,6 +1339,24 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
           onScroll={handlePreviewScroll}
           onWheel={handlePreviewWheel}
         >
+          {Object.entries(previewHtmlByTabId).map(([cachedTabId, html]) => {
+            const activeArticle = open
+              && markdownEnabled
+              && !loadError
+              && cachedTabId === tab?.id;
+
+            return (
+              <CachedPreviewArticle
+                key={cachedTabId}
+                active={activeArticle}
+                html={html}
+                onArticleElementChange={handlePreviewArticleElementChange}
+                onClick={handlePreviewClick}
+                onPointerDown={handlePreviewPointerDown}
+                tabId={cachedTabId}
+              />
+            );
+          })}
           {!tab ? (
             <p className="text-sm text-muted-foreground">{tr('toolbar.disabled.noActiveDocument')}</p>
           ) : !markdownEnabled ? (
@@ -1229,17 +1367,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
             <p className="text-sm text-destructive">
               {tr('preview.loadFailed')} {loadError}
             </p>
-          ) : markdownSource.trim().length === 0 ? (
+          ) : activePreviewHtmlSource.trim().length === 0 ? (
             <p className="text-sm text-muted-foreground">{tr('preview.empty')}</p>
-          ) : (
-            <article
-              ref={previewArticleRef}
-              className="markdown-preview"
-              onClick={handlePreviewClick}
-              onPointerDown={handlePreviewPointerDown}
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
-            />
-          )}
+          ) : null}
         </div>
       </section>
     </div>

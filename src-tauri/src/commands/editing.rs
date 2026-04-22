@@ -2,6 +2,7 @@ use super::*;
 use crate::state::CursorSnapshot;
 use base64::Engine as _;
 use std::path::Path;
+use tauri::image::Image;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -897,6 +898,56 @@ pub(super) fn encode_image_file_as_data_url_impl(path: String) -> Result<String,
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
     Ok(format!("data:{mime};base64,{encoded}"))
 }
+fn expected_rgba_buffer_len(width: u32, height: u32) -> Result<usize, String> {
+    let pixel_count = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or_else(|| "Image dimensions are too large".to_string())?;
+    pixel_count
+        .checked_mul(4)
+        .ok_or_else(|| "RGBA image buffer is too large".to_string())
+}
+fn decode_image_file_to_rgba(path: &Path) -> Result<(Vec<u8>, u32, u32), String> {
+    let decoded =
+        image::open(path).map_err(|error| format!("Failed to decode image file: {error}"))?;
+    let rgba = decoded.into_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok((rgba.into_raw(), width, height))
+}
+
+fn validate_rgba_image_payload(rgba: &[u8], width: u32, height: u32) -> Result<(), String> {
+    if width == 0 || height == 0 {
+        return Err("Image width and height must be greater than zero".to_string());
+    }
+
+    let expected_len = expected_rgba_buffer_len(width, height)?;
+    if rgba.len() != expected_len {
+        return Err(format!(
+            "RGBA payload length mismatch: expected {expected_len} bytes, got {}",
+            rgba.len()
+        ));
+    }
+
+    Ok(())
+}
+
+pub(super) fn build_clipboard_image_from_rgba(
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<Image<'static>, String> {
+    validate_rgba_image_payload(&rgba, width, height)?;
+    Ok(Image::new_owned(rgba, width, height))
+}
+
+pub(super) fn decode_image_file_to_clipboard_image(path: String) -> Result<Image<'static>, String> {
+    let trimmed_path = path.trim();
+    if trimmed_path.is_empty() {
+        return Err("Image path is required".to_string());
+    }
+
+    let (rgba, width, height) = decode_image_file_to_rgba(Path::new(trimmed_path))?;
+    build_clipboard_image_from_rgba(rgba, width, height)
+}
 pub(super) fn convert_text_base64_impl(text: String, action: String) -> Result<String, String> {
     match action.as_str() {
         "base64_encode" => Ok(encode_base64_utf8(&text)),
@@ -1396,9 +1447,10 @@ pub(super) fn format_document_impl(
 mod tests {
     use super::{
         apply_line_column_edits_to_text_for_test, cleanup_document_lines,
-        encode_image_file_as_data_url_impl, find_matching_pair_offsets_impl,
-        line_column_to_char_index_utf16, utf16_column_to_char_offset, DocumentCleanupAction,
-        LineColumnTextEdit,
+        build_clipboard_image_from_rgba, decode_image_file_to_clipboard_image,
+        decode_image_file_to_rgba, encode_image_file_as_data_url_impl,
+        find_matching_pair_offsets_impl, line_column_to_char_index_utf16,
+        utf16_column_to_char_offset, DocumentCleanupAction, LineColumnTextEdit,
     };
     use ropey::Rope;
     use std::fs;
@@ -1458,6 +1510,40 @@ mod tests {
         let error = encode_image_file_as_data_url_impl(path.to_string_lossy().to_string())
             .expect_err("missing file should fail");
         assert!(error.starts_with("Failed to read image file:"));
+    }
+    #[test]
+    fn decode_image_file_to_rgba_should_decode_png() {
+        let path = create_temp_image_path("png");
+        let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([12, 34, 56, 255]));
+        image
+            .save_with_format(&path, image::ImageFormat::Png)
+            .expect("png fixture should be written");
+        let decoded = decode_image_file_to_rgba(&path).expect("png fixture should decode");
+        assert_eq!(decoded.0, vec![12, 34, 56, 255]);
+        assert_eq!(decoded.1, 1);
+        assert_eq!(decoded.2, 1);
+        fs::remove_file(&path).expect("png fixture should be removed");
+    }
+    #[test]
+    fn build_clipboard_image_from_rgba_should_reject_zero_dimensions() {
+        let error = build_clipboard_image_from_rgba(vec![255, 0, 0, 255], 0, 1)
+            .expect_err("zero-sized images should fail");
+        assert_eq!(error, "Image width and height must be greater than zero");
+    }
+    #[test]
+    fn build_clipboard_image_from_rgba_should_reject_invalid_buffer_length() {
+        let error = build_clipboard_image_from_rgba(vec![255, 0, 0, 255], 2, 1)
+            .expect_err("mismatched rgba payload should fail");
+        assert_eq!(
+            error,
+            "RGBA payload length mismatch: expected 8 bytes, got 4"
+        );
+    }
+    #[test]
+    fn decode_image_file_to_clipboard_image_should_reject_empty_path() {
+        let error = decode_image_file_to_clipboard_image("   ".to_string())
+            .expect_err("empty image path should fail");
+        assert_eq!(error, "Image path is required");
     }
 
     #[test]

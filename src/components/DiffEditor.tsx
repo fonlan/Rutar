@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
+import { createMonacoTextSnapshotFromChunks } from '@/lib/monacoTextSnapshot';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
@@ -429,6 +430,11 @@ async function getDocumentText(tabId: string, lineCountHint: number) {
       endLine: Math.max(1, lineCountHint),
     });
   }
+}
+
+async function getDocumentTextBootstrapSnapshot(tabId: string) {
+  const chunks = await invoke<string[]>('get_document_text_chunks', { id: tabId });
+  return createMonacoTextSnapshotFromChunks(chunks);
 }
 
 function clampRatio(ratio: number) {
@@ -1133,7 +1139,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const ensurePaneLoaded = useCallback(
-    async (side: ActivePanel, paneTab: FileTab | null) => {
+    async (side: ActivePanel, paneTab: FileTab | null, reason: 'bootstrap' | 'refresh') => {
       if (!paneTab) {
         return;
       }
@@ -1149,6 +1155,17 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       }
 
       try {
+        if (reason === 'bootstrap') {
+          const snapshot = await getDocumentTextBootstrapSnapshot(paneTab.id);
+          if (pendingFetchRequestRef.current[side] !== requestId || model.isDisposed()) {
+            return;
+          }
+
+          applyingRef.current = true;
+          model.setValue(snapshot);
+          return;
+        }
+
         const text = await getDocumentText(paneTab.id, Math.max(1, paneTab.lineCount));
         if (pendingFetchRequestRef.current[side] !== requestId || model.isDisposed()) {
           return;
@@ -1737,7 +1754,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     applyPaneDiffDecorations('source');
     applyPaneDiffPlaceholderZones('source');
     void updatePaneQuotePairDecorations('source');
-    void ensurePaneLoaded('source', sourceTab).finally(() => {
+    void ensurePaneLoaded('source', sourceTab, existing ? 'refresh' : 'bootstrap').finally(() => {
       applyPaneDiffDecorations('source');
       applyPaneDiffPlaceholderZones('source');
       refreshSharedScrollMetrics();
@@ -1771,7 +1788,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     applyPaneDiffDecorations('target');
     applyPaneDiffPlaceholderZones('target');
     void updatePaneQuotePairDecorations('target');
-    void ensurePaneLoaded('target', targetTab).finally(() => {
+    void ensurePaneLoaded('target', targetTab, existing ? 'refresh' : 'bootstrap').finally(() => {
       applyPaneDiffDecorations('target');
       applyPaneDiffPlaceholderZones('target');
       refreshSharedScrollMetrics();
@@ -1899,7 +1916,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       if (updatedTabId === sourceTab?.id) {
         shouldRefreshDiff = true;
-        void ensurePaneLoaded('source', sourceTab).finally(() => {
+        void ensurePaneLoaded('source', sourceTab, 'refresh').finally(() => {
           applyPaneDiffDecorations('source');
           refreshSharedScrollMetrics();
           syncPanelsFromEditorScroll(activePanel);
@@ -1909,7 +1926,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       if (updatedTabId === targetTab?.id) {
         shouldRefreshDiff = true;
-        void ensurePaneLoaded('target', targetTab).finally(() => {
+        void ensurePaneLoaded('target', targetTab, 'refresh').finally(() => {
           applyPaneDiffDecorations('target');
           refreshSharedScrollMetrics();
           syncPanelsFromEditorScroll(activePanel);

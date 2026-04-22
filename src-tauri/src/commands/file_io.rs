@@ -24,6 +24,8 @@ struct DiskFileSnapshot {
     fingerprint: FileFingerprint,
 }
 
+const DOCUMENT_TEXT_SNAPSHOT_CHUNK_BYTES: usize = 64 * 1024;
+
 fn build_file_fingerprint(metadata: &std::fs::Metadata) -> FileFingerprint {
     let modified_unix_millis = metadata
         .modified()
@@ -619,6 +621,73 @@ pub(super) fn get_document_text_impl(
     }
 }
 
+fn build_document_text_chunks(rope: &Rope) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for rope_chunk in rope.chunks() {
+        if current.is_empty() && rope_chunk.len() >= DOCUMENT_TEXT_SNAPSHOT_CHUNK_BYTES {
+            chunks.push(rope_chunk.to_string());
+            continue;
+        }
+
+        if !current.is_empty()
+            && current.len() + rope_chunk.len() > DOCUMENT_TEXT_SNAPSHOT_CHUNK_BYTES
+        {
+            chunks.push(std::mem::take(&mut current));
+        }
+
+        current.push_str(rope_chunk);
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+pub(super) fn get_document_text_chunks_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<String>, String> {
+    if let Some(doc) = state.documents.get(&id) {
+        Ok(build_document_text_chunks(&doc.rope))
+    } else {
+        Err("Document not found".to_string())
+    }
+}
+
+fn markdown_preview_options() -> markdown::Options {
+    let mut options = markdown::Options::gfm();
+    options.compile.allow_dangerous_html = true;
+    options.compile.allow_dangerous_protocol = true;
+    options
+}
+
+fn render_markdown_preview_html(source: &str) -> Result<String, String> {
+    markdown::to_html_with_options(source, &markdown_preview_options())
+        .map_err(|error| error.to_string())
+}
+
+pub(super) async fn render_markdown_preview_impl(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
+    let rope = state
+        .documents
+        .get(&id)
+        .map(|doc| doc.rope.clone())
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let source: String = rope.chunks().collect();
+        render_markdown_preview_html(&source)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
     state.documents.remove(&id);
     state.syntax_request_serials.remove(&id);
@@ -1184,8 +1253,9 @@ pub(super) fn detect_document_indentation_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_folder_refresh_directories, count_word_stats, detect_indentation_from_rope,
-        measure_document_size_bytes, normalize_encoding_label,
+        build_document_text_chunks, collect_folder_refresh_directories, count_word_stats,
+        detect_indentation_from_rope, measure_document_size_bytes, normalize_encoding_label,
+        render_markdown_preview_html, DOCUMENT_TEXT_SNAPSHOT_CHUNK_BYTES,
     };
     use crate::state::LineEnding;
     use encoding_rs::Encoding;
@@ -1270,6 +1340,19 @@ mod tests {
     }
 
     #[test]
+    fn document_text_chunks_should_reconstruct_original_text() {
+        let repeated = "abcd".repeat((DOCUMENT_TEXT_SNAPSHOT_CHUNK_BYTES / 4) + 32);
+        let source = format!("{repeated}\nsecond line\nthird line");
+        let rope = Rope::from_str(&source);
+
+        let chunks = build_document_text_chunks(&rope);
+        let reconstructed: String = chunks.concat();
+
+        assert!(chunks.len() >= 2);
+        assert_eq!(reconstructed, source);
+    }
+
+    #[test]
     fn measure_document_size_bytes_should_respect_line_endings_and_encoding() {
         let rope = Rope::from_str("你\nA");
         let utf8_bytes = measure_document_size_bytes(&rope, encoding_rs::UTF_8, LineEnding::Lf);
@@ -1278,6 +1361,71 @@ mod tests {
 
         assert_eq!(utf8_bytes, 5);
         assert_eq!(gbk_crlf_bytes, 5);
+    }
+
+    #[test]
+    fn markdown_preview_render_should_support_gfm_and_inline_html() {
+        let html = render_markdown_preview_html(
+            r##"- [x] done
+
+<font color="#ff0000">Red</font>
+
+| a | b |
+| - | - |
+| 1 | 2 |
+"##,
+        )
+        .expect("markdown preview render should succeed");
+
+        assert!(html.contains("type=\"checkbox\""));
+        assert!(html.contains("disabled"));
+        assert!(html.contains("done"));
+        assert!(html.contains(r##"<font color="#ff0000">Red</font>"##));
+        assert!(html.contains("<table>"));
+    }
+
+    #[test]
+    fn markdown_preview_render_should_keep_markdown_image_tags() {
+        let html = render_markdown_preview_html("![Preview](./images/pic.png)")
+            .expect("markdown image render should succeed");
+
+        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains(r#"src="./images/pic.png""#),
+            "html should keep relative image src: {html}"
+        );
+        assert!(
+            html.contains(r#"alt="Preview""#),
+            "html should keep image alt text: {html}"
+        );
+    }
+
+    #[test]
+    fn markdown_preview_render_should_keep_inline_html_images() {
+        let html = render_markdown_preview_html(r#"<img src="./images/pic.png" alt="Preview">"#)
+            .expect("inline html image render should succeed");
+
+        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains(r#"src="./images/pic.png""#),
+            "html should keep inline html image src: {html}"
+        );
+        assert!(
+            html.contains(r#"alt="Preview""#),
+            "html should keep inline html alt text: {html}"
+        );
+    }
+
+    #[test]
+    fn markdown_preview_render_should_keep_data_url_images() {
+        let html = render_markdown_preview_html("![Inline](data:image/png;base64,Zm9v)")
+            .expect("data url image render should succeed");
+
+        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains(r#"src="data:image/png;base64,Zm9v""#),
+            "html should keep data url image src: {html}"
+        );
     }
 
     #[test]

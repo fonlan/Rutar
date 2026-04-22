@@ -28,6 +28,21 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 vi.mock('monaco-editor', () => {
+  const readTextValue = (next: string | { read: () => string | null }) => {
+    if (typeof next === 'string') {
+      return next;
+    }
+
+    let result = '';
+    while (true) {
+      const chunk = next.read();
+      if (chunk === null) {
+        return result;
+      }
+      result += chunk;
+    }
+  };
+
   const createModel = () => {
     const model = {
       value: '',
@@ -35,8 +50,8 @@ vi.mock('monaco-editor', () => {
       getValue() {
         return this.value;
       },
-      setValue(next: string) {
-        this.value = next;
+      setValue(next: string | { read: () => string | null }) {
+        this.value = readTextValue(next);
       },
       getLineCount() {
         return Math.max(1, this.value.split('\n').length);
@@ -312,6 +327,9 @@ describe('DiffEditor (Monaco)', () => {
     monacoDiffMockState.createCallCount = 0;
 
     vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'get_document_text_chunks') {
+        return ['line-1'];
+      }
       if (command === 'get_document_text') {
         return 'line-1';
       }
@@ -357,9 +375,11 @@ describe('DiffEditor (Monaco)', () => {
     render(<DiffEditor tab={diffTab} />);
 
     await waitFor(() => {
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: sourceTab.id });
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text', { id: targetTab.id });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text_chunks', { id: sourceTab.id });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('get_document_text_chunks', { id: targetTab.id });
     });
+    expect(monacoDiffMockState.sourceEditor.getModel()?.getValue()).toBe('line-1');
+    expect(monacoDiffMockState.targetEditor.getModel()?.getValue()).toBe('line-1');
   });
 
   it('refreshes diff metadata after source pane edits', async () => {
@@ -905,9 +925,10 @@ describe('DiffEditor (Monaco)', () => {
       alignedLineCount: 1,
     };
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'get_document_text') {
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
         const payload = (args ?? {}) as { id?: string };
-        return payload.id === sourceTab.id ? 'left-1' : 'right-1';
+        const text = payload.id === sourceTab.id ? 'left-1' : 'right-1';
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'compare_documents_by_line') {
         return initialDiff;
@@ -1007,9 +1028,10 @@ describe('DiffEditor (Monaco)', () => {
     let sourceText = 'left-1\nleft-2\nleft-3';
     let targetText = 'right-1\nright-3';
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'get_document_text') {
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
         const payload = (args ?? {}) as { id?: string };
-        return payload.id === sourceTab.id ? sourceText : targetText;
+        const text = payload.id === sourceTab.id ? sourceText : targetText;
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'compare_documents_by_line') {
         return initialDiff;
@@ -1122,9 +1144,10 @@ describe('DiffEditor (Monaco)', () => {
     let sourceText = 'left-1\nleft-3';
     let targetText = 'right-1\nright-2\nright-3';
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'get_document_text') {
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
         const payload = (args ?? {}) as { id?: string };
-        return payload.id === sourceTab.id ? sourceText : targetText;
+        const text = payload.id === sourceTab.id ? sourceText : targetText;
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'compare_documents_by_line') {
         return initialDiff;
@@ -1207,8 +1230,9 @@ describe('DiffEditor (Monaco)', () => {
   });
   it('highlights matching quote pairs in both diff panes', async () => {
     vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'get_document_text') {
-        return 'const first = "x";\nconst second = \'y\';';
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
+        const text = 'const first = "x";\nconst second = \'y\';';
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'find_matching_pair_offsets') {
         const offset =
@@ -1353,8 +1377,9 @@ describe('DiffEditor (Monaco)', () => {
   });
   it('highlights diff lines and paints overview markers on splitter', async () => {
     vi.mocked(invoke).mockImplementation(async (command: string) => {
-      if (command === 'get_document_text') {
-        return 'keep\nline-2\nline-3';
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
+        const text = 'keep\nline-2\nline-3';
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'compare_documents_by_line') {
         return {
@@ -1430,8 +1455,9 @@ describe('DiffEditor (Monaco)', () => {
 
   it('adds virtual placeholder rows for missing-side alignment', async () => {
     vi.mocked(invoke).mockImplementation(async (command: string) => {
-      if (command === 'get_document_text') {
-        return 'same\nline-two\nline-three';
+      if (command === 'get_document_text' || command === 'get_document_text_chunks') {
+        const text = 'same\nline-two\nline-three';
+        return command === 'get_document_text_chunks' ? [text] : text;
       }
       if (command === 'compare_documents_by_line') {
         return {

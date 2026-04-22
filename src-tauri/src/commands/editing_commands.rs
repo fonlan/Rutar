@@ -1,4 +1,5 @@
 use super::*;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[tauri::command]
 pub fn undo(
@@ -145,6 +146,32 @@ pub fn convert_text_base64(text: String, action: String) -> Result<String, Strin
 #[tauri::command]
 pub fn encode_image_file_as_data_url(path: String) -> Result<String, String> {
     editing::encode_image_file_as_data_url_impl(path)
+}
+#[tauri::command]
+pub fn copy_image_file_to_clipboard(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    // Reuse the app-scoped clipboard plugin state instead of creating ad-hoc
+    // clipboard handles on worker threads. The latter can hang image copy on Windows.
+    let image = editing::decode_image_file_to_clipboard_image(path)?;
+    app.clipboard()
+        .write_image(&image)
+        .map_err(|error| format!("Failed to write image to system clipboard: {error}"))?;
+    Ok(())
+}
+#[tauri::command]
+pub fn copy_rgba_image_to_clipboard(
+    app: tauri::AppHandle,
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let image = editing::build_clipboard_image_from_rgba(rgba, width, height)?;
+    app.clipboard()
+        .write_image(&image)
+        .map_err(|error| format!("Failed to write image to system clipboard: {error}"))?;
+    Ok(())
 }
 #[tauri::command]
 pub fn find_matching_pair_offsets(
