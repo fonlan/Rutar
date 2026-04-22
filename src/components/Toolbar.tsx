@@ -181,7 +181,10 @@ function pathBaseName(path: string) {
     return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
 }
 
-export function Toolbar() {
+interface ToolbarProps {
+    onMarkdownPreviewToggleIntent?: (nextOpen: boolean) => void;
+}
+export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const addTab = useStore((state) => state.addTab);
     const tabs = useStore((state) => state.tabs);
     const activeTabId = useStore((state) => state.activeTabId);
@@ -264,6 +267,11 @@ export function Toolbar() {
     const undoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
     const redoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
     const previewDisabledReason = !activeTab ? noActiveDocumentReason : !canMarkdownPreview ? notMarkdownReason : undefined;
+    const handleToggleMarkdownPreview = useCallback(() => {
+        const nextOpen = !markdownPreviewOpen;
+        onMarkdownPreviewToggleIntent?.(nextOpen);
+        toggleMarkdownPreview(nextOpen);
+    }, [markdownPreviewOpen, onMarkdownPreviewToggleIntent, toggleMarkdownPreview]);
 
     const formatWordCountResult = useCallback((result: WordCountInfo) => {
         const lines = [
@@ -1259,7 +1267,7 @@ export function Toolbar() {
             <ToolbarBtn
                 icon={PanelRightOpen}
                 title={tr('toolbar.preview')}
-                onClick={() => toggleMarkdownPreview()}
+                onClick={handleToggleMarkdownPreview}
                 active={canMarkdownPreview && markdownPreviewOpen}
                 disabled={!canMarkdownPreview}
                 disabledReason={previewDisabledReason}

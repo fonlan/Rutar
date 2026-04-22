@@ -2330,7 +2330,8 @@ describe("Toolbar", () => {
   it("toggles markdown preview from toolbar for markdown tab", async () => {
     useStore.getState().addTab(createTab({ name: "README.md", path: "C:\\repo\\README.md" }));
     useStore.setState({ markdownPreviewOpen: false });
-    render(<Toolbar />);
+    const onMarkdownPreviewToggleIntent = vi.fn();
+    render(<Toolbar onMarkdownPreviewToggleIntent={onMarkdownPreviewToggleIntent} />);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
     });
@@ -2342,6 +2343,7 @@ describe("Toolbar", () => {
     await waitFor(() => {
       expect(useStore.getState().markdownPreviewOpen).toBe(true);
     });
+    expect(onMarkdownPreviewToggleIntent).toHaveBeenCalledWith(true);
   });
 
   it("opens recent file from split menu list item", async () => {

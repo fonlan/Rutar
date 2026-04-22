@@ -100,6 +100,29 @@ describe("MarkdownPreviewPanel", () => {
     expect(screen.getByText("No active document")).toBeInTheDocument();
   });
 
+  it("only enables preview open transitions when animateOnOpen is true", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    const { container, rerender } = render(
+      <MarkdownPreviewPanel open={true} animateOnOpen={false} tab={markdownTab} />
+    );
+
+    await screen.findByRole("heading", { name: "Hello" });
+
+    const panel = container.firstElementChild as HTMLDivElement | null;
+    const section = panel?.querySelector("section") as HTMLElement | null;
+    expect(panel).not.toBeNull();
+    expect(section).not.toBeNull();
+    expect(panel?.className).toContain("transition-none");
+    expect(section?.className).toContain("transition-none");
+    expect(section?.className).toContain("translate-x-0");
+
+    rerender(<MarkdownPreviewPanel open={true} animateOnOpen={true} tab={markdownTab} />);
+
+    expect(panel?.className).toContain("transition-[opacity,border-color]");
+    expect(section?.className).toContain("transition-transform");
+    expect(section?.className).toContain("translate-x-0");
+  });
+
   it("resolves relative markdown image paths through tauri asset URLs", async () => {
     const markdownTab = createTab({ path: "C:\\repo\\docs\\note.md", syntaxOverride: "markdown" });
     invokeMock.mockImplementation(async (command, args) => {
@@ -369,6 +392,36 @@ describe("MarkdownPreviewPanel", () => {
     expect(screen.getByRole("heading", { name: "Cached Preview" })).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledTimes(1);
   });
+
+  it("skips cached preview mermaid scanning when reopening an unchanged markdown tab", async () => {
+    const markdownTab = createTab({ id: "tab-markdown-reopen-cache", syntaxOverride: "markdown" });
+    const textTab = createTab({
+      id: "tab-text-reopen-cache",
+      name: "note.txt",
+      path: "C:\\repo\\note.txt",
+      syntaxOverride: "plain_text",
+    });
+    invokeMock.mockResolvedValueOnce("<h1>Cached Preview</h1><p>Large preview body</p>");
+
+    const { rerender } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await screen.findByRole("heading", { name: "Cached Preview" });
+    const cachedArticle = document.querySelector(
+      '[data-preview-tab-id="tab-markdown-reopen-cache"]'
+    ) as HTMLElement | null;
+    expect(cachedArticle).not.toBeNull();
+    const querySelectorAllSpy = vi.spyOn(cachedArticle as HTMLElement, "querySelectorAll");
+
+    rerender(<MarkdownPreviewPanel open={false} tab={textTab} />);
+    rerender(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    expect(screen.getByRole("heading", { name: "Cached Preview" })).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(querySelectorAllSpy).not.toHaveBeenCalled();
+
+    querySelectorAllSpy.mockRestore();
+  });
+
   it("keeps cached mermaid preview DOM when switching away and back to the same markdown tab", async () => {
     const markdownTab = createTab({ id: "tab-mermaid-cache", syntaxOverride: "markdown" });
     const textTab = createTab({
@@ -552,7 +605,9 @@ describe("MarkdownPreviewPanel", () => {
 
   it("does not animate preview width changes from surrounding layout updates", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
-    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+    const { container } = render(
+      <MarkdownPreviewPanel open={true} animateOnOpen={true} tab={markdownTab} />
+    );
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalled();
     });

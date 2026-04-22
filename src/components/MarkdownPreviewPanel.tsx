@@ -21,6 +21,7 @@ import { type FileTab, useStore } from '@/store/useStore';
 
 interface MarkdownPreviewPanelProps {
   open: boolean;
+  animateOnOpen?: boolean;
   tab: FileTab | null | undefined;
 }
 
@@ -216,6 +217,14 @@ async function copyMarkdownPreviewImageToClipboard(imageElement: HTMLImageElemen
 function isMermaidCodeBlock(element: HTMLElement) {
   const className = (element.className || '').toLowerCase();
   return className.includes('language-mermaid') || className.includes('lang-mermaid');
+}
+
+function previewHtmlContainsMermaid(html: string) {
+  if (!html) {
+    return false;
+  }
+
+  return html.includes('language-mermaid') || html.includes('lang-mermaid');
 }
 
 async function getMermaidApi() {
@@ -479,7 +488,11 @@ function CachedPreviewArticle({
   );
 }
 
-export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
+export function MarkdownPreviewPanel({
+  open,
+  animateOnOpen = false,
+  tab,
+}: MarkdownPreviewPanelProps) {
   const language = useStore((state) => state.settings.language);
   const appTheme = useStore((state) => state.settings.theme);
   const previewWidthRatio = useStore((state) => state.markdownPreviewWidthRatio);
@@ -497,7 +510,9 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const previewImageContextMenuRef = useRef<HTMLDivElement | null>(null);
   const latestScrollRatioRef = useRef<ScrollRatioState>({ top: 0, left: 0 });
   const previewHtmlCacheRef = useRef<Map<string, string>>(new Map());
+  const previewContainsMermaidByTabIdRef = useRef<Map<string, boolean>>(new Map());
   const mermaidRenderVersionRef = useRef(0);
+  const mermaidProcessedHtmlByTabIdRef = useRef<Map<string, string>>(new Map());
   const mermaidRenderSignatureByTabIdRef = useRef<Map<string, string>>(new Map());
   const mermaidPanStateRef = useRef<MermaidPanState | null>(null);
   const mermaidPanCleanupRef = useRef<(() => void) | null>(null);
@@ -509,6 +524,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
   const resizePendingRatioRef = useRef(clampPreviewRatio(previewWidthRatio));
   const resizeFrameRef = useRef<number | null>(null);
   const markdownEnabled = isMarkdownTab(tab);
+  const enableOpenTransition = open && animateOnOpen;
   const activePreviewHtmlSource = tab ? previewHtmlByTabId[tab.id] ?? '' : '';
   const handlePreviewArticleElementChange = useCallback((tabId: string, element: HTMLElement | null) => {
     if (element) {
@@ -664,7 +680,13 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       }
 
       const nextHtml = rewriteMarkdownPreviewHtml(typeof html === 'string' ? html : '', tab.path);
+      const previousHtml = previewHtmlCacheRef.current.get(tab.id);
       previewHtmlCacheRef.current.set(tab.id, nextHtml);
+      previewContainsMermaidByTabIdRef.current.set(tab.id, previewHtmlContainsMermaid(nextHtml));
+      if (previousHtml !== nextHtml) {
+        mermaidProcessedHtmlByTabIdRef.current.delete(tab.id);
+        mermaidRenderSignatureByTabIdRef.current.delete(tab.id);
+      }
       setPreviewHtmlByTabId((previous) => (
         previous[tab.id] === nextHtml
           ? previous
@@ -978,15 +1000,29 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
     const activeMermaidTheme = appTheme === 'dark' ? 'dark' : 'default';
     const activeMermaidWidthRatio = clampPreviewRatio(previewWidthRatio).toFixed(4);
     const activeMermaidRenderSignature = `${activeMermaidTheme}:${activeMermaidWidthRatio}`;
-    const rawMermaidCodeBlocks = Array.from(
-      articleElement.querySelectorAll<HTMLElement>('pre > code')
-    ).filter(isMermaidCodeBlock);
-    const shouldRerenderMermaid = rawMermaidCodeBlocks.length > 0
-      || mermaidRenderSignatureByTabIdRef.current.get(tab.id) !== activeMermaidRenderSignature;
-    if (!shouldRerenderMermaid) {
+    const containsMermaid = previewContainsMermaidByTabIdRef.current.get(tab.id) ?? false;
+    const processedCurrentHtml =
+      mermaidProcessedHtmlByTabIdRef.current.get(tab.id) === activePreviewHtmlSource;
+    const previousMermaidRenderSignature = mermaidRenderSignatureByTabIdRef.current.get(tab.id);
+    if (!containsMermaid && processedCurrentHtml) {
       applyScrollRatio(latestScrollRatioRef.current);
       return;
     }
+    if (containsMermaid && processedCurrentHtml && previousMermaidRenderSignature === activeMermaidRenderSignature) {
+      applyScrollRatio(latestScrollRatioRef.current);
+      return;
+    }
+    if (!containsMermaid) {
+      articleElement.dataset.rutarMermaidTheme = activeMermaidTheme;
+      articleElement.dataset.rutarMermaidWidthRatio = activeMermaidWidthRatio;
+      mermaidProcessedHtmlByTabIdRef.current.set(tab.id, activePreviewHtmlSource);
+      mermaidRenderSignatureByTabIdRef.current.set(tab.id, activeMermaidRenderSignature);
+      applyScrollRatio(latestScrollRatioRef.current);
+      return;
+    }
+    const rawMermaidCodeBlocks = processedCurrentHtml
+      ? []
+      : Array.from(articleElement.querySelectorAll<HTMLElement>('pre > code')).filter(isMermaidCodeBlock);
     const nextRenderVersion = mermaidRenderVersionRef.current + 1;
     mermaidRenderVersionRef.current = nextRenderVersion;
     let cancelled = false;
@@ -1011,9 +1047,12 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       );
 
       if (mermaidHosts.length === 0) {
+        previewContainsMermaidByTabIdRef.current.set(tab.id, false);
         articleElement.dataset.rutarMermaidTheme = activeMermaidTheme;
         articleElement.dataset.rutarMermaidWidthRatio = activeMermaidWidthRatio;
+        mermaidProcessedHtmlByTabIdRef.current.set(tab.id, activePreviewHtmlSource);
         mermaidRenderSignatureByTabIdRef.current.set(tab.id, activeMermaidRenderSignature);
+        applyScrollRatio(latestScrollRatioRef.current);
         return;
       }
 
@@ -1123,6 +1162,7 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       }
       articleElement.dataset.rutarMermaidTheme = activeMermaidTheme;
       articleElement.dataset.rutarMermaidWidthRatio = activeMermaidWidthRatio;
+      mermaidProcessedHtmlByTabIdRef.current.set(tab.id, activePreviewHtmlSource);
       mermaidRenderSignatureByTabIdRef.current.set(tab.id, activeMermaidRenderSignature);
     };
 
@@ -1281,7 +1321,8 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
         // Width animation causes repeated Monaco wrap/layout recalculation when adjacent
         // sidebars change size, which is especially expensive for markdown tabs that
         // contain very long base64 image lines under word-wrap mode.
-        'relative h-full shrink-0 overflow-hidden bg-background/95 transition-[opacity,border-color] duration-200 ease-out',
+        'relative h-full shrink-0 overflow-hidden bg-background/95',
+        enableOpenTransition ? 'transition-[opacity,border-color] duration-200 ease-out' : 'transition-none',
         open
           ? 'border-l border-border opacity-100 pointer-events-auto'
           : 'border-l border-transparent opacity-0 pointer-events-none'
@@ -1299,7 +1340,8 @@ export function MarkdownPreviewPanel({ open, tab }: MarkdownPreviewPanelProps) {
       />
       <section
         className={cn(
-          'relative flex h-full w-full flex-col transition-transform duration-200 ease-out',
+          'relative flex h-full w-full flex-col',
+          enableOpenTransition ? 'transition-transform duration-200 ease-out' : 'transition-none',
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >

@@ -241,6 +241,7 @@ function App() {
   const outlineNodes = useStore((state) => state.outlineNodes);
   const outlineError = useStore((state) => state.outlineError);
   const setOutlineData = useStore((state) => state.setOutlineData);
+  const [animateMarkdownPreviewOnOpen, setAnimateMarkdownPreviewOnOpen] = useState(false);
   const tabPanelStateRef = useRef<Record<string, {
     sidebarOpen: boolean;
     outlineOpen: boolean;
@@ -1608,6 +1609,9 @@ function App() {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const activeFileTab = activeTab && !isDiffTab(activeTab) ? activeTab : null;
   const editorFallback = <div className="h-full w-full bg-background" aria-hidden="true" />;
+  const handleMarkdownPreviewToggleIntent = useCallback((nextOpen: boolean) => {
+    setAnimateMarkdownPreviewOnOpen(nextOpen);
+  }, []);
 
   useEffect(() => {
     const previousTabId = previousActiveTabIdRef.current;
@@ -1621,12 +1625,14 @@ function App() {
     }
 
     if (!activeTabId) {
+      setAnimateMarkdownPreviewOnOpen(false);
       previousActiveTabIdRef.current = null;
       return;
     }
 
     const state = useStore.getState();
     const nextTabState = tabPanelStateRef.current[activeTabId];
+    setAnimateMarkdownPreviewOnOpen(false);
     state.toggleSidebar(nextTabState?.sidebarOpen ?? state.sidebarOpen);
     state.toggleOutline(nextTabState?.outlineOpen ?? false);
     state.toggleMarkdownPreview(nextTabState?.markdownPreviewOpen ?? false);
@@ -1735,7 +1741,7 @@ function App() {
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden" data-rutar-app-root="true">
       <TitleBar />
-      <Toolbar />
+      <Toolbar onMarkdownPreviewToggleIntent={handleMarkdownPreviewToggleIntent} />
       <MarkdownToolbar />
       <Suspense fallback={null}>
         <SettingsModal />
@@ -1770,7 +1776,11 @@ function App() {
                 editorFallback
               )}
             </div>
-            <MarkdownPreviewPanel open={markdownPreviewOpen} tab={activeFileTab} />
+            <MarkdownPreviewPanel
+              open={markdownPreviewOpen}
+              tab={activeFileTab}
+              animateOnOpen={animateMarkdownPreviewOnOpen}
+            />
           </div>
           <Suspense fallback={null}>
             <StatusBar />

@@ -147,11 +147,20 @@ vi.mock('@/components/OutlineSidebar', () => ({
 }));
 
 vi.mock('@/components/MarkdownPreviewPanel', () => ({
-  MarkdownPreviewPanel: ({ open, tab }: { open: boolean; tab: FileTab | null }) =>
+  MarkdownPreviewPanel: ({
+    open,
+    tab,
+    animateOnOpen,
+  }: {
+    open: boolean;
+    tab: FileTab | null;
+    animateOnOpen?: boolean;
+  }) =>
     React.createElement('div', {
       'data-testid': 'mock-preview',
       'data-open': String(open === true),
       'data-tab-id': tab?.id ?? 'none',
+      'data-animate-on-open': String(animateOnOpen === true),
     }),
 }));
 
@@ -1004,6 +1013,7 @@ describe('App component', () => {
       expect(state.bookmarkSidebarOpen).toBe(true);
       expect(state.markdownPreviewOpen).toBe(true);
     });
+    expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-animate-on-open', 'false');
   });
 
   it('ignores late resolved outline result after effect cleanup', async () => {
