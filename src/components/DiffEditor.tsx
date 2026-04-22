@@ -1071,7 +1071,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         renderLineHighlight: 'none',
         folding: !largeFileMode,
-        wrappingStrategy: largeFileMode ? 'simple' : 'advanced',
+        wrappingStrategy: 'simple',
         scrollBeyondLastColumn: 0,
         scrollBeyondLastLine: false,
         contextmenu: false,

@@ -1329,7 +1329,7 @@ describe('Editor (Monaco)', () => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
@@ -1389,7 +1389,7 @@ describe('Editor (Monaco)', () => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );

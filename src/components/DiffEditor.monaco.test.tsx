@@ -734,14 +734,14 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
@@ -775,14 +775,14 @@ describe('DiffEditor (Monaco)', () => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           wordWrap: 'on',
-          wrappingStrategy: 'advanced',
+          wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
