@@ -37,7 +37,7 @@ export interface DiffTabPayload {
   diffLineNumbers: number[];
   sourceDiffLineNumbers: number[];
   targetDiffLineNumbers: number[];
-  alignedDiffKinds?: Array<'insert' | 'delete' | 'modify' | null>;
+  alignedDiffKinds: Array<'insert' | 'delete' | 'modify' | null>;
   sourceLineCount: number;
   targetLineCount: number;
   alignedLineCount: number;

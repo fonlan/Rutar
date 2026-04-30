@@ -12,9 +12,7 @@ export function useSearchPanelRuntimeRefs() {
   const resultPanelWrapperRef = useRef<HTMLDivElement>(null);
   const minimizedResultWrapperRef = useRef<HTMLDivElement>(null);
   const runVersionRef = useRef(0);
-  const countRunVersionRef = useRef(0);
   const filterRunVersionRef = useRef(0);
-  const filterCountRunVersionRef = useRef(0);
   const sessionRestoreRunVersionRef = useRef(0);
   const currentMatchIndexRef = useRef(0);
   const currentFilterMatchIndexRef = useRef(0);
@@ -68,29 +66,18 @@ export function useSearchPanelRuntimeRefs() {
   } | null>(null);
   const tabSearchPanelStateRef = useRef<Record<string, TabSearchPanelSnapshot>>({});
   const previousActiveTabIdRef = useRef<string | null>(null);
-  const searchSessionCommandUnsupportedRef = useRef(false);
-  const searchSessionRestoreCommandUnsupportedRef = useRef(false);
-  const filterSessionCommandUnsupportedRef = useRef(false);
-  const filterSessionRestoreCommandUnsupportedRef = useRef(false);
-  const searchCursorStepCommandUnsupportedRef = useRef(false);
-  const filterStepCommandUnsupportedRef = useRef(false);
 
   return {
     cachedFilterRef,
     cachedSearchRef,
     chunkCursorRef,
     countCacheRef,
-    countRunVersionRef,
     currentFilterMatchIndexRef,
     currentMatchIndexRef,
     filterCountCacheRef,
-    filterCountRunVersionRef,
     filterLineCursorRef,
     filterRunVersionRef,
-    filterSessionCommandUnsupportedRef,
     filterSessionIdRef,
-    filterSessionRestoreCommandUnsupportedRef,
-    filterStepCommandUnsupportedRef,
     loadMoreDebounceRef,
     loadMoreLockRef,
     loadMoreSessionRef,
@@ -100,11 +87,8 @@ export function useSearchPanelRuntimeRefs() {
     resultListRef,
     resultPanelWrapperRef,
     runVersionRef,
-    searchCursorStepCommandUnsupportedRef,
     searchInputRef,
-    searchSessionCommandUnsupportedRef,
     searchSessionIdRef,
-    searchSessionRestoreCommandUnsupportedRef,
     sessionRestoreRunVersionRef,
     stopResultFilterSearchRef,
     tabSearchPanelStateRef,

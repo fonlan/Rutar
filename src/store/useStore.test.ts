@@ -30,6 +30,7 @@ function createDiffPayload(): DiffTabPayload {
     diffLineNumbers: [],
     sourceDiffLineNumbers: [],
     targetDiffLineNumbers: [],
+    alignedDiffKinds: [null],
     sourceLineCount: 1,
     targetLineCount: 1,
     alignedLineCount: 1,

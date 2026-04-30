@@ -8,7 +8,6 @@ import { getSearchModeValue, resolveSearchKeyword } from './utils';
 interface BuildSearchSessionRestoreRequestOptions {
   activeTabId: string;
   restoredResultFilterKeyword: string;
-  searchSessionRestoreCommandUnsupported: boolean;
   snapshot: TabSearchPanelSnapshot;
 }
 
@@ -34,7 +33,6 @@ interface BuildFilterSessionRestoreRequestOptions {
   activeTabId: string;
   filterRulesKey: string;
   filterRulesPayload: FilterRuleInputPayload[];
-  filterSessionRestoreCommandUnsupported: boolean;
   restoredResultFilterKeyword: string;
   snapshot: TabSearchPanelSnapshot;
 }
@@ -55,13 +53,11 @@ interface FilterSessionRestoreRequest {
 export function buildSearchSessionRestoreRequest({
   activeTabId,
   restoredResultFilterKeyword,
-  searchSessionRestoreCommandUnsupported,
   snapshot,
 }: BuildSearchSessionRestoreRequestOptions): SearchSessionRestoreRequest | null {
   if (
     snapshot.searchDocumentVersion === null ||
-    !snapshot.keyword ||
-    searchSessionRestoreCommandUnsupported
+    !snapshot.keyword
   ) {
     return null;
   }
@@ -99,14 +95,12 @@ export function buildFilterSessionRestoreRequest({
   activeTabId,
   filterRulesKey,
   filterRulesPayload,
-  filterSessionRestoreCommandUnsupported,
   restoredResultFilterKeyword,
   snapshot,
 }: BuildFilterSessionRestoreRequestOptions): FilterSessionRestoreRequest | null {
   if (
     snapshot.filterDocumentVersion === null ||
-    snapshot.filterRulesKey !== filterRulesKey ||
-    filterSessionRestoreCommandUnsupported
+    snapshot.filterRulesKey !== filterRulesKey
   ) {
     return null;
   }

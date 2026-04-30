@@ -6,7 +6,6 @@ import {
   applyFilterLoadMoreResult,
   applySearchLoadMoreResult,
 } from './applySearchPanelRunResults';
-import { resolveFilterLoadMoreFallbackState, resolveSearchLoadMoreFallbackState } from './resolveSearchPanelLoadMoreFallback';
 import type {
   FilterMatch,
   FilterRuleInputPayload,
@@ -59,7 +58,6 @@ interface UseSearchPanelLoadMoreHandlersOptions {
   filterLineCursorRef: MutableRefObject<number | null>;
   filterRulesKey: string;
   filterRulesPayload: FilterRuleInputPayload[];
-  filterSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   filterSessionIdRef: MutableRefObject<string | null>;
   isFilterMode: boolean;
   loadMoreLockRef: MutableRefObject<boolean>;
@@ -67,7 +65,6 @@ interface UseSearchPanelLoadMoreHandlersOptions {
   parseEscapeSequences: boolean;
   searchFailedLabel: string;
   searchMode: SearchMode;
-  searchSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   searchSessionIdRef: MutableRefObject<string | null>;
   setErrorMessage: (value: string | null) => void;
   setFilterMatches: Dispatch<SetStateAction<FilterMatch[]>>;
@@ -126,8 +123,6 @@ export function useSearchPanelLoadMoreHandlers({
   filterFailedLabel,
   filterLineCursorRef,
   filterRulesKey,
-  filterRulesPayload,
-  filterSessionCommandUnsupportedRef,
   filterSessionIdRef,
   isFilterMode,
   loadMoreLockRef,
@@ -135,7 +130,6 @@ export function useSearchPanelLoadMoreHandlers({
   parseEscapeSequences,
   searchFailedLabel,
   searchMode,
-  searchSessionCommandUnsupportedRef,
   searchSessionIdRef,
   setErrorMessage,
   setFilterMatches,
@@ -150,8 +144,7 @@ export function useSearchPanelLoadMoreHandlers({
       return null;
     }
 
-    const startOffset = chunkCursorRef.current;
-    if (startOffset === null) {
+    if (chunkCursorRef.current === null) {
       return null;
     }
 
@@ -163,7 +156,6 @@ export function useSearchPanelLoadMoreHandlers({
         let appendedMatches: SearchMatch[] = [];
         let nextOffset: number | null = null;
         let documentVersion = cachedSearchRef.current?.documentVersion ?? 0;
-        let usedSessionMode = false;
 
         const searchSessionState = await resolveSearchLoadMoreSessionState({
           activeSearchSessionId: searchSessionIdRef.current,
@@ -171,44 +163,18 @@ export function useSearchPanelLoadMoreHandlers({
           loadMoreSessionId: sessionId,
           loadMoreSessionRef,
           maxResults: SEARCH_CHUNK_SIZE,
-          searchSessionCommandUnsupportedRef,
           setSearchSessionId,
         });
         if (searchSessionState.aborted) {
           return null;
         }
-        if (searchSessionState.nextState) {
-          usedSessionMode = true;
-          appendedMatches = searchSessionState.nextState.matches;
-          nextOffset = searchSessionState.nextState.nextOffset;
-          documentVersion = searchSessionState.nextState.documentVersion;
-        }
 
-        if (!usedSessionMode) {
-          const fallbackState = await resolveSearchLoadMoreFallbackState({
-            activeTabId,
-            cachedSearch: cachedSearchRef.current,
-            cachedSearchRef,
-            caseSensitive,
-            chunkCursorRef,
-            effectiveResultFilterKeyword: backendResultFilterKeyword,
-            effectiveSearchKeyword,
-            loadMoreSessionId: sessionId,
-            loadMoreSessionRef,
-            parseEscapeSequences,
-            searchMode,
-            setSearchSessionId,
-            startOffset,
-            maxResults: SEARCH_CHUNK_SIZE,
-          });
-          if (!fallbackState) {
-            return null;
-          }
-
-          appendedMatches = fallbackState.appendedMatches;
-          nextOffset = fallbackState.nextOffset;
-          documentVersion = fallbackState.documentVersion;
+        if (!searchSessionState.nextState) {
+          return null;
         }
+        appendedMatches = searchSessionState.nextState.matches;
+        nextOffset = searchSessionState.nextState.nextOffset;
+        documentVersion = searchSessionState.nextState.documentVersion;
 
         applySearchLoadMoreResult({
           activeTabId,
@@ -249,8 +215,7 @@ export function useSearchPanelLoadMoreHandlers({
       return null;
     }
 
-    const startLine = filterLineCursorRef.current;
-    if (startLine === null) {
+    if (filterLineCursorRef.current === null) {
       return null;
     }
 
@@ -262,12 +227,10 @@ export function useSearchPanelLoadMoreHandlers({
         let appendedMatches: FilterMatch[] = [];
         let nextLine: number | null = null;
         let documentVersion = cachedFilterRef.current?.documentVersion ?? 0;
-        let usedSessionMode = false;
 
         const filterSessionState = await resolveFilterLoadMoreSessionState({
           activeFilterSessionId: filterSessionIdRef.current,
           documentVersion,
-          filterSessionCommandUnsupportedRef,
           loadMoreSessionId: sessionId,
           loadMoreSessionRef,
           maxResults: FILTER_CHUNK_SIZE,
@@ -276,37 +239,13 @@ export function useSearchPanelLoadMoreHandlers({
         if (filterSessionState.aborted) {
           return null;
         }
-        if (filterSessionState.nextState) {
-          usedSessionMode = true;
-          appendedMatches = filterSessionState.nextState.matches;
-          nextLine = filterSessionState.nextState.nextLine;
-          documentVersion = filterSessionState.nextState.documentVersion;
-        }
 
-        if (!usedSessionMode) {
-          const fallbackState = await resolveFilterLoadMoreFallbackState({
-            activeTabId,
-            cachedFilter: cachedFilterRef.current,
-            cachedFilterRef,
-            caseSensitive,
-            effectiveResultFilterKeyword: backendResultFilterKeyword,
-            filterLineCursorRef,
-            filterRulesKey,
-            loadMoreSessionId: sessionId,
-            loadMoreSessionRef,
-            rules: filterRulesPayload,
-            setFilterSessionId,
-            startLine,
-            maxResults: FILTER_CHUNK_SIZE,
-          });
-          if (!fallbackState) {
-            return null;
-          }
-
-          appendedMatches = fallbackState.appendedMatches;
-          nextLine = fallbackState.nextLine;
-          documentVersion = fallbackState.documentVersion;
+        if (!filterSessionState.nextState) {
+          return null;
         }
+        appendedMatches = filterSessionState.nextState.matches;
+        nextLine = filterSessionState.nextState.nextLine;
+        documentVersion = filterSessionState.nextState.documentVersion;
 
         applyFilterLoadMoreResult({
           activeTabId,
@@ -330,10 +269,8 @@ export function useSearchPanelLoadMoreHandlers({
   }, [
     activeTabId,
     backendResultFilterKeyword,
-    caseSensitive,
     filterFailedLabel,
     filterRulesKey,
-    filterRulesPayload,
     setFilterSessionId,
   ]);
 

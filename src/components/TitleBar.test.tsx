@@ -1279,6 +1279,7 @@ describe("TitleBar", () => {
           diffLineNumbers: [1],
           sourceDiffLineNumbers: [1],
           targetDiffLineNumbers: [1],
+          alignedDiffKinds: ["modify"],
           sourceLineCount: 1,
           targetLineCount: 1,
           alignedLineCount: 1,

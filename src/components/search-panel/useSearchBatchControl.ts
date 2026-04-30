@@ -1,8 +1,6 @@
 import { useCallback, type MutableRefObject } from 'react';
 
 interface UseSearchBatchControlOptions {
-  countRunVersionRef: MutableRefObject<number>;
-  filterCountRunVersionRef: MutableRefObject<number>;
   filterRunVersionRef: MutableRefObject<number>;
   loadMoreDebounceRef: MutableRefObject<number | null>;
   loadMoreLockRef: MutableRefObject<boolean>;
@@ -15,8 +13,6 @@ interface UseSearchBatchControlOptions {
 }
 
 export function useSearchBatchControl({
-  countRunVersionRef,
-  filterCountRunVersionRef,
   filterRunVersionRef,
   loadMoreDebounceRef,
   loadMoreLockRef,
@@ -31,11 +27,7 @@ export function useSearchBatchControl({
     stopResultFilterSearchRef.current = true;
     runVersionRef.current += 1;
     filterRunVersionRef.current += 1;
-    countRunVersionRef.current += 1;
-    filterCountRunVersionRef.current += 1;
   }, [
-    countRunVersionRef,
-    filterCountRunVersionRef,
     filterRunVersionRef,
     runVersionRef,
     stopResultFilterSearchRef,

@@ -50,3 +50,4 @@ coverage/
 coverage-*-next/
 
 .ruff_cache/
+TODO.md

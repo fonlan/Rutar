@@ -10,7 +10,7 @@ import {
   createEmptySearchRunResult,
   createFilterRunFailureResult,
   createSearchRunFailureResult,
-} from './createSearchPanelRunFallbacks';
+} from './createSearchPanelRunResults';
 import { resolveCachedFilterRunHit, resolveCachedSearchRunHit } from './resolveSearchPanelCachedRunHit';
 import { resolveFilterRunStartState, resolveSearchRunStartState } from './resolveSearchPanelRunStartState';
 import { isSearchPanelRunStale, runSearchPanelAsyncOperation } from './searchPanelRunLifecycle';
@@ -37,15 +37,12 @@ interface UseSearchPanelRunHandlersOptions {
   chunkCursorRef: ApplySearchRunOptions['chunkCursorRef'];
   countCacheRef: ApplySearchRunOptions['countCacheRef'];
   effectiveSearchKeyword: ResolveSearchRunStartStateOptions['effectiveSearchKeyword'];
-  executeCountSearch: (forceRefresh?: boolean, resultFilterKeywordOverride?: string) => Promise<unknown>;
-  executeFilterCountSearch: (forceRefresh?: boolean, resultFilterKeywordOverride?: string) => Promise<unknown>;
   filterCountCacheRef: ApplyFilterRunOptions['filterCountCacheRef'];
   filterFailedLabel: CreateFilterRunFailureOptions['filterFailedLabel'];
   filterLineCursorRef: ApplyFilterRunOptions['filterLineCursorRef'];
   filterRulesKey: ResolveCachedFilterRunHitOptions['filterRulesKey'];
   filterRulesPayload: ResolveFilterRunStartStateOptions['rules'];
   filterRunVersionRef: MutableRefObject<number>;
-  filterSessionCommandUnsupportedRef: ResolveFilterRunStartStateOptions['filterSessionCommandUnsupportedRef'];
   isFilterMode: boolean;
   keyword: string;
   parseEscapeSequences: ApplySearchRunOptions['parseEscapeSequences'];
@@ -54,7 +51,6 @@ interface UseSearchPanelRunHandlersOptions {
   runVersionRef: MutableRefObject<number>;
   searchFailedLabel: CreateSearchRunFailureOptions['searchFailedLabel'];
   searchMode: ResolveSearchRunStartStateOptions['searchMode'];
-  searchSessionCommandUnsupportedRef: ResolveSearchRunStartStateOptions['searchSessionCommandUnsupportedRef'];
   setCurrentFilterMatchIndex: ApplyFilterRunOptions['setCurrentFilterMatchIndex'];
   setCurrentMatchIndex: ApplySearchRunOptions['setCurrentMatchIndex'];
   setErrorMessage: ApplySearchRunOptions['setErrorMessage'];
@@ -79,15 +75,12 @@ export function useSearchPanelRunHandlers({
   chunkCursorRef,
   countCacheRef,
   effectiveSearchKeyword,
-  executeCountSearch,
-  executeFilterCountSearch,
   filterCountCacheRef,
   filterFailedLabel,
   filterLineCursorRef,
   filterRulesKey,
   filterRulesPayload,
   filterRunVersionRef,
-  filterSessionCommandUnsupportedRef,
   isFilterMode,
   keyword,
   parseEscapeSequences,
@@ -96,7 +89,6 @@ export function useSearchPanelRunHandlers({
   runVersionRef,
   searchFailedLabel,
   searchMode,
-  searchSessionCommandUnsupportedRef,
   setCurrentFilterMatchIndex,
   setCurrentMatchIndex,
   setErrorMessage,
@@ -158,7 +150,6 @@ export function useSearchPanelRunHandlers({
             nextMatches,
             nextOffset,
             sessionId,
-            shouldRunCountFallback,
             totalMatchedLines,
             totalMatches,
           } = await resolveSearchRunStartState({
@@ -168,7 +159,6 @@ export function useSearchPanelRunHandlers({
             effectiveSearchKeyword,
             maxResults: SEARCH_CHUNK_SIZE,
             searchMode,
-            searchSessionCommandUnsupportedRef,
           });
 
           if (isSearchPanelRunStale({ runVersion, runVersionRef })) {
@@ -195,14 +185,10 @@ export function useSearchPanelRunHandlers({
             setSearchSessionId,
             setTotalMatchCount,
             setTotalMatchedLineCount,
-            shouldRunCountFallback,
             startTransition,
             totalMatchedLines,
             totalMatches,
           });
-          if (shouldRunCountFallback) {
-            void executeCountSearch(forceRefresh, effectiveResultFilterKeyword);
-          }
 
           return createSearchRunSuccessResult({
             matches: nextMatches,
@@ -230,7 +216,6 @@ export function useSearchPanelRunHandlers({
       cancelPendingBatchLoad,
       caseSensitive,
       effectiveSearchKeyword,
-      executeCountSearch,
       isFilterMode,
       keyword,
       parseEscapeSequences,
@@ -294,13 +279,11 @@ export function useSearchPanelRunHandlers({
             nextLine,
             nextMatches,
             sessionId,
-            shouldRunCountFallback,
             totalMatchedLines,
           } = await resolveFilterRunStartState({
             activeTabId,
             caseSensitive,
             effectiveResultFilterKeyword,
-            filterSessionCommandUnsupportedRef,
             maxResults: FILTER_CHUNK_SIZE,
             rules: filterRulesPayload,
           });
@@ -325,13 +308,9 @@ export function useSearchPanelRunHandlers({
             setFilterMatches,
             setFilterSessionId,
             setTotalFilterMatchedLineCount,
-            shouldRunCountFallback,
             startTransition,
             totalMatchedLines,
           });
-          if (shouldRunCountFallback) {
-            void executeFilterCountSearch(forceRefresh, effectiveResultFilterKeyword);
-          }
 
           return createFilterRunSuccessResult({
             matches: nextMatches,
@@ -358,7 +337,6 @@ export function useSearchPanelRunHandlers({
       backendResultFilterKeyword,
       cancelPendingBatchLoad,
       caseSensitive,
-      executeFilterCountSearch,
       filterFailedLabel,
       filterRulesKey,
       filterRulesPayload,

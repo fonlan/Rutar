@@ -1,5 +1,4 @@
 import type { MutableRefObject } from 'react';
-import { isMissingInvokeCommandError } from './backendGuards';
 import type { FilterSessionRestoreBackendResult } from './types';
 
 interface CachedFilterSnapshot {
@@ -24,7 +23,6 @@ interface ApplyFilterSessionRestoreResultOptions {
   filterCountCacheRef: MutableRefObject<FilterCountCacheSnapshot | null>;
   filterLineCursorRef: MutableRefObject<number | null>;
   filterRulesKey: string;
-  filterSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   restoreResult: FilterSessionRestoreBackendResult;
   restoredResultFilterKeyword: string;
   setFilterSessionId: (value: string | null) => void;
@@ -34,7 +32,6 @@ interface ApplyFilterSessionRestoreResultOptions {
 
 interface HandleFilterSessionRestoreErrorOptions {
   error: unknown;
-  filterSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   restoreRunVersion: number;
   sessionRestoreRunVersionRef: MutableRefObject<number>;
 }
@@ -45,14 +42,12 @@ export function applyFilterSessionRestoreResult({
   filterCountCacheRef,
   filterLineCursorRef,
   filterRulesKey,
-  filterSessionRestoreCommandUnsupportedRef,
   restoreResult,
   restoredResultFilterKeyword,
   setFilterSessionId,
   setTotalFilterMatchedLineCount,
   snapshotFilterDocumentVersion,
 }: ApplyFilterSessionRestoreResultOptions) {
-  filterSessionRestoreCommandUnsupportedRef.current = false;
   setFilterSessionId(restoreResult.sessionId ?? null);
   filterLineCursorRef.current = restoreResult.nextLine ?? null;
   setTotalFilterMatchedLineCount(restoreResult.totalMatchedLines ?? 0);
@@ -78,16 +73,10 @@ export function applyFilterSessionRestoreResult({
 
 export function handleFilterSessionRestoreError({
   error,
-  filterSessionRestoreCommandUnsupportedRef,
   restoreRunVersion,
   sessionRestoreRunVersionRef,
 }: HandleFilterSessionRestoreErrorOptions) {
   if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-    return;
-  }
-
-  if (isMissingInvokeCommandError(error, 'filter_session_restore_in_document')) {
-    filterSessionRestoreCommandUnsupportedRef.current = true;
     return;
   }
 

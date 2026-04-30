@@ -10,7 +10,7 @@ export interface LineDiffComparisonResult {
   diffLineNumbers: number[];
   sourceDiffLineNumbers: number[];
   targetDiffLineNumbers: number[];
-  alignedDiffKinds?: Array<DiffLineKind | null>;
+  alignedDiffKinds: Array<DiffLineKind | null>;
   sourceLineNumbersByAlignedRow?: number[];
   targetLineNumbersByAlignedRow?: number[];
   diffRowIndexes?: number[];

@@ -123,18 +123,3 @@ export function isFilterResultFilterStepBackendResult(value: unknown): value is 
     typeof candidate.totalMatchedLines === 'number'
   );
 }
-
-export function isMissingInvokeCommandError(error: unknown, commandName: string): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  const normalizedCommandName = commandName.toLowerCase();
-  if (!message.includes(normalizedCommandName)) {
-    return false;
-  }
-
-  return (
-    message.includes('unknown') ||
-    message.includes('not found') ||
-    message.includes('cannot find') ||
-    message.includes('unrecognized')
-  );
-}

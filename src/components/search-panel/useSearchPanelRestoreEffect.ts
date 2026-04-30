@@ -25,11 +25,9 @@ interface UseSearchPanelRestoreEffectOptions {
   filterLineCursorRef: RestoreSnapshotStateOptions['filterLineCursorRef'];
   filterRulesKey: string;
   filterRulesPayload: FilterRuleInputPayload[];
-  filterSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   previousActiveTabIdRef: FinalizeRestoreCycleOptions['previousActiveTabIdRef'];
   resetFilterState: ResetInactiveTabOptions['resetFilterState'];
   resetSearchState: ResetInactiveTabOptions['resetSearchState'];
-  searchSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   sessionRestoreRunVersionRef: MutableRefObject<number>;
   setAppliedResultFilterKeyword: RestoreSnapshotStateOptions['setAppliedResultFilterKeyword'];
   setCaseSensitive: RestoreSnapshotStateOptions['setCaseSensitive'];
@@ -70,11 +68,9 @@ export function useSearchPanelRestoreEffect({
   filterLineCursorRef,
   filterRulesKey,
   filterRulesPayload,
-  filterSessionRestoreCommandUnsupportedRef,
   previousActiveTabIdRef,
   resetFilterState,
   resetSearchState,
-  searchSessionRestoreCommandUnsupportedRef,
   sessionRestoreRunVersionRef,
   setAppliedResultFilterKeyword,
   setCaseSensitive,
@@ -176,7 +172,6 @@ export function useSearchPanelRestoreEffect({
       const searchSessionRestoreRequest = buildSearchSessionRestoreRequest({
         activeTabId,
         restoredResultFilterKeyword,
-        searchSessionRestoreCommandUnsupported: searchSessionRestoreCommandUnsupportedRef.current,
         snapshot: nextSnapshot,
       });
 
@@ -209,7 +204,6 @@ export function useSearchPanelRestoreEffect({
               restoreResult: restoreResultValue,
               restoredResultFilterKeyword,
               searchMode: snapshotSearchMode,
-              searchSessionRestoreCommandUnsupportedRef,
               setSearchSessionId,
               setTotalMatchCount,
               setTotalMatchedLineCount,
@@ -222,7 +216,6 @@ export function useSearchPanelRestoreEffect({
             handleSearchSessionRestoreError({
               error,
               restoreRunVersion,
-              searchSessionRestoreCommandUnsupportedRef,
               sessionRestoreRunVersionRef,
             });
           });
@@ -232,7 +225,6 @@ export function useSearchPanelRestoreEffect({
         activeTabId,
         filterRulesKey,
         filterRulesPayload,
-        filterSessionRestoreCommandUnsupported: filterSessionRestoreCommandUnsupportedRef.current,
         restoredResultFilterKeyword,
         snapshot: nextSnapshot,
       });
@@ -259,7 +251,6 @@ export function useSearchPanelRestoreEffect({
               filterCountCacheRef,
               filterLineCursorRef,
               filterRulesKey,
-              filterSessionRestoreCommandUnsupportedRef,
               restoreResult: restoreResultValue,
               restoredResultFilterKeyword,
               setFilterSessionId,
@@ -270,7 +261,6 @@ export function useSearchPanelRestoreEffect({
           .catch((error) => {
             handleFilterSessionRestoreError({
               error,
-              filterSessionRestoreCommandUnsupportedRef,
               restoreRunVersion,
               sessionRestoreRunVersionRef,
             });

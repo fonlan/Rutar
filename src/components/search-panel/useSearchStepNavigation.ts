@@ -5,7 +5,7 @@ import { applyFilterLocalStepSelection, applyFilterNavigationSelection, applySea
 import { applySearchPanelErrorMessage } from './applySearchPanelErrorMessage';
 import { applyFilterResultFilterStepResult } from './applySearchPanelRunResults';
 import { buildFilterStepRequest, buildSearchCursorStepRequest } from './buildSearchPanelRunRequests';
-import { isFilterResultFilterStepBackendResult, isMissingInvokeCommandError, isSearchCursorStepBackendResult } from './backendGuards';
+import { isFilterResultFilterStepBackendResult, isSearchCursorStepBackendResult } from './backendGuards';
 import { loadMoreSearchPanelStepMatches } from './loadMoreSearchPanelStepMatches';
 import { resolveCurrentFilterStepAnchor, resolveCurrentSearchCursorStepAnchor } from './resolveSearchPanelStepAnchors';
 import { resolveFilterStepTarget } from './resolveSearchPanelStepTargets';
@@ -44,7 +44,6 @@ interface UseSearchStepNavigationOptions {
   filterMatches: FilterMatch[];
   filterRulesKey: FilterStepResultOptions['filterRulesKey'];
   filterRulesPayload: FilterRuleInputPayload[];
-  filterStepCommandUnsupportedRef: MutableRefObject<boolean>;
   filterFailedLabel: string;
   isFilterMode: boolean;
   keyword: string;
@@ -57,7 +56,6 @@ interface UseSearchStepNavigationOptions {
   nextMatchLabel: string;
   prevMatchLabel: string;
   rememberSearchKeyword: (keyword: string) => void;
-  searchCursorStepCommandUnsupportedRef: MutableRefObject<boolean>;
   searchFailedLabel: string;
   searchMode: SearchMode;
   setCurrentFilterMatchIndex: FilterNavigationSelectionOptions['setCurrentFilterMatchIndex'];
@@ -90,7 +88,6 @@ export function useSearchStepNavigation({
   filterMatches,
   filterRulesKey,
   filterRulesPayload,
-  filterStepCommandUnsupportedRef,
   filterFailedLabel,
   isFilterMode,
   keyword,
@@ -103,7 +100,6 @@ export function useSearchStepNavigation({
   nextMatchLabel,
   prevMatchLabel,
   rememberSearchKeyword,
-  searchCursorStepCommandUnsupportedRef,
   searchFailedLabel,
   searchMode,
   setCurrentFilterMatchIndex,
@@ -126,7 +122,7 @@ export function useSearchStepNavigation({
         rememberSearchKeyword(keyword);
       }
 
-      if (activeTabId && isFilterMode && !filterStepCommandUnsupportedRef.current) {
+      if (activeTabId && isFilterMode) {
         try {
           const filterStepAnchor = resolveCurrentFilterStepAnchor(
             filterMatches,
@@ -146,8 +142,6 @@ export function useSearchStepNavigation({
           );
 
           if (isFilterResultFilterStepBackendResult(stepResultValue)) {
-            filterStepCommandUnsupportedRef.current = false;
-
             const targetMatch = stepResultValue.targetMatch;
             if (!hasSearchPanelTargetMatch(targetMatch)) {
               return;
@@ -193,16 +187,12 @@ export function useSearchStepNavigation({
             }
           }
         } catch (error) {
-          if (isMissingInvokeCommandError(error, 'step_result_filter_search_in_filter_document')) {
-            filterStepCommandUnsupportedRef.current = true;
-          } else {
-            applySearchPanelErrorMessage({
-              error,
-              prefix: filterFailedLabel,
-              setErrorMessage,
-            });
-            return;
-          }
+          applySearchPanelErrorMessage({
+            error,
+            prefix: filterFailedLabel,
+            setErrorMessage,
+          });
+          return;
         }
       }
 
@@ -246,7 +236,7 @@ export function useSearchStepNavigation({
         return;
       }
 
-      if (activeTabId && keyword && !searchCursorStepCommandUnsupportedRef.current) {
+      if (activeTabId && keyword) {
         try {
           const searchCursorStepAnchor = resolveCurrentSearchCursorStepAnchor({
             activeCursorPosition,
@@ -267,8 +257,6 @@ export function useSearchStepNavigation({
           );
 
           if (isSearchCursorStepBackendResult(stepResultValue)) {
-            searchCursorStepCommandUnsupportedRef.current = false;
-
             const targetMatch = stepResultValue.targetMatch;
             if (!hasSearchPanelTargetMatch(targetMatch)) {
               return;
@@ -294,16 +282,12 @@ export function useSearchStepNavigation({
             return;
           }
         } catch (error) {
-          if (isMissingInvokeCommandError(error, 'search_step_from_cursor_in_document')) {
-            searchCursorStepCommandUnsupportedRef.current = true;
-          } else {
-            applySearchPanelErrorMessage({
-              error,
-              prefix: searchFailedLabel,
-              setErrorMessage,
-            });
-            return;
-          }
+          applySearchPanelErrorMessage({
+            error,
+            prefix: searchFailedLabel,
+            setErrorMessage,
+          });
+          return;
         }
       }
 
@@ -362,7 +346,6 @@ export function useSearchStepNavigation({
       filterMatches,
       filterRulesKey,
       filterRulesPayload,
-      filterStepCommandUnsupportedRef,
       filterFailedLabel,
       isFilterMode,
       keyword,
@@ -375,7 +358,6 @@ export function useSearchStepNavigation({
       nextMatchLabel,
       prevMatchLabel,
       rememberSearchKeyword,
-      searchCursorStepCommandUnsupportedRef,
       searchFailedLabel,
       searchMode,
       setCurrentFilterMatchIndex,

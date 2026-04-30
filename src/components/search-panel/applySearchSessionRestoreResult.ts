@@ -1,5 +1,4 @@
 import type { MutableRefObject } from 'react';
-import { isMissingInvokeCommandError } from './backendGuards';
 import type { SearchMode, SearchSessionRestoreBackendResult } from './types';
 
 interface CachedSearchSnapshot {
@@ -30,7 +29,6 @@ interface ApplySearchSessionRestoreResultOptions {
   restoreResult: SearchSessionRestoreBackendResult;
   restoredResultFilterKeyword: string;
   searchMode: SearchMode;
-  searchSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   setSearchSessionId: (value: string | null) => void;
   setTotalMatchCount: (value: number) => void;
   setTotalMatchedLineCount: (value: number) => void;
@@ -42,7 +40,6 @@ interface ApplySearchSessionRestoreResultOptions {
 interface HandleSearchSessionRestoreErrorOptions {
   error: unknown;
   restoreRunVersion: number;
-  searchSessionRestoreCommandUnsupportedRef: MutableRefObject<boolean>;
   sessionRestoreRunVersionRef: MutableRefObject<number>;
 }
 
@@ -55,7 +52,6 @@ export function applySearchSessionRestoreResult({
   restoreResult,
   restoredResultFilterKeyword,
   searchMode,
-  searchSessionRestoreCommandUnsupportedRef,
   setSearchSessionId,
   setTotalMatchCount,
   setTotalMatchedLineCount,
@@ -63,7 +59,6 @@ export function applySearchSessionRestoreResult({
   snapshotDocumentVersion,
   snapshotEffectiveKeyword,
 }: ApplySearchSessionRestoreResultOptions) {
-  searchSessionRestoreCommandUnsupportedRef.current = false;
   setSearchSessionId(restoreResult.sessionId ?? null);
   chunkCursorRef.current = restoreResult.nextOffset ?? null;
 
@@ -94,15 +89,9 @@ export function applySearchSessionRestoreResult({
 export function handleSearchSessionRestoreError({
   error,
   restoreRunVersion,
-  searchSessionRestoreCommandUnsupportedRef,
   sessionRestoreRunVersionRef,
 }: HandleSearchSessionRestoreErrorOptions) {
   if (restoreRunVersion !== sessionRestoreRunVersionRef.current) {
-    return;
-  }
-
-  if (isMissingInvokeCommandError(error, 'search_session_restore_in_document')) {
-    searchSessionRestoreCommandUnsupportedRef.current = true;
     return;
   }
 

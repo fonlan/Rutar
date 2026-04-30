@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 const invokeMock = vi.mocked(invoke);
 const openMock = vi.mocked(open);
 const saveMock = vi.mocked(save);
+type InvokeMockImplementation = (command: string, args?: unknown) => unknown | Promise<unknown>;
 
 function createTab(partial?: Partial<FileTab>): FileTab {
   return {
@@ -69,8 +70,61 @@ const multiLineSearchMatches = [
     lineText: "todo item three",
   },
 ];
+
+function mockInvokeImplementation(handler: InvokeMockImplementation) {
+  invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+    if (command === "search_session_start_in_document") {
+      const explicitResult = await handler(command, args);
+      if (explicitResult !== undefined && !(Array.isArray(explicitResult) && explicitResult.length === 0)) {
+        return explicitResult;
+      }
+      const searchResult = await handler("search_in_document_chunk", {
+        ...(args as object),
+        startOffset: 0,
+      }) as { matches?: unknown[]; documentVersion?: number; nextOffset?: number | null };
+      const countResult = await handler("search_count_in_document", args) as {
+        totalMatches?: number;
+        matchedLines?: number;
+        documentVersion?: number;
+      };
+      return {
+        sessionId: searchResult.nextOffset === null ? null : "test-search-session",
+        matches: searchResult.matches ?? [],
+        documentVersion: searchResult.documentVersion ?? countResult.documentVersion ?? 1,
+        nextOffset: searchResult.nextOffset ?? null,
+        totalMatches: countResult.totalMatches ?? searchResult.matches?.length ?? 0,
+        totalMatchedLines: countResult.matchedLines ?? searchResult.matches?.length ?? 0,
+      };
+    }
+
+    if (command === "filter_session_start_in_document") {
+      const explicitResult = await handler(command, args);
+      if (explicitResult !== undefined && !(Array.isArray(explicitResult) && explicitResult.length === 0)) {
+        return explicitResult;
+      }
+      const filterResult = await handler("filter_in_document_chunk", {
+        ...(args as object),
+        startLine: 1,
+      }) as { matches?: unknown[]; documentVersion?: number; nextLine?: number | null };
+      const countResult = await handler("filter_count_in_document", args) as {
+        matchedLines?: number;
+        documentVersion?: number;
+      };
+      return {
+        sessionId: filterResult.nextLine === null ? null : "test-filter-session",
+        matches: filterResult.matches ?? [],
+        documentVersion: filterResult.documentVersion ?? countResult.documentVersion ?? 1,
+        nextLine: filterResult.nextLine ?? null,
+        totalMatchedLines: countResult.matchedLines ?? filterResult.matches?.length ?? 0,
+      };
+    }
+
+    return handler(command, args);
+  });
+}
+
 function mockSearchResults(matches = multiLineSearchMatches) {
-  invokeMock.mockImplementation(async (command: string) => {
+  mockInvokeImplementation(async (command: string) => {
     if (command === "load_filter_rule_groups_config") {
       return [];
     }
@@ -82,8 +136,8 @@ function mockSearchResults(matches = multiLineSearchMatches) {
       };
     }
     if (command === "search_in_document_chunk") {
-      return {
-        matches,
+        return {
+          matches,
         documentVersion: 1,
         nextOffset: null,
       };
@@ -138,7 +192,7 @@ describe("SearchReplacePanel", () => {
       callback(0);
       return 1;
     });
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -158,7 +212,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("keeps filter mode usable when initial rule-group loading fails", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         throw new Error("load-config-failed");
       }
@@ -461,7 +515,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("navigates from replace-mode next-match toolbar button", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -543,7 +597,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("navigates from replace-mode previous-match toolbar button", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -625,7 +679,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("navigates from find-mode previous/next toolbar buttons", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -714,7 +768,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("prefers backend cursor-step command for find-mode next navigation when available", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -785,7 +839,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("updates cursor anchor immediately after backend next navigation result", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+    mockInvokeImplementation(async (command: string, args?: unknown) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -854,7 +908,7 @@ describe("SearchReplacePanel", () => {
 
   it("uses live cursor anchor for next navigation even when current match is on another line", async () => {
     let stepCallCount = 0;
-    invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+    mockInvokeImplementation(async (command: string, args?: unknown) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -946,7 +1000,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("dispatches only one navigate event per next click when cursor-step backend is used", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1002,8 +1056,8 @@ describe("SearchReplacePanel", () => {
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
-  it("falls back to legacy find navigation when cursor-step command is unavailable", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows find navigation error when cursor-step command fails", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1077,32 +1131,13 @@ describe("SearchReplacePanel", () => {
       );
     });
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "search_first_in_document",
-        expect.objectContaining({
-          id: "tab-search",
-          keyword: "todo",
-          reverse: false,
-        })
-      );
+      expect(screen.getByText(/Search failed: unknown command search_step_from_cursor_in_document/)).toBeInTheDocument();
     });
-
-    const firstStepCallCount = invokeMock.mock.calls.filter(
-      ([command]) => command === "search_step_from_cursor_in_document"
-    ).length;
-
-    fireEvent.click(nextButton);
-
-    await waitFor(() => {
-      const stepCallCount = invokeMock.mock.calls.filter(
-        ([command]) => command === "search_step_from_cursor_in_document"
-      ).length;
-      expect(stepCallCount).toBe(firstStepCallCount);
-    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "search_first_in_document")).toBe(false);
   });
 
-  it("falls back to legacy filter navigation when filter step command is unavailable", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows filter navigation error when filter step command fails", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1182,17 +1217,8 @@ describe("SearchReplacePanel", () => {
       );
     });
 
-    const firstStepCallCount = invokeMock.mock.calls.filter(
-      ([command]) => command === "step_result_filter_search_in_filter_document"
-    ).length;
-
-    fireEvent.keyDown(window, { key: "F3" });
-
     await waitFor(() => {
-      const stepCallCount = invokeMock.mock.calls.filter(
-        ([command]) => command === "step_result_filter_search_in_filter_document"
-      ).length;
-      expect(stepCallCount).toBe(firstStepCallCount);
+      expect(screen.getByText(/Filter failed: unknown command step_result_filter_search_in_filter_document/)).toBeInTheDocument();
     });
   });
 
@@ -1260,12 +1286,12 @@ describe("SearchReplacePanel", () => {
       expect(screen.getByText(/Enter a keyword to list all matches here/)).toBeInTheDocument();
     });
     expect(
-      invokeMock.mock.calls.some(([command]) => command === "search_in_document_chunk")
+      invokeMock.mock.calls.some(([command]) => command === "search_session_start_in_document")
     ).toBe(false);
   });
 
   it("shows no-match hint when search result panel is opened with unmatched keyword", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1311,7 +1337,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
@@ -1323,19 +1349,17 @@ describe("SearchReplacePanel", () => {
     });
   });
 
-  it("shows search pending-total status and selects a search result item", async () => {
-    let resolveSearchCount!: (value: { totalMatches: number; matchedLines: number; documentVersion: number }) => void;
-    let hasSearchCountResolver = false;
-
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows search totals and selects a search result item", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
       if (command === "search_count_in_document") {
-        return await new Promise<{ totalMatches: number; matchedLines: number; documentVersion: number }>((resolve) => {
-          resolveSearchCount = resolve;
-          hasSearchCountResolver = true;
-        });
+        return {
+          totalMatches: 1,
+          matchedLines: 1,
+          documentVersion: 1,
+        };
       }
       if (command === "search_in_document_chunk") {
         return {
@@ -1384,11 +1408,10 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
-          startOffset: 0,
         })
       );
     });
@@ -1406,20 +1429,11 @@ describe("SearchReplacePanel", () => {
       expect(navigateEvents.length).toBeGreaterThan(0);
     });
 
-    expect(hasSearchCountResolver).toBe(true);
-    await act(async () => {
-      resolveSearchCount({
-        totalMatches: 1,
-        matchedLines: 1,
-        documentVersion: 1,
-      });
-    });
-
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
   it("runs a full search when opening all results after cursor-step navigation", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1437,9 +1451,6 @@ describe("SearchReplacePanel", () => {
           },
           documentVersion: 1,
         };
-      }
-      if (command === "search_session_start_in_document") {
-        throw new Error("unknown command search_session_start_in_document");
       }
       if (command === "search_in_document_chunk") {
         return {
@@ -1512,11 +1523,10 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
-          startOffset: 0,
         })
       );
     });
@@ -1527,7 +1537,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("minimizes and reopens search results panel", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1598,7 +1608,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("resizes search result panel and stops resizing after mouseup", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1677,7 +1687,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("ignores stale resize mousemove callback after drag cleanup", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1767,7 +1777,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("closes minimized search results panel from minimized-strip close button", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -1840,7 +1850,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("clears result filter keyword from result panel clear action", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2000,7 +2010,7 @@ describe("SearchReplacePanel", () => {
     ).not.toBe(0);
   });
   it("refreshes search results from result panel refresh action", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2057,18 +2067,18 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(
-        invokeMock.mock.calls.filter(([command]) => command === "search_in_document_chunk").length
+        invokeMock.mock.calls.filter(([command]) => command === "search_session_start_in_document").length
       ).toBeGreaterThanOrEqual(1);
     });
     const beforeRefreshCalls = invokeMock.mock.calls.filter(
-      ([command]) => command === "search_in_document_chunk"
+      ([command]) => command === "search_session_start_in_document"
     ).length;
 
     fireEvent.click(screen.getByTitle("Refresh search results"));
 
     await waitFor(() => {
       const afterRefreshCalls = invokeMock.mock.calls.filter(
-        ([command]) => command === "search_in_document_chunk"
+        ([command]) => command === "search_session_start_in_document"
       ).length;
       expect(afterRefreshCalls).toBeGreaterThan(beforeRefreshCalls);
     });
@@ -2083,7 +2093,7 @@ describe("SearchReplacePanel", () => {
       },
     });
 
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2244,7 +2254,7 @@ describe("SearchReplacePanel", () => {
       },
     });
 
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2314,7 +2324,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("disables copy action when result list is empty", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2363,7 +2373,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows empty-copy feedback when forced copy runs with empty result list", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2420,7 +2430,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("applies result filter when Enter is pressed in result-filter input", async () => {
-    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+    mockInvokeImplementation(async (command: string, payload?: unknown) => {
       const args = payload as Record<string, unknown> | undefined;
       if (command === "load_filter_rule_groups_config") {
         return [];
@@ -2486,19 +2496,18 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
           resultFilterKeyword: "line-filter",
-          startOffset: 0,
         })
       );
     });
   });
 
   it("runs result-filter previous step from result panel controls", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2580,7 +2589,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("runs result-filter next step from result panel controls", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2662,7 +2671,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("uses step batch matches directly without extra chunk request", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2772,7 +2781,7 @@ describe("SearchReplacePanel", () => {
     expect(
       invokeMock.mock.calls.some(
         ([command, payload]) =>
-          command === "search_in_document_chunk" &&
+          command === "search_session_start_in_document" &&
           ((payload as Record<string, unknown> | undefined)?.startOffset as number | undefined) === 100
       )
     ).toBe(false);
@@ -2792,7 +2801,7 @@ describe("SearchReplacePanel", () => {
         }) => void)
       | null = null;
 
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -2870,12 +2879,11 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
           resultFilterKeyword: "line-filter",
-          startOffset: 0,
         })
       );
     });
@@ -2950,7 +2958,7 @@ describe("SearchReplacePanel", () => {
         }) => void)
       | null = null;
 
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3028,12 +3036,11 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
           resultFilterKeyword: "line-filter",
-          startOffset: 0,
         })
       );
     });
@@ -3099,7 +3106,7 @@ describe("SearchReplacePanel", () => {
       | ((value: { matches: unknown[]; documentVersion: number; nextOffset: number | null }) => void)
       | null = null;
 
-    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+    mockInvokeImplementation(async (command: string, payload?: unknown) => {
       const args = payload as Record<string, unknown> | undefined;
       if (command === "load_filter_rule_groups_config") {
         return [];
@@ -3111,7 +3118,7 @@ describe("SearchReplacePanel", () => {
           documentVersion: 1,
         };
       }
-      if (command === "search_in_document_chunk") {
+      if (command === "search_session_start_in_document") {
         if (args?.resultFilterKeyword === "line-filter") {
           return await new Promise((resolve) => {
             resolveFilteredSearch = resolve as (value: {
@@ -3122,6 +3129,7 @@ describe("SearchReplacePanel", () => {
           });
         }
         return {
+          sessionId: null,
           matches: [
             {
               start: 0,
@@ -3136,6 +3144,8 @@ describe("SearchReplacePanel", () => {
           ],
           documentVersion: 1,
           nextOffset: null,
+          totalMatches: 1,
+          totalMatchedLines: 1,
         };
       }
       if (command === "get_document_version") {
@@ -3182,7 +3192,7 @@ describe("SearchReplacePanel", () => {
 
     const filteredCallCountBeforeStop = invokeMock.mock.calls.filter(
       ([command, payload]) =>
-        command === "search_in_document_chunk" &&
+        command === "search_session_start_in_document" &&
         ((payload as Record<string, unknown> | undefined)?.resultFilterKeyword as string | undefined) ===
           "line-filter"
     ).length;
@@ -3192,7 +3202,7 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       const filteredCallCountAfterStop = invokeMock.mock.calls.filter(
         ([command, payload]) =>
-          command === "search_in_document_chunk" &&
+          command === "search_session_start_in_document" &&
           ((payload as Record<string, unknown> | undefined)?.resultFilterKeyword as string | undefined) ===
             "line-filter"
       ).length;
@@ -3217,7 +3227,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("applies result filter from filter button when idle", async () => {
-    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+    mockInvokeImplementation(async (command: string, payload?: unknown) => {
       const args = payload as Record<string, unknown> | undefined;
       if (command === "load_filter_rule_groups_config") {
         return [];
@@ -3284,19 +3294,18 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
+        "search_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           keyword: "todo",
           resultFilterKeyword: "line-filter",
-          startOffset: 0,
         })
       );
     });
   });
 
   it("prefers search-session start command when backend supports it", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3363,7 +3372,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("does not call search count when search-session start succeeds", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3423,38 +3432,13 @@ describe("SearchReplacePanel", () => {
     expect(invokeMock.mock.calls.some(([command]) => command === "search_count_in_document")).toBe(false);
   });
 
-  it("falls back to search chunk when search-session start command is unavailable", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows search error when search-session start command fails", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
-      if (command === "search_count_in_document") {
-        return {
-          totalMatches: 1,
-          matchedLines: 1,
-          documentVersion: 1,
-        };
-      }
       if (command === "search_session_start_in_document") {
         throw new Error("unknown command search_session_start_in_document");
-      }
-      if (command === "search_in_document_chunk") {
-        return {
-          matches: [
-            {
-              start: 0,
-              end: 4,
-              startChar: 0,
-              endChar: 4,
-              text: "todo",
-              line: 1,
-              column: 1,
-              lineText: "todo item",
-            },
-          ],
-          documentVersion: 1,
-          nextOffset: null,
-        };
       }
       if (command === "get_document_version") {
         return 1;
@@ -3480,19 +3464,13 @@ describe("SearchReplacePanel", () => {
     fireEvent.keyDown(keywordInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "search_in_document_chunk",
-        expect.objectContaining({
-          id: "tab-search",
-          keyword: "todo",
-          startOffset: 0,
-        })
-      );
+      expect(screen.getByText(/Search failed: unknown command search_session_start_in_document/)).toBeInTheDocument();
     });
+    expect(invokeMock.mock.calls.some(([command]) => command === "search_in_document_chunk")).toBe(false);
   });
 
   it("restores search session when switching back to tab snapshot", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3583,7 +3561,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("restores filter session when switching back to tab snapshot", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3679,7 +3657,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("runs replace current with active search match", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3765,7 +3743,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("runs replace all with active search keyword", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3848,7 +3826,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("keeps escaped keyword literal when parse-escapes switch is disabled", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -3931,7 +3909,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("decodes escaped keyword when parse-escapes switch is enabled", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4019,14 +3997,14 @@ describe("SearchReplacePanel", () => {
     expect(
       invokeMock.mock.calls.some(
         ([command, payload]) =>
-          command === "search_count_in_document" &&
+          command === "search_session_start_in_document" &&
           (payload as Record<string, unknown>)?.keyword === "\n"
       )
     ).toBe(true);
     expect(
       invokeMock.mock.calls.some(
         ([command, payload]) =>
-          command === "search_in_document_chunk" &&
+          command === "search_session_start_in_document" &&
           (payload as Record<string, unknown>)?.keyword === "\n"
       )
     ).toBe(true);
@@ -4056,7 +4034,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows no-match feedback when replace current backend returns replaced=false", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4130,7 +4108,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows replace-current failure message when backend replace command throws", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4197,7 +4175,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows no-match feedback and skips replace current command", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4253,7 +4231,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows no-match feedback and skips replace all command", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4309,7 +4287,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows replace-all failure message when backend replace command throws", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4376,7 +4354,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows no-match feedback when replace-all backend returns replacedCount=0", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4493,19 +4471,16 @@ describe("SearchReplacePanel", () => {
     });
   });
 
-  it("shows filter pending-total status while filter count is loading", async () => {
-    let resolveFilterCount!: (value: { matchedLines: number; documentVersion: number }) => void;
-    let hasFilterCountResolver = false;
-
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows filter totals from session start results", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
       if (command === "filter_count_in_document") {
-        return await new Promise<{ matchedLines: number; documentVersion: number }>((resolve) => {
-          resolveFilterCount = resolve;
-          hasFilterCountResolver = true;
-        });
+        return {
+          matchedLines: 1,
+          documentVersion: 1,
+        };
       }
       if (command === "filter_in_document_chunk") {
         return {
@@ -4569,18 +4544,11 @@ describe("SearchReplacePanel", () => {
     await waitFor(() => {
       expect(navigateEvents.length).toBeGreaterThan(0);
     });
-    expect(hasFilterCountResolver).toBe(true);
-    await act(async () => {
-      resolveFilterCount({
-        matchedLines: 1,
-        documentVersion: 1,
-      });
-    });
     window.removeEventListener("rutar:navigate-to-line", listener as EventListener);
   });
 
   it("prefers filter-session start command when backend supports it", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4652,7 +4620,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("does not call filter count when filter-session start succeeds", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4718,42 +4686,13 @@ describe("SearchReplacePanel", () => {
     expect(invokeMock.mock.calls.some(([command]) => command === "filter_count_in_document")).toBe(false);
   });
 
-  it("falls back to filter chunk when filter-session start command is unavailable", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+  it("shows filter error when filter-session start command fails", async () => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
-      if (command === "filter_count_in_document") {
-        return {
-          matchedLines: 1,
-          documentVersion: 1,
-        };
-      }
       if (command === "filter_session_start_in_document") {
         throw new Error("unknown command filter_session_start_in_document");
-      }
-      if (command === "filter_in_document_chunk") {
-        return {
-          matches: [
-            {
-              line: 2,
-              column: 1,
-              length: 4,
-              lineText: "todo",
-              ruleIndex: 0,
-              style: {
-                backgroundColor: "#fff7a8",
-                textColor: "#1f2937",
-                bold: false,
-                italic: false,
-                applyTo: "line",
-              },
-              ranges: [{ startChar: 0, endChar: 4 }],
-            },
-          ],
-          documentVersion: 1,
-          nextLine: null,
-        };
       }
       if (command === "get_document_version") {
         return 1;
@@ -4782,18 +4721,13 @@ describe("SearchReplacePanel", () => {
     fireEvent.click(screen.getByTitle("Click Filter to run current rules"));
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
-        expect.objectContaining({
-          id: "tab-search",
-          startLine: 0,
-        })
-      );
+      expect(screen.getByText(/Filter failed: unknown command filter_session_start_in_document/)).toBeInTheDocument();
     });
+    expect(invokeMock.mock.calls.some(([command]) => command === "filter_in_document_chunk")).toBe(false);
   });
 
   it("shows no-filter-match hint when filter backend returns zero matches", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4838,10 +4772,9 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
-          startLine: 0,
         })
       );
     });
@@ -4889,7 +4822,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("reopens minimized filter panel and re-runs filter query", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -4950,7 +4883,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(
-        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk").length
+        invokeMock.mock.calls.filter(([command]) => command === "filter_session_start_in_document").length
       ).toBeGreaterThanOrEqual(1);
     });
 
@@ -4966,7 +4899,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("runs filter query when filter action is triggered with non-empty rule", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5027,7 +4960,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           rules: [
@@ -5041,7 +4974,6 @@ describe("SearchReplacePanel", () => {
               applyTo: "line",
             },
           ],
-          startLine: 0,
         })
       );
     });
@@ -5051,7 +4983,7 @@ describe("SearchReplacePanel", () => {
     let resolveFilterChunk!: (value: { matches: unknown[]; documentVersion: number; nextLine: null }) => void;
     let hasFilterChunkResolver = false;
 
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5061,7 +4993,7 @@ describe("SearchReplacePanel", () => {
           documentVersion: 1,
         };
       }
-      if (command === "filter_in_document_chunk") {
+      if (command === "filter_session_start_in_document") {
         return await new Promise<{ matches: unknown[]; documentVersion: number; nextLine: null }>((resolve) => {
           resolveFilterChunk = resolve;
           hasFilterChunkResolver = true;
@@ -5097,13 +5029,13 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(
-        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+        invokeMock.mock.calls.filter(([command]) => command === "filter_session_start_in_document")
       ).toHaveLength(1);
     });
 
     fireEvent.click(filterButton);
     expect(
-      invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+      invokeMock.mock.calls.filter(([command]) => command === "filter_session_start_in_document")
     ).toHaveLength(1);
 
     expect(hasFilterChunkResolver).toBe(true);
@@ -5115,17 +5047,16 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
-          startLine: 0,
         })
       );
     });
   });
 
   it("runs filter query with apply-to target switched to match", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5187,7 +5118,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           rules: [
@@ -5196,14 +5127,13 @@ describe("SearchReplacePanel", () => {
               applyTo: "match",
             }),
           ],
-          startLine: 0,
         })
       );
     });
   });
 
   it("updates filter-rule style and mode controls before running filter query", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5269,7 +5199,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           rules: [
@@ -5283,14 +5213,13 @@ describe("SearchReplacePanel", () => {
               applyTo: "line",
             }),
           ],
-          startLine: 0,
         })
       );
     });
   });
 
   it("reorders filter rules via move buttons and drag-drop", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5362,7 +5291,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "filter_in_document_chunk",
+        "filter_session_start_in_document",
         expect.objectContaining({
           id: "tab-search",
           rules: expect.arrayContaining([
@@ -5375,7 +5304,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("clears filter rules from filter action bar clear button", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5422,7 +5351,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("re-runs filter query from results panel refresh action", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5483,7 +5412,7 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(
-        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+        invokeMock.mock.calls.filter(([command]) => command === "filter_session_start_in_document")
       ).toHaveLength(1);
     });
 
@@ -5491,13 +5420,13 @@ describe("SearchReplacePanel", () => {
 
     await waitFor(() => {
       expect(
-        invokeMock.mock.calls.filter(([command]) => command === "filter_in_document_chunk")
+        invokeMock.mock.calls.filter(([command]) => command === "filter_session_start_in_document")
       ).toHaveLength(2);
     });
   });
 
   it("shows filter failure message when filter chunk command throws", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5507,7 +5436,7 @@ describe("SearchReplacePanel", () => {
           documentVersion: 1,
         };
       }
-      if (command === "filter_in_document_chunk") {
+      if (command === "filter_session_start_in_document") {
         throw new Error("filter-chunk-failed");
       }
       if (command === "get_document_version") {
@@ -5588,7 +5517,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows save failure message when persisting filter rule groups fails", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5735,7 +5664,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("loads selected filter rule group into current rules", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {
@@ -5786,7 +5715,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("deletes selected filter rule group and persists empty list", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {
@@ -5839,7 +5768,7 @@ describe("SearchReplacePanel", () => {
   });
 
   it("shows save failure message when persisting deleted filter groups fails", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {
@@ -5897,7 +5826,7 @@ describe("SearchReplacePanel", () => {
 
   it("imports filter rule groups from selected json file", async () => {
     openMock.mockResolvedValueOnce("C:\\repo\\filter-groups.json");
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -5971,7 +5900,7 @@ describe("SearchReplacePanel", () => {
 
   it("shows import failure when imported group list is empty", async () => {
     openMock.mockResolvedValueOnce("C:\\repo\\filter-groups-empty.json");
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -6013,7 +5942,7 @@ describe("SearchReplacePanel", () => {
 
   it("shows import failure message when backend import command throws", async () => {
     openMock.mockResolvedValueOnce("C:\\repo\\filter-groups-bad.json");
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [];
       }
@@ -6055,7 +5984,7 @@ describe("SearchReplacePanel", () => {
 
   it("exports normalized filter rule groups to selected path", async () => {
     saveMock.mockResolvedValueOnce("C:\\repo\\filter-groups-export.json");
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {
@@ -6122,7 +6051,7 @@ describe("SearchReplacePanel", () => {
 
   it("skips export backend command when save dialog is cancelled", async () => {
     saveMock.mockResolvedValueOnce(null);
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {
@@ -6174,7 +6103,7 @@ describe("SearchReplacePanel", () => {
 
   it("shows export failure message when backend export command throws", async () => {
     saveMock.mockResolvedValueOnce("C:\\repo\\filter-groups-export.json");
-    invokeMock.mockImplementation(async (command: string) => {
+    mockInvokeImplementation(async (command: string) => {
       if (command === "load_filter_rule_groups_config") {
         return [
           {

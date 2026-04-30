@@ -82,10 +82,9 @@ interface ApplySearchRunResultOptions {
   setSearchSessionId: (value: string | null) => void;
   setTotalMatchCount: (value: number) => void;
   setTotalMatchedLineCount: (value: number) => void;
-  shouldRunCountFallback: boolean;
   startTransition: TransitionStartFunction;
-  totalMatchedLines: number | null;
-  totalMatches: number | null;
+  totalMatchedLines: number;
+  totalMatches: number;
 }
 
 interface ApplySearchLoadMoreResultOptions {
@@ -148,9 +147,8 @@ interface ApplyFilterRunResultOptions {
   setFilterMatches: Dispatch<SetStateAction<FilterMatch[]>>;
   setFilterSessionId: (value: string | null) => void;
   setTotalFilterMatchedLineCount: (value: number) => void;
-  shouldRunCountFallback: boolean;
   startTransition: TransitionStartFunction;
-  totalMatchedLines: number | null;
+  totalMatchedLines: number;
 }
 
 interface ApplySearchResultFilterStepResultOptions {
@@ -325,7 +323,6 @@ export function applySearchRunResult({
   setSearchSessionId,
   setTotalMatchCount,
   setTotalMatchedLineCount,
-  shouldRunCountFallback,
   startTransition,
   totalMatchedLines,
   totalMatches,
@@ -341,12 +338,8 @@ export function applySearchRunResult({
       return Math.min(previousIndex, nextMatches.length - 1);
     });
   });
-  if (totalMatches !== null) {
-    setTotalMatchCount(totalMatches);
-  }
-  if (totalMatchedLines !== null) {
-    setTotalMatchedLineCount(totalMatchedLines);
-  }
+  setTotalMatchCount(totalMatches);
+  setTotalMatchedLineCount(totalMatchedLines);
 
   cachedSearchRef.current = {
     tabId: activeTabId,
@@ -363,19 +356,17 @@ export function applySearchRunResult({
 
   chunkCursorRef.current = nextOffset;
   setSearchSessionId(sessionId);
-  if (!shouldRunCountFallback && totalMatches !== null && totalMatchedLines !== null) {
-    countCacheRef.current = {
-      tabId: activeTabId,
-      keyword: effectiveSearchKeyword,
-      searchMode,
-      caseSensitive,
-      parseEscapeSequences,
-      resultFilterKeyword: effectiveResultFilterKeyword,
-      documentVersion,
-      totalMatches,
-      matchedLines: totalMatchedLines,
-    };
-  }
+  countCacheRef.current = {
+    tabId: activeTabId,
+    keyword: effectiveSearchKeyword,
+    searchMode,
+    caseSensitive,
+    parseEscapeSequences,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    totalMatches,
+    matchedLines: totalMatchedLines,
+  };
 }
 
 export function applySearchLoadMoreResult({
@@ -751,7 +742,6 @@ export function applyFilterRunResult({
   setFilterMatches,
   setFilterSessionId,
   setTotalFilterMatchedLineCount,
-  shouldRunCountFallback,
   startTransition,
   totalMatchedLines,
 }: ApplyFilterRunResultOptions) {
@@ -766,9 +756,7 @@ export function applyFilterRunResult({
       return Math.min(previousIndex, nextMatches.length - 1);
     });
   });
-  if (totalMatchedLines !== null) {
-    setTotalFilterMatchedLineCount(totalMatchedLines);
-  }
+  setTotalFilterMatchedLineCount(totalMatchedLines);
 
   cachedFilterRef.current = {
     tabId: activeTabId,
@@ -782,13 +770,11 @@ export function applyFilterRunResult({
 
   filterLineCursorRef.current = nextLine;
   setFilterSessionId(sessionId);
-  if (!shouldRunCountFallback && totalMatchedLines !== null) {
-    filterCountCacheRef.current = {
-      tabId: activeTabId,
-      rulesKey: filterRulesKey,
-      resultFilterKeyword: effectiveResultFilterKeyword,
-      documentVersion,
-      matchedLines: totalMatchedLines,
-    };
-  }
+  filterCountCacheRef.current = {
+    tabId: activeTabId,
+    rulesKey: filterRulesKey,
+    resultFilterKeyword: effectiveResultFilterKeyword,
+    documentVersion,
+    matchedLines: totalMatchedLines,
+  };
 }

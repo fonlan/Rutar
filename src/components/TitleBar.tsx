@@ -32,6 +32,7 @@ import {
 import { FileTab, type SyntaxKey, useStore } from '@/store/useStore';
 import { cn } from '@/lib/utils';
 import { t } from '@/i18n';
+import { normalizeLineDiffResult } from './diffEditor.utils';
 import {
     confirmTabClose,
     saveTab,
@@ -82,7 +83,7 @@ interface LineDiffComparisonResult {
     diffLineNumbers: number[];
     sourceDiffLineNumbers: number[];
     targetDiffLineNumbers: number[];
-    alignedDiffKinds?: Array<'insert' | 'delete' | 'modify' | null>;
+    alignedDiffKinds: Array<'insert' | 'delete' | 'modify' | null>;
     sourceLineNumbersByAlignedRow?: number[];
     targetLineNumbersByAlignedRow?: number[];
     diffRowIndexes?: number[];
@@ -547,6 +548,7 @@ export function TitleBar() {
                 sourceId: compareSourceTab.id,
                 targetId: targetTab.id,
             });
+            const normalizedLineDiff = normalizeLineDiffResult(lineDiff);
             const diffTabName = settings.language === 'zh-CN'
                 ? `对比: ${compareSourceTab.name} <> ${targetTab.name}`
                 : `Diff: ${compareSourceTab.name} <> ${targetTab.name}`;
@@ -557,7 +559,7 @@ export function TitleBar() {
                 path: '',
                 encoding: compareSourceTab.encoding || 'UTF-8',
                 lineEnding: compareSourceTab.lineEnding,
-                lineCount: Math.max(1, lineDiff.alignedLineCount),
+                lineCount: normalizedLineDiff.alignedLineCount,
                 largeFileMode: false,
                 syntaxOverride: 'plain_text',
                 isDirty: false,
@@ -569,17 +571,17 @@ export function TitleBar() {
                     targetName: targetTab.name,
                     sourcePath: compareSourceTab.path,
                     targetPath: targetTab.path,
-                    alignedSourceLines: lineDiff.alignedSourceLines,
-                    alignedTargetLines: lineDiff.alignedTargetLines,
-                    alignedSourcePresent: lineDiff.alignedSourcePresent,
-                    alignedTargetPresent: lineDiff.alignedTargetPresent,
-                    diffLineNumbers: lineDiff.diffLineNumbers,
-                    sourceDiffLineNumbers: lineDiff.sourceDiffLineNumbers,
-                    targetDiffLineNumbers: lineDiff.targetDiffLineNumbers,
-                    alignedDiffKinds: lineDiff.alignedDiffKinds,
-                    sourceLineCount: Math.max(1, lineDiff.sourceLineCount),
-                    targetLineCount: Math.max(1, lineDiff.targetLineCount),
-                    alignedLineCount: Math.max(1, lineDiff.alignedLineCount),
+                    alignedSourceLines: normalizedLineDiff.alignedSourceLines,
+                    alignedTargetLines: normalizedLineDiff.alignedTargetLines,
+                    alignedSourcePresent: normalizedLineDiff.alignedSourcePresent,
+                    alignedTargetPresent: normalizedLineDiff.alignedTargetPresent,
+                    diffLineNumbers: normalizedLineDiff.diffLineNumbers,
+                    sourceDiffLineNumbers: normalizedLineDiff.sourceDiffLineNumbers,
+                    targetDiffLineNumbers: normalizedLineDiff.targetDiffLineNumbers,
+                    alignedDiffKinds: normalizedLineDiff.alignedDiffKinds,
+                    sourceLineCount: normalizedLineDiff.sourceLineCount,
+                    targetLineCount: normalizedLineDiff.targetLineCount,
+                    alignedLineCount: normalizedLineDiff.alignedLineCount,
                 },
             });
         } catch (error) {

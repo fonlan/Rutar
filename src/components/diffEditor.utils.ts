@@ -1,4 +1,3 @@
-import type { DiffTabPayload } from '@/store/useStore';
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 export interface ViewportMetrics {
   topPercent: number;
@@ -140,165 +139,75 @@ export function normalizeTextToLines(text: string) {
   return lines.length > 0 ? lines : [''];
 }
 
-export function buildFallbackDiffLineNumbers(sourceLines: string[], targetLines: string[]) {
-  const lineCount = Math.max(1, sourceLines.length, targetLines.length);
-  const result: number[] = [];
-
-  for (let line = 1; line <= lineCount; line += 1) {
-    const index = line - 1;
-    if ((sourceLines[index] ?? '') !== (targetLines[index] ?? '')) {
-      result.push(line);
-    }
+function assertPositiveInteger(name: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid diff payload: ${name} must be a positive integer`);
   }
-
-  return result;
+  return value;
 }
 
-export function ensureBooleanArray(values: unknown, length: number, fallbackValue: boolean) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => fallbackValue);
+function assertNumberArray(name: string, values: unknown) {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new Error(`Invalid diff payload: ${name} must be a number array`);
   }
-
-  const result = Array.from({ length }, (_, index) => values[index] === true);
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(fallbackValue);
-    }
-  }
-  return result;
+  return values.map((value) => Math.floor(value));
 }
 
-export function ensureLineNumberArray(values: unknown, length: number) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => 0);
+function assertArrayLength<T>(name: string, values: unknown, length: number, isValidItem: (value: unknown) => value is T) {
+  if (!Array.isArray(values) || values.length !== length || values.some((value) => !isValidItem(value))) {
+    throw new Error(`Invalid diff payload: ${name} must contain ${length} items`);
   }
-
-  const result = Array.from({ length }, (_, index) => {
-    const value = values[index];
-    return typeof value === 'number' && Number.isFinite(value) && value > 0
-      ? Math.floor(value)
-      : 0;
-  });
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(0);
-    }
-  }
-  return result;
+  return values as T[];
 }
 
-export function ensureDiffKindArray(values: unknown, length: number) {
-  if (!Array.isArray(values)) {
-    return Array.from({ length }, () => null as DiffLineKind | null);
-  }
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
 
-  const result = Array.from({ length }, (_, index) => {
-    const value = values[index];
-    if (value === 'insert' || value === 'delete' || value === 'modify') {
-      return value;
-    }
-    return null;
-  });
-  if (result.length < length) {
-    for (let index = result.length; index < length; index += 1) {
-      result.push(null);
-    }
-  }
-  return result;
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+function isAlignedDiffKind(value: unknown): value is DiffLineKind | null {
+  return value === null || value === 'insert' || value === 'delete' || value === 'modify';
 }
 
 export function normalizeLineDiffResult(input: LineDiffComparisonResult): LineDiffComparisonResult {
-  const alignedSourceLines = Array.isArray(input.alignedSourceLines) && input.alignedSourceLines.length > 0
-    ? input.alignedSourceLines
-    : [''];
-  const alignedTargetLines = Array.isArray(input.alignedTargetLines) && input.alignedTargetLines.length > 0
-    ? input.alignedTargetLines
-    : [''];
-  const alignedLineCount = Math.max(
-    1,
-    input.alignedLineCount || 0,
-    alignedSourceLines.length,
-    alignedTargetLines.length
+  const alignedLineCount = assertPositiveInteger('alignedLineCount', input.alignedLineCount);
+  const alignedSourceLines = assertArrayLength('alignedSourceLines', input.alignedSourceLines, alignedLineCount, isString);
+  const alignedTargetLines = assertArrayLength('alignedTargetLines', input.alignedTargetLines, alignedLineCount, isString);
+  const alignedSourcePresent = assertArrayLength(
+    'alignedSourcePresent',
+    input.alignedSourcePresent,
+    alignedLineCount,
+    isBoolean
   );
-
-  const sourceLines = alignedSourceLines.length === alignedLineCount
-    ? alignedSourceLines
-    : [...alignedSourceLines, ...Array.from({ length: alignedLineCount - alignedSourceLines.length }, () => '')];
-  const targetLines = alignedTargetLines.length === alignedLineCount
-    ? alignedTargetLines
-    : [...alignedTargetLines, ...Array.from({ length: alignedLineCount - alignedTargetLines.length }, () => '')];
-
-  const normalizedDiffLineNumbers = Array.isArray(input.diffLineNumbers)
-    ? input.diffLineNumbers
-    : [];
-  const sourcePresent = ensureBooleanArray(input.alignedSourcePresent, alignedLineCount, true);
-  const targetPresent = ensureBooleanArray(input.alignedTargetPresent, alignedLineCount, true);
-  const sourceLineNumbersByAlignedRow = Array.isArray(input.sourceLineNumbersByAlignedRow)
-    ? ensureLineNumberArray(input.sourceLineNumbersByAlignedRow, alignedLineCount)
-    : buildLineNumberByAlignedRow(sourcePresent);
-  const targetLineNumbersByAlignedRow = Array.isArray(input.targetLineNumbersByAlignedRow)
-    ? ensureLineNumberArray(input.targetLineNumbersByAlignedRow, alignedLineCount)
-    : buildLineNumberByAlignedRow(targetPresent);
-  const alignedDiffKinds = Array.isArray(input.alignedDiffKinds)
-    ? ensureDiffKindArray(input.alignedDiffKinds, alignedLineCount)
-    : Array.from({ length: alignedLineCount }, (_, index) => resolveAlignedDiffKind(
-      index,
-      sourceLines,
-      targetLines,
-      sourcePresent,
-      targetPresent
-    ));
-  const diffRowIndexes = Array.isArray(input.diffRowIndexes)
-    ? input.diffRowIndexes
-      .map((value) => (Number.isFinite(value) ? Math.floor(value) : -1))
-      .filter((value) => value >= 0 && value < alignedLineCount)
-    : normalizedDiffLineNumbers
-      .map((lineNumber) => Math.floor(lineNumber) - 1)
-      .filter((value) => Number.isFinite(value) && value >= 0 && value < alignedLineCount);
+  const alignedTargetPresent = assertArrayLength(
+    'alignedTargetPresent',
+    input.alignedTargetPresent,
+    alignedLineCount,
+    isBoolean
+  );
+  const alignedDiffKinds = assertArrayLength('alignedDiffKinds', input.alignedDiffKinds, alignedLineCount, isAlignedDiffKind);
 
   return {
-    alignedSourceLines: sourceLines,
-    alignedTargetLines: targetLines,
-    alignedSourcePresent: sourcePresent,
-    alignedTargetPresent: targetPresent,
-    diffLineNumbers: normalizedDiffLineNumbers,
-    sourceDiffLineNumbers: Array.isArray(input.sourceDiffLineNumbers) ? input.sourceDiffLineNumbers : [],
-    targetDiffLineNumbers: Array.isArray(input.targetDiffLineNumbers) ? input.targetDiffLineNumbers : [],
+    alignedSourceLines,
+    alignedTargetLines,
+    alignedSourcePresent,
+    alignedTargetPresent,
+    diffLineNumbers: assertNumberArray('diffLineNumbers', input.diffLineNumbers),
+    sourceDiffLineNumbers: assertNumberArray('sourceDiffLineNumbers', input.sourceDiffLineNumbers),
+    targetDiffLineNumbers: assertNumberArray('targetDiffLineNumbers', input.targetDiffLineNumbers),
     alignedDiffKinds,
-    sourceLineNumbersByAlignedRow,
-    targetLineNumbersByAlignedRow,
-    diffRowIndexes,
-    sourceLineCount: Math.max(1, input.sourceLineCount || 1),
-    targetLineCount: Math.max(1, input.targetLineCount || 1),
+    sourceLineNumbersByAlignedRow: buildLineNumberByAlignedRow(alignedSourcePresent),
+    targetLineNumbersByAlignedRow: buildLineNumberByAlignedRow(alignedTargetPresent),
+    diffRowIndexes: alignedDiffKinds
+      .map((kind, index) => (kind ? index : -1))
+      .filter((index) => index >= 0),
+    sourceLineCount: assertPositiveInteger('sourceLineCount', input.sourceLineCount),
+    targetLineCount: assertPositiveInteger('targetLineCount', input.targetLineCount),
     alignedLineCount,
   };
-}
-
-export function buildInitialDiff(payload: DiffTabPayload): LineDiffComparisonResult {
-  return normalizeLineDiffResult({
-    alignedSourceLines: payload.alignedSourceLines,
-    alignedTargetLines: payload.alignedTargetLines,
-    alignedSourcePresent: payload.alignedSourcePresent,
-    alignedTargetPresent: payload.alignedTargetPresent,
-    diffLineNumbers: payload.diffLineNumbers,
-    sourceDiffLineNumbers: Array.isArray(payload.sourceDiffLineNumbers)
-      ? payload.sourceDiffLineNumbers
-      : [],
-    targetDiffLineNumbers: Array.isArray(payload.targetDiffLineNumbers)
-      ? payload.targetDiffLineNumbers
-      : [],
-    alignedDiffKinds: Array.isArray(payload.alignedDiffKinds)
-      ? payload.alignedDiffKinds
-      : undefined,
-    sourceLineCount: Math.max(1, payload.sourceLineCount || payload.alignedSourceLines.length),
-    targetLineCount: Math.max(1, payload.targetLineCount || payload.alignedTargetLines.length),
-    alignedLineCount: Math.max(
-      1,
-      payload.alignedLineCount || 0,
-      payload.alignedSourceLines.length,
-      payload.alignedTargetLines.length
-    ),
-  });
 }
 
 export function buildLineNumberByAlignedRow(present: boolean[]) {
@@ -694,12 +603,7 @@ export const diffEditorTestUtils = {
   clampRatio,
   clampPercent,
   normalizeTextToLines,
-  buildFallbackDiffLineNumbers,
-  ensureBooleanArray,
-  ensureLineNumberArray,
-  ensureDiffKindArray,
   normalizeLineDiffResult,
-  buildInitialDiff,
   buildLineNumberByAlignedRow,
   extractActualLines,
   findAlignedRowIndexByLineNumber,
@@ -715,4 +619,3 @@ export const diffEditorTestUtils = {
   bindScrollerViewport,
   dispatchDocumentUpdated,
 };
-

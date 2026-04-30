@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type { MutableRefObject } from 'react';
 import {
   isFilterSessionNextBackendResult,
-  isMissingInvokeCommandError,
   isSearchSessionNextBackendResult,
 } from './backendGuards';
 import {
@@ -17,7 +16,6 @@ import type {
 interface ApplySearchSessionNextResultOptions {
   documentVersion: number;
   result: unknown;
-  searchSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   setSearchSessionId: (value: string | null) => void;
 }
 
@@ -27,13 +25,11 @@ interface ResolveSearchLoadMoreSessionStateOptions {
   loadMoreSessionId: number;
   loadMoreSessionRef: MutableRefObject<number>;
   maxResults: number;
-  searchSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   setSearchSessionId: (value: string | null) => void;
 }
 
 interface ApplyFilterSessionNextResultOptions {
   documentVersion: number;
-  filterSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   result: unknown;
   setFilterSessionId: (value: string | null) => void;
 }
@@ -41,29 +37,15 @@ interface ApplyFilterSessionNextResultOptions {
 interface ResolveFilterLoadMoreSessionStateOptions {
   activeFilterSessionId: string | null;
   documentVersion: number;
-  filterSessionCommandUnsupportedRef: MutableRefObject<boolean>;
   loadMoreSessionId: number;
   loadMoreSessionRef: MutableRefObject<number>;
   maxResults: number;
   setFilterSessionId: (value: string | null) => void;
 }
 
-interface HandleSearchSessionNextErrorOptions {
-  error: unknown;
-  searchSessionCommandUnsupportedRef: MutableRefObject<boolean>;
-  setSearchSessionId: (value: string | null) => void;
-}
-
-interface HandleFilterSessionNextErrorOptions {
-  error: unknown;
-  filterSessionCommandUnsupportedRef: MutableRefObject<boolean>;
-  setFilterSessionId: (value: string | null) => void;
-}
-
 export function applySearchSessionNextResult({
   documentVersion,
   result,
-  searchSessionCommandUnsupportedRef,
   setSearchSessionId,
 }: ApplySearchSessionNextResultOptions): {
   documentVersion: number;
@@ -79,7 +61,6 @@ export function applySearchSessionNextResult({
   if (nextOffset === null) {
     setSearchSessionId(null);
   }
-  searchSessionCommandUnsupportedRef.current = false;
 
   return {
     documentVersion: result.documentVersion ?? documentVersion,
@@ -94,7 +75,6 @@ export async function resolveSearchLoadMoreSessionState({
   loadMoreSessionId,
   loadMoreSessionRef,
   maxResults,
-  searchSessionCommandUnsupportedRef,
   setSearchSessionId,
 }: ResolveSearchLoadMoreSessionStateOptions): Promise<{
   aborted: boolean;
@@ -104,65 +84,39 @@ export async function resolveSearchLoadMoreSessionState({
     nextOffset: number | null;
   } | null;
 }> {
-  if (!activeSearchSessionId || searchSessionCommandUnsupportedRef.current) {
+  if (!activeSearchSessionId) {
     return {
       aborted: false,
       nextState: null,
     };
   }
 
-  try {
-    const sessionNextResult = await invoke<unknown>(
-      'search_session_next_in_document',
-      buildSearchSessionNextRequest({
-        sessionId: activeSearchSessionId,
-        maxResults,
-      })
-    );
-    if (loadMoreSessionId !== loadMoreSessionRef.current) {
-      return {
-        aborted: true,
-        nextState: null,
-      };
-    }
-
+  const sessionNextResult = await invoke<unknown>(
+    'search_session_next_in_document',
+    buildSearchSessionNextRequest({
+      sessionId: activeSearchSessionId,
+      maxResults,
+    })
+  );
+  if (loadMoreSessionId !== loadMoreSessionRef.current) {
     return {
-      aborted: false,
-      nextState: applySearchSessionNextResult({
-        documentVersion,
-        result: sessionNextResult,
-        searchSessionCommandUnsupportedRef,
-        setSearchSessionId,
-      }),
+      aborted: true,
+      nextState: null,
     };
-  } catch (error) {
-    handleSearchSessionNextError({
-      error,
-      searchSessionCommandUnsupportedRef,
+  }
+
+  return {
+    aborted: false,
+    nextState: applySearchSessionNextResult({
+      documentVersion,
+      result: sessionNextResult,
       setSearchSessionId,
-    });
-
-    return {
-      aborted: false,
-      nextState: null,
-    };
-  }
-}
-
-export function handleSearchSessionNextError({
-  error,
-  searchSessionCommandUnsupportedRef,
-  setSearchSessionId,
-}: HandleSearchSessionNextErrorOptions) {
-  if (isMissingInvokeCommandError(error, 'search_session_next_in_document')) {
-    searchSessionCommandUnsupportedRef.current = true;
-  }
-  setSearchSessionId(null);
+    }),
+  };
 }
 
 export function applyFilterSessionNextResult({
   documentVersion,
-  filterSessionCommandUnsupportedRef,
   result,
   setFilterSessionId,
 }: ApplyFilterSessionNextResultOptions): {
@@ -179,7 +133,6 @@ export function applyFilterSessionNextResult({
   if (nextLine === null) {
     setFilterSessionId(null);
   }
-  filterSessionCommandUnsupportedRef.current = false;
 
   return {
     documentVersion: result.documentVersion ?? documentVersion,
@@ -191,7 +144,6 @@ export function applyFilterSessionNextResult({
 export async function resolveFilterLoadMoreSessionState({
   activeFilterSessionId,
   documentVersion,
-  filterSessionCommandUnsupportedRef,
   loadMoreSessionId,
   loadMoreSessionRef,
   maxResults,
@@ -204,58 +156,33 @@ export async function resolveFilterLoadMoreSessionState({
     nextLine: number | null;
   } | null;
 }> {
-  if (!activeFilterSessionId || filterSessionCommandUnsupportedRef.current) {
+  if (!activeFilterSessionId) {
     return {
       aborted: false,
       nextState: null,
     };
   }
 
-  try {
-    const sessionNextResult = await invoke<unknown>(
-      'filter_session_next_in_document',
-      buildFilterSessionNextRequest({
-        sessionId: activeFilterSessionId,
-        maxResults,
-      })
-    );
-    if (loadMoreSessionId !== loadMoreSessionRef.current) {
-      return {
-        aborted: true,
-        nextState: null,
-      };
-    }
-
+  const sessionNextResult = await invoke<unknown>(
+    'filter_session_next_in_document',
+    buildFilterSessionNextRequest({
+      sessionId: activeFilterSessionId,
+      maxResults,
+    })
+  );
+  if (loadMoreSessionId !== loadMoreSessionRef.current) {
     return {
-      aborted: false,
-      nextState: applyFilterSessionNextResult({
-        documentVersion,
-        filterSessionCommandUnsupportedRef,
-        result: sessionNextResult,
-        setFilterSessionId,
-      }),
+      aborted: true,
+      nextState: null,
     };
-  } catch (error) {
-    handleFilterSessionNextError({
-      error,
-      filterSessionCommandUnsupportedRef,
+  }
+
+  return {
+    aborted: false,
+    nextState: applyFilterSessionNextResult({
+      documentVersion,
+      result: sessionNextResult,
       setFilterSessionId,
-    });
-
-    return {
-      aborted: false,
-      nextState: null,
-    };
-  }
-}
-
-export function handleFilterSessionNextError({
-  error,
-  filterSessionCommandUnsupportedRef,
-  setFilterSessionId,
-}: HandleFilterSessionNextErrorOptions) {
-  if (isMissingInvokeCommandError(error, 'filter_session_next_in_document')) {
-    filterSessionCommandUnsupportedRef.current = true;
-  }
-  setFilterSessionId(null);
+    }),
+  };
 }
