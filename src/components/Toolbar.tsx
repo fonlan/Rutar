@@ -3,7 +3,6 @@ import {
     Undo, Redo, Search, TextSearch, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
-import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import {
     useCallback,
@@ -49,15 +48,6 @@ function dispatchSearchOpen(mode: 'find' | 'replace' | 'filter') {
     window.dispatchEvent(
         new CustomEvent('rutar:search-open', {
             detail: { mode },
-        })
-    );
-}
-
-
-function dispatchDiffPaste(diffTabId: string, panel: DiffPanelSide, text: string) {
-    window.dispatchEvent(
-        new CustomEvent('rutar:diff-paste-text', {
-            detail: { diffTabId, panel, text },
         })
     );
 }
@@ -841,14 +831,6 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
             editor.focus();
         }
 
-        const runExecCommand = (command: 'cut' | 'copy' | 'paste') => {
-            try {
-                return document.execCommand(command);
-            } catch {
-                return false;
-            }
-        };
-
         if (action === 'copy') {
             if (activeDiffTab && activeDiffPanel) {
                 dispatchDiffClipboardAction(activeDiffTab.id, activeDiffPanel, action);
@@ -860,7 +842,6 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 return;
             }
 
-            runExecCommand('copy');
             return;
         }
 
@@ -875,18 +856,12 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 return;
             }
 
-            runExecCommand('cut');
             return;
         }
 
         if (activeDiffTab && activeDiffPanel) {
-            try {
-                const clipboardText = await readClipboardText();
-                dispatchDiffPaste(activeDiffTab.id, activeDiffPanel, clipboardText);
-                return;
-            } catch (error) {
-                console.warn('Failed to read clipboard text via Tauri clipboard plugin:', error);
-            }
+            dispatchDiffClipboardAction(activeDiffTab.id, activeDiffPanel, action);
+            return;
         }
 
         if (activeTab) {
@@ -894,11 +869,6 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
             return;
         }
 
-        if (runExecCommand('paste')) {
-            return;
-        }
-
-        console.warn('Paste command blocked. Use Ctrl+V in editor.');
     }, [activeDiffPanel, activeDiffTab, activeTab]);
 
     const handleEditorFind = useCallback(() => {

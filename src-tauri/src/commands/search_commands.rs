@@ -144,31 +144,6 @@ pub fn search_step_from_cursor_in_document(
 }
 
 #[tauri::command]
-pub fn replace_all_in_document(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-    replace_value: String,
-    parse_escape_sequences: Option<bool>,
-    result_filter_keyword: Option<String>,
-    result_filter_case_sensitive: Option<bool>,
-) -> Result<ReplaceAllResultPayload, String> {
-    search::replace_all_in_document_impl(
-        state,
-        id,
-        keyword,
-        mode,
-        case_sensitive,
-        replace_value,
-        parse_escape_sequences,
-        result_filter_keyword,
-        result_filter_case_sensitive,
-    )
-}
-
-#[tauri::command]
 pub fn replace_all_and_search_chunk_in_document(
     state: State<'_, AppState>,
     id: String,
@@ -192,31 +167,6 @@ pub fn replace_all_and_search_chunk_in_document(
         result_filter_keyword,
         result_filter_case_sensitive,
         max_results,
-    )
-}
-
-#[tauri::command]
-pub fn replace_current_in_document(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-    replace_value: String,
-    parse_escape_sequences: Option<bool>,
-    target_start: usize,
-    target_end: usize,
-) -> Result<ReplaceCurrentResultPayload, String> {
-    search::replace_current_in_document_impl(
-        state,
-        id,
-        keyword,
-        mode,
-        case_sensitive,
-        replace_value,
-        parse_escape_sequences,
-        target_start,
-        target_end,
     )
 }
 
@@ -397,17 +347,6 @@ pub fn step_result_filter_search_in_filter_document(
     )
 }
 
-#[tauri::command]
-pub fn search_in_document(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-) -> Result<SearchResultPayload, String> {
-    search::search_in_document_impl(state, id, keyword, mode, case_sensitive)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,9 +361,7 @@ mod tests {
         let _ = dispose_search_session as usize;
         let _ = search_count_in_document as usize;
         let _ = search_step_from_cursor_in_document as usize;
-        let _ = replace_all_in_document as usize;
         let _ = replace_all_and_search_chunk_in_document as usize;
-        let _ = replace_current_in_document as usize;
         let _ = replace_current_and_search_chunk_in_document as usize;
         let _ = step_result_filter_search_in_document as usize;
         let _ = filter_count_in_document as usize;
@@ -434,6 +371,5 @@ mod tests {
         let _ = filter_session_restore_in_document as usize;
         let _ = dispose_filter_session as usize;
         let _ = step_result_filter_search_in_filter_document as usize;
-        let _ = search_in_document as usize;
     }
 }

@@ -1814,35 +1814,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       }
     };
 
-    const handleDiffPaste = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        diffTabId?: string;
-        panel?: DiffPanelSide;
-        text?: string;
-      }>;
-      if (customEvent.detail?.diffTabId !== tab.id) {
-        return;
-      }
-
-      const targetEditor = customEvent.detail?.panel === 'target'
-        ? targetEditorRef.current
-        : sourceEditorRef.current;
-
-      const selection = targetEditor?.getSelection();
-      if (!targetEditor || !selection) {
-        return;
-      }
-
-      targetEditor.executeEdits('rutar-diff-paste', [
-        {
-          range: selection,
-          text: customEvent.detail?.text ?? '',
-          forceMoveMarkers: true,
-        },
-      ]);
-      targetEditor.focus();
-    };
-
     const handleDiffClipboardAction = async (event: Event) => {
       const customEvent = event as CustomEvent<{
         diffTabId?: string;
@@ -1855,14 +1826,35 @@ export function DiffEditor({ tab }: DiffEditorProps) {
 
       const action = customEvent.detail?.action;
       const panel = customEvent.detail?.panel;
-      if (!action || !panel || action === 'paste') {
+      if (!action || !panel) {
         return;
       }
 
       const editor = panel === 'target' ? targetEditorRef.current : sourceEditorRef.current;
       const model = editor?.getModel();
       const selection = editor?.getSelection();
-      if (!editor || !model || !selection || selection.isEmpty()) {
+      if (!editor || !selection) {
+        return;
+      }
+
+      if (action === 'paste') {
+        try {
+          const clipboardText = await readPlainTextFromClipboard();
+          editor.executeEdits('rutar-diff-toolbar-paste', [
+            {
+              range: selection,
+              text: clipboardText,
+              forceMoveMarkers: true,
+            },
+          ]);
+          editor.focus();
+        } catch (error) {
+          console.warn('Failed to read clipboard text for diff toolbar paste:', error);
+        }
+        return;
+      }
+
+      if (!model || selection.isEmpty()) {
         return;
       }
 
@@ -1920,13 +1912,11 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     };
 
     window.addEventListener('rutar:diff-history-action', handleDiffHistoryAction as EventListener);
-    window.addEventListener('rutar:diff-paste-text', handleDiffPaste as EventListener);
     window.addEventListener('rutar:diff-clipboard-action', handleDiffClipboardAction as EventListener);
     window.addEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
 
     return () => {
       window.removeEventListener('rutar:diff-history-action', handleDiffHistoryAction as EventListener);
-      window.removeEventListener('rutar:diff-paste-text', handleDiffPaste as EventListener);
       window.removeEventListener('rutar:diff-clipboard-action', handleDiffClipboardAction as EventListener);
       window.removeEventListener('rutar:document-updated', handleDocumentUpdated as EventListener);
     };
@@ -1941,6 +1931,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     syncPanelsFromEditorScroll,
     tab.id,
     targetTab,
+    readPlainTextFromClipboard,
     updatePaneQuotePairDecorations,
     updateTab,
   ]);

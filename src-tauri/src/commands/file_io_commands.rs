@@ -14,16 +14,6 @@ pub async fn open_files(
 }
 
 #[tauri::command]
-pub fn get_visible_lines_chunk(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-) -> Result<Vec<String>, String> {
-    file_io::get_visible_lines_chunk_impl(state, id, start_line, end_line)
-}
-
-#[tauri::command]
 pub fn get_visible_lines(
     state: State<'_, AppState>,
     id: String,

@@ -238,28 +238,6 @@ pub fn get_document_version(state: State<'_, AppState>, id: String) -> Result<u6
 }
 
 #[tauri::command]
-pub fn get_syntax_tokens(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-    request_serial: Option<u64>,
-) -> Result<Vec<SyntaxToken>, String> {
-    document::get_syntax_tokens_impl(state, id, start_line, end_line, request_serial)
-}
-
-#[tauri::command]
-pub fn get_syntax_token_lines(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-    request_serial: Option<u64>,
-) -> Result<Vec<Vec<SyntaxToken>>, String> {
-    document::get_syntax_token_lines_impl(state, id, start_line, end_line, request_serial)
-}
-
-#[tauri::command]
 pub fn get_outline(
     state: State<'_, AppState>,
     id: String,

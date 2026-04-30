@@ -26,31 +26,6 @@ pub fn get_edit_history_state(
 }
 
 #[tauri::command]
-pub fn edit_text(
-    state: State<'_, AppState>,
-    id: String,
-    start_char: usize,
-    end_char: usize,
-    new_text: String,
-    before_cursor_line: Option<usize>,
-    before_cursor_column: Option<usize>,
-    after_cursor_line: Option<usize>,
-    after_cursor_column: Option<usize>,
-) -> Result<usize, String> {
-    editing::edit_text_impl(
-        state,
-        id,
-        start_char,
-        end_char,
-        new_text,
-        before_cursor_line,
-        before_cursor_column,
-        after_cursor_line,
-        after_cursor_column,
-    )
-}
-
-#[tauri::command]
 pub fn apply_text_edits_by_line_column(
     state: State<'_, AppState>,
     id: String,
@@ -64,31 +39,6 @@ pub fn apply_text_edits_by_line_column(
         state,
         id,
         edits,
-        before_cursor_line,
-        before_cursor_column,
-        after_cursor_line,
-        after_cursor_column,
-    )
-}
-
-#[tauri::command]
-pub fn replace_line_range(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-    new_text: String,
-    before_cursor_line: Option<usize>,
-    before_cursor_column: Option<usize>,
-    after_cursor_line: Option<usize>,
-    after_cursor_column: Option<usize>,
-) -> Result<usize, String> {
-    editing::replace_line_range_impl(
-        state,
-        id,
-        start_line,
-        end_line,
-        new_text,
         before_cursor_line,
         before_cursor_column,
         after_cursor_line,
@@ -124,18 +74,6 @@ pub fn format_document(
         file_name,
         tab_width,
     )
-}
-
-#[tauri::command]
-pub fn toggle_line_comments(
-    state: State<'_, AppState>,
-    id: String,
-    start_char: usize,
-    end_char: usize,
-    is_collapsed: bool,
-    prefix: String,
-) -> Result<editing::ToggleLineCommentsResultPayload, String> {
-    editing::toggle_line_comments_impl(state, id, start_char, end_char, is_collapsed, prefix)
 }
 
 #[tauri::command]

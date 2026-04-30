@@ -1873,7 +1873,7 @@ describe("Toolbar", () => {
     });
   });
 
-  it("runs cut and copy through execCommand when editor has selection", async () => {
+  it("dispatches editor clipboard cut and copy actions when editor has selection", async () => {
     useStore.getState().addTab(createTab());
 
     const editor = document.createElement("textarea");
@@ -1883,14 +1883,11 @@ describe("Toolbar", () => {
     editor.focus();
     editor.setSelectionRange(0, 2);
 
-    const originalExecCommand = (document as Document & {
-      execCommand?: (command: string) => boolean;
-    }).execCommand;
-    const execCommandMock = vi.fn(() => true);
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: execCommandMock,
-    });
+    const events: Array<{ tabId: string; action: string }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<{ tabId: string; action: string }>).detail);
+    };
+    window.addEventListener("rutar:editor-clipboard-action", listener as EventListener);
 
     render(<Toolbar />);
     await waitFor(() => {
@@ -1909,13 +1906,11 @@ describe("Toolbar", () => {
     fireEvent.click(cutWrapper.querySelector("button") as HTMLButtonElement);
     fireEvent.click(copyWrapper.querySelector("button") as HTMLButtonElement);
 
-    expect(execCommandMock).not.toHaveBeenCalledWith("cut");
-    expect(execCommandMock).not.toHaveBeenCalledWith("copy");
-
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: originalExecCommand ?? (() => false),
-    });
+    expect(events).toEqual([
+      { tabId: "tab-toolbar", action: "cut" },
+      { tabId: "tab-toolbar", action: "copy" },
+    ]);
+    window.removeEventListener("rutar:editor-clipboard-action", listener as EventListener);
     editor.remove();
   });
 
@@ -2130,7 +2125,7 @@ describe("Toolbar", () => {
     window.removeEventListener("rutar:editor-clipboard-action", listener as EventListener);
   });
 
-  it("falls back to execCommand paste when clipboard read fails for diff tab", async () => {
+  it("dispatches diff clipboard paste action without reading clipboard in toolbar", async () => {
     useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
     useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
     useStore.getState().addTab({
@@ -2163,69 +2158,14 @@ describe("Toolbar", () => {
         alignedLineCount: 1,
       },
     });
-    readClipboardTextMock.mockRejectedValue(new Error("clipboard-read-failed-diff"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    render(<Toolbar />);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
-    });
-
-    const pasteWrapper = screen.getByTitle("Paste");
-    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
-
-    await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Failed to read clipboard text via Tauri clipboard plugin:",
-        expect.objectContaining({ message: "clipboard-read-failed-diff" })
-      );
-    });
-    expect(warnSpy).toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
-    warnSpy.mockRestore();
-  });
-
-  it("dispatches diff-paste-text event when pasting in diff tab", async () => {
-    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
-    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
-    useStore.getState().addTab({
-      id: "tab-diff",
-      name: "a.ts <-> b.ts",
-      path: "",
-      encoding: "UTF-8",
-      lineEnding: "LF",
-      lineCount: 1,
-      largeFileMode: false,
-      isDirty: false,
-      tabType: "diff",
-      diffPayload: {
-        sourceTabId: "tab-source",
-        targetTabId: "tab-target",
-        sourceName: "a.ts",
-        targetName: "b.ts",
-        sourcePath: "C:\\repo\\a.ts",
-        targetPath: "C:\\repo\\b.ts",
-        alignedSourceLines: [""],
-        alignedTargetLines: [""],
-        alignedSourcePresent: [true],
-        alignedTargetPresent: [true],
-        diffLineNumbers: [],
-        sourceDiffLineNumbers: [],
-        targetDiffLineNumbers: [],
-        alignedDiffKinds: [null],
-        sourceLineCount: 1,
-        targetLineCount: 1,
-        alignedLineCount: 1,
-      },
-    });
-    readClipboardTextMock.mockResolvedValue("diff-paste-content");
-
-    const pasteEvents: Array<{ diffTabId: string; panel: "source" | "target"; text: string }> = [];
+    readClipboardTextMock.mockRejectedValue(new Error("toolbar-should-not-read-clipboard"));
+    const pasteEvents: Array<{ diffTabId: string; panel: "source" | "target"; action: string }> = [];
     const listener = (event: Event) => {
       pasteEvents.push(
-        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; text: string }>).detail
+        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; action: string }>).detail
       );
     };
-    window.addEventListener("rutar:diff-paste-text", listener as EventListener);
+    window.addEventListener("rutar:diff-clipboard-action", listener as EventListener);
 
     render(<Toolbar />);
     await waitFor(() => {
@@ -2239,65 +2179,73 @@ describe("Toolbar", () => {
       expect(pasteEvents[0]).toEqual({
         diffTabId: "tab-diff",
         panel: "source",
-        text: "diff-paste-content",
+        action: "paste",
       });
     });
-    window.removeEventListener("rutar:diff-paste-text", listener as EventListener);
+    expect(readClipboardTextMock).not.toHaveBeenCalled();
+    window.removeEventListener("rutar:diff-clipboard-action", listener as EventListener);
   });
 
-  it("returns early when fallback execCommand paste succeeds", async () => {
-    const originalExecCommand = (document as Document & {
-      execCommand?: (command: string) => boolean;
-    }).execCommand;
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: vi.fn((command: string) => command === "paste"),
+  it("dispatches diff clipboard paste event when pasting in diff tab", async () => {
+    useStore.getState().addTab(createTab({ id: "tab-source", name: "a.ts", path: "C:\\repo\\a.ts" }));
+    useStore.getState().addTab(createTab({ id: "tab-target", name: "b.ts", path: "C:\\repo\\b.ts" }));
+    useStore.getState().addTab({
+      id: "tab-diff",
+      name: "a.ts <-> b.ts",
+      path: "",
+      encoding: "UTF-8",
+      lineEnding: "LF",
+      lineCount: 1,
+      largeFileMode: false,
+      isDirty: false,
+      tabType: "diff",
+      diffPayload: {
+        sourceTabId: "tab-source",
+        targetTabId: "tab-target",
+        sourceName: "a.ts",
+        targetName: "b.ts",
+        sourcePath: "C:\\repo\\a.ts",
+        targetPath: "C:\\repo\\b.ts",
+        alignedSourceLines: [""],
+        alignedTargetLines: [""],
+        alignedSourcePresent: [true],
+        alignedTargetPresent: [true],
+        diffLineNumbers: [],
+        sourceDiffLineNumbers: [],
+        targetDiffLineNumbers: [],
+        alignedDiffKinds: [null],
+        sourceLineCount: 1,
+        targetLineCount: 1,
+        alignedLineCount: 1,
+      },
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    readClipboardTextMock.mockRejectedValue(new Error("toolbar-should-not-read-clipboard"));
+
+    const pasteEvents: Array<{ diffTabId: string; panel: "source" | "target"; action: string }> = [];
+    const listener = (event: Event) => {
+      pasteEvents.push(
+        (event as CustomEvent<{ diffTabId: string; panel: "source" | "target"; action: string }>).detail
+      );
+    };
+    window.addEventListener("rutar:diff-clipboard-action", listener as EventListener);
 
     render(<Toolbar />);
-    const pasteWrapper = screen.getByTitle((title) => title.includes("Paste"));
-    const pasteButton = pasteWrapper.querySelector("button") as HTMLButtonElement;
-    const onClick = getReactOnClick(pasteButton);
-
-    await act(async () => {
-      onClick?.();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-source" });
     });
 
-    expect(warnSpy).not.toHaveBeenCalledWith("Paste command blocked. Use Ctrl+V in editor.");
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: originalExecCommand ?? (() => false),
+    const pasteWrapper = screen.getByTitle("Paste");
+    fireEvent.click(pasteWrapper.querySelector("button") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(pasteEvents[0]).toEqual({
+        diffTabId: "tab-diff",
+        panel: "source",
+        action: "paste",
+      });
     });
-    warnSpy.mockRestore();
-  });
-
-  it("handles copy fallback when execCommand throws", async () => {
-    const originalExecCommand = (document as Document & {
-      execCommand?: (command: string) => boolean;
-    }).execCommand;
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: vi.fn(() => {
-        throw new Error("exec-command-copy-error");
-      }),
-    });
-
-    render(<Toolbar />);
-    const copyWrapper = screen.getByTitle((title) => title.includes("Copy"));
-    const copyButton = copyWrapper.querySelector("button") as HTMLButtonElement;
-    const onClick = getReactOnClick(copyButton);
-
-    await expect(
-      act(async () => {
-        onClick?.();
-      })
-    ).resolves.toBeUndefined();
-
-    Object.defineProperty(document, "execCommand", {
-      configurable: true,
-      value: originalExecCommand ?? (() => false),
-    });
+    expect(readClipboardTextMock).not.toHaveBeenCalled();
+    window.removeEventListener("rutar:diff-clipboard-action", listener as EventListener);
   });
 
   it("toggles bookmark sidebar from toolbar button", async () => {
