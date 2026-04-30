@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
-import { createMonacoTextSnapshotFromChunks } from '@/lib/monacoTextSnapshot';
+import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
@@ -14,8 +14,6 @@ import {
 } from './diffEditor.utils';
 import type { DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import type { MonacoTextEdit } from './monacoTypes';
-
-export { diffEditorTestUtils } from './diffEditor.utils';
 
 interface HistoryActionResult {
   lineCount: number;
@@ -418,23 +416,6 @@ function resolveMonacoLanguage(fileTab: FileTab | null) {
     default:
       return 'plaintext';
   }
-}
-
-async function getDocumentText(tabId: string, lineCountHint: number) {
-  try {
-    return await invoke<string>('get_document_text', { id: tabId });
-  } catch {
-    return invoke<string>('get_visible_lines', {
-      id: tabId,
-      startLine: 0,
-      endLine: Math.max(1, lineCountHint),
-    });
-  }
-}
-
-async function getDocumentTextBootstrapSnapshot(tabId: string) {
-  const chunks = await invoke<string[]>('get_document_text_chunks', { id: tabId });
-  return createMonacoTextSnapshotFromChunks(chunks);
 }
 
 function clampRatio(ratio: number) {
@@ -1166,7 +1147,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
           return;
         }
 
-        const text = await getDocumentText(paneTab.id, Math.max(1, paneTab.lineCount));
+        const text = await getDocumentText(paneTab.id);
         if (pendingFetchRequestRef.current[side] !== requestId || model.isDisposed()) {
           return;
         }

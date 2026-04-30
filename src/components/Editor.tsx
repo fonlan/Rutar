@@ -8,9 +8,9 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/i18n';
+import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
 import { isMarkdownTab } from '@/lib/markdown';
-import { createMonacoTextSnapshotFromChunks } from '@/lib/monacoTextSnapshot';
 import {
   applyMarkdownToolbarAction,
   buildIndentationUnit,
@@ -192,23 +192,6 @@ function clampMonacoPosition(
     lineNumber,
     column,
   };
-}
-
-async function getDocumentText(tabId: string, lineCountHint: number) {
-  try {
-    return await invoke<string>('get_document_text', { id: tabId });
-  } catch {
-    return invoke<string>('get_visible_lines', {
-      id: tabId,
-      startLine: 0,
-      endLine: Math.max(1, lineCountHint),
-    });
-  }
-}
-
-async function getDocumentTextBootstrapSnapshot(tabId: string) {
-  const chunks = await invoke<string[]>('get_document_text_chunks', { id: tabId });
-  return createMonacoTextSnapshotFromChunks(chunks);
 }
 
 function clipboardEventHasTextPayload(clipboardData: DataTransfer) {
@@ -453,7 +436,7 @@ export function Editor({
           return;
         }
 
-        const text = await getDocumentText(targetTab.id, Math.max(1, targetTab.lineCount));
+        const text = await getDocumentText(targetTab.id);
         if (requestId !== pendingFetchRequestIdRef.current || model.isDisposed()) {
           return;
         }

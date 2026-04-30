@@ -594,28 +594,3 @@ export function bindScrollerViewport(
     observer.disconnect();
   };
 }
-
-export const diffEditorTestUtils = {
-  getParentDirectoryPath,
-  pathBaseName,
-  resolveAlignedDiffKind,
-  getDiffKindStyle,
-  clampRatio,
-  clampPercent,
-  normalizeTextToLines,
-  normalizeLineDiffResult,
-  buildLineNumberByAlignedRow,
-  extractActualLines,
-  findAlignedRowIndexByLineNumber,
-  getLineIndexFromTextOffset,
-  getSelectedLineRangeByOffset,
-  buildCopyTextWithoutVirtualRows,
-  getLineSelectionRange,
-  getNextMatchedRow,
-  getNextMatchedRowFromAnchor,
-  reconcilePresenceAfterTextEdit,
-  inferTrailingNewlineFromLines,
-  serializeLines,
-  bindScrollerViewport,
-  dispatchDocumentUpdated,
-};
