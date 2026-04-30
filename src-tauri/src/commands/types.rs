@@ -13,18 +13,6 @@ pub struct FileInfo {
     pub(super) syntax_override: Option<String>,
 }
 
-#[derive(serde::Serialize, Clone)]
-pub struct SyntaxToken {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) r#type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) start_byte: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) end_byte: Option<usize>,
-}
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowsFileAssociationStatus {
@@ -61,19 +49,6 @@ pub struct DirEntry {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn syntax_token_serialization_should_skip_none_fields() {
-        let token = SyntaxToken {
-            r#type: Some("keyword".to_string()),
-            text: None,
-            start_byte: Some(3),
-            end_byte: None,
-        };
-
-        let value = serde_json::to_value(token).expect("serialization should succeed");
-        assert_eq!(value, json!({"type":"keyword","start_byte":3}));
-    }
 
     #[test]
     fn file_info_serialization_should_use_camel_case_and_optional_field() {

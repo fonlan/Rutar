@@ -37,13 +37,6 @@ pub struct SearchMatchResult {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SearchResultPayload {
-    pub(super) matches: Vec<SearchMatchResult>,
-    pub(super) document_version: u64,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SearchFirstResultPayload {
     pub(super) first_match: Option<SearchMatchResult>,
     pub(super) document_version: u64,
@@ -97,14 +90,6 @@ pub struct SearchCountResultPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReplaceAllResultPayload {
-    pub(super) replaced_count: usize,
-    pub(super) line_count: usize,
-    pub(super) document_version: u64,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ReplaceAllAndSearchChunkResultPayload {
     pub(super) replaced_count: usize,
     pub(super) line_count: usize,
@@ -113,14 +98,6 @@ pub struct ReplaceAllAndSearchChunkResultPayload {
     pub(super) next_offset: Option<usize>,
     pub(super) total_matches: usize,
     pub(super) total_matched_lines: usize,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplaceCurrentResultPayload {
-    pub(super) replaced: bool,
-    pub(super) line_count: usize,
-    pub(super) document_version: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -3460,163 +3437,6 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
     })
 }
 
-pub(super) fn replace_all_in_document_impl(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-    replace_value: String,
-    parse_escape_sequences: Option<bool>,
-    result_filter_keyword: Option<String>,
-    result_filter_case_sensitive: Option<bool>,
-) -> Result<ReplaceAllResultPayload, String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
-        if keyword.is_empty() {
-            return Ok(ReplaceAllResultPayload {
-                replaced_count: 0,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-            });
-        }
-
-        let effective_replace_value =
-            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
-        let normalized_result_filter_keyword =
-            normalize_result_filter_keyword(result_filter_keyword);
-        let effective_result_filter_case_sensitive =
-            result_filter_case_sensitive.unwrap_or(case_sensitive);
-
-        let matches = build_search_step_filtered_matches(
-            &doc,
-            &keyword,
-            &mode,
-            case_sensitive,
-            normalized_result_filter_keyword.as_deref(),
-            effective_result_filter_case_sensitive,
-        )?;
-
-        if matches.is_empty() {
-            return Ok(ReplaceAllResultPayload {
-                replaced_count: 0,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-            });
-        }
-
-        let source_text = doc.rope.to_string();
-        let next_text =
-            replace_matches_by_char_ranges(&source_text, &matches, &effective_replace_value);
-        let replaced_count = matches.len();
-
-        if source_text != next_text {
-            let operation = create_edit_operation(&mut doc, 0, source_text, next_text);
-
-            apply_operation(&mut doc, &operation)?;
-            doc.undo_stack.push(operation);
-            doc.redo_stack.clear();
-            remove_search_sessions_by_document(&id);
-            remove_filter_sessions_by_document(&id);
-        }
-
-        Ok(ReplaceAllResultPayload {
-            replaced_count,
-            line_count: doc.rope.len_lines(),
-            document_version: doc.document_version,
-        })
-    } else {
-        Err("Document not found".to_string())
-    }
-}
-
-pub(super) fn replace_current_in_document_impl(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-    replace_value: String,
-    parse_escape_sequences: Option<bool>,
-    target_start: usize,
-    target_end: usize,
-) -> Result<ReplaceCurrentResultPayload, String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
-        if keyword.is_empty() {
-            return Ok(ReplaceCurrentResultPayload {
-                replaced: false,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-            });
-        }
-
-        let effective_replace_value =
-            resolve_replace_value(&replace_value, parse_escape_sequences.unwrap_or(false));
-        let matches = build_search_step_filtered_matches(
-            &doc,
-            &keyword,
-            &mode,
-            case_sensitive,
-            None,
-            case_sensitive,
-        )?;
-
-        let target_match = matches
-            .iter()
-            .find(|item| item.start == target_start && item.end == target_end)
-            .cloned();
-
-        let Some(target_match) = target_match else {
-            return Ok(ReplaceCurrentResultPayload {
-                replaced: false,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-            });
-        };
-
-        let replacement_text = if mode == "regex" {
-            let regex = RegexBuilder::new(&keyword)
-                .case_insensitive(!case_sensitive)
-                .build()
-                .map_err(|e| e.to_string())?;
-
-            regex
-                .replace(&target_match.text, effective_replace_value.as_str())
-                .to_string()
-        } else {
-            effective_replace_value
-        };
-
-        if replacement_text == target_match.text {
-            return Ok(ReplaceCurrentResultPayload {
-                replaced: false,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-            });
-        }
-
-        let operation = create_edit_operation(
-            &mut doc,
-            target_match.start_char,
-            target_match.text,
-            replacement_text,
-        );
-
-        apply_operation(&mut doc, &operation)?;
-        doc.undo_stack.push(operation);
-        doc.redo_stack.clear();
-        remove_search_sessions_by_document(&id);
-        remove_filter_sessions_by_document(&id);
-
-        Ok(ReplaceCurrentResultPayload {
-            replaced: true,
-            line_count: doc.rope.len_lines(),
-            document_version: doc.document_version,
-        })
-    } else {
-        Err("Document not found".to_string())
-    }
-}
-
 pub(super) fn replace_current_and_search_chunk_in_document_impl(
     state: State<'_, AppState>,
     id: String,
@@ -3886,70 +3706,6 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
             next_offset,
             total_matches,
             total_matched_lines,
-        })
-    } else {
-        Err("Document not found".to_string())
-    }
-}
-
-pub(super) fn search_in_document_impl(
-    state: State<'_, AppState>,
-    id: String,
-    keyword: String,
-    mode: String,
-    case_sensitive: bool,
-) -> Result<SearchResultPayload, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        let source_text: String = doc.rope.chunks().collect();
-        let line_starts = build_line_starts(&source_text);
-        let byte_to_char = build_byte_to_char_map(&source_text);
-
-        if keyword.is_empty() {
-            return Ok(SearchResultPayload {
-                matches: Vec::new(),
-                document_version: doc.document_version,
-            });
-        }
-
-        let matches = match mode.as_str() {
-            "literal" => {
-                if case_sensitive {
-                    collect_literal_matches(&source_text, &keyword, &line_starts, &byte_to_char)
-                } else {
-                    let escaped = escape_regex_literal(&keyword);
-                    let regex = RegexBuilder::new(&escaped)
-                        .case_insensitive(true)
-                        .build()
-                        .map_err(|e| e.to_string())?;
-
-                    collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
-                }
-            }
-            "wildcard" => {
-                let regex_source = wildcard_to_regex_source(&keyword);
-                let regex = RegexBuilder::new(&regex_source)
-                    .case_insensitive(!case_sensitive)
-                    .build()
-                    .map_err(|e| e.to_string())?;
-
-                collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
-            }
-            "regex" => {
-                let regex = RegexBuilder::new(&keyword)
-                    .case_insensitive(!case_sensitive)
-                    .build()
-                    .map_err(|e| e.to_string())?;
-
-                collect_regex_matches(&source_text, &regex, &line_starts, &byte_to_char)
-            }
-            _ => {
-                return Err("Unsupported search mode".to_string());
-            }
-        };
-
-        Ok(SearchResultPayload {
-            matches,
-            document_version: doc.document_version,
         })
     } else {
         Err("Document not found".to_string())

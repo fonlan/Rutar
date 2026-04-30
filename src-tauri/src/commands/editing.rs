@@ -34,31 +34,6 @@ fn cursor_payload_from_snapshot(
     }
 }
 
-fn point_for_char(rope: &Rope, char_idx: usize) -> Point {
-    let clamped = char_idx.min(rope.len_chars());
-    let row = rope.char_to_line(clamped);
-    let line_start = rope.line_to_char(row);
-    let column = rope.slice(line_start..clamped).len_bytes();
-
-    Point { row, column }
-}
-
-fn advance_point_with_text(start: Point, text: &str) -> Point {
-    let mut row = start.row;
-    let mut column = start.column;
-
-    for b in text.bytes() {
-        if b == b'\n' {
-            row += 1;
-            column = 0;
-        } else {
-            column += 1;
-        }
-    }
-
-    Point { row, column }
-}
-
 pub(super) fn apply_operation(doc: &mut Document, operation: &EditOperation) -> Result<(), String> {
     let rope = &mut doc.rope;
     let start = operation.start_char.min(rope.len_chars());
@@ -76,14 +51,6 @@ pub(super) fn apply_operation(doc: &mut Document, operation: &EditOperation) -> 
         return Err("Edit history out of sync".to_string());
     }
 
-    let start_byte = rope.char_to_byte(start);
-    let old_end_byte = start_byte + operation.old_text.len();
-    let new_end_byte = start_byte + operation.new_text.len();
-
-    let start_position = point_for_char(rope, start);
-    let old_end_position = advance_point_with_text(start_position, &operation.old_text);
-    let new_end_position = advance_point_with_text(start_position, &operation.new_text);
-
     if start < end {
         rope.remove(start..end);
     }
@@ -92,23 +59,6 @@ pub(super) fn apply_operation(doc: &mut Document, operation: &EditOperation) -> 
         rope.insert(start, &operation.new_text);
     }
 
-    if let Some(tree) = doc.tree.as_mut() {
-        let edit = InputEdit {
-            start_byte,
-            old_end_byte,
-            new_end_byte,
-            start_position,
-            old_end_position,
-            new_end_position,
-        };
-
-        match tree {
-            DocumentTree::TreeSitter(tree) => tree.edit(&edit),
-            DocumentTree::Markdown(tree) => tree.edit(&edit),
-        }
-    }
-
-    doc.syntax_dirty = doc.parser.is_some();
     doc.document_version = doc.document_version.saturating_add(1);
     Ok(())
 }
@@ -182,41 +132,6 @@ pub(super) fn get_edit_history_state_impl(
                 || doc.encoding.name() != doc.saved_encoding
                 || doc.line_ending != doc.saved_line_ending,
         })
-    } else {
-        Err("Document not found".to_string())
-    }
-}
-
-pub(super) fn edit_text_impl(
-    state: State<'_, AppState>,
-    id: String,
-    start_char: usize,
-    end_char: usize,
-    new_text: String,
-    before_cursor_line: Option<usize>,
-    before_cursor_column: Option<usize>,
-    after_cursor_line: Option<usize>,
-    after_cursor_column: Option<usize>,
-) -> Result<usize, String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
-        let len_chars = doc.rope.len_chars();
-        let start = start_char.min(len_chars);
-        let end = end_char.min(len_chars).max(start);
-
-        let old_text = doc.rope.slice(start..end).to_string();
-        if old_text == new_text {
-            return Ok(doc.rope.len_lines());
-        }
-
-        let mut operation = create_edit_operation(&mut doc, start, old_text, new_text);
-        operation.before_cursor = build_cursor_snapshot(before_cursor_line, before_cursor_column);
-        operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
-
-        apply_operation(&mut doc, &operation)?;
-        doc.undo_stack.push(operation);
-        doc.redo_stack.clear();
-
-        Ok(doc.rope.len_lines())
     } else {
         Err("Document not found".to_string())
     }
@@ -789,48 +704,6 @@ pub(super) fn get_rectangular_selection_text_impl(
         .map_err(|error| format!("Failed to convert rectangular selection text result: {error}"))
 }
 
-pub(super) fn replace_line_range_impl(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-    new_text: String,
-    before_cursor_line: Option<usize>,
-    before_cursor_column: Option<usize>,
-    after_cursor_line: Option<usize>,
-    after_cursor_column: Option<usize>,
-) -> Result<usize, String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
-        let len_lines = doc.rope.len_lines();
-        let start = start_line.min(len_lines);
-        let end = end_line.min(len_lines).max(start);
-
-        if start >= end {
-            return Ok(doc.rope.len_lines());
-        }
-
-        let start_char = doc.rope.line_to_char(start);
-        let end_char = doc.rope.line_to_char(end);
-
-        let old_text = doc.rope.slice(start_char..end_char).to_string();
-        if old_text == new_text {
-            return Ok(doc.rope.len_lines());
-        }
-
-        let mut operation = create_edit_operation(&mut doc, start_char, old_text, new_text);
-        operation.before_cursor = build_cursor_snapshot(before_cursor_line, before_cursor_column);
-        operation.after_cursor = build_cursor_snapshot(after_cursor_line, after_cursor_column);
-
-        apply_operation(&mut doc, &operation)?;
-        doc.undo_stack.push(operation);
-        doc.redo_stack.clear();
-
-        Ok(doc.rope.len_lines())
-    } else {
-        Err("Document not found".to_string())
-    }
-}
-
 fn encode_base64_utf8(value: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(value.as_bytes())
 }
@@ -953,300 +826,6 @@ pub(super) fn convert_text_base64_impl(text: String, action: String) -> Result<S
         "base64_encode" => Ok(encode_base64_utf8(&text)),
         "base64_decode" => decode_base64_utf8(&text),
         _ => Err("Unsupported base64 action".to_string()),
-    }
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToggleLineCommentsResultPayload {
-    pub(super) changed: bool,
-    pub(super) line_count: usize,
-    pub(super) document_version: u64,
-    pub(super) selection_start_char: usize,
-    pub(super) selection_end_char: usize,
-}
-
-struct ToggleLineCommentsComputation {
-    start_char: usize,
-    old_text: String,
-    new_text: String,
-    selection_start_char: usize,
-    selection_end_char: usize,
-}
-
-fn split_indent_and_body<'a>(line: &'a str) -> (&'a str, &'a str) {
-    let body_start = line
-        .char_indices()
-        .find_map(|(index, ch)| {
-            if ch.is_whitespace() {
-                None
-            } else {
-                Some(index)
-            }
-        })
-        .unwrap_or(line.len());
-
-    (&line[..body_start], &line[body_start..])
-}
-
-fn is_line_commented_by_prefix(line: &str, prefix: &str) -> bool {
-    let (_, body) = split_indent_and_body(line);
-    body == prefix
-        || body.starts_with(&format!("{} ", prefix))
-        || body.starts_with(&format!("{}\t", prefix))
-}
-
-fn add_line_comment_prefix(line: &str, prefix: &str) -> String {
-    let (indent, body) = split_indent_and_body(line);
-
-    if body.trim().is_empty() {
-        return line.to_string();
-    }
-
-    format!("{indent}{prefix} {body}")
-}
-
-fn remove_line_comment_prefix(line: &str, prefix: &str) -> String {
-    let (indent, body) = split_indent_and_body(line);
-
-    if body.trim().is_empty() {
-        return line.to_string();
-    }
-
-    if is_line_commented_by_prefix(line, prefix) {
-        if body == prefix {
-            return indent.to_string();
-        }
-
-        if let Some(after_prefix) = body.strip_prefix(prefix) {
-            if after_prefix.starts_with(' ') || after_prefix.starts_with('\t') {
-                return format!("{indent}{}", &after_prefix[1..]);
-            }
-
-            return format!("{indent}{after_prefix}");
-        }
-    }
-
-    line.to_string()
-}
-
-fn map_offset_across_line_transformation(
-    old_lines: &[String],
-    new_lines: &[String],
-    old_offset: usize,
-) -> usize {
-    let safe_offset = old_offset;
-    let mut old_cursor = 0usize;
-    let mut new_cursor = 0usize;
-
-    for (index, old_line) in old_lines.iter().enumerate() {
-        let new_line = new_lines.get(index).cloned().unwrap_or_default();
-        let old_line_len = old_line.chars().count();
-        let new_line_len = new_line.chars().count();
-        let old_line_end = old_cursor + old_line_len;
-
-        if safe_offset <= old_line_end {
-            return new_cursor + (safe_offset - old_cursor).min(new_line_len);
-        }
-
-        old_cursor = old_line_end;
-        new_cursor += new_line_len;
-
-        if index < old_lines.len().saturating_sub(1) {
-            old_cursor += 1;
-            new_cursor += 1;
-
-            if safe_offset <= old_cursor {
-                return new_cursor;
-            }
-        }
-    }
-
-    new_cursor
-}
-
-fn build_char_to_byte_starts(text: &str) -> Vec<usize> {
-    let mut starts = Vec::with_capacity(text.chars().count() + 1);
-    starts.push(0);
-
-    for (byte_index, _) in text.char_indices().skip(1) {
-        starts.push(byte_index);
-    }
-
-    starts.push(text.len());
-    starts
-}
-
-fn resolve_selection_line_range_chars(
-    chars: &[char],
-    start_offset: usize,
-    end_offset: usize,
-    is_collapsed: bool,
-) -> (usize, usize, usize, usize) {
-    let len = chars.len();
-    let safe_start = start_offset.min(len);
-    let safe_end = end_offset.min(len);
-    let selection_start = safe_start.min(safe_end);
-    let selection_end = safe_start.max(safe_end);
-
-    let mut line_start = 0usize;
-    if selection_start > 0 {
-        for index in (0..selection_start).rev() {
-            if chars[index] == '\n' {
-                line_start = index + 1;
-                break;
-            }
-        }
-    }
-
-    let mut effective_selection_end = selection_end;
-    if !is_collapsed
-        && effective_selection_end > line_start
-        && chars.get(effective_selection_end.saturating_sub(1)) == Some(&'\n')
-    {
-        effective_selection_end = effective_selection_end.saturating_sub(1);
-    }
-
-    let mut line_end = len;
-    for (index, ch) in chars.iter().enumerate().skip(effective_selection_end) {
-        if *ch == '\n' {
-            line_end = index;
-            break;
-        }
-    }
-
-    (
-        line_start,
-        line_end.max(line_start),
-        selection_start,
-        selection_end,
-    )
-}
-
-fn compute_toggle_line_comments(
-    source: &str,
-    start_char: usize,
-    end_char: usize,
-    is_collapsed: bool,
-    prefix: &str,
-) -> Option<ToggleLineCommentsComputation> {
-    if prefix.trim().is_empty() {
-        return None;
-    }
-
-    let chars: Vec<char> = source.chars().collect();
-    let char_to_byte = build_char_to_byte_starts(source);
-    let (line_start, line_end, selection_start, selection_end) =
-        resolve_selection_line_range_chars(&chars, start_char, end_char, is_collapsed);
-
-    let selected_block = source
-        .get(*char_to_byte.get(line_start)?..*char_to_byte.get(line_end)?)
-        .unwrap_or_default();
-
-    let selected_lines: Vec<String> = selected_block
-        .split('\n')
-        .map(|line| line.to_string())
-        .collect();
-    let has_non_empty_line = selected_lines.iter().any(|line| !line.trim().is_empty());
-    if !has_non_empty_line {
-        return None;
-    }
-
-    let should_uncomment = selected_lines
-        .iter()
-        .filter(|line| !line.trim().is_empty())
-        .all(|line| is_line_commented_by_prefix(line, prefix));
-
-    let transformed_lines: Vec<String> = selected_lines
-        .iter()
-        .map(|line| {
-            if line.trim().is_empty() {
-                return line.to_string();
-            }
-
-            if should_uncomment {
-                remove_line_comment_prefix(line, prefix)
-            } else {
-                add_line_comment_prefix(line, prefix)
-            }
-        })
-        .collect();
-
-    let transformed_block = transformed_lines.join("\n");
-    if transformed_block == selected_block {
-        return None;
-    }
-
-    let selection_start_in_block = selection_start.saturating_sub(line_start);
-    let selection_end_in_block = selection_end.saturating_sub(line_start);
-    let next_selection_start = line_start
-        + map_offset_across_line_transformation(
-            &selected_lines,
-            &transformed_lines,
-            selection_start_in_block,
-        );
-    let next_selection_end = line_start
-        + map_offset_across_line_transformation(
-            &selected_lines,
-            &transformed_lines,
-            selection_end_in_block,
-        );
-
-    Some(ToggleLineCommentsComputation {
-        start_char: line_start,
-        old_text: selected_block.to_string(),
-        new_text: transformed_block,
-        selection_start_char: next_selection_start,
-        selection_end_char: next_selection_end,
-    })
-}
-
-pub(super) fn toggle_line_comments_impl(
-    state: State<'_, AppState>,
-    id: String,
-    start_char: usize,
-    end_char: usize,
-    is_collapsed: bool,
-    prefix: String,
-) -> Result<ToggleLineCommentsResultPayload, String> {
-    if let Some(mut doc) = state.documents.get_mut(&id) {
-        let source = doc.rope.to_string();
-        let source_len = doc.rope.len_chars();
-        let safe_start = start_char.min(source_len);
-        let safe_end = end_char.min(source_len);
-
-        let Some(computation) =
-            compute_toggle_line_comments(&source, safe_start, safe_end, is_collapsed, &prefix)
-        else {
-            return Ok(ToggleLineCommentsResultPayload {
-                changed: false,
-                line_count: doc.rope.len_lines(),
-                document_version: doc.document_version,
-                selection_start_char: safe_start.min(safe_end),
-                selection_end_char: safe_start.max(safe_end),
-            });
-        };
-
-        let operation = create_edit_operation(
-            &mut doc,
-            computation.start_char,
-            computation.old_text,
-            computation.new_text,
-        );
-
-        apply_operation(&mut doc, &operation)?;
-        doc.undo_stack.push(operation);
-        doc.redo_stack.clear();
-
-        Ok(ToggleLineCommentsResultPayload {
-            changed: true,
-            line_count: doc.rope.len_lines(),
-            document_version: doc.document_version,
-            selection_start_char: computation.selection_start_char,
-            selection_end_char: computation.selection_end_char,
-        })
-    } else {
-        Err("Document not found".to_string())
     }
 }
 
@@ -1446,11 +1025,11 @@ pub(super) fn format_document_impl(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_line_column_edits_to_text_for_test, cleanup_document_lines,
-        build_clipboard_image_from_rgba, decode_image_file_to_clipboard_image,
-        decode_image_file_to_rgba, encode_image_file_as_data_url_impl,
-        find_matching_pair_offsets_impl, line_column_to_char_index_utf16,
-        utf16_column_to_char_offset, DocumentCleanupAction, LineColumnTextEdit,
+        apply_line_column_edits_to_text_for_test, build_clipboard_image_from_rgba,
+        cleanup_document_lines, decode_image_file_to_clipboard_image, decode_image_file_to_rgba,
+        encode_image_file_as_data_url_impl, find_matching_pair_offsets_impl,
+        line_column_to_char_index_utf16, utf16_column_to_char_offset, DocumentCleanupAction,
+        LineColumnTextEdit,
     };
     use ropey::Rope;
     use std::fs;

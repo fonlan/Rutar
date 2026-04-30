@@ -886,10 +886,6 @@ mod tests {
             redo_stack: Vec::new(),
             saved_undo_depth: 0,
             saved_undo_operation_id: None,
-            parser: None,
-            tree: None,
-            language: None,
-            syntax_dirty: false,
             saved_file_fingerprint: None,
         }
     }

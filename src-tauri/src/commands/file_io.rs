@@ -165,21 +165,6 @@ fn measure_document_size_bytes(
     encoded.len() as u64
 }
 
-fn configure_document_syntax(doc: &mut Document, enable_syntax: bool) {
-    if !enable_syntax {
-        doc.language = None;
-        doc.parser = None;
-        doc.tree = None;
-        doc.syntax_dirty = false;
-        return;
-    }
-
-    doc.language = syntax::resolve_document_language(&doc.path, doc.syntax_override.as_deref());
-    doc.parser = syntax::create_parser(doc.language.clone());
-    doc.tree = None;
-    doc.syntax_dirty = doc.parser.is_some();
-}
-
 fn resolve_new_file_line_ending(preferred: Option<&str>) -> LineEnding {
     if let Some(line_ending) = preferred.and_then(LineEnding::from_label) {
         return line_ending;
@@ -438,7 +423,7 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
 
     let id = Uuid::new_v4().to_string();
 
-    let mut doc = Document {
+    let doc = Document {
         rope: snapshot.rope.clone(),
         saved_rope: snapshot.rope,
         encoding: snapshot.encoding,
@@ -454,14 +439,8 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
         redo_stack: Vec::new(),
         saved_undo_depth: 0,
         saved_undo_operation_id: None,
-        parser: None,
-        tree: None,
-        language: None,
-        syntax_dirty: false,
         saved_file_fingerprint: Some(snapshot.fingerprint),
     };
-
-    configure_document_syntax(&mut doc, !snapshot.large_file_mode);
 
     state.documents.insert(id.clone(), doc);
 
@@ -510,43 +489,6 @@ pub(super) async fn open_files_impl(
             },
         })
         .collect()
-}
-
-pub(super) fn get_visible_lines_chunk_impl(
-    state: State<'_, AppState>,
-    id: String,
-    start_line: usize,
-    end_line: usize,
-) -> Result<Vec<String>, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        let rope = &doc.rope;
-        let len = rope.len_lines();
-
-        let start = start_line.min(len);
-        let end = end_line.min(len);
-
-        if start >= end {
-            return Ok(Vec::new());
-        }
-
-        let mut lines = Vec::with_capacity(end - start);
-        for line_idx in start..end {
-            let mut text = rope.line(line_idx).to_string();
-
-            if text.ends_with('\n') {
-                text.pop();
-                if text.ends_with('\r') {
-                    text.pop();
-                }
-            }
-
-            lines.push(text);
-        }
-
-        Ok(lines)
-    } else {
-        Err("Document not found".to_string())
-    }
 }
 
 pub(super) fn get_bookmark_line_previews_impl(
@@ -690,13 +632,11 @@ pub(super) async fn render_markdown_preview_impl(
 
 pub(super) fn close_file_impl(state: State<'_, AppState>, id: String) {
     state.documents.remove(&id);
-    state.syntax_request_serials.remove(&id);
 }
 
 pub(super) fn close_files_impl(state: State<'_, AppState>, ids: Vec<String>) {
     for id in ids {
         state.documents.remove(&id);
-        state.syntax_request_serials.remove(&id);
     }
 }
 
@@ -786,8 +726,6 @@ pub(super) async fn save_file_as_impl(
                 .ok()
                 .map(|metadata| build_file_fingerprint(&metadata));
         }
-        let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
-        configure_document_syntax(&mut doc, enable_syntax);
         Ok(())
     } else {
         Err("Document not found".to_string())
@@ -854,8 +792,6 @@ pub(super) fn set_document_syntax_impl(
     if let Some(mut doc) = state.documents.get_mut(&id) {
         let normalized = syntax::normalize_syntax_override(syntax_override.as_deref())?;
         doc.syntax_override = normalized;
-        let enable_syntax = doc.rope.len_bytes() <= LARGE_FILE_THRESHOLD_BYTES;
-        configure_document_syntax(&mut doc, enable_syntax);
         Ok(())
     } else {
         Err("Document not found".to_string())
@@ -870,7 +806,7 @@ pub(super) fn new_file_impl(
     let encoding = encoding_rs::UTF_8;
     let line_ending = resolve_new_file_line_ending(new_file_line_ending.as_deref());
 
-    let mut doc = Document {
+    let doc = Document {
         rope: Rope::new(),
         saved_rope: Rope::new(),
         encoding,
@@ -886,14 +822,8 @@ pub(super) fn new_file_impl(
         redo_stack: Vec::new(),
         saved_undo_depth: 0,
         saved_undo_operation_id: None,
-        parser: None,
-        tree: None,
-        language: None,
-        syntax_dirty: false,
         saved_file_fingerprint: None,
     };
-
-    configure_document_syntax(&mut doc, true);
 
     state.documents.insert(id.clone(), doc);
 
@@ -977,7 +907,6 @@ pub(super) fn reload_file_from_disk_impl(
         doc.saved_undo_depth = 0;
         doc.saved_undo_operation_id = None;
         doc.saved_file_fingerprint = Some(snapshot.fingerprint);
-        configure_document_syntax(&mut doc, !snapshot.large_file_mode);
 
         Ok(FileInfo {
             id,
@@ -1389,7 +1318,10 @@ mod tests {
         let html = render_markdown_preview_html("![Preview](./images/pic.png)")
             .expect("markdown image render should succeed");
 
-        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains("<img"),
+            "html should contain image tag: {html}"
+        );
         assert!(
             html.contains(r#"src="./images/pic.png""#),
             "html should keep relative image src: {html}"
@@ -1405,7 +1337,10 @@ mod tests {
         let html = render_markdown_preview_html(r#"<img src="./images/pic.png" alt="Preview">"#)
             .expect("inline html image render should succeed");
 
-        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains("<img"),
+            "html should contain image tag: {html}"
+        );
         assert!(
             html.contains(r#"src="./images/pic.png""#),
             "html should keep inline html image src: {html}"
@@ -1421,7 +1356,10 @@ mod tests {
         let html = render_markdown_preview_html("![Inline](data:image/png;base64,Zm9v)")
             .expect("data url image render should succeed");
 
-        assert!(html.contains("<img"), "html should contain image tag: {html}");
+        assert!(
+            html.contains("<img"),
+            "html should contain image tag: {html}"
+        );
         assert!(
             html.contains(r#"src="data:image/png;base64,Zm9v""#),
             "html should keep data url image src: {html}"

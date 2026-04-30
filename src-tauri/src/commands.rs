@@ -1,7 +1,4 @@
-use crate::state::{
-    default_line_ending, AppState, Document, DocumentParser, DocumentTree, EditOperation,
-    LineEnding,
-};
+use crate::state::{default_line_ending, AppState, Document, EditOperation, LineEnding};
 use chardetng::EncodingDetector;
 use dashmap::DashMap;
 use encoding_rs::Encoding;
@@ -13,7 +10,6 @@ use std::fs::{self, File};
 use std::process::Command;
 use std::sync::OnceLock;
 use tauri::State;
-use tree_sitter::{InputEdit, Point};
 use uuid::Uuid;
 
 mod config;
@@ -37,7 +33,7 @@ use self::constants::*;
 use self::search::*;
 pub use self::settings::AppConfig;
 pub use self::types::{
-    DirEntry, EditHistoryState, FileInfo, SyntaxToken, WindowsFileAssociationStatus, WordCountInfo,
+    DirEntry, EditHistoryState, FileInfo, WindowsFileAssociationStatus, WordCountInfo,
 };
 
 #[derive(Clone, Copy)]
@@ -378,10 +374,6 @@ mod tests {
             redo_stack: Vec::new(),
             saved_undo_depth: 0,
             saved_undo_operation_id: None,
-            parser: None,
-            tree: None,
-            language: None,
-            syntax_dirty: false,
             saved_file_fingerprint,
         }
     }
