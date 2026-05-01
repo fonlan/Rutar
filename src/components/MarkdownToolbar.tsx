@@ -48,18 +48,13 @@ import { t } from '@/i18n';
 import { isMarkdownTab } from '@/lib/markdown';
 import { nativePathToFileUrl } from '@/lib/markdownPaths';
 import { dispatchMarkdownToolbarAction, type MarkdownHeadingLevel } from '@/lib/markdownToolbar';
+import { pathBaseName } from '@/lib/pathUtils';
 import { cn } from '@/lib/utils';
 import { isDiffTab, useStore } from '@/store/useStore';
 
 const DEFAULT_TEXT_COLOR = '#1f2937';
 const DEFAULT_BACKGROUND_COLOR = '#fff7a8';
 const TOOLBAR_ICON_CLASS_NAME = 'h-4 w-4';
-
-function pathBaseName(path: string) {
-  const normalizedPath = path.trim().replace(/[\\/]+$/, '');
-  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-  return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
-}
 
 function fileAltText(path: string) {
   const baseName = pathBaseName(path);

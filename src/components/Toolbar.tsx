@@ -24,6 +24,7 @@ import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
 import { isMarkdownTab } from '@/lib/markdown';
 import { dispatchEditorFindOpen } from '@/lib/editorFind';
+import { pathBaseName } from '@/lib/pathUtils';
 import { cn } from '@/lib/utils';
 
 function dispatchEditorForceRefresh(
@@ -170,12 +171,6 @@ const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canRedo: false,
     isDirty: false,
 };
-
-function pathBaseName(path: string) {
-    const normalizedPath = path.trim().replace(/[\\/]+$/, '');
-    const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-    return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
-}
 
 interface ToolbarProps {
     onMarkdownPreviewToggleIntent?: (nextOpen: boolean) => void;

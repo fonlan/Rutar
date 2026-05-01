@@ -1,4 +1,4 @@
-import { shouldLoadMoreForSearchPanelStep } from './resolveSearchPanelBoundedIndex';
+import { shouldLoadMoreForSearchPanelStep } from './resolveSearchPanelStepTargets';
 
 interface LoadMoreSearchPanelStepMatchesOptions<TMatch> {
   currentIndex: number;

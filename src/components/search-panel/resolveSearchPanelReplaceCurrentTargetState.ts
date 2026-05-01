@@ -1,4 +1,4 @@
-import { resolveSearchPanelBoundedIndex } from './resolveSearchPanelBoundedIndex';
+import { resolveSearchPanelBoundedIndex } from './resolveSearchPanelStepTargets';
 import type { SearchMatch } from './types';
 
 interface ResolveReplaceCurrentTargetStateOptions {

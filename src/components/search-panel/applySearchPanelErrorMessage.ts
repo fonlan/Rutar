@@ -1,9 +1,11 @@
-import { resolveSearchPanelErrorMessage } from './resolveSearchPanelErrorMessage';
-
 interface ApplySearchPanelErrorMessageOptions {
   error: unknown;
   prefix: string;
   setErrorMessage: (value: string | null) => void;
+}
+
+export function resolveSearchPanelErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function applySearchPanelErrorMessage({

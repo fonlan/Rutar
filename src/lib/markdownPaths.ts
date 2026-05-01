@@ -1,4 +1,5 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { getParentDirectoryPath } from '@/lib/pathUtils';
 
 const EXTERNAL_IMAGE_SRC_PATTERN = /^(?:https?:|data:|blob:|asset:|\/\/)/i;
 const EXTERNAL_OPEN_TARGET_PATTERN = /^(?:https?:|mailto:|tel:|data:|blob:)/i;
@@ -7,28 +8,6 @@ const FRAGMENT_LINK_PATTERN = /^#/;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
 const WINDOWS_FILE_URL_PATH_PATTERN = /^\/[a-zA-Z]:/;
 const UNC_PATH_PATTERN = /^\\\\/;
-
-export function getParentDirectoryPath(filePath: string): string | null {
-  const normalizedPath = filePath.trim();
-  if (!normalizedPath) {
-    return null;
-  }
-
-  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-  if (separatorIndex < 0) {
-    return null;
-  }
-
-  if (separatorIndex === 0) {
-    return normalizedPath[0];
-  }
-
-  if (separatorIndex === 2 && /^[a-zA-Z]:[\\/]/.test(normalizedPath)) {
-    return normalizedPath.slice(0, 3);
-  }
-
-  return normalizedPath.slice(0, separatorIndex);
-}
 
 export function isNativeAbsolutePath(filePath: string) {
   return (

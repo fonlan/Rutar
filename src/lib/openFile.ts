@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isReusableBlankTab } from '@/lib/tabUtils';
 import { addRecentFilePath } from '@/lib/recentPaths';
+import { pathBaseName } from '@/lib/pathUtils';
 import { FileTab, useStore } from '@/store/useStore';
 
 const openingPaths = new Set<string>();
@@ -17,12 +18,6 @@ interface OpenFileBatchResultItem {
   success: boolean;
   fileInfo?: FileTab;
   error?: string;
-}
-
-function pathBaseName(path: string) {
-  const normalizedPath = path.trim().replace(/[\\/]+$/, '');
-  const separatorIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
-  return separatorIndex >= 0 ? normalizedPath.slice(separatorIndex + 1) || normalizedPath : normalizedPath;
 }
 
 function dispatchFileOpenLoading(detail: FileOpenLoadingEventDetail) {
