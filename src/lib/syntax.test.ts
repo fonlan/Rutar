@@ -95,6 +95,8 @@ describe("detectSyntaxKeyFromTab", () => {
       { fileName: "app.properties", expected: "ini" },
       { fileName: "index.xhtml", expected: "html" },
       { fileName: "theme.scss", expected: "css" },
+      { fileName: "setup.bat", expected: "batch" },
+      { fileName: "build.cmd", expected: "batch" },
       { fileName: "shell.zsh", expected: "zsh" },
       { fileName: "config.toml", expected: "toml" },
       { fileName: "config.yml", expected: "yaml" },
@@ -147,6 +149,7 @@ describe("syntax helpers", () => {
     expect(getSyntaxLabel("typescript")).toBe("TypeScript");
     expect(getSyntaxLabel("jsonc")).toBe("JSONC");
     expect(getSyntaxLabel("dockerfile")).toBe("Dockerfile");
+    expect(getSyntaxLabel("batch")).toBe("Batch");
     expect(getSyntaxLabel("powershell")).toBe("PowerShell");
     expect(getSyntaxLabel("unknown" as never)).toBe("Plain Text");
   });
@@ -155,6 +158,7 @@ describe("syntax helpers", () => {
     expect(getLineCommentPrefixForSyntaxKey("typescript")).toBe("//");
     expect(getLineCommentPrefixForSyntaxKey("dockerfile")).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey("jsonc")).toBe("//");
+    expect(getLineCommentPrefixForSyntaxKey("batch")).toBe("REM");
     expect(getLineCommentPrefixForSyntaxKey("zsh")).toBe("#");
     expect(getLineCommentPrefixForSyntaxKey("lua")).toBe("--");
     expect(getLineCommentPrefixForSyntaxKey("sql")).toBe("--");

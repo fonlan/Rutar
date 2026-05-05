@@ -110,6 +110,7 @@ const tabFileIconConfigBySyntaxKey: Partial<Record<SyntaxKey, TabFileIconConfig>
     ini: { Icon: Braces, className: 'text-amber-600' },
     html: { Icon: FileCode2, className: 'text-orange-500' },
     css: { Icon: FileCode2, className: 'text-pink-500' },
+    batch: { Icon: Terminal, className: 'text-slate-600' },
     bash: { Icon: Terminal, className: 'text-green-500' },
     zsh: { Icon: Terminal, className: 'text-emerald-500' },
     toml: { Icon: Braces, className: 'text-slate-500' },

@@ -14,6 +14,7 @@ export const SYNTAX_OPTIONS: Array<{ value: SyntaxKey; label: string }> = [
   { value: 'ini', label: 'INI' },
   { value: 'html', label: 'HTML' },
   { value: 'css', label: 'CSS' },
+  { value: 'batch', label: 'Batch' },
   { value: 'bash', label: 'Bash' },
   { value: 'zsh', label: 'Zsh' },
   { value: 'toml', label: 'TOML' },
@@ -65,6 +66,7 @@ const lineCommentPrefixBySyntax: Partial<Record<SyntaxKey, string>> = {
   sql: '--',
   swift: '//',
   css: '//',
+  batch: 'REM',
   html: '//',
   xml: '//',
 };
@@ -155,6 +157,9 @@ export function detectSyntaxKeyFromTab(tab: Pick<FileTab, 'name' | 'path'>): Syn
     case 'sass':
     case 'less':
       return 'css';
+    case 'bat':
+    case 'cmd':
+      return 'batch';
     case 'sh':
     case 'bash':
       return 'bash';

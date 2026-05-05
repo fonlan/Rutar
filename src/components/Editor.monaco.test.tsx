@@ -405,6 +405,23 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorCreateModel).toHaveBeenCalledWith('', expect.any(String), modelUri);
   });
 
+  it('uses Monaco batch language for batch files', async () => {
+    const tab = createTab({
+      id: 'tab-batch-language',
+      name: 'setup.bat',
+      path: 'C:\\repo\\setup.bat',
+    });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.editorCreateModel).toHaveBeenCalledWith('', 'bat', expect.anything());
+    });
+  });
+
   it('handles navigate event and moves cursor', async () => {
     const tab = createTab();
     useStore.setState({

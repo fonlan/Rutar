@@ -383,6 +383,36 @@ describe('DiffEditor (Monaco)', () => {
     expect(monacoDiffMockState.targetEditor.getModel()?.getValue()).toBe('line-1');
   });
 
+  it('uses Monaco batch language for batch files in both panes', async () => {
+    const sourceTab = createFileTab({
+      id: 'tab-source',
+      name: 'source.bat',
+      path: 'C:\\repo\\source.bat',
+    });
+    const targetTab = createFileTab({
+      id: 'tab-target',
+      name: 'target.cmd',
+      path: 'C:\\repo\\target.cmd',
+    });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+    });
+
+    render(<DiffEditor tab={diffTab} />);
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.getModel()?.getLanguageId()).toBe('bat');
+      expect(monacoDiffMockState.targetEditor.getModel()?.getLanguageId()).toBe('bat');
+    });
+  });
+
   it('refreshes diff metadata after source pane edits', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });

@@ -378,6 +378,8 @@ function resolveMonacoLanguage(fileTab: FileTab | null) {
       return 'html';
     case 'css':
       return 'css';
+    case 'batch':
+      return 'bat';
     case 'bash':
     case 'zsh':
       return 'shell';

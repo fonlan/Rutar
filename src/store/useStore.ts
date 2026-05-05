@@ -65,6 +65,7 @@ export type SyntaxKey =
   | 'ini'
   | 'html'
   | 'css'
+  | 'batch'
   | 'bash'
   | 'zsh'
   | 'toml'
