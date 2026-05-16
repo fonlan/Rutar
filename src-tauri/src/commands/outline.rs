@@ -1,6 +1,20 @@
 use crate::state::AppState;
+use ropey::Rope;
+use std::cell::RefCell;
 use tauri::State;
-use tree_sitter::{Language, Parser};
+use tree_sitter::{Language, Parser, Tree};
+
+thread_local! {
+    static OUTLINE_PARSER: RefCell<Parser> = RefCell::new(Parser::new());
+}
+
+fn rope_to_string(rope: &Rope) -> String {
+    let mut buffer = String::with_capacity(rope.len_bytes());
+    for chunk in rope.chunks() {
+        buffer.push_str(chunk);
+    }
+    buffer
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -1127,13 +1141,19 @@ fn parse_markdown_outline(source: &str) -> Vec<OutlineNode> {
     roots
 }
 
-pub fn get_outline_impl(
+pub async fn get_outline_impl(
     state: State<'_, AppState>,
     id: String,
     file_type: String,
 ) -> Result<Vec<OutlineNode>, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        let source = doc.rope.to_string();
+    let rope = state
+        .documents
+        .get(&id)
+        .map(|doc| doc.rope.clone())
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<OutlineNode>, String> {
+        let source = rope_to_string(&rope);
         let outline_type = parse_outline_file_type(&file_type)
             .ok_or_else(|| "Unsupported outline type".to_string())?;
 
@@ -1147,14 +1167,15 @@ pub fn get_outline_impl(
         let language = get_outline_language(outline_type)
             .ok_or_else(|| "Unsupported outline type".to_string())?;
 
-        let mut parser = Parser::new();
-        parser
-            .set_language(&language)
-            .map_err(|error| format!("Failed to configure outline parser: {}", error))?;
-
-        let tree = parser
-            .parse(&source, None)
-            .ok_or_else(|| "Failed to parse outline".to_string())?;
+        let tree: Tree = OUTLINE_PARSER.with(|cell| -> Result<Tree, String> {
+            let mut parser = cell.borrow_mut();
+            parser
+                .set_language(&language)
+                .map_err(|error| format!("Failed to configure outline parser: {}", error))?;
+            parser
+                .parse(&source, None)
+                .ok_or_else(|| "Failed to parse outline".to_string())
+        })?;
 
         let root_node = tree.root_node();
 
@@ -1199,9 +1220,9 @@ pub fn get_outline_impl(
             &source,
             outline_type,
         )])
-    } else {
-        Err("Document not found".to_string())
-    }
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-const setupMonacoMockState = vi.hoisted(() => {
+﻿const setupMonacoMockState = vi.hoisted(() => {
   const createWorker = (kind: string) =>
     vi.fn(function WorkerMock(this: { kind?: string }) {
       this.kind = kind;
@@ -96,8 +96,8 @@ describe('setupMonacoEnvironment', () => {
     expect(setupMonacoMockState.tsWorkerCtor).toHaveBeenCalledTimes(2);
     expect(setupMonacoMockState.editorWorkerCtor).toHaveBeenCalledTimes(1);
 
-    expect(setupMonacoMockState.tsDefaults.setEagerModelSync).toHaveBeenCalledWith(true);
-    expect(setupMonacoMockState.jsDefaults.setEagerModelSync).toHaveBeenCalledWith(true);
+    expect(setupMonacoMockState.tsDefaults.setEagerModelSync).toHaveBeenCalledWith(false);
+    expect(setupMonacoMockState.jsDefaults.setEagerModelSync).toHaveBeenCalledWith(false);
     expect(setupMonacoMockState.tsDefaults.setDiagnosticsOptions).toHaveBeenCalledWith(
       expect.objectContaining({
         noSemanticValidation: false,

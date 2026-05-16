@@ -1,4 +1,4 @@
-use super::*;
+﻿use super::*;
 use similar::{Algorithm, ChangeTag, TextDiff};
 use std::collections::HashSet;
 
@@ -93,22 +93,12 @@ fn collect_rope_lines(rope: &Rope) -> Vec<String> {
     lines
 }
 
-fn load_document_lines(state: &State<'_, AppState>, id: &str) -> Result<Vec<String>, String> {
+fn clone_rope(state: &State<'_, AppState>, id: &str) -> Result<Rope, String> {
     let doc = state
         .documents
         .get(id)
         .ok_or_else(|| "Document not found".to_string())?;
-
-    Ok(collect_rope_lines(&doc.rope))
-}
-
-fn load_saved_document_lines(state: &State<'_, AppState>, id: &str) -> Result<Vec<String>, String> {
-    let doc = state
-        .documents
-        .get(id)
-        .ok_or_else(|| "Document not found".to_string())?;
-
-    Ok(collect_rope_lines(&doc.saved_rope))
+    Ok(doc.rope.clone())
 }
 
 fn load_document_is_dirty(state: &State<'_, AppState>, id: &str) -> Result<bool, String> {
@@ -693,34 +683,41 @@ pub(super) async fn compare_documents_by_line_impl(
     source_id: String,
     target_id: String,
 ) -> Result<LineDiffResult, String> {
-    let source_lines = load_document_lines(&state, &source_id)?;
-    let target_lines = load_document_lines(&state, &target_id)?;
+    let source_rope = clone_rope(&state, &source_id)?;
+    let target_rope = clone_rope(&state, &target_id)?;
 
-    tauri::async_runtime::spawn_blocking(move || build_line_diff_result(source_lines, target_lines))
-        .await
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let source_lines = collect_rope_lines(&source_rope);
+        let target_lines = collect_rope_lines(&target_rope);
+        build_line_diff_result(source_lines, target_lines)
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 pub(super) async fn get_unsaved_change_line_numbers_impl(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<usize>, String> {
-    let has_unsaved_text_changes = {
+    let (has_unsaved_text_changes, source_rope, target_rope) = {
         let doc = state
             .documents
             .get(&id)
             .ok_or_else(|| "Document not found".to_string())?;
-        doc.has_unsaved_text_changes()
+        (
+            doc.has_unsaved_text_changes(),
+            doc.saved_rope.clone(),
+            doc.rope.clone(),
+        )
     };
 
     if !has_unsaved_text_changes {
         return Ok(Vec::new());
     }
 
-    let source_lines = load_saved_document_lines(&state, &id)?;
-    let target_lines = load_document_lines(&state, &id)?;
-
     tauri::async_runtime::spawn_blocking(move || {
+        let source_lines = collect_rope_lines(&source_rope);
+        let target_lines = collect_rope_lines(&target_rope);
         build_target_changed_line_numbers(source_lines, target_lines)
     })
     .await
@@ -738,9 +735,10 @@ pub(super) async fn search_diff_panel_aligned_row_matches_impl(
         return Ok(Vec::new());
     }
 
-    let lines = load_document_lines(&state, &id)?;
+    let rope = clone_rope(&state, &id)?;
 
     tauri::async_runtime::spawn_blocking(move || {
+        let lines = collect_rope_lines(&rope);
         let matched_line_numbers =
             find_line_numbers_by_keyword(lines.as_slice(), normalized_keyword.as_str());
         map_matched_line_numbers_to_aligned_rows(
@@ -837,12 +835,14 @@ pub(super) async fn apply_aligned_diff_edit_impl(
         let _ = apply_serialized_text_to_document(&mut doc, next_text)?;
     }
 
-    let source_lines = load_document_lines(&state, &source_id)?;
-    let target_lines = load_document_lines(&state, &target_id)?;
+    let source_rope = clone_rope(&state, &source_id)?;
+    let target_rope = clone_rope(&state, &target_id)?;
     let source_is_dirty = load_document_is_dirty(&state, &source_id)?;
     let target_is_dirty = load_document_is_dirty(&state, &target_id)?;
 
     let line_diff = tauri::async_runtime::spawn_blocking(move || {
+        let source_lines = collect_rope_lines(&source_rope);
+        let target_lines = collect_rope_lines(&target_rope);
         build_line_diff_result(source_lines, target_lines)
     })
     .await

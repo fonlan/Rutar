@@ -1,4 +1,4 @@
-import * as monaco from 'monaco-editor';
+﻿import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
@@ -65,8 +65,11 @@ function configureMonacoBuiltinLanguageServices() {
   const tsApi = languagesApi.typescript;
   const jsonApi = languagesApi.json;
 
-  tsApi.typescriptDefaults.setEagerModelSync(true);
-  tsApi.javascriptDefaults.setEagerModelSync(true);
+  // Rutar is a general-purpose text editor rather than a multi-file TS IDE,
+  // so we leave eager model sync off to avoid spinning the TS worker on every
+  // opened JS/TS/JSON model. Single-file diagnostics still work.
+  tsApi.typescriptDefaults.setEagerModelSync(false);
+  tsApi.javascriptDefaults.setEagerModelSync(false);
 
   const diagnosticsOptions = {
     noSemanticValidation: false,

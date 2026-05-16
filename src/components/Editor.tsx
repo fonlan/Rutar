@@ -8,6 +8,7 @@ import {
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 import { t } from '@/i18n';
 import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
@@ -45,14 +46,6 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];
-function dispatchDocumentUpdated(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:document-updated', {
-      detail: { tabId },
-    })
-  );
-}
-
 function resolveMonacoLanguage(fileTab: FileTab) {
   const syntaxKey = fileTab.syntaxOverride ?? detectSyntaxKeyFromTab(fileTab);
   switch (syntaxKey) {

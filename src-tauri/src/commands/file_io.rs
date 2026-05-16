@@ -388,7 +388,63 @@ fn detect_indentation_from_rope(rope: &Rope, max_lines: usize) -> Option<Detecte
     None
 }
 
-fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<FileInfo, String> {
+fn register_disk_snapshot_as_document(
+    state: &State<'_, AppState>,
+    path: String,
+    path_buf: PathBuf,
+    snapshot: DiskFileSnapshot,
+) -> FileInfo {
+    let size_bytes =
+        measure_document_size_bytes(&snapshot.rope, snapshot.encoding, snapshot.line_ending);
+    let encoding_name = snapshot.encoding.name().to_string();
+    let line_ending_label = snapshot.line_ending.label().to_string();
+    let line_count = snapshot.line_count;
+    let large_file_mode = snapshot.large_file_mode;
+
+    let id = Uuid::new_v4().to_string();
+
+    let doc = Document {
+        rope: snapshot.rope.clone(),
+        saved_rope: snapshot.rope,
+        encoding: snapshot.encoding,
+        saved_encoding: encoding_name.clone(),
+        line_ending: snapshot.line_ending,
+        saved_line_ending: snapshot.line_ending,
+        path: Some(path_buf.clone()),
+        syntax_override: None,
+        document_version: 0,
+        saved_document_version: 0,
+        next_edit_operation_id: 1,
+        undo_stack: Vec::new(),
+        redo_stack: Vec::new(),
+        saved_undo_depth: 0,
+        saved_undo_operation_id: None,
+        saved_file_fingerprint: Some(snapshot.fingerprint),
+    };
+
+    state.documents.insert(id.clone(), doc);
+
+    FileInfo {
+        id,
+        path,
+        name: path_buf
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
+        encoding: encoding_name,
+        line_ending: line_ending_label,
+        line_count,
+        size_bytes,
+        large_file_mode,
+        syntax_override: None,
+    }
+}
+
+async fn open_file_by_path_async(
+    state: &State<'_, AppState>,
+    path: String,
+) -> Result<FileInfo, String> {
     let path_buf = PathBuf::from(&path);
 
     if let Some(existing) = state
@@ -398,7 +454,7 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
     {
         return Ok(FileInfo {
             id: existing.key().clone(),
-            path: path.clone(),
+            path,
             name: path_buf
                 .file_name()
                 .unwrap_or_default()
@@ -417,78 +473,47 @@ fn open_file_by_path_impl(state: &State<'_, AppState>, path: String) -> Result<F
         });
     }
 
-    let snapshot = read_disk_file_snapshot(&path_buf)?;
-    let size_bytes =
-        measure_document_size_bytes(&snapshot.rope, snapshot.encoding, snapshot.line_ending);
+    let path_for_io = path_buf.clone();
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || read_disk_file_snapshot(&path_for_io))
+            .await
+            .map_err(|error| error.to_string())??;
 
-    let id = Uuid::new_v4().to_string();
-
-    let doc = Document {
-        rope: snapshot.rope.clone(),
-        saved_rope: snapshot.rope,
-        encoding: snapshot.encoding,
-        saved_encoding: snapshot.encoding.name().to_string(),
-        line_ending: snapshot.line_ending,
-        saved_line_ending: snapshot.line_ending,
-        path: Some(path_buf.clone()),
-        syntax_override: None,
-        document_version: 0,
-        saved_document_version: 0,
-        next_edit_operation_id: 1,
-        undo_stack: Vec::new(),
-        redo_stack: Vec::new(),
-        saved_undo_depth: 0,
-        saved_undo_operation_id: None,
-        saved_file_fingerprint: Some(snapshot.fingerprint),
-    };
-
-    state.documents.insert(id.clone(), doc);
-
-    Ok(FileInfo {
-        id,
-        path: path.clone(),
-        name: path_buf
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string(),
-        encoding: snapshot.encoding.name().to_string(),
-        line_ending: snapshot.line_ending.label().to_string(),
-        line_count: snapshot.line_count,
-        size_bytes,
-        large_file_mode: snapshot.large_file_mode,
-        syntax_override: None,
-    })
+    Ok(register_disk_snapshot_as_document(
+        state, path, path_buf, snapshot,
+    ))
 }
 
 pub(super) async fn open_file_impl(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<FileInfo, String> {
-    open_file_by_path_impl(&state, path)
+    open_file_by_path_async(&state, path).await
 }
 
 pub(super) async fn open_files_impl(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Vec<OpenFileBatchResultItem> {
-    paths
-        .into_iter()
-        .map(|path| match open_file_by_path_impl(&state, path.clone()) {
-            Ok(file_info) => OpenFileBatchResultItem {
-                path,
+    let mut results = Vec::with_capacity(paths.len());
+    for path in paths {
+        let path_for_result = path.clone();
+        match open_file_by_path_async(&state, path).await {
+            Ok(file_info) => results.push(OpenFileBatchResultItem {
+                path: path_for_result,
                 success: true,
                 file_info: Some(file_info),
                 error: None,
-            },
-            Err(error) => OpenFileBatchResultItem {
-                path,
+            }),
+            Err(error) => results.push(OpenFileBatchResultItem {
+                path: path_for_result,
                 success: false,
                 file_info: None,
                 error: Some(error),
-            },
-        })
-        .collect()
+            }),
+        }
+    }
+    results
 }
 
 pub(super) fn get_bookmark_line_previews_impl(
@@ -552,15 +577,25 @@ pub(super) fn get_visible_lines_impl(
     }
 }
 
-pub(super) fn get_document_text_impl(
+pub(super) async fn get_document_text_impl(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<String, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        Ok(doc.rope.to_string())
-    } else {
-        Err("Document not found".to_string())
-    }
+    let rope = state
+        .documents
+        .get(&id)
+        .map(|doc| doc.rope.clone())
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut buffer = String::with_capacity(rope.len_bytes());
+        for chunk in rope.chunks() {
+            buffer.push_str(chunk);
+        }
+        buffer
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 fn build_document_text_chunks(rope: &Rope) -> Vec<String> {
@@ -589,15 +624,19 @@ fn build_document_text_chunks(rope: &Rope) -> Vec<String> {
     chunks
 }
 
-pub(super) fn get_document_text_chunks_impl(
+pub(super) async fn get_document_text_chunks_impl(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<String>, String> {
-    if let Some(doc) = state.documents.get(&id) {
-        Ok(build_document_text_chunks(&doc.rope))
-    } else {
-        Err("Document not found".to_string())
-    }
+    let rope = state
+        .documents
+        .get(&id)
+        .map(|doc| doc.rope.clone())
+        .ok_or_else(|| "Document not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || build_document_text_chunks(&rope))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 fn markdown_preview_options() -> markdown::Options {
@@ -649,55 +688,111 @@ pub struct SaveFileBatchResultItem {
     pub error: Option<String>,
 }
 
-fn save_file_by_id(state: &State<'_, AppState>, id: &str) -> Result<(), String> {
-    if let Some(mut doc) = state.documents.get_mut(id) {
-        if let Some(path) = doc.path.clone() {
-            let mut file = File::create(&path).map_err(|e| e.to_string())?;
-            let persist_content = build_persist_content(&doc);
-            let (bytes, _, _malformed) = doc.encoding.encode(&persist_content);
+struct SaveSnapshot {
+    path: PathBuf,
+    bytes: Vec<u8>,
+    rope: Rope,
+    document_version: u64,
+    encoding_name: String,
+    line_ending: LineEnding,
+    saved_undo_depth: usize,
+    saved_undo_operation_id: Option<u64>,
+}
 
-            use std::io::Write;
-            file.write_all(&bytes).map_err(|e| e.to_string())?;
-            doc.saved_rope = doc.rope.clone();
-            doc.saved_document_version = doc.document_version;
-            doc.saved_encoding = doc.encoding.name().to_string();
-            doc.saved_line_ending = doc.line_ending;
-            doc.mark_saved_undo_checkpoint();
-            doc.saved_file_fingerprint = fs::metadata(&path)
-                .ok()
-                .map(|metadata| build_file_fingerprint(&metadata));
-
-            Ok(())
-        } else {
-            Err("No path associated with this file. Use Save As.".to_string())
-        }
-    } else {
-        Err("Document not found".to_string())
+fn snapshot_for_save(doc: &Document, path: PathBuf) -> SaveSnapshot {
+    let persist_content = build_persist_content(doc);
+    let (bytes_cow, _, _malformed) = doc.encoding.encode(&persist_content);
+    SaveSnapshot {
+        path,
+        bytes: bytes_cow.into_owned(),
+        rope: doc.rope.clone(),
+        document_version: doc.document_version,
+        encoding_name: doc.encoding.name().to_string(),
+        line_ending: doc.line_ending,
+        saved_undo_depth: doc.undo_stack.len(),
+        saved_undo_operation_id: doc.undo_stack.last().map(|op| op.operation_id),
     }
+}
+
+async fn write_snapshot_to_disk(
+    snapshot: SaveSnapshot,
+) -> Result<(SaveSnapshot, Option<FileFingerprint>), String> {
+    let path_for_io = snapshot.path.clone();
+    let bytes_for_io = snapshot.bytes.clone();
+    let fingerprint = tauri::async_runtime::spawn_blocking(
+        move || -> Result<Option<FileFingerprint>, String> {
+            let mut file = File::create(&path_for_io).map_err(|e| e.to_string())?;
+            use std::io::Write;
+            file.write_all(&bytes_for_io).map_err(|e| e.to_string())?;
+            Ok(fs::metadata(&path_for_io)
+                .ok()
+                .map(|metadata| build_file_fingerprint(&metadata)))
+        },
+    )
+    .await
+    .map_err(|error| error.to_string())??;
+    Ok((snapshot, fingerprint))
+}
+
+fn apply_save_snapshot_to_doc(
+    doc: &mut Document,
+    snapshot: SaveSnapshot,
+    fingerprint: Option<FileFingerprint>,
+) {
+    doc.saved_rope = snapshot.rope;
+    doc.saved_document_version = snapshot.document_version;
+    doc.saved_encoding = snapshot.encoding_name;
+    doc.saved_line_ending = snapshot.line_ending;
+    doc.saved_undo_depth = snapshot.saved_undo_depth;
+    doc.saved_undo_operation_id = snapshot.saved_undo_operation_id;
+    doc.saved_file_fingerprint = fingerprint;
+}
+
+async fn save_file_by_id_async(state: &State<'_, AppState>, id: &str) -> Result<(), String> {
+    let snapshot = {
+        let doc = state
+            .documents
+            .get(id)
+            .ok_or_else(|| "Document not found".to_string())?;
+        let path = doc
+            .path
+            .clone()
+            .ok_or_else(|| "No path associated with this file. Use Save As.".to_string())?;
+        snapshot_for_save(&doc, path)
+    };
+
+    let (snapshot, fingerprint) = write_snapshot_to_disk(snapshot).await?;
+
+    if let Some(mut doc) = state.documents.get_mut(id) {
+        apply_save_snapshot_to_doc(&mut doc, snapshot, fingerprint);
+    }
+    Ok(())
 }
 
 pub(super) async fn save_files_impl(
     state: State<'_, AppState>,
     ids: Vec<String>,
 ) -> Vec<SaveFileBatchResultItem> {
-    ids.into_iter()
-        .map(|id| match save_file_by_id(&state, id.as_str()) {
-            Ok(()) => SaveFileBatchResultItem {
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        match save_file_by_id_async(&state, id.as_str()).await {
+            Ok(()) => results.push(SaveFileBatchResultItem {
                 id,
                 success: true,
                 error: None,
-            },
-            Err(error) => SaveFileBatchResultItem {
+            }),
+            Err(error) => results.push(SaveFileBatchResultItem {
                 id,
                 success: false,
                 error: Some(error),
-            },
-        })
-        .collect()
+            }),
+        }
+    }
+    results
 }
 
 pub(super) async fn save_file_impl(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    save_file_by_id(&state, id.as_str())
+    save_file_by_id_async(&state, id.as_str()).await
 }
 
 pub(super) async fn save_file_as_impl(
@@ -707,25 +802,19 @@ pub(super) async fn save_file_as_impl(
 ) -> Result<(), String> {
     let path_buf = PathBuf::from(&path);
 
+    let snapshot = {
+        let doc = state
+            .documents
+            .get(&id)
+            .ok_or_else(|| "Document not found".to_string())?;
+        snapshot_for_save(&doc, path_buf.clone())
+    };
+
+    let (snapshot, fingerprint) = write_snapshot_to_disk(snapshot).await?;
+
     if let Some(mut doc) = state.documents.get_mut(&id) {
-        let mut file = File::create(&path_buf).map_err(|e| e.to_string())?;
-        let persist_content = build_persist_content(&doc);
-        let (bytes, _, _malformed) = doc.encoding.encode(&persist_content);
-
-        use std::io::Write;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
-
         doc.path = Some(path_buf);
-        doc.saved_rope = doc.rope.clone();
-        doc.saved_document_version = doc.document_version;
-        doc.saved_encoding = doc.encoding.name().to_string();
-        doc.saved_line_ending = doc.line_ending;
-        doc.mark_saved_undo_checkpoint();
-        if let Some(path) = &doc.path {
-            doc.saved_file_fingerprint = fs::metadata(path)
-                .ok()
-                .map(|metadata| build_file_fingerprint(&metadata));
-        }
+        apply_save_snapshot_to_doc(&mut doc, snapshot, fingerprint);
         Ok(())
     } else {
         Err("Document not found".to_string())

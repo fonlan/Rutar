@@ -14,6 +14,7 @@ import {
   findAlignedRowIndexByLineNumber,
   normalizeLineDiffResult,
 } from './diffEditor.utils';
+import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 import type { DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import type { MonacoTextEdit } from './monacoTypes';
 import { useDiffPairAutocomplete } from './useDiffPairAutocomplete';
@@ -329,14 +330,6 @@ function buildDiffPayloadFromComparison(
     alignedLineCount: Math.max(1, normalized.alignedLineCount),
   };
 }
-function dispatchDocumentUpdated(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:document-updated', {
-      detail: { tabId },
-    })
-  );
-}
-
 function resolveMonacoLanguage(fileTab: FileTab | null) {
   if (!fileTab) {
     return 'plaintext';

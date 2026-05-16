@@ -6,6 +6,7 @@ import { t } from '@/i18n';
 import { detectSyntaxKeyFromTab, getSyntaxLabel, SYNTAX_OPTIONS } from '@/lib/syntax';
 import { SyntaxKey } from '@/store/useStore';
 import { useEffectiveIndentation } from './useEffectiveIndentation';
+import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 
 type LineEnding = 'CRLF' | 'LF' | 'CR';
 type EncodingOption = {
@@ -38,14 +39,6 @@ lineEndingOptions.sort((a, b) => a.value.localeCompare(b.value, 'en', { numeric:
 const syntaxOptions = [...SYNTAX_OPTIONS].sort((a, b) =>
     a.label.localeCompare(b.label, 'en', { numeric: true, sensitivity: 'base' })
 );
-
-function dispatchDocumentUpdated(tabId: string) {
-    window.dispatchEvent(
-        new CustomEvent('rutar:document-updated', {
-            detail: { tabId },
-        })
-    );
-}
 
 function formatDocumentSize(sizeBytes: number | null) {
     if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) {

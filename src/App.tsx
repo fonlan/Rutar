@@ -1,8 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
+﻿import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { RefreshCw } from 'lucide-react';
 import { useFolderWatch } from '@/hooks/useFolderWatch';
 import { useSingleInstance } from '@/hooks/useSingleInstance';
@@ -25,9 +26,9 @@ import {
   type TabCloseDecision,
 } from '@/lib/tabClose';
 import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, TabIndentMode, isDiffTab } from '@/store/useStore';
-import { MarkdownPreviewPanel } from '@/components/MarkdownPreviewPanel';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
+import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 
 let hasInitializedStartupTab = false;
 
@@ -156,6 +157,10 @@ const GoToLineModal = lazy(async () => ({
   default: (await import('@/components/GoToLineModal')).GoToLineModal,
 }));
 
+const MarkdownPreviewPanel = lazy(async () => ({
+  default: (await import('@/components/MarkdownPreviewPanel')).MarkdownPreviewPanel,
+}));
+
 function dispatchEditorForceRefresh(
   tabId: string,
   lineCount: number,
@@ -173,13 +178,6 @@ function dispatchEditorForceRefresh(
   );
 }
 
-function dispatchDocumentUpdated(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:document-updated', {
-      detail: { tabId },
-    })
-  );
-}
 
 function dispatchNavigateToLine(tabId: string, line: number) {
   window.dispatchEvent(
@@ -230,9 +228,54 @@ export const appTestUtils = {
 };
 
 function App() {
-  const activeTab = useStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null);
   const activeTabId = useStore((state) => state.activeTabId);
-  const settings = useStore((state) => state.settings);
+  // Project active tab into a minimal snapshot so App skips re-renders when
+  // unrelated tab fields change. Keep keys aligned with child component needs.
+  const activeTab = useStore(
+    useShallow((state) => {
+      const tab = state.tabs.find((t) => t.id === state.activeTabId);
+      if (!tab) {
+        return null;
+      }
+      return {
+        id: tab.id,
+        name: tab.name,
+        path: tab.path,
+        lineCount: tab.lineCount,
+        largeFileMode: tab.largeFileMode,
+        syntaxOverride: tab.syntaxOverride,
+        tabType: tab.tabType,
+        diffPayload: tab.diffPayload,
+      } as FileTab;
+    }),
+  );
+  const settings = useStore(
+    useShallow((state) => ({
+      language: state.settings.language,
+      theme: state.settings.theme,
+      fontFamily: state.settings.fontFamily,
+      fontSize: state.settings.fontSize,
+      tabWidth: state.settings.tabWidth,
+      tabIndentMode: state.settings.tabIndentMode,
+      newFileLineEnding: state.settings.newFileLineEnding,
+      wordWrap: state.settings.wordWrap,
+      minimap: state.settings.minimap,
+      doubleClickCloseTab: state.settings.doubleClickCloseTab,
+      showLineNumbers: state.settings.showLineNumbers,
+      highlightCurrentLine: state.settings.highlightCurrentLine,
+      singleInstanceMode: state.settings.singleInstanceMode,
+      rememberWindowState: state.settings.rememberWindowState,
+      recentFiles: state.settings.recentFiles,
+      recentFolders: state.settings.recentFolders,
+      recentSearchKeywords: state.settings.recentSearchKeywords,
+      recentReplaceValues: state.settings.recentReplaceValues,
+      pinnedTabPaths: state.settings.pinnedTabPaths,
+      windowsFileAssociationEnabled: state.settings.windowsFileAssociationEnabled,
+      windowsFileAssociationExtensions: state.settings.windowsFileAssociationExtensions,
+      mouseGesturesEnabled: state.settings.mouseGesturesEnabled,
+      mouseGestures: state.settings.mouseGestures,
+    })),
+  );
   const updateSettings = useStore((state) => state.updateSettings);
   const setFolder = useStore((state) => state.setFolder);
   const folderPath = useStore((state) => state.folderPath);
@@ -1739,11 +1782,13 @@ function App() {
                 editorFallback
               )}
             </div>
-            <MarkdownPreviewPanel
-              open={markdownPreviewOpen}
-              tab={activeFileTab}
-              animateOnOpen={animateMarkdownPreviewOnOpen}
-            />
+            <Suspense fallback={null}>
+              <MarkdownPreviewPanel
+                open={markdownPreviewOpen}
+                tab={activeFileTab}
+                animateOnOpen={animateMarkdownPreviewOnOpen}
+              />
+            </Suspense>
           </div>
           <Suspense fallback={null}>
             <StatusBar />

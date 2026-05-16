@@ -38,14 +38,6 @@ function normalizeLineText(value: string) {
   return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
-export function dispatchDocumentUpdated(tabId: string) {
-  window.dispatchEvent(
-    new CustomEvent('rutar:document-updated', {
-      detail: { tabId },
-    })
-  );
-}
-
 export function resolveAlignedDiffKind(
   index: number,
   alignedSourceLines: string[],

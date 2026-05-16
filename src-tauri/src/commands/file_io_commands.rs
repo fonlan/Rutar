@@ -24,16 +24,19 @@ pub fn get_visible_lines(
 }
 
 #[tauri::command]
-pub fn get_document_text(state: State<'_, AppState>, id: String) -> Result<String, String> {
-    file_io::get_document_text_impl(state, id)
+pub async fn get_document_text(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
+    file_io::get_document_text_impl(state, id).await
 }
 
 #[tauri::command]
-pub fn get_document_text_chunks(
+pub async fn get_document_text_chunks(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<String>, String> {
-    file_io::get_document_text_chunks_impl(state, id)
+    file_io::get_document_text_chunks_impl(state, id).await
 }
 
 #[tauri::command]

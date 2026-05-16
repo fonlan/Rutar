@@ -1,4 +1,4 @@
-use dashmap::DashMap;
+﻿use dashmap::DashMap;
 use regex::RegexBuilder;
 use ropey::Rope;
 use std::collections::BTreeSet;
@@ -362,6 +362,37 @@ fn build_search_cursor_context_cache_key(document_id: &str, document_version: u6
     format!("{document_id}\u{1f}{document_version}")
 }
 
+fn obtain_search_context_owned(
+    id: &str,
+    doc: &Document,
+) -> (String, Vec<usize>, Vec<usize>) {
+    let cache_key = build_search_cursor_context_cache_key(id, doc.document_version);
+    if let Some(entry) = search_cursor_context_cache().get(&cache_key) {
+        return (
+            entry.source_text.as_ref().clone(),
+            entry.line_starts.as_ref().clone(),
+            entry.byte_to_char.as_ref().clone(),
+        );
+    }
+
+    let source_text: String = doc.rope.chunks().collect();
+    let line_starts = build_line_starts(&source_text);
+    let byte_to_char = build_byte_to_char_map(&source_text);
+
+    remove_search_cursor_context_cache_by_document(id);
+    enforce_dashmap_bound(search_cursor_context_cache());
+    search_cursor_context_cache().insert(
+        cache_key,
+        SearchCursorContextCacheEntry {
+            document_id: id.to_string(),
+            source_text: Arc::new(source_text.clone()),
+            line_starts: Arc::new(line_starts.clone()),
+            byte_to_char: Arc::new(byte_to_char.clone()),
+        },
+    );
+
+    (source_text, line_starts, byte_to_char)
+}
 fn remove_search_cursor_context_cache_by_document(document_id: &str) {
     let stale_cache_keys = search_cursor_context_cache()
         .iter()
@@ -2058,9 +2089,7 @@ pub(super) fn search_first_in_document_impl(
     reverse: bool,
 ) -> Result<SearchFirstResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
-        let source_text: String = doc.rope.chunks().collect();
-        let line_starts = build_line_starts(&source_text);
-        let byte_to_char = build_byte_to_char_map(&source_text);
+        let (source_text, line_starts, byte_to_char) = obtain_search_context_owned(&id, &doc);
 
         let first_match = find_match_edge(&source_text, &keyword, &mode, case_sensitive, reverse)?
             .and_then(|(start, end)| {
@@ -2093,9 +2122,7 @@ pub(super) fn search_in_document_chunk_impl(
     max_results: usize,
 ) -> Result<SearchChunkResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
-        let source_text: String = doc.rope.chunks().collect();
-        let line_starts = build_line_starts(&source_text);
-        let byte_to_char = build_byte_to_char_map(&source_text);
+        let (source_text, line_starts, byte_to_char) = obtain_search_context_owned(&id, &doc);
 
         if keyword.is_empty() {
             return Ok(SearchChunkResultPayload {
@@ -2437,8 +2464,7 @@ pub(super) fn search_count_in_document_impl(
     result_filter_keyword: Option<String>,
 ) -> Result<SearchCountResultPayload, String> {
     if let Some(doc) = state.documents.get(&id) {
-        let source_text: String = doc.rope.chunks().collect();
-        let line_starts = build_line_starts(&source_text);
+        let (source_text, line_starts, _byte_to_char) = obtain_search_context_owned(&id, &doc);
 
         if keyword.is_empty() {
             return Ok(SearchCountResultPayload {

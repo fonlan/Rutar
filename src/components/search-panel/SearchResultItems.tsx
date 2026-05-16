@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+﻿import { Check } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -141,7 +141,7 @@ export function SearchResultItems({
         lineText: match.lineText || '',
         preview: renderFilterPreview(match),
         showActiveIcon: index === visibleCurrentFilterMatchIndex,
-        sourceIndex: filterMatches.indexOf(match),
+        sourceIndex: index,
       }));
     }
 
@@ -157,7 +157,7 @@ export function SearchResultItems({
       lineText: match.lineText || '',
       preview: renderMatchPreview(match),
       showActiveIcon: false,
-      sourceIndex: matches.indexOf(match),
+      sourceIndex: index,
     }));
   }, [
     filterMatches,

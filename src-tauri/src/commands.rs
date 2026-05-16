@@ -234,12 +234,12 @@ pub fn get_document_version(state: State<'_, AppState>, id: String) -> Result<u6
 }
 
 #[tauri::command]
-pub fn get_outline(
+pub async fn get_outline(
     state: State<'_, AppState>,
     id: String,
     file_type: String,
 ) -> Result<Vec<outline::OutlineNode>, String> {
-    outline::get_outline_impl(state, id, file_type)
+    outline::get_outline_impl(state, id, file_type).await
 }
 
 #[tauri::command]

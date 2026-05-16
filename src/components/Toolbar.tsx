@@ -18,6 +18,7 @@ import {
 import { openFilePath } from '@/lib/openFile';
 import { addRecentFolderPath, removeRecentFilePath, removeRecentFolderPath } from '@/lib/recentPaths';
 import { useStore, FileTab, isDiffTab, type DiffPanelSide } from '@/store/useStore';
+import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 import { t } from '@/i18n';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from '@/lib/structuredFormat';
@@ -75,17 +76,6 @@ function dispatchDiffHistoryAction(diffTabId: string, panel: DiffPanelSide, acti
     window.dispatchEvent(
         new CustomEvent('rutar:diff-history-action', {
             detail: { diffTabId, panel, action },
-        })
-    );
-}
-
-function dispatchDocumentUpdated(tabId: string, options?: { skipEditorRefresh?: boolean }) {
-    window.dispatchEvent(
-        new CustomEvent('rutar:document-updated', {
-            detail: {
-                tabId,
-                skipEditorRefresh: options?.skipEditorRefresh ?? false,
-            },
         })
     );
 }

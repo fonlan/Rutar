@@ -1,4 +1,4 @@
-use dashmap::DashMap;
+﻿use dashmap::DashMap;
 use encoding_rs::Encoding;
 use notify::RecommendedWatcher;
 use ropey::Rope;
@@ -102,6 +102,7 @@ impl Document {
         operation_id
     }
 
+    #[allow(dead_code)]
     pub fn mark_saved_undo_checkpoint(&mut self) {
         self.saved_undo_depth = self.undo_stack.len();
         self.saved_undo_operation_id = self
