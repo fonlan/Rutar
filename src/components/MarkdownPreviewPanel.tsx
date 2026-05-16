@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { t } from '@/i18n';
 import { isMarkdownTab } from '@/lib/markdown';
+import { highlightMarkdownCodeBlocks } from '@/lib/markdownPreviewHighlight';
 import {
   fileUrlToNativePath,
   resolveMarkdownImageSrc,
@@ -1203,6 +1204,27 @@ export function MarkdownPreviewPanel({
     };
   }, [activePreviewHtmlSource, applyScrollRatio, markdownEnabled, open, previewWidthRatio]);
 
+  useEffect(() => {
+    if (!open || !markdownEnabled || !activePreviewHtmlSource) {
+      return;
+    }
+
+    const article = getActivePreviewArticleElement();
+    if (!article) {
+      return;
+    }
+
+    let cancelled = false;
+    void highlightMarkdownCodeBlocks(article).catch((error) => {
+      if (!cancelled) {
+        console.warn('Failed to highlight markdown preview code blocks:', error);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePreviewHtmlSource, getActivePreviewArticleElement, markdownEnabled, open]);
   useEffect(() => stopMermaidPan, [stopMermaidPan]);
 
   useEffect(() => {

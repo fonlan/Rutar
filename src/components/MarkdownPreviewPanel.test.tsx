@@ -25,6 +25,10 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/markdownPreviewHighlight", () => ({
+  highlightMarkdownCodeBlocks: vi.fn(async () => undefined),
+}));
+
 vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
   default: {
     initialize: mermaidInitializeMock,

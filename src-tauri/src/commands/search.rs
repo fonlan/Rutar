@@ -13,7 +13,7 @@ use tauri::State;
 
 // Bound helpers for the session DashMaps.
 mod session_cache;
-pub(super) use session_cache::{enforce_dashmap_bound, MAX_SESSION_CACHE_ENTRIES};
+pub(super) use session_cache::enforce_dashmap_bound;
 
 // Pure index and offset helpers live in their own submodule.
 mod byte_index;
@@ -3689,6 +3689,7 @@ pub(super) fn replace_all_and_search_chunk_in_document_impl(
 
 #[cfg(test)]
 mod tests {
+    use super::session_cache::MAX_SESSION_CACHE_ENTRIES;
     use super::*;
 
     fn make_rule(keyword: &str, match_mode: &str, apply_to: &str) -> FilterRuleInput {
