@@ -128,9 +128,12 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<FolderEntry[]>([]);
     const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
-    const activeTabId = useStore((state) => state.activeTabId);
     const setActiveTab = useStore((state) => state.setActiveTab);
-    const tabs = useStore((state) => state.tabs);
+    const isActiveFile = useStore((state) =>
+      !entry.is_dir
+        ? state.tabs.some((tab) => tab.id === state.activeTabId && tab.path === entry.path)
+        : false,
+    );
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
 
@@ -153,7 +156,7 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
             setIsOpen(!isOpen);
         } else {
             // Check if already open
-            const existing = tabs.find(t => t.path === entry.path);
+            const existing = useStore.getState().tabs.find((t) => t.path === entry.path);
             if (existing) {
                 setActiveTab(existing.id);
             } else {
@@ -164,7 +167,7 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
                 }
             }
         }
-    }, [entry, hasLoadedChildren, isOpen, loadChildren, tabs, setActiveTab]);
+    }, [entry, hasLoadedChildren, isOpen, loadChildren, setActiveTab]);
 
     useEffect(() => {
         if (!entry.is_dir || !isOpen) {
@@ -187,9 +190,7 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
             window.removeEventListener('rutar:folder-tree-changed', handleFolderTreeChanged as EventListener);
         };
     }, [entry.is_dir, entry.path, isOpen, loadChildren]);
-    const isActiveFile = !entry.is_dir
-        && Boolean(activeTabId)
-        && tabs.some((tab) => tab.id === activeTabId && tab.path === entry.path);
+
 
     return (
         <div>

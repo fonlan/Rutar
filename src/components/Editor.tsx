@@ -1,12 +1,13 @@
+import '@/lib/monaco/boot';
 import { invoke } from '@tauri-apps/api/core';
 import { message } from '@tauri-apps/plugin-dialog';
 import {
   readImage as readClipboardImage,
   readText as readClipboardText,
 } from '@tauri-apps/plugin-clipboard-manager';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { t } from '@/i18n';
 import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
 import { EDITOR_FIND_OPEN_EVENT, type EditorFindOpenEventDetail } from '@/lib/editorFind';
@@ -21,6 +22,10 @@ import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { detectSyntaxKeyFromTab } from '@/lib/syntax';
 import { type FileTab, useStore } from '@/store/useStore';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
+import { useEditorBookmarkDecorations } from './useEditorBookmarkDecorations';
+import { useEditorClipboard } from './useEditorClipboard';
+import { useEditorPairAutocomplete } from './useEditorPairAutocomplete';
+import { useEditorUrlClickHandler } from './useEditorUrlClickHandler';
 import {
   EditorContextMenu,
   type EditorCleanupAction,
@@ -40,57 +45,6 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];
-const BOOKMARK_LINE_NUMBER_CLASS_NAME = 'rutar-bookmark-line-number-highlight';
-const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
-const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
-const HTTP_URL_TRAILING_PUNCTUATION_PATTERN = /[),.;:!?]+$/;
-
-interface PairOffsetsResultPayload {
-  leftOffset: number;
-  rightOffset: number;
-  leftLine: number;
-  leftColumn: number;
-  rightLine: number;
-  rightColumn: number;
-}
-function isQuoteCharacter(value: string) {
-  return value === "'" || value === '"';
-}
-
-function trimHttpUrlCandidate(rawUrl: string) {
-  if (!rawUrl) {
-    return '';
-  }
-
-  return rawUrl.replace(HTTP_URL_TRAILING_PUNCTUATION_PATTERN, '');
-}
-
-function getHttpUrlAtLineColumn(lineText: string, column: number) {
-  if (!lineText) {
-    return null;
-  }
-
-  const safeColumn = Math.max(0, Math.min(Math.floor(column), lineText.length));
-  const regex = new RegExp(HTTP_URL_PATTERN.source, 'gi');
-
-  let match: RegExpExecArray | null = null;
-  while ((match = regex.exec(lineText)) !== null) {
-    const rawUrl = match[0] ?? '';
-    const trimmedUrl = trimHttpUrlCandidate(rawUrl);
-    if (!trimmedUrl) {
-      continue;
-    }
-
-    const start = match.index;
-    const end = start + trimmedUrl.length;
-    if (safeColumn >= start && safeColumn <= end) {
-      return trimmedUrl;
-    }
-  }
-
-  return null;
-}
-
 function dispatchDocumentUpdated(tabId: string) {
   window.dispatchEvent(
     new CustomEvent('rutar:document-updated', {
@@ -329,8 +283,27 @@ export function Editor({
   tab: FileTab;
   diffHighlightLines?: number[];
 }) {
-  const settings = useStore((state) => state.settings);
-  const tabs = useStore((state) => state.tabs);
+  const settings = useStore(
+      useShallow((state) => ({
+        language: state.settings.language,
+        fontFamily: state.settings.fontFamily,
+        fontSize: state.settings.fontSize,
+        showLineNumbers: state.settings.showLineNumbers,
+        wordWrap: state.settings.wordWrap,
+        minimap: state.settings.minimap,
+        highlightCurrentLine: state.settings.highlightCurrentLine,
+        tabIndentMode: state.settings.tabIndentMode,
+        tabWidth: state.settings.tabWidth,
+        theme: state.settings.theme,
+      })),
+    );
+    const trackedTabIds = useStore(
+      useShallow((state) =>
+        state.tabs
+          .filter((candidate) => candidate.tabType !== 'diff')
+          .map((candidate) => candidate.id),
+      ),
+    );
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
@@ -352,9 +325,6 @@ export function Editor({
     lastAppliedBackendVersion: 0,
   });
   const pendingFetchRequestIdRef = useRef(0);
-  const bookmarkDecorationIdsRef = useRef<string[]>([]);
-  const quotePairDecorationIdsRef = useRef<string[]>([]);
-  const quotePairRequestSeqRef = useRef(0);
   const editorContextMenuRef = useRef<HTMLDivElement | null>(null);
   const submenuPanelRefs = useRef<Record<EditorSubmenuKey, HTMLDivElement | null>>({
     edit: null,
@@ -362,8 +332,13 @@ export function Editor({
     convert: null,
     bookmark: null,
   });
-  const base64DecodeErrorToastTimerRef = useRef<number | null>(null);
   const pasteFromClipboardRef = useRef<((source: string) => Promise<void>) | null>(null);
+  const { showBase64DecodeErrorToast, triggerBase64DecodeErrorToast } = useEditorClipboard();
+  const { clearQuotePairDecorations, updateQuotePairDecorations } = useEditorPairAutocomplete(
+    editorRef,
+    tab.largeFileMode,
+  );
+  const tryOpenUrlAtPosition = useEditorUrlClickHandler();
   const [editorContextMenu, setEditorContextMenu] = useState<EditorContextMenuState | null>(null);
   const [submenuVerticalAlignments, setSubmenuVerticalAlignments] = useState<
     Record<EditorSubmenuKey, EditorSubmenuVerticalAlign>
@@ -371,7 +346,6 @@ export function Editor({
   const [submenuMaxHeights, setSubmenuMaxHeights] = useState<Record<EditorSubmenuKey, number | null>>(
     () => ({ ...DEFAULT_SUBMENU_MAX_HEIGHTS })
   );
-  const [showBase64DecodeErrorToast, setShowBase64DecodeErrorToast] = useState(false);
   const monacoLanguage = useMemo(() => resolveMonacoLanguage(tab), [tab]);
   const tr = useCallback((key: string) => t(settings.language, key as Parameters<typeof t>[1]), [settings.language]);
   const resolveCurrentTab = useCallback(
@@ -705,149 +679,6 @@ export function Editor({
     () => editorContextMenu !== null && bookmarks.includes(editorContextMenu.lineNumber),
     [bookmarks, editorContextMenu]
   );
-  const applyBookmarkDecorations = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor) {
-      return;
-    }
-    const model = editor.getModel();
-    if (!model) {
-      bookmarkDecorationIdsRef.current = editor.deltaDecorations(bookmarkDecorationIdsRef.current, []);
-      return;
-    }
-    const lineCount = Math.max(1, model.getLineCount());
-    const nextDecorations: monaco.editor.IModelDeltaDecoration[] = Array.from(new Set(bookmarks))
-      .map((lineNumber) => Math.floor(lineNumber))
-      .filter((lineNumber) => lineNumber >= 1 && lineNumber <= lineCount)
-      .sort((left, right) => left - right)
-      .map((lineNumber) => ({
-        range: {
-          startLineNumber: lineNumber,
-          startColumn: 1,
-          endLineNumber: lineNumber,
-          endColumn: 1,
-        },
-        options: {
-          lineNumberClassName: BOOKMARK_LINE_NUMBER_CLASS_NAME,
-        },
-      }));
-    bookmarkDecorationIdsRef.current = editor.deltaDecorations(
-      bookmarkDecorationIdsRef.current,
-      nextDecorations
-    );
-  }, [bookmarks]);
-  const clearQuotePairDecorations = useCallback((targetEditor: monaco.editor.IStandaloneCodeEditor | null) => {
-    quotePairRequestSeqRef.current += 1;
-    if (!targetEditor) {
-      quotePairDecorationIdsRef.current = [];
-      return;
-    }
-    if (quotePairDecorationIdsRef.current.length === 0) {
-      return;
-    }
-    quotePairDecorationIdsRef.current = targetEditor.deltaDecorations(quotePairDecorationIdsRef.current, []);
-  }, []);
-  const updateQuotePairDecorations = useCallback(async () => {
-    const editor = editorRef.current;
-    const model = editor?.getModel();
-    if (!editor || !model || tab.largeFileMode) {
-      clearQuotePairDecorations(editor ?? null);
-      return;
-    }
-
-    const selection = editor.getSelection();
-    if (selection && !selection.isEmpty()) {
-      clearQuotePairDecorations(editor);
-      return;
-    }
-
-    const position = editor.getPosition();
-    if (!position) {
-      clearQuotePairDecorations(editor);
-      return;
-    }
-
-    const text = model.getValue();
-    const offset = model.getOffsetAt(position);
-    const leftChar = offset > 0 ? text.charAt(offset - 1) : '';
-    const rightChar = offset < text.length ? text.charAt(offset) : '';
-    if (!isQuoteCharacter(leftChar) && !isQuoteCharacter(rightChar)) {
-      clearQuotePairDecorations(editor);
-      return;
-    }
-
-    const requestSeq = quotePairRequestSeqRef.current + 1;
-    quotePairRequestSeqRef.current = requestSeq;
-    try {
-      const payload = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
-        text,
-        offset,
-      });
-      if (quotePairRequestSeqRef.current !== requestSeq || editorRef.current !== editor) {
-        return;
-      }
-      if (!payload) {
-        clearQuotePairDecorations(editor);
-        return;
-      }
-
-      const leftQuote = text.charAt(payload.leftOffset);
-      const rightQuote = text.charAt(payload.rightOffset);
-      if (!isQuoteCharacter(leftQuote) || leftQuote !== rightQuote) {
-        clearQuotePairDecorations(editor);
-        return;
-      }
-
-      const lineCount = Math.max(1, model.getLineCount());
-      const leftLine = Math.max(1, Math.min(payload.leftLine, lineCount));
-      const rightLine = Math.max(1, Math.min(payload.rightLine, lineCount));
-      const leftColumn = Math.max(1, payload.leftColumn);
-      const rightColumn = Math.max(1, payload.rightColumn);
-      const nextDecorations: monaco.editor.IModelDeltaDecoration[] = [
-        {
-          range: {
-            startLineNumber: leftLine,
-            startColumn: leftColumn,
-            endLineNumber: leftLine,
-            endColumn: leftColumn + 1,
-          },
-          options: {
-            inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
-          },
-        },
-        {
-          range: {
-            startLineNumber: rightLine,
-            startColumn: rightColumn,
-            endLineNumber: rightLine,
-            endColumn: rightColumn + 1,
-          },
-          options: {
-            inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
-          },
-        },
-      ];
-      quotePairDecorationIdsRef.current = editor.deltaDecorations(
-        quotePairDecorationIdsRef.current,
-        nextDecorations
-      );
-    } catch (error) {
-      if (quotePairRequestSeqRef.current === requestSeq && editorRef.current === editor) {
-        clearQuotePairDecorations(editor);
-      }
-      console.error('Failed to resolve matching quote pair in Monaco editor:', error);
-    }
-  }, [clearQuotePairDecorations, tab.largeFileMode]);
-  const triggerBase64DecodeErrorToast = useCallback(() => {
-    if (base64DecodeErrorToastTimerRef.current !== null) {
-      window.clearTimeout(base64DecodeErrorToastTimerRef.current);
-    }
-    setShowBase64DecodeErrorToast(true);
-    base64DecodeErrorToastTimerRef.current = window.setTimeout(() => {
-      setShowBase64DecodeErrorToast(false);
-      base64DecodeErrorToastTimerRef.current = null;
-    }, 2200);
-  }, []);
   const updateSubmenuVerticalAlignment = useCallback(
     (submenuKey: EditorSubmenuKey, anchorElement: HTMLDivElement) => {
       const submenuElement = submenuPanelRefs.current[submenuKey];
@@ -1010,6 +841,12 @@ export function Editor({
       setEditorContextMenu(null);
     },
     [applySelectionEdit, getSelectedEditorText, triggerBase64DecodeErrorToast, writePlainTextToClipboard]
+  );
+  const handleEditorContextMenuActionVoid = useCallback(
+    (action: EditorContextMenuAction) => {
+      void handleEditorContextMenuAction(action);
+    },
+    [handleEditorContextMenuAction],
   );
   const handleAddBookmarkFromContext = useCallback(() => {
     const line = resolveContextLineNumber();
@@ -1269,35 +1106,7 @@ export function Editor({
         event.event.stopPropagation();
         return;
       }
-      if (!event.event.leftButton) {
-        return;
-      }
-
-      if (!event.event.ctrlKey && !event.event.metaKey) {
-        return;
-      }
-
-      const position = event.target.position;
-      if (!position) {
-        return;
-      }
-
-      const model = editor.getModel();
-      if (!model) {
-        return;
-      }
-
-      const lineText = model.getLineContent(position.lineNumber);
-      const url = getHttpUrlAtLineColumn(lineText, position.column - 1);
-      if (!url) {
-        return;
-      }
-
-      event.event.preventDefault();
-      event.event.stopPropagation();
-      void openUrl(url).catch((error) => {
-        console.error('Failed to open hyperlink in Monaco editor:', error);
-      });
+      tryOpenUrlAtPosition(editor, event);
     });
 
     const contextMenuDisposable = editor.onContextMenu(handleMonacoContextMenu);
@@ -1328,9 +1137,7 @@ export function Editor({
     updateQuotePairDecorations,
   ]);
 
-  useEffect(() => {
-    applyBookmarkDecorations();
-  }, [applyBookmarkDecorations, tab.id]);
+  useEditorBookmarkDecorations(editorRef, bookmarks, tab.id);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -1445,14 +1252,10 @@ export function Editor({
   }, [ensureEditorModelLoaded, monacoLanguage, resolveCurrentTab, tab.id, tab.path, updateQuotePairDecorations]);
 
   useEffect(() => {
-    const trackedTabIds = new Set(
-      tabs
-        .filter((candidate) => candidate.tabType !== 'diff')
-        .map((candidate) => candidate.id)
-    );
+    const aliveTabIds = new Set(trackedTabIds);
 
     for (const [tabId, model] of modelByTabId.entries()) {
-      if (trackedTabIds.has(tabId)) {
+      if (aliveTabIds.has(tabId)) {
         continue;
       }
 
@@ -1464,7 +1267,7 @@ export function Editor({
       modelByTabId.delete(tabId);
       viewStateByTabId.delete(tabId);
     }
-  }, [tabs]);
+  }, [trackedTabIds]);
 
   useEffect(() => {
     if (!editorContextMenu) {
@@ -1503,14 +1306,6 @@ export function Editor({
     };
   }, [editorContextMenu]);
 
-  useEffect(
-    () => () => {
-      if (base64DecodeErrorToastTimerRef.current !== null) {
-        window.clearTimeout(base64DecodeErrorToastTimerRef.current);
-      }
-    },
-    []
-  );
 
   useEffect(() => {
 
@@ -1787,9 +1582,7 @@ export function Editor({
         hasContextBookmark={hasContextBookmark}
         onSelectCurrentLine={handleSelectCurrentLineFromContext}
         onAddCurrentLineBookmark={handleAddCurrentLineBookmarkFromContext}
-        onEditorAction={(action) => {
-          void handleEditorContextMenuAction(action);
-        }}
+        onEditorAction={handleEditorContextMenuActionVoid}
         isEditorActionDisabled={isEditorContextMenuActionDisabled}
         onUpdateSubmenuVerticalAlignment={updateSubmenuVerticalAlignment}
         onCleanup={handleCleanupDocumentFromContext}

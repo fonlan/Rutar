@@ -1,9 +1,8 @@
+import { PERF_MARKS, perfMark } from "./lib/perf-mark";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import "monaco-editor/min/vs/editor/editor.main.css";
-import { setupMonacoEnvironment } from "./lib/monaco/setupMonaco";
 
 const ROOT_ELEMENT_ID = "root";
 
@@ -38,11 +37,15 @@ function ensureBootSplash() {
   document.body.appendChild(splashElement);
 }
 
+perfMark.mark(PERF_MARKS.appBootStart);
 ensureBootSplash();
-setupMonacoEnvironment();
 
 ReactDOM.createRoot(document.getElementById(ROOT_ELEMENT_ID) as HTMLElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+
+perfMark.mark(PERF_MARKS.appReactMounted);
+perfMark.measure('rutar:boot:react-render', PERF_MARKS.appBootStart, PERF_MARKS.appReactMounted);
+perfMark.publish();

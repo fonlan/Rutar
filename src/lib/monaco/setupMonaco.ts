@@ -56,7 +56,12 @@ function configureMonacoBuiltinLanguageServices() {
     return;
   }
 
-  const languagesApi = monaco.languages as unknown as MonacoBuiltinLanguagesApi;
+  const rawLanguages = (monaco as { languages?: unknown }).languages;
+  if (!rawLanguages || typeof rawLanguages !== 'object') {
+    return;
+  }
+
+  const languagesApi = rawLanguages as MonacoBuiltinLanguagesApi;
   const tsApi = languagesApi.typescript;
   const jsonApi = languagesApi.json;
 

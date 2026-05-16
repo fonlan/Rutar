@@ -11,6 +11,16 @@ use crate::state::AppState;
 use crate::state::Document;
 use tauri::State;
 
+// Bound helpers for the session DashMaps.
+mod session_cache;
+pub(super) use session_cache::{enforce_dashmap_bound, MAX_SESSION_CACHE_ENTRIES};
+
+// Pure index and offset helpers live in their own submodule.
+mod byte_index;
+pub(super) use byte_index::{
+    build_byte_to_char_map, build_line_starts, find_line_index_by_offset, get_line_text,
+};
+
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSegmentResult {
@@ -370,76 +380,6 @@ pub(super) fn dispose_search_session_impl(session_id: String) -> bool {
 
 pub(super) fn dispose_filter_session_impl(session_id: String) -> bool {
     filter_session_cache().remove(&session_id).is_some()
-}
-
-pub(super) fn find_line_index_by_offset(line_starts: &[usize], target_offset: usize) -> usize {
-    if line_starts.is_empty() {
-        return 0;
-    }
-
-    let mut low = 0usize;
-    let mut high = line_starts.len() - 1;
-    let mut result = 0usize;
-
-    while low <= high {
-        let middle = low + (high - low) / 2;
-        let line_start = line_starts[middle];
-
-        if line_start <= target_offset {
-            result = middle;
-            low = middle.saturating_add(1);
-        } else {
-            if middle == 0 {
-                break;
-            }
-            high = middle - 1;
-        }
-    }
-
-    result
-}
-
-pub(super) fn build_line_starts(text: &str) -> Vec<usize> {
-    let mut line_starts = vec![0usize];
-
-    for (index, byte) in text.as_bytes().iter().enumerate() {
-        if *byte == b'\n' {
-            line_starts.push(index + 1);
-        }
-    }
-
-    line_starts
-}
-
-pub(super) fn build_byte_to_char_map(text: &str) -> Vec<usize> {
-    let mut mapping = vec![0usize; text.len() + 1];
-    let mut char_index = 0usize;
-
-    for (byte_index, ch) in text.char_indices() {
-        let char_len = ch.len_utf8();
-        for offset in 0..char_len {
-            mapping[byte_index + offset] = char_index;
-        }
-        char_index += 1;
-    }
-
-    mapping[text.len()] = char_index;
-    mapping
-}
-
-pub(super) fn get_line_text(text: &str, line_starts: &[usize], line_index: usize) -> String {
-    if line_starts.is_empty() {
-        return String::new();
-    }
-
-    let line_start = *line_starts.get(line_index).unwrap_or(&0usize);
-    let next_line_start = *line_starts.get(line_index + 1).unwrap_or(&text.len());
-    let line_end = next_line_start.saturating_sub(1).max(line_start);
-
-    text.get(line_start..line_end)
-        .unwrap_or_default()
-        .trim_end_matches('\r')
-        .to_string()
 }
 
 pub(super) fn normalize_result_filter_keyword(value: Option<String>) -> Option<String> {
@@ -2322,6 +2262,7 @@ pub(super) fn search_session_start_in_document_impl(
         }
 
         let session_id = Uuid::new_v4().to_string();
+        enforce_dashmap_bound(search_session_cache());
         search_session_cache().insert(
             session_id.clone(),
             SearchSessionEntry {
@@ -2461,6 +2402,7 @@ pub(super) fn search_session_restore_in_document_impl(
         }
 
         let session_id = Uuid::new_v4().to_string();
+        enforce_dashmap_bound(search_session_cache());
         search_session_cache().insert(
             session_id.clone(),
             SearchSessionEntry {
@@ -2620,6 +2562,7 @@ pub(super) fn search_step_from_cursor_in_document_impl(
             let byte_to_char = Arc::new(build_byte_to_char_map(source_text.as_str()));
 
             remove_search_cursor_context_cache_by_document(&id);
+            enforce_dashmap_bound(search_cursor_context_cache());
             search_cursor_context_cache().insert(
                 cache_key,
                 SearchCursorContextCacheEntry {
@@ -2795,6 +2738,7 @@ pub(super) fn step_result_filter_search_in_document_impl(
                     .collect::<BTreeSet<_>>()
                     .len();
                 let matches_arc = Arc::new(computed_matches);
+                enforce_dashmap_bound(search_result_filter_step_cache());
                 search_result_filter_step_cache().insert(
                     cache_key,
                     SearchResultFilterStepCacheEntry {
@@ -2827,6 +2771,7 @@ pub(super) fn step_result_filter_search_in_document_impl(
                 .collect::<BTreeSet<_>>()
                 .len();
             let matches_arc = Arc::new(computed_matches);
+            enforce_dashmap_bound(search_result_filter_step_cache());
             search_result_filter_step_cache().insert(
                 cache_key,
                 SearchResultFilterStepCacheEntry {
@@ -3111,6 +3056,7 @@ pub(super) fn filter_session_start_in_document_impl(
         }
 
         let session_id = Uuid::new_v4().to_string();
+        enforce_dashmap_bound(filter_session_cache());
         filter_session_cache().insert(
             session_id.clone(),
             FilterSessionEntry {
@@ -3227,6 +3173,7 @@ pub(super) fn filter_session_restore_in_document_impl(
         }
 
         let session_id = Uuid::new_v4().to_string();
+        enforce_dashmap_bound(filter_session_cache());
         filter_session_cache().insert(
             session_id.clone(),
             FilterSessionEntry {
@@ -3300,6 +3247,7 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
                 )?;
                 let total_matched_lines = computed_matches.len();
                 let matches_arc = Arc::new(computed_matches);
+                enforce_dashmap_bound(filter_result_filter_step_cache());
                 filter_result_filter_step_cache().insert(
                     cache_key,
                     FilterResultFilterStepCacheEntry {
@@ -3319,6 +3267,7 @@ pub(super) fn step_result_filter_search_in_filter_document_impl(
             )?;
             let total_matched_lines = computed_matches.len();
             let matches_arc = Arc::new(computed_matches);
+            enforce_dashmap_bound(filter_result_filter_step_cache());
             filter_result_filter_step_cache().insert(
                 cache_key,
                 FilterResultFilterStepCacheEntry {
@@ -3775,6 +3724,26 @@ mod tests {
     }
 
     #[test]
+    fn enforce_dashmap_bound_should_evict_entries_when_above_limit() {
+        let cache: DashMap<String, u32> = DashMap::new();
+        for index in 0..(MAX_SESSION_CACHE_ENTRIES + 50) {
+            cache.insert(format!("key-{index}"), index as u32);
+        }
+        enforce_dashmap_bound(&cache);
+        assert!(cache.len() <= MAX_SESSION_CACHE_ENTRIES);
+    }
+
+    #[test]
+    fn enforce_dashmap_bound_should_keep_entries_when_within_limit() {
+        let cache: DashMap<String, u32> = DashMap::new();
+        for index in 0..50 {
+            cache.insert(format!("key-{index}"), index as u32);
+        }
+        enforce_dashmap_bound(&cache);
+        assert_eq!(cache.len(), 50);
+    }
+
+    #[test]
     fn find_line_index_by_offset_should_return_last_line_start_not_greater_than_offset() {
         let starts = vec![0usize, 3, 8];
         assert_eq!(find_line_index_by_offset(&starts, 0), 0);
@@ -4106,6 +4075,7 @@ mod tests {
     #[test]
     fn dispose_search_session_impl_should_remove_existing_session() {
         search_session_cache().clear();
+        enforce_dashmap_bound(search_session_cache());
         search_session_cache().insert(
             "search-session-1".to_string(),
             SearchSessionEntry {
@@ -4125,6 +4095,7 @@ mod tests {
     #[test]
     fn dispose_filter_session_impl_should_remove_existing_session() {
         filter_session_cache().clear();
+        enforce_dashmap_bound(filter_session_cache());
         filter_session_cache().insert(
             "filter-session-1".to_string(),
             FilterSessionEntry {
@@ -4139,5 +4110,53 @@ mod tests {
 
         assert!(dispose_filter_session_impl("filter-session-1".to_string()));
         assert!(!dispose_filter_session_impl("filter-session-1".to_string()));
+    }
+
+    fn make_search_session_entry(document_id: &str) -> SearchSessionEntry {
+        SearchSessionEntry {
+            document_id: document_id.to_string(),
+            document_version: 1,
+            result_filter_keyword: None,
+            result_filter_case_sensitive: true,
+            matches: Arc::new(Vec::new()),
+            next_index: 0,
+        }
+    }
+
+    fn make_filter_session_entry(document_id: &str) -> FilterSessionEntry {
+        FilterSessionEntry {
+            document_id: document_id.to_string(),
+            document_version: 1,
+            result_filter_keyword: None,
+            result_filter_case_sensitive: true,
+            matches: Arc::new(Vec::new()),
+            next_index: 0,
+        }
+    }
+
+    #[test]
+    fn remove_search_sessions_by_document_should_only_drop_matching_document_entries() {
+        search_session_cache().clear();
+        search_session_cache().insert("doc-a-session".to_string(), make_search_session_entry("doc-a"));
+        search_session_cache().insert("doc-b-session-1".to_string(), make_search_session_entry("doc-b"));
+        search_session_cache().insert("doc-b-session-2".to_string(), make_search_session_entry("doc-b"));
+
+        remove_search_sessions_by_document("doc-b");
+
+        assert!(search_session_cache().contains_key("doc-a-session"));
+        assert!(!search_session_cache().contains_key("doc-b-session-1"));
+        assert!(!search_session_cache().contains_key("doc-b-session-2"));
+    }
+
+    #[test]
+    fn remove_filter_sessions_by_document_should_only_drop_matching_document_entries() {
+        filter_session_cache().clear();
+        filter_session_cache().insert("doc-x-session".to_string(), make_filter_session_entry("doc-x"));
+        filter_session_cache().insert("doc-y-session".to_string(), make_filter_session_entry("doc-y"));
+
+        remove_filter_sessions_by_document("doc-y");
+
+        assert!(filter_session_cache().contains_key("doc-x-session"));
+        assert!(!filter_session_cache().contains_key("doc-y-session"));
     }
 }

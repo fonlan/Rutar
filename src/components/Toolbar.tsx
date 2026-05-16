@@ -177,8 +177,9 @@ interface ToolbarProps {
 }
 export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const addTab = useStore((state) => state.addTab);
-    const tabs = useStore((state) => state.tabs);
-    const activeTabId = useStore((state) => state.activeTabId);
+    const activeRootTab = useStore((state) =>
+      state.tabs.find((tab) => tab.id === state.activeTabId) ?? null,
+    );
     const activeDiffPanelByTab = useStore((state) => state.activeDiffPanelByTab);
     const closeTab = useStore((state) => state.closeTab);
     const updateTab = useStore((state) => state.updateTab);
@@ -198,7 +199,6 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const setOutlineData = useStore((state) => state.setOutlineData);
     const recentFiles = useStore((state) => state.settings.recentFiles);
     const recentFolders = useStore((state) => state.settings.recentFolders);
-    const activeRootTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
     const activeTab = activeRootTab && activeRootTab.tabType !== 'diff' ? activeRootTab : null;
     const activeDiffTab = activeRootTab && isDiffTab(activeRootTab) ? activeRootTab : null;
     const activeDiffPanel: DiffPanelSide | null = activeDiffTab
@@ -207,9 +207,11 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const activeDiffPanelTabId = activeDiffTab
         ? (activeDiffPanel === 'target' ? activeDiffTab.diffPayload.targetTabId : activeDiffTab.diffPayload.sourceTabId)
         : null;
-    const activeDiffPanelTab = activeDiffPanelTabId
-        ? tabs.find((tab) => tab.id === activeDiffPanelTabId && tab.tabType !== 'diff') ?? null
-        : null;
+    const activeDiffPanelTab = useStore((state) =>
+      activeDiffPanelTabId
+        ? state.tabs.find((tab) => tab.id === activeDiffPanelTabId && tab.tabType !== 'diff') ?? null
+        : null,
+    );
     const activeEditTab = activeTab ?? activeDiffPanelTab;
     const activeTabIdForActions = activeEditTab?.id ?? null;
     const activeTabLargeFileMode = !!activeEditTab?.largeFileMode;
@@ -242,7 +244,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const openContainingFolderText = tr('titleBar.openContainingFolder');
     const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
     const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
-    const canSaveAnyTab = tabs.some((tab) => !!tab.isDirty);
+    const canSaveAnyTab = useStore((state) => state.tabs.some((tab) => !!tab.isDirty));
     const canCutOrCopy = canEdit && canClipboardSelectionAction;
     const canUndo = canEdit && editHistoryState.canUndo;
     const canRedo = canEdit && editHistoryState.canRedo;
@@ -684,7 +686,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     }, [activeTab, persistTab, refreshEditHistoryState]);
 
     const handleSaveAll = useCallback(async () => {
-        const dirtyTabs = tabs.filter((tab) => tab.isDirty);
+        const dirtyTabs = useStore.getState().tabs.filter((tab) => tab.isDirty);
         const tabsWithPath = dirtyTabs.filter((tab) => !!tab.path);
         const tabsWithoutPath = dirtyTabs.filter((tab) => !tab.path);
 
@@ -726,7 +728,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 console.error(`Failed to save ${tab.name}:`, error);
             }
         }
-    }, [persistTab, refreshEditHistoryState, tabs, updateTab]);
+    }, [persistTab, refreshEditHistoryState, updateTab]);
 
     const handleCloseActiveTab = useCallback(async () => {
         if (!activeTab) return;
@@ -748,7 +750,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
             }
         }
 
-        const shouldCreateBlankTab = tabs.length === 1;
+        const shouldCreateBlankTab = useStore.getState().tabs.length === 1;
 
         closeTab(activeTab.id);
 
@@ -762,7 +764,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
         } catch (e) {
             console.error('Failed to close tab:', e);
         }
-    }, [activeTab, addTab, closeTab, language, newFileLineEnding, persistTab, tabs.length]);
+    }, [activeTab, addTab, closeTab, language, newFileLineEnding, persistTab]);
 
     const handleUndo = useCallback(async () => {
         if (activeDiffTab && activeDiffPanel) {

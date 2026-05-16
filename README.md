@@ -53,6 +53,22 @@ cd src-tauri && cargo check
 cd src-tauri && cargo test
 ```
 
+## Performance
+
+Rutar emits User Timing marks under the `rutar:*` namespace.
+
+- `rutar:boot:start` to `rutar:boot:react-mounted` covers the synchronous bootstrap path.
+- `rutar:monaco:env-setup-start` to `rutar:monaco:env-setup` covers Monaco init on first editor open.
+
+Dump them inside DevTools.
+
+```js
+performance.getEntriesByType('measure').filter((entry) => entry.name.startsWith('rutar:'));
+```
+
+Or call `perfMark.publish()` from `src/lib/perf-mark.ts` to populate `globalThis.__rutarPerfDump`.
+Then run `npx tsx scripts/bench-startup.ts` to write a JSON snapshot under `.perf/` for diffing across commits.
+
 ## Configuration
 
 - User config file: `%AppData%\Rutar\config.json`.

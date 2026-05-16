@@ -70,10 +70,10 @@ export function useEditorContextMenuConfig({
       ? `${submenuHorizontalPositionClassName} bottom-0`
       : `${submenuHorizontalPositionClassName} top-0`;
 
-  const editSubmenuStyle = buildSubmenuStyle(submenuMaxHeights.edit);
-  const sortSubmenuStyle = buildSubmenuStyle(submenuMaxHeights.sort);
-  const convertSubmenuStyle = buildSubmenuStyle(submenuMaxHeights.convert);
-  const bookmarkSubmenuStyle = buildSubmenuStyle(submenuMaxHeights.bookmark);
+  const editSubmenuStyle = useMemo(() => buildSubmenuStyle(submenuMaxHeights.edit), [submenuMaxHeights.edit]);
+  const sortSubmenuStyle = useMemo(() => buildSubmenuStyle(submenuMaxHeights.sort), [submenuMaxHeights.sort]);
+  const convertSubmenuStyle = useMemo(() => buildSubmenuStyle(submenuMaxHeights.convert), [submenuMaxHeights.convert]);
+  const bookmarkSubmenuStyle = useMemo(() => buildSubmenuStyle(submenuMaxHeights.bookmark), [submenuMaxHeights.bookmark]);
 
   const cleanupMenuItems = useMemo<ContextMenuItem[]>(
     () => [

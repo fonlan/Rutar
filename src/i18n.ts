@@ -99,6 +99,7 @@ export type I18nKey =
   | 'preview.title'
   | 'preview.notMarkdown'
   | 'preview.loading'
+  | 'editor.loading'
   | 'preview.empty'
   | 'preview.loadFailed'
   | 'preview.copyImage'
@@ -385,6 +386,7 @@ const zhCN: Messages = {
   'preview.title': 'Markdown 预览',
   'preview.notMarkdown': '仅支持 Markdown 文件预览。',
   'preview.loading': '正在渲染预览...',
+  'editor.loading': '正在加载编辑器...',
   'preview.empty': '当前 Markdown 文档为空。',
   'preview.loadFailed': '预览加载失败：',
   'preview.copyImage': '复制图片',
@@ -670,6 +672,7 @@ const enUS: Messages = {
   'preview.title': 'Markdown Preview',
   'preview.notMarkdown': 'Preview is available for Markdown files only.',
   'preview.loading': 'Rendering preview...',
+  'editor.loading': 'Loading editor...',
   'preview.empty': 'This Markdown document is empty.',
   'preview.loadFailed': 'Failed to load preview:',
   'preview.copyImage': 'Copy Image',

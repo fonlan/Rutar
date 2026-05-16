@@ -4,7 +4,7 @@ import { SearchReplacePanel } from "./SearchReplacePanel";
 import { useStore, type FileTab } from "@/store/useStore";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { SEARCH_SIDEBAR_DEFAULT_WIDTH, SEARCH_SIDEBAR_RIGHT_OFFSET } from "@/components/search-panel/utils";
+import { SEARCH_SIDEBAR_DEFAULT_WIDTH, SEARCH_SIDEBAR_RIGHT_OFFSET } from "@/components/search-panel";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

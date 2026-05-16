@@ -1,7 +1,9 @@
+import '@/lib/monaco/boot';
 import { invoke } from '@tauri-apps/api/core';
 import { ArrowDown, ArrowUp, Save } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { t } from '@/i18n';
 import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
@@ -14,6 +16,8 @@ import {
 } from './diffEditor.utils';
 import type { DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
 import type { MonacoTextEdit } from './monacoTypes';
+import { useDiffPairAutocomplete } from './useDiffPairAutocomplete';
+import { useDiffSharedScroll } from './useDiffSharedScroll';
 
 interface HistoryActionResult {
   lineCount: number;
@@ -78,19 +82,7 @@ const DIFF_CONTEXT_MENU_DISABLED_BUTTON_CLASS_NAME =
   `${DIFF_CONTEXT_MENU_BUTTON_CLASS_NAME} disabled:cursor-not-allowed disabled:opacity-50`;
 const DIFF_HEADER_ICON_BUTTON_CLASS_NAME =
   'rounded border border-border/60 p-1.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent';
-const MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME = 'rutar-matching-quote-highlight';
-interface PairOffsetsResultPayload {
-  leftOffset: number;
-  rightOffset: number;
-  leftLine: number;
-  leftColumn: number;
-  rightLine: number;
-  rightColumn: number;
-}
 
-function isQuoteCharacter(value: string) {
-  return value === "'" || value === '"';
-}
 
 const DIFF_KIND_META: Record<
   DiffLineKind,
@@ -473,22 +465,31 @@ function serializeActualDiffLines(
   return trailingNewline ? `${text}\n` : text;
 }
 export function DiffEditor({ tab }: DiffEditorProps) {
-  const tabs = useStore((state) => state.tabs);
-  const settings = useStore((state) => state.settings);
+  const sourceTab = useStore((state) =>
+    state.tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
+  );
+  const targetTab = useStore((state) =>
+    state.tabs.find((item) => item.id === tab.diffPayload.targetTabId && item.tabType !== 'diff') ?? null,
+  );
+  const settings = useStore(
+    useShallow((state) => ({
+      language: state.settings.language,
+      fontFamily: state.settings.fontFamily,
+      fontSize: state.settings.fontSize,
+      showLineNumbers: state.settings.showLineNumbers,
+      wordWrap: state.settings.wordWrap,
+      minimap: state.settings.minimap,
+      tabIndentMode: state.settings.tabIndentMode,
+      tabWidth: state.settings.tabWidth,
+      theme: state.settings.theme,
+    })),
+  );
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const setActiveDiffPanel = useStore((state) => state.setActiveDiffPanel);
   const persistedActivePanel = useStore((state) => state.activeDiffPanelByTab[tab.id]);
   const tr = (key: Parameters<typeof t>[1]) => t(settings.language, key);
 
-  const sourceTab = useMemo(
-    () => tabs.find((item) => item.id === tab.diffPayload.sourceTabId && item.tabType !== 'diff') ?? null,
-    [tab.diffPayload.sourceTabId, tabs]
-  );
-  const targetTab = useMemo(
-    () => tabs.find((item) => item.id === tab.diffPayload.targetTabId && item.tabType !== 'diff') ?? null,
-    [tab.diffPayload.targetTabId, tabs]
-  );
 
   const [activePanel, setActivePanel] = useState<ActivePanel>(
     persistedActivePanel === 'target' ? 'target' : 'source'
@@ -511,9 +512,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const pendingFetchRequestRef = useRef({ source: 0, target: 0 });
   const sourceDecorationIdsRef = useRef<string[]>([]);
   const targetDecorationIdsRef = useRef<string[]>([]);
-  const sourceQuoteDecorationIdsRef = useRef<string[]>([]);
-  const targetQuoteDecorationIdsRef = useRef<string[]>([]);
-  const quotePairRequestSeqRef = useRef({ source: 0, target: 0 });
   const sourceViewZoneIdsRef = useRef<string[]>([]);
   const targetViewZoneIdsRef = useRef<string[]>([]);
   const settingsRef = useRef(settings);
@@ -526,6 +524,12 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     sharedMaxTop: 0,
   });
   const diffRefreshTimerRef = useRef<number | null>(null);
+  const { clearPaneQuotePairDecorations, updatePaneQuotePairDecorations } = useDiffPairAutocomplete(
+    sourceEditorRef,
+    targetEditorRef,
+    sourceTab,
+    targetTab,
+  );
   const diffRefreshSequenceRef = useRef(0);
 
   const sourceLanguage = resolveMonacoLanguage(sourceTab);
@@ -932,112 +936,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     [tab.diffPayload]
   );
 
-  const clearPaneQuotePairDecorations = useCallback(
-    (side: ActivePanel, targetEditor: monaco.editor.IStandaloneCodeEditor | null) => {
-      quotePairRequestSeqRef.current[side] += 1;
-      const decorationIdsRef = side === 'source' ? sourceQuoteDecorationIdsRef : targetQuoteDecorationIdsRef;
-      if (!targetEditor) {
-        decorationIdsRef.current = [];
-        return;
-      }
-      if (decorationIdsRef.current.length === 0) {
-        return;
-      }
-      decorationIdsRef.current = targetEditor.deltaDecorations(decorationIdsRef.current, []);
-    },
-    []
-  );
-  const updatePaneQuotePairDecorations = useCallback(
-    async (side: ActivePanel) => {
-      const editor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
-      const paneTab = side === 'source' ? sourceTab : targetTab;
-      const model = editor?.getModel();
-      if (!editor || !model || paneTab?.largeFileMode) {
-        clearPaneQuotePairDecorations(side, editor ?? null);
-        return;
-      }
-      const selection = editor.getSelection();
-      if (selection && !selection.isEmpty()) {
-        clearPaneQuotePairDecorations(side, editor);
-        return;
-      }
-      const position = editor.getPosition();
-      if (!position) {
-        clearPaneQuotePairDecorations(side, editor);
-        return;
-      }
-      const text = model.getValue();
-      const offset = model.getOffsetAt(position);
-      const leftChar = offset > 0 ? text.charAt(offset - 1) : '';
-      const rightChar = offset < text.length ? text.charAt(offset) : '';
-      if (!isQuoteCharacter(leftChar) && !isQuoteCharacter(rightChar)) {
-        clearPaneQuotePairDecorations(side, editor);
-        return;
-      }
-      const requestSeq = quotePairRequestSeqRef.current[side] + 1;
-      quotePairRequestSeqRef.current[side] = requestSeq;
-      try {
-        const payload = await invoke<PairOffsetsResultPayload | null>('find_matching_pair_offsets', {
-          text,
-          offset,
-        });
-        if (quotePairRequestSeqRef.current[side] !== requestSeq) {
-          return;
-        }
-        const currentEditor = side === 'source' ? sourceEditorRef.current : targetEditorRef.current;
-        if (!currentEditor || currentEditor !== editor) {
-          return;
-        }
-        if (!payload) {
-          clearPaneQuotePairDecorations(side, editor);
-          return;
-        }
-        const leftQuote = text.charAt(payload.leftOffset);
-        const rightQuote = text.charAt(payload.rightOffset);
-        if (!isQuoteCharacter(leftQuote) || leftQuote !== rightQuote) {
-          clearPaneQuotePairDecorations(side, editor);
-          return;
-        }
-        const lineCount = Math.max(1, model.getLineCount());
-        const leftLine = Math.max(1, Math.min(payload.leftLine, lineCount));
-        const rightLine = Math.max(1, Math.min(payload.rightLine, lineCount));
-        const leftColumn = Math.max(1, payload.leftColumn);
-        const rightColumn = Math.max(1, payload.rightColumn);
-        const nextDecorations: monaco.editor.IModelDeltaDecoration[] = [
-          {
-            range: {
-              startLineNumber: leftLine,
-              startColumn: leftColumn,
-              endLineNumber: leftLine,
-              endColumn: leftColumn + 1,
-            },
-            options: {
-              inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
-            },
-          },
-          {
-            range: {
-              startLineNumber: rightLine,
-              startColumn: rightColumn,
-              endLineNumber: rightLine,
-              endColumn: rightColumn + 1,
-            },
-            options: {
-              inlineClassName: MATCHING_QUOTE_HIGHLIGHT_CLASS_NAME,
-            },
-          },
-        ];
-        const decorationIdsRef = side === 'source' ? sourceQuoteDecorationIdsRef : targetQuoteDecorationIdsRef;
-        decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, nextDecorations);
-      } catch (error) {
-        if (quotePairRequestSeqRef.current[side] === requestSeq) {
-          clearPaneQuotePairDecorations(side, editor);
-        }
-        console.error(`Failed to resolve matching quote pair for ${side} diff pane:`, error);
-      }
-    },
-    [clearPaneQuotePairDecorations, sourceTab, targetTab]
-  );
   const applyEditorOptions = useCallback(
     (_side: ActivePanel, editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
       const currentSettings = settingsRef.current;
@@ -1510,31 +1408,19 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       sharedScrollElement.removeEventListener('scroll', handleSharedScroll);
     };
   }, [syncPanelsFromSharedScrollbar]);
-  useEffect(() => {
-    const syncSharedMetrics = () => {
-      refreshSharedScrollMetrics();
-      syncPanelsFromEditorScroll(activePanel);
-    };
-    const rafId = window.requestAnimationFrame(syncSharedMetrics);
-    const handleWindowResize = () => {
-      syncSharedMetrics();
-    };
-    window.addEventListener('resize', handleWindowResize);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', handleWindowResize);
-    };
-  }, [
+  useDiffSharedScroll({
     activePanel,
-    diffPresentation.alignedLineCount,
     refreshSharedScrollMetrics,
-    ratio,
-    settings.fontSize,
-    settings.wordWrap,
-    sourceTab?.lineCount,
     syncPanelsFromEditorScroll,
-    targetTab?.lineCount,
-  ]);
+    invalidations: [
+      diffPresentation.alignedLineCount,
+      ratio,
+      settings.fontSize,
+      settings.wordWrap,
+      sourceTab?.lineCount,
+      targetTab?.lineCount,
+    ],
+  });
 
   useEffect(() => {
     if (!sourceHostRef.current || sourceEditorRef.current) {
@@ -1549,7 +1435,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     sourceEditorRef.current = editor;
     applyEditorOptions('source', editor, sourceTab);
-    window.requestAnimationFrame(() => {
+    const initialSourceSyncRafId = window.requestAnimationFrame(() => {
+      if (!editor.getModel()) {
+        return;
+      }
       refreshSharedScrollMetrics();
     });
 
@@ -1597,6 +1486,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       handlePaneMonacoContextMenu('source', event);
     });
     return () => {
+      window.cancelAnimationFrame(initialSourceSyncRafId);
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();
@@ -1637,7 +1527,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     targetEditorRef.current = editor;
     applyEditorOptions('target', editor, targetTab);
-    window.requestAnimationFrame(() => {
+    const initialTargetSyncRafId = window.requestAnimationFrame(() => {
+      if (!editor.getModel()) {
+        return;
+      }
       refreshSharedScrollMetrics();
     });
 
@@ -1685,6 +1578,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       handlePaneMonacoContextMenu('target', event);
     });
     return () => {
+      window.cancelAnimationFrame(initialTargetSyncRafId);
       contentDisposable.dispose();
       focusDisposable.dispose();
       cursorDisposable.dispose();

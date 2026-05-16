@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 
 export type EditorContextMenuAction = 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll';
@@ -78,7 +79,7 @@ const disabledMenuButtonClassName = `${menuButtonClassName} disabled:cursor-not-
 const submenuTriggerClassName =
   'flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
-export function EditorContextMenu({
+function EditorContextMenuImpl({
   editorContextMenu,
   editorContextMenuRef,
   submenuPanelRefs,
@@ -355,3 +356,5 @@ export function EditorContextMenu({
     </div>
   );
 }
+
+export const EditorContextMenu = memo(EditorContextMenuImpl);

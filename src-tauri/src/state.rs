@@ -145,14 +145,14 @@ impl AppState {
         let mut paths = self
             .startup_paths
             .lock()
-            .expect("failed to lock startup paths");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         std::mem::take(&mut *paths)
     }
 
     pub fn watched_folder_path(&self) -> Option<PathBuf> {
         self.folder_watch
             .lock()
-            .expect("failed to lock folder watch state")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .as_ref()
             .map(|watch_state| watch_state.root_path.clone())
     }
@@ -161,7 +161,7 @@ impl AppState {
         let mut watch_state = self
             .folder_watch
             .lock()
-            .expect("failed to lock folder watch state");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *watch_state = Some(FolderWatchState { root_path, watcher });
     }
 
@@ -169,7 +169,7 @@ impl AppState {
         let mut watch_state = self
             .folder_watch
             .lock()
-            .expect("failed to lock folder watch state");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *watch_state = None;
     }
 }
@@ -289,6 +289,8 @@ mod tests {
         };
 
         let inverse = operation.inverse();
+        // invariant: EditOperation::inverse swaps before_cursor and after_cursor,
+        // so both fields are Some when the original op had both set.
         let before = inverse
             .before_cursor
             .expect("inverse should keep after cursor as before snapshot");

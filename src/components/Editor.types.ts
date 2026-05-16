@@ -67,15 +67,6 @@ export interface ToggleLineCommentsBackendResult {
   selectionEndChar: number;
 }
 
-export interface PairOffsetsResultPayload {
-  leftOffset: number;
-  rightOffset: number;
-  leftLine?: number;
-  leftColumn?: number;
-  rightLine?: number;
-  rightColumn?: number;
-}
-
 export interface ReplaceRectangularSelectionResultPayload {
   nextText: string;
   caretOffset: number;

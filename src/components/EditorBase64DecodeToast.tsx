@@ -1,9 +1,11 @@
+import { memo } from 'react';
+
 interface EditorBase64DecodeToastProps {
   visible: boolean;
   message: string;
 }
 
-export function EditorBase64DecodeToast({ visible, message }: EditorBase64DecodeToastProps) {
+function EditorBase64DecodeToastImpl({ visible, message }: EditorBase64DecodeToastProps) {
   return (
     <div
       className={`pointer-events-none fixed bottom-6 right-6 z-[100] rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-900 shadow-lg transition-[opacity,transform] dark:text-red-200 ${
@@ -16,3 +18,5 @@ export function EditorBase64DecodeToast({ visible, message }: EditorBase64Decode
     </div>
   );
 }
+
+export const EditorBase64DecodeToast = memo(EditorBase64DecodeToastImpl);

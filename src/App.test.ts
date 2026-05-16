@@ -420,7 +420,7 @@ describe('App component', () => {
 
     expect(screen.queryByTestId('mock-editor')).not.toBeInTheDocument();
     expect(screen.queryByTestId('mock-diff-editor')).not.toBeInTheDocument();
-    expect(container.querySelector('div[aria-hidden="true"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="rutar-editor-fallback"]')).toBeTruthy();
     expect(screen.getByTestId('mock-preview')).toHaveAttribute('data-tab-id', 'none');
   });
 

@@ -2,7 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { useFolderWatch } from '@/hooks/useFolderWatch';
+import { useSingleInstance } from '@/hooks/useSingleInstance';
 import { TitleBar } from '@/components/TitleBar';
 import { Toolbar } from '@/components/Toolbar';
 import { MarkdownToolbar } from '@/components/MarkdownToolbar';
@@ -227,7 +230,7 @@ export const appTestUtils = {
 };
 
 function App() {
-  const tabs = useStore((state) => state.tabs);
+  const activeTab = useStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null);
   const activeTabId = useStore((state) => state.activeTabId);
   const settings = useStore((state) => state.settings);
   const updateSettings = useStore((state) => state.updateSettings);
@@ -736,29 +739,7 @@ function App() {
       cancelled = true;
     };
   }, [openIncomingPaths]);
-  useEffect(() => {
-    let cancelled = false;
-    const syncFolderTreeWatch = async () => {
-      try {
-        if (!folderPath) {
-          await invoke('clear_folder_tree_watch');
-          return;
-        }
-
-        await invoke('watch_folder_tree', { path: folderPath });
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to sync folder tree watch:', error);
-        }
-      }
-    };
-
-    void syncFolderTreeWatch();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [folderPath]);
+  useFolderWatch(folderPath);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -803,40 +784,7 @@ function App() {
       }
     };
   }, []);
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    const setupSingleInstanceOpenListener = async () => {
-      try {
-        const unsubscribe = await listen<string[]>('rutar://open-paths', async (event) => {
-          const paths = Array.isArray(event.payload) ? event.payload : [];
-          if (paths.length === 0) {
-            return;
-          }
-
-          await openIncomingPaths(paths);
-        });
-
-        if (disposed) {
-          unsubscribe();
-          return;
-        }
-
-        unlisten = unsubscribe;
-      } catch (error) {
-        console.error('Failed to listen single-instance open event:', error);
-      }
-    };
-
-    void setupSingleInstanceOpenListener();
-
-    return () => {
-      disposed = true;
-      if (unlisten) {
-        unlisten();
-      }
-    };
-  }, [openIncomingPaths]);
+  useSingleInstance(openIncomingPaths);
 
   useEffect(() => {
     if (hasInitializedStartupTab) {
@@ -1606,9 +1554,24 @@ function App() {
     };
   }, [executeMouseGestureAction, settings.mouseGestures, settings.mouseGesturesEnabled]);
   
-  const activeTab = tabs.find(t => t.id === activeTabId);
+
   const activeFileTab = activeTab && !isDiffTab(activeTab) ? activeTab : null;
-  const editorFallback = <div className="h-full w-full bg-background" aria-hidden="true" />;
+  const editorFallback = useMemo(
+    () => (
+      <div
+        className="flex h-full w-full items-center justify-center bg-background"
+        aria-live="polite"
+        aria-busy="true"
+        data-testid="rutar-editor-fallback"
+      >
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+          <span>{t(settings.language, 'editor.loading')}</span>
+        </div>
+      </div>
+    ),
+    [settings.language],
+  );
   const handleMarkdownPreviewToggleIntent = useCallback((nextOpen: boolean) => {
     setAnimateMarkdownPreviewOnOpen(nextOpen);
   }, []);

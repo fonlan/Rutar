@@ -1,40 +1,42 @@
 import {
   startTransition,
 } from 'react';
-import { SearchSidebarBody } from '@/components/search-panel/SearchSidebarBody';
-import { SearchPanelOverlays } from '@/components/search-panel/SearchPanelOverlays';
-import { SearchSidebarChrome } from '@/components/search-panel/SearchSidebarChrome';
-import { useFilterRuleEditorState } from '@/components/search-panel/useFilterRuleEditorState';
-import { useFilterRulesEditorOptions } from '@/components/search-panel/useFilterRulesEditorOptions';
-import { useFilterRuleGroupPersistence } from '@/components/search-panel/useFilterRuleGroupPersistence';
-import { useSearchPanelInputSupport } from '@/components/search-panel/useSearchPanelInputSupport';
-import { useSearchKeywordKeyDown } from '@/components/search-panel/useSearchInputInteractions';
-import { useSearchMatchNavigation } from '@/components/search-panel/useSearchMatchNavigation';
-import { useSearchPanelDerivedState } from '@/components/search-panel/useSearchPanelDerivedState';
-import { useSearchPanelOverlayOptions } from '@/components/search-panel/useSearchPanelOverlayOptions';
-import { useSearchPanelLocalState } from '@/components/search-panel/useSearchPanelLocalState';
-import { useSearchPanelUiState } from '@/components/search-panel/useSearchPanelUiState';
-import { useSearchPanelRuntimeRefs } from '@/components/search-panel/useSearchPanelRuntimeRefs';
-import { useSearchPanelSnapshotPersistence } from '@/components/search-panel/useSearchPanelSnapshotPersistence';
-import { useSearchApplyResultFilter } from '@/components/search-panel/useSearchApplyResultFilter';
-import { useSearchResultFilterStepNavigation } from '@/components/search-panel/useSearchResultFilterStepNavigation';
-import { useSearchStepNavigation } from '@/components/search-panel/useSearchStepNavigation';
-import { useSearchReplaceHandlers } from '@/components/search-panel/useSearchReplaceHandlers';
-import { useSearchFirstMatchSearch } from '@/components/search-panel/useSearchFirstMatchSearch';
-import { useSearchPanelRestoreEffect } from '@/components/search-panel/useSearchPanelRestoreEffect';
-import { useSearchPanelResetState } from '@/components/search-panel/useSearchPanelResetState';
-import { useSearchBatchControl } from '@/components/search-panel/useSearchBatchControl';
-import { useSearchSidebarShellOptions } from '@/components/search-panel/useSearchSidebarShellOptions';
-import { useSearchPanelShellEffects } from '@/components/search-panel/useSearchPanelShellEffects';
-import { useSearchPanelViewProps } from '@/components/search-panel/useSearchPanelViewProps';
-import { useSearchQueryOptions } from '@/components/search-panel/useSearchQueryOptions';
-import { useSearchResultPanelState } from '@/components/search-panel/useSearchResultPanelState';
-import { useSearchSessionLifecycle } from '@/components/search-panel/useSearchSessionLifecycle';
-import { useSearchResultsViewport } from '@/components/search-panel/useSearchResultsViewport';
-import { useSearchPanelLoadMoreHandlers } from '@/components/search-panel/useSearchPanelLoadMoreHandlers';
-import { useSearchPanelRunHandlers } from '@/components/search-panel/useSearchPanelRunHandlers';
-import { useSearchSidebarFrame } from '@/components/search-panel/useSearchSidebarFrame';
-import { useSearchPanelStoreState } from '@/components/search-panel/useSearchPanelStoreState';
+import {
+  SearchSidebarBody,
+  SearchPanelOverlays,
+  SearchSidebarChrome,
+  useFilterRuleEditorState,
+  useFilterRulesEditorOptions,
+  useFilterRuleGroupPersistence,
+  useSearchPanelInputSupport,
+  useSearchKeywordKeyDown,
+  useSearchMatchNavigation,
+  useSearchPanelDerivedState,
+  useSearchPanelOverlayOptions,
+  useSearchPanelLocalState,
+  useSearchPanelUiState,
+  useSearchPanelRuntimeRefs,
+  useSearchPanelSnapshotPersistence,
+  useSearchApplyResultFilter,
+  useSearchResultFilterStepNavigation,
+  useSearchStepNavigation,
+  useSearchReplaceHandlers,
+  useSearchFirstMatchSearch,
+  useSearchPanelRestoreEffect,
+  useSearchPanelResetState,
+  useSearchBatchControl,
+  useSearchSidebarShellOptions,
+  useSearchPanelShellEffects,
+  useSearchPanelViewProps,
+  useSearchQueryOptions,
+  useSearchResultPanelState,
+  useSearchSessionLifecycle,
+  useSearchResultsViewport,
+  useSearchPanelLoadMoreHandlers,
+  useSearchPanelRunHandlers,
+  useSearchSidebarFrame,
+  useSearchPanelStoreState,
+} from '@/components/search-panel';
 export function SearchReplacePanel() {
   const {
     activeCursorPosition,
