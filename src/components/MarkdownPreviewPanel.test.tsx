@@ -469,41 +469,6 @@ describe("MarkdownPreviewPanel", () => {
   });
 
 
-  it.skip("legacy editor/preview scroll sync behavior", async () => {
-    const markdownTab = createTab({ syntaxOverride: "markdown" });
-    const gestureArea = document.createElement("div");
-    gestureArea.setAttribute("data-rutar-gesture-area", "true");
-    const editorScroller = document.createElement("div");
-    editorScroller.className = "editor-scroll-stable";
-    gestureArea.appendChild(editorScroller);
-    document.body.appendChild(gestureArea);
-    Object.defineProperty(editorScroller, "scrollHeight", { configurable: true, value: 1400 });
-    Object.defineProperty(editorScroller, "clientHeight", { configurable: true, value: 300 });
-    Object.defineProperty(editorScroller, "scrollWidth", { configurable: true, value: 900 });
-    Object.defineProperty(editorScroller, "clientWidth", { configurable: true, value: 300 });
-    editorScroller.scrollTop = 0;
-    editorScroller.scrollLeft = 0;
-
-    render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalled();
-    });
-
-    const previewScroller = document.querySelector(".preview-scroll-shared") as HTMLDivElement;
-    Object.defineProperty(previewScroller, "scrollHeight", { configurable: true, value: 900 });
-    Object.defineProperty(previewScroller, "clientHeight", { configurable: true, value: 300 });
-    Object.defineProperty(previewScroller, "scrollWidth", { configurable: true, value: 700 });
-    Object.defineProperty(previewScroller, "clientWidth", { configurable: true, value: 300 });
-
-    previewScroller.scrollTop = 300;
-    previewScroller.scrollLeft = 200;
-    fireEvent.scroll(previewScroller);
-
-    expect(editorScroller.scrollTop).toBe(550);
-    expect(editorScroller.scrollLeft).toBe(300);
-    gestureArea.remove();
-  });
-
   it("keeps preview scroll ratio when rendered markdown content changes", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });
     render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
