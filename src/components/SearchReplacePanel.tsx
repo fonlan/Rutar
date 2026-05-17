@@ -13,10 +13,6 @@ import {
   useSearchPanelChrome,
   useSearchKeywordKeyDown,
   useSearchMatchNavigation,
-  useSearchPanelDerivedState,
-  useSearchPanelLocalState,
-  useSearchPanelUiState,
-  useSearchPanelRuntimeRefs,
   useSearchPanelSnapshotPersistence,
   useSearchApplyResultFilter,
   useSearchResultFilterStepNavigation,
@@ -24,32 +20,27 @@ import {
   useSearchReplaceHandlers,
   useSearchFirstMatchSearch,
   useSearchPanelRestoreEffect,
-  useSearchPanelResetState,
   useSearchBatchControl,
   useSearchQuerySectionProps,
   useSearchResultPanel,
-  useSearchSessionLifecycle,
   useSearchPanelLoadMoreHandlers,
   useSearchPanelRunHandlers,
   useSearchSidebarFrame,
-  useSearchPanelStoreState,
+  useSearchPanelStore,
 } from '@/components/search-panel';
 export function SearchReplacePanel() {
   const {
+    // Zustand selectors
     activeCursorPosition,
     activeTab,
     activeTabId,
     fontFamily,
-    fontSize,
-    language,
     recentReplaceValues,
     recentSearchKeywords,
     setCursorPosition,
     updateSettings,
     updateTab,
-  } = useSearchPanelStoreState();
-
-  const {
+    // Local state
     appliedResultFilterKeyword,
     caseSensitive,
     currentFilterMatchIndex,
@@ -57,7 +48,6 @@ export function SearchReplacePanel() {
     errorMessage,
     feedbackMessage,
     filterMatches,
-    filterRuleGroups,
     isOpen,
     isResultFilterSearching,
     isSearching,
@@ -73,6 +63,10 @@ export function SearchReplacePanel() {
     reverseSearch,
     searchMode,
     searchSidebarWidth,
+    totalFilterMatchedLineCount,
+    totalMatchCount,
+    totalMatchedLineCount,
+    // Setters
     setAppliedResultFilterKeyword,
     setCaseSensitive,
     setCurrentFilterMatchIndex,
@@ -99,43 +93,7 @@ export function SearchReplacePanel() {
     setTotalFilterMatchedLineCount,
     setTotalMatchCount,
     setTotalMatchedLineCount,
-    totalFilterMatchedLineCount,
-    totalMatchCount,
-    totalMatchedLineCount,
-  } = useSearchPanelLocalState();
-
-  const {
-    inputContextCopyLabel,
-    inputContextCutLabel,
-    inputContextPasteLabel,
-    isFilterMode,
-    isReplaceMode,
-    messages,
-    normalizedFilterRuleGroups,
-    resultListTextStyle,
-  } = useSearchPanelUiState({
-    filterRuleGroups,
-    fontFamily,
-    fontSize,
-    language,
-    panelMode,
-  });
-  const {
-    getSearchSidebarOccludedRightPx,
-    handleSearchUiBlurCapture,
-    handleSearchUiFocusCapture,
-    handleSearchUiPointerDownCapture,
-    isSearchSidebarResizing,
-    isSearchUiActive,
-    searchSidebarContainerRef,
-    startSearchSidebarResize,
-  } = useSearchSidebarFrame({
-    isOpen,
-    searchSidebarWidth,
-    setSearchSidebarWidth,
-  });
-
-  const {
+    // Refs
     cachedFilterRef,
     cachedSearchRef,
     chunkCursorRef,
@@ -160,7 +118,45 @@ export function SearchReplacePanel() {
     sessionRestoreRunVersionRef,
     stopResultFilterSearchRef,
     tabSearchPanelStateRef,
-  } = useSearchPanelRuntimeRefs();
+    // Session lifecycle
+    setFilterSessionId,
+    setSearchSessionId,
+    // UI derived
+    inputContextCopyLabel,
+    inputContextCutLabel,
+    inputContextPasteLabel,
+    isFilterMode,
+    isReplaceMode,
+    messages,
+    normalizedFilterRuleGroups,
+    resultListTextStyle,
+    // Derived state
+    backendResultFilterKeyword,
+    effectiveSearchKeyword,
+    isResultFilterActive,
+    visibleCurrentFilterMatchIndex,
+    visibleCurrentMatchIndex,
+    visibleFilterMatches,
+    visibleMatches,
+    // Reset helpers
+    resetFilterState,
+    resetSearchState,
+  } = useSearchPanelStore();
+
+  const {
+    getSearchSidebarOccludedRightPx,
+    handleSearchUiBlurCapture,
+    handleSearchUiFocusCapture,
+    handleSearchUiPointerDownCapture,
+    isSearchSidebarResizing,
+    isSearchUiActive,
+    searchSidebarContainerRef,
+    startSearchSidebarResize,
+  } = useSearchSidebarFrame({
+    isOpen,
+    searchSidebarWidth,
+    setSearchSidebarWidth,
+  });
 
   const {
     focusSearchInput,
@@ -188,33 +184,6 @@ export function SearchReplacePanel() {
     setIsSearching,
     setResultFilterStepLoadingDirection,
     stopResultFilterSearchRef,
-  });
-
-  const { setFilterSessionId, setSearchSessionId } = useSearchSessionLifecycle({
-    filterSessionIdRef,
-    searchSessionIdRef,
-  });
-
-  const { resetFilterState, resetSearchState } = useSearchPanelResetState({
-    cachedFilterRef,
-    cachedSearchRef,
-    chunkCursorRef,
-    countCacheRef,
-    currentFilterMatchIndex,
-    currentFilterMatchIndexRef,
-    currentMatchIndex,
-    currentMatchIndexRef,
-    filterCountCacheRef,
-    filterLineCursorRef,
-    setCurrentFilterMatchIndex,
-    setCurrentMatchIndex,
-    setFilterMatches,
-    setFilterSessionId,
-    setMatches,
-    setSearchSessionId,
-    setTotalFilterMatchedLineCount,
-    setTotalMatchCount,
-    setTotalMatchedLineCount,
   });
 
   const {
@@ -249,25 +218,6 @@ export function SearchReplacePanel() {
     setErrorMessage,
     setFeedbackMessage,
     setFilterRuleGroups,
-  });
-
-  const {
-    backendResultFilterKeyword,
-    effectiveSearchKeyword,
-    isResultFilterActive,
-    visibleCurrentFilterMatchIndex,
-    visibleCurrentMatchIndex,
-    visibleFilterMatches,
-    visibleMatches,
-  } = useSearchPanelDerivedState({
-    appliedResultFilterKeyword,
-    caseSensitive,
-    currentFilterMatchIndex,
-    currentMatchIndex,
-    filterMatches,
-    keyword,
-    matches,
-    parseEscapeSequences,
   });
 
   const { executeFilter, executeSearch } = useSearchPanelRunHandlers({
