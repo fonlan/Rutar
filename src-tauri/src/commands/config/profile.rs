@@ -1,17 +1,16 @@
-use super::*;
+// Cross-platform persisted-config IO and normalization. Windows-shell
+// integrations (registry-backed context menu + file associations) live in
+// `super::windows_integration` and are reached via the `#[cfg(windows)]`
+// branches of the fa\xC3\xA7ade functions below.
+
+use super::super::*;
 
 use std::path::PathBuf;
 
 #[cfg(windows)]
-use windows_sys::Win32::UI::Shell::{
-    SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_FLUSHNOWAIT, SHCNF_IDLIST,
-};
-#[cfg(windows)]
-use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
-#[cfg(windows)]
-use winreg::RegKey;
+use super::windows_integration;
 
-fn normalize_filter_rule_input(rule: FilterRuleInput) -> Option<FilterRuleInput> {
+pub(crate) fn normalize_filter_rule_input(rule: FilterRuleInput) -> Option<FilterRuleInput> {
     let keyword = rule.keyword.trim().to_string();
     if keyword.is_empty() {
         return None;
@@ -47,7 +46,7 @@ fn normalize_filter_rule_input(rule: FilterRuleInput) -> Option<FilterRuleInput>
     })
 }
 
-fn normalize_filter_rule_groups(
+pub(crate) fn normalize_filter_rule_groups(
     groups: Option<Vec<FilterRuleGroupConfig>>,
 ) -> Option<Vec<FilterRuleGroupConfig>> {
     let normalized_groups: Vec<FilterRuleGroupConfig> = groups
@@ -80,7 +79,7 @@ fn normalize_filter_rule_groups(
     }
 }
 
-fn normalize_windows_file_association_extension(value: &str) -> Option<String> {
+pub(crate) fn normalize_windows_file_association_extension(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return None;
@@ -108,7 +107,9 @@ fn normalize_windows_file_association_extension(value: &str) -> Option<String> {
     Some(normalized)
 }
 
-fn normalize_windows_file_association_extensions(extensions: Option<Vec<String>>) -> Vec<String> {
+pub(crate) fn normalize_windows_file_association_extensions(
+    extensions: Option<Vec<String>>,
+) -> Vec<String> {
     let mut unique_extensions = BTreeSet::new();
 
     for extension in extensions.unwrap_or_default() {
@@ -124,7 +125,7 @@ fn normalize_windows_file_association_extensions(extensions: Option<Vec<String>>
     unique_extensions.into_iter().collect()
 }
 
-fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
+pub(crate) fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
     let mut normalized_paths: Vec<String> = Vec::new();
 
     for path in paths.unwrap_or_default() {
@@ -147,7 +148,7 @@ fn normalize_recent_paths(paths: Option<Vec<String>>) -> Vec<String> {
     normalized_paths
 }
 
-fn normalize_recent_text_history(entries: Option<Vec<String>>) -> Vec<String> {
+pub(crate) fn normalize_recent_text_history(entries: Option<Vec<String>>) -> Vec<String> {
     let mut normalized_entries: Vec<String> = Vec::new();
 
     for entry in entries.unwrap_or_default() {
@@ -165,7 +166,7 @@ fn normalize_recent_text_history(entries: Option<Vec<String>>) -> Vec<String> {
     normalized_entries
 }
 
-fn normalize_mouse_gesture_pattern(value: &str) -> String {
+pub(crate) fn normalize_mouse_gesture_pattern(value: &str) -> String {
     value
         .trim()
         .to_ascii_uppercase()
@@ -175,7 +176,7 @@ fn normalize_mouse_gesture_pattern(value: &str) -> String {
         .collect()
 }
 
-fn is_valid_mouse_gesture_action(value: &str) -> bool {
+pub(crate) fn is_valid_mouse_gesture_action(value: &str) -> bool {
     matches!(
         value,
         "previousTab"
@@ -194,7 +195,7 @@ fn is_valid_mouse_gesture_action(value: &str) -> bool {
     )
 }
 
-fn normalize_mouse_gestures(
+pub(crate) fn normalize_mouse_gestures(
     gestures: Option<Vec<settings::MouseGestureConfig>>,
 ) -> Vec<settings::MouseGestureConfig> {
     if matches!(gestures.as_ref(), Some(list) if list.is_empty()) {
@@ -231,7 +232,7 @@ fn normalize_mouse_gestures(
     normalized
 }
 
-fn normalize_window_state(
+pub(crate) fn normalize_window_state(
     window_state: Option<settings::WindowStateConfig>,
 ) -> Option<settings::WindowStateConfig> {
     window_state.map(|state| {
@@ -246,7 +247,7 @@ fn normalize_window_state(
     })
 }
 
-fn normalize_app_config(config: AppConfig) -> AppConfig {
+pub(crate) fn normalize_app_config(config: AppConfig) -> AppConfig {
     AppConfig {
         language: settings::normalize_language(Some(config.language.as_str())),
         theme: settings::normalize_theme(Some(config.theme.as_str())),
@@ -283,540 +284,32 @@ fn normalize_app_config(config: AppConfig) -> AppConfig {
     }
 }
 
-#[cfg(windows)]
-fn context_menu_display_name(language: &str) -> &'static str {
-    match settings::normalize_language(Some(language)) {
-        value if value == "zh-CN" => "使用 Rutar 打开",
-        _ => "Open with Rutar",
-    }
-}
-
-#[cfg(windows)]
-const WIN_FILE_SHELL_KEY: &str = r"Software\Classes\*\shell\Rutar";
-#[cfg(windows)]
-const WIN_DIR_SHELL_KEY: &str = r"Software\Classes\Directory\shell\Rutar";
-#[cfg(windows)]
-const WIN_DIR_BG_SHELL_KEY: &str = r"Software\Classes\Directory\Background\shell\Rutar";
-#[cfg(windows)]
-const WIN_FILE_ASSOC_PROG_ID: &str = "Rutar.Document";
-#[cfg(windows)]
-const WIN_FILE_ASSOC_PROG_KEY: &str = r"Software\Classes\Rutar.Document";
-#[cfg(windows)]
-const WIN_FILE_ASSOC_BACKUP_KEY: &str = r"Software\Rutar\FileAssociationBackups";
-#[cfg(windows)]
-const WIN_REGISTERED_APPLICATIONS_KEY: &str = r"Software\RegisteredApplications";
-#[cfg(windows)]
-const WIN_APP_REGISTRATION_NAME: &str = "Rutar";
-#[cfg(windows)]
-const WIN_APP_CAPABILITIES_KEY: &str = r"Software\Rutar\Capabilities";
-
-#[cfg(windows)]
-fn executable_path_string() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(exe.to_string_lossy().to_string())
-}
-
-#[cfg(windows)]
-fn executable_file_name_string() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let file_name = exe
-        .file_name()
-        .ok_or_else(|| "Failed to resolve executable file name".to_string())?
-        .to_string_lossy()
-        .to_string();
-    Ok(file_name)
-}
-
-#[cfg(windows)]
-fn context_menu_command_line(argument_placeholder: &str) -> Result<String, String> {
-    let exe = executable_path_string()?;
-    Ok(format!("\"{}\" \"{}\"", exe, argument_placeholder))
-}
-
-#[cfg(windows)]
-fn write_windows_context_shell(
-    root: &RegKey,
-    shell_key: &str,
-    icon_path: &str,
-    argument_placeholder: &str,
-    display_name: &str,
-) -> Result<(), String> {
-    let (menu_key, _) = root
-        .create_subkey(shell_key)
-        .map_err(|e| format!("Failed to create registry key {}: {}", shell_key, e))?;
-
-    menu_key
-        .set_value("", &display_name)
-        .map_err(|e| e.to_string())?;
-    menu_key
-        .set_value("Icon", &icon_path)
-        .map_err(|e| e.to_string())?;
-
-    let command = context_menu_command_line(argument_placeholder)?;
-    let (command_key, _) = menu_key
-        .create_subkey("command")
-        .map_err(|e| e.to_string())?;
-    command_key
-        .set_value("", &command)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn set_windows_context_shell_display_name(
-    root: &RegKey,
-    shell_key: &str,
-    display_name: &str,
-) -> Result<(), String> {
-    match root.open_subkey_with_flags(shell_key, KEY_WRITE) {
-        Ok(menu_key) => menu_key
-            .set_value("", &display_name)
-            .map_err(|e| e.to_string()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(format!(
-            "Failed to open registry key {}: {}",
-            shell_key, err
-        )),
-    }
-}
-
-#[cfg(windows)]
-fn remove_registry_tree(root: &RegKey, path: &str) -> Result<(), String> {
-    match root.delete_subkey_all(path) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(format!("Failed to remove registry key {}: {}", path, err)),
-    }
-}
-
-#[cfg(windows)]
-fn read_registry_command(root: &RegKey, shell_key: &str) -> Option<String> {
-    let command_key_path = format!(r"{}\command", shell_key);
-    let command_key = root
-        .open_subkey_with_flags(command_key_path, KEY_READ)
-        .ok()?;
-    command_key.get_value::<String, _>("").ok()
-}
-
-#[cfg(windows)]
-fn expected_registry_command(argument_placeholder: &str) -> Option<String> {
-    context_menu_command_line(argument_placeholder).ok()
-}
-
-#[cfg(windows)]
-fn windows_file_association_type_name(language: &str) -> &'static str {
-    match settings::normalize_language(Some(language)) {
-        value if value == "zh-CN" => "Rutar 文本文档",
-        _ => "Rutar Text Document",
-    }
-}
-
-#[cfg(windows)]
-fn windows_document_icon_path_string() -> Result<String, String> {
-    executable_path_string()
-}
-
-#[cfg(windows)]
-fn windows_default_icon_value(icon_path: &str) -> String {
-    format!("{},0", icon_path)
-}
-
-#[cfg(windows)]
-fn windows_file_extension_key(extension: &str) -> String {
-    format!(r"Software\Classes\{}", extension)
-}
-
-#[cfg(windows)]
-fn windows_file_association_backup_key(extension: &str) -> String {
-    format!(r"{}\{}", WIN_FILE_ASSOC_BACKUP_KEY, extension)
-}
-
-#[cfg(windows)]
-fn windows_applications_key(executable_name: &str) -> String {
-    format!(r"Software\Classes\Applications\{}", executable_name)
-}
-
-#[cfg(windows)]
-fn windows_default_app_name(language: &str) -> &'static str {
-    match settings::normalize_language(Some(language)) {
-        value if value == "zh-CN" => "Rutar",
-        _ => "Rutar",
-    }
-}
-
-#[cfg(windows)]
-fn windows_default_app_description(language: &str) -> &'static str {
-    match settings::normalize_language(Some(language)) {
-        value if value == "zh-CN" => "Rutar 文本编辑器",
-        _ => "Rutar text editor",
-    }
-}
-
-#[cfg(windows)]
-fn windows_file_exts_user_choice_key(extension: &str) -> String {
-    format!(
-        r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{}\UserChoice",
-        extension
-    )
-}
-
-#[cfg(windows)]
-fn notify_windows_association_changed() {
-    unsafe {
-        SHChangeNotify(
-            SHCNE_ASSOCCHANGED as i32,
-            SHCNF_IDLIST | SHCNF_FLUSHNOWAIT,
-            std::ptr::null(),
-            std::ptr::null(),
-        );
-    }
-}
-
-#[cfg(windows)]
-fn clear_windows_user_choice(root: &RegKey, extension: &str) -> Result<(), String> {
-    let user_choice_key = windows_file_exts_user_choice_key(extension);
-    remove_registry_tree(root, user_choice_key.as_str())
-}
-
-#[cfg(windows)]
-fn read_registry_default_value(root: &RegKey, key_path: &str) -> Result<Option<String>, String> {
-    let key = match root.open_subkey_with_flags(key_path, KEY_READ) {
-        Ok(value) => value,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(format!("Failed to open registry key {}: {}", key_path, err)),
-    };
-
-    match key.get_value::<String, _>("") {
-        Ok(value) => Ok(Some(value)),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(err) => Err(format!(
-            "Failed to read registry key {} default value: {}",
-            key_path, err
-        )),
-    }
-}
-
-#[cfg(windows)]
-fn backup_extension_default_value(root: &RegKey, extension: &str) -> Result<(), String> {
-    let backup_key_path = windows_file_association_backup_key(extension);
-    if root
-        .open_subkey_with_flags(&backup_key_path, KEY_READ)
-        .is_ok()
-    {
-        return Ok(());
-    }
-
-    let extension_key_path = windows_file_extension_key(extension);
-    let previous_default = read_registry_default_value(root, extension_key_path.as_str())?;
-
-    let (backup_key, _) = root.create_subkey(backup_key_path.as_str()).map_err(|e| {
-        format!(
-            "Failed to create backup registry key {}: {}",
-            backup_key_path, e
-        )
-    })?;
-
-    let has_previous_default: u32 = if previous_default.is_some() { 1 } else { 0 };
-    backup_key
-        .set_value("HasPreviousDefault", &has_previous_default)
-        .map_err(|e| e.to_string())?;
-
-    if let Some(previous) = previous_default {
-        backup_key
-            .set_value("PreviousDefault", &previous)
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn write_windows_file_association_progid(
-    root: &RegKey,
-    icon_path: &str,
-    language: &str,
-) -> Result<(), String> {
-    let (prog_key, _) = root.create_subkey(WIN_FILE_ASSOC_PROG_KEY).map_err(|e| {
-        format!(
-            "Failed to create registry key {}: {}",
-            WIN_FILE_ASSOC_PROG_KEY, e
-        )
-    })?;
-    prog_key
-        .set_value("", &windows_file_association_type_name(language))
-        .map_err(|e| e.to_string())?;
-
-    let (icon_key, _) = prog_key
-        .create_subkey("DefaultIcon")
-        .map_err(|e| e.to_string())?;
-    icon_key
-        .set_value("", &windows_default_icon_value(icon_path))
-        .map_err(|e| e.to_string())?;
-
-    let command = context_menu_command_line("%1")?;
-    let (command_key, _) = prog_key
-        .create_subkey(r"shell\open\command")
-        .map_err(|e| e.to_string())?;
-    command_key
-        .set_value("", &command)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn write_windows_registered_application(
-    root: &RegKey,
-    executable_name: &str,
-    icon_path: &str,
-    language: &str,
-    extensions: &[String],
-) -> Result<(), String> {
-    let command = context_menu_command_line("%1")?;
-    let app_name = windows_default_app_name(language);
-    let app_description = windows_default_app_description(language);
-    let app_key_path = windows_applications_key(executable_name);
-
-    let (app_key, _) = root
-        .create_subkey(app_key_path.as_str())
-        .map_err(|e| format!("Failed to create registry key {}: {}", app_key_path, e))?;
-    app_key
-        .set_value("FriendlyAppName", &app_name)
-        .map_err(|e| e.to_string())?;
-
-    let (app_icon_key, _) = app_key
-        .create_subkey("DefaultIcon")
-        .map_err(|e| e.to_string())?;
-    app_icon_key
-        .set_value("", &windows_default_icon_value(icon_path))
-        .map_err(|e| e.to_string())?;
-
-    let (app_command_key, _) = app_key
-        .create_subkey(r"shell\open\command")
-        .map_err(|e| e.to_string())?;
-    app_command_key
-        .set_value("", &command)
-        .map_err(|e| e.to_string())?;
-
-    remove_registry_tree(root, format!(r"{}\SupportedTypes", app_key_path).as_str())?;
-    let (supported_types_key, _) = app_key
-        .create_subkey("SupportedTypes")
-        .map_err(|e| e.to_string())?;
-    for extension in extensions {
-        supported_types_key
-            .set_value(extension.as_str(), &"")
-            .map_err(|e| e.to_string())?;
-    }
-
-    remove_registry_tree(
-        root,
-        format!(r"{}\FileAssociations", WIN_APP_CAPABILITIES_KEY).as_str(),
-    )?;
-    let (capabilities_key, _) = root.create_subkey(WIN_APP_CAPABILITIES_KEY).map_err(|e| {
-        format!(
-            "Failed to create registry key {}: {}",
-            WIN_APP_CAPABILITIES_KEY, e
-        )
-    })?;
-    capabilities_key
-        .set_value("ApplicationName", &app_name)
-        .map_err(|e| e.to_string())?;
-    capabilities_key
-        .set_value("ApplicationDescription", &app_description)
-        .map_err(|e| e.to_string())?;
-
-    let (file_associations_key, _) = capabilities_key
-        .create_subkey("FileAssociations")
-        .map_err(|e| e.to_string())?;
-    for extension in extensions {
-        file_associations_key
-            .set_value(extension.as_str(), &WIN_FILE_ASSOC_PROG_ID)
-            .map_err(|e| e.to_string())?;
-    }
-
-    let (registered_apps_key, _) = root
-        .create_subkey(WIN_REGISTERED_APPLICATIONS_KEY)
-        .map_err(|e| {
-            format!(
-                "Failed to create registry key {}: {}",
-                WIN_REGISTERED_APPLICATIONS_KEY, e
-            )
-        })?;
-    registered_apps_key
-        .set_value(WIN_APP_REGISTRATION_NAME, &WIN_APP_CAPABILITIES_KEY)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn remove_windows_registered_application(root: &RegKey) -> Result<(), String> {
-    if let Ok(registered_apps_key) =
-        root.open_subkey_with_flags(WIN_REGISTERED_APPLICATIONS_KEY, KEY_WRITE)
-    {
-        let _ = registered_apps_key.delete_value(WIN_APP_REGISTRATION_NAME);
-    }
-
-    remove_registry_tree(root, WIN_APP_CAPABILITIES_KEY)
-}
-
-#[cfg(windows)]
-fn associate_extension_with_rutar(root: &RegKey, extension: &str) -> Result<(), String> {
-    backup_extension_default_value(root, extension)?;
-    clear_windows_user_choice(root, extension)?;
-
-    let extension_key_path = windows_file_extension_key(extension);
-    let (extension_key, _) = root
-        .create_subkey(extension_key_path.as_str())
-        .map_err(|e| {
-            format!(
-                "Failed to create registry key {}: {}",
-                extension_key_path, e
-            )
-        })?;
-
-    extension_key
-        .set_value("", &WIN_FILE_ASSOC_PROG_ID)
-        .map_err(|e| e.to_string())?;
-
-    let (open_with_key, _) = extension_key
-        .create_subkey("OpenWithProgids")
-        .map_err(|e| e.to_string())?;
-    open_with_key
-        .set_value(WIN_FILE_ASSOC_PROG_ID, &"")
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn restore_extension_default_value(root: &RegKey, extension: &str) -> Result<(), String> {
-    let backup_key_path = windows_file_association_backup_key(extension);
-    let backup_key = match root.open_subkey_with_flags(backup_key_path.as_str(), KEY_READ) {
-        Ok(value) => value,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => {
-            return Err(format!(
-                "Failed to open backup registry key {}: {}",
-                backup_key_path, err
-            ))
-        }
-    };
-
-    let has_previous_default = backup_key
-        .get_value::<u32, _>("HasPreviousDefault")
-        .unwrap_or(0)
-        == 1;
-    let previous_default = backup_key.get_value::<String, _>("PreviousDefault").ok();
-
-    let extension_key_path = windows_file_extension_key(extension);
-    let (extension_key, _) = root
-        .create_subkey(extension_key_path.as_str())
-        .map_err(|e| format!("Failed to open registry key {}: {}", extension_key_path, e))?;
-
-    if has_previous_default {
-        if let Some(previous) = previous_default {
-            extension_key
-                .set_value("", &previous)
-                .map_err(|e| e.to_string())?;
-        } else {
-            let _ = extension_key.delete_value("");
-        }
-    } else {
-        let _ = extension_key.delete_value("");
-    }
-
-    if let Ok(open_with_key) = extension_key.open_subkey_with_flags("OpenWithProgids", KEY_WRITE) {
-        let _ = open_with_key.delete_value(WIN_FILE_ASSOC_PROG_ID);
-    }
-
-    clear_windows_user_choice(root, extension)?;
-
-    remove_registry_tree(root, backup_key_path.as_str())
-}
-
-#[cfg(windows)]
-fn is_extension_associated_with_rutar(root: &RegKey, extension: &str) -> bool {
-    let extension_key_path = windows_file_extension_key(extension);
-    let extension_default = read_registry_default_value(root, extension_key_path.as_str())
-        .ok()
-        .flatten();
-
-    matches!(extension_default.as_deref(), Some(value) if value == WIN_FILE_ASSOC_PROG_ID)
-}
-
-#[cfg(windows)]
-fn is_windows_file_association_registered(extensions: &[String]) -> bool {
-    if extensions.is_empty() {
-        return false;
-    }
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let expected_command = match context_menu_command_line("%1") {
-        Ok(value) => value,
-        Err(_) => return false,
-    };
-
-    let command_matches =
-        read_registry_default_value(&hkcu, r"Software\Classes\Rutar.Document\shell\open\command")
-            .ok()
-            .flatten()
-            .map(|value| value == expected_command)
-            .unwrap_or(false);
-
-    if !command_matches {
-        return false;
-    }
-
-    extensions
-        .iter()
-        .all(|extension| is_extension_associated_with_rutar(&hkcu, extension.as_str()))
-}
-
 fn config_file_path() -> Result<PathBuf, String> {
     let app_data =
         std::env::var("APPDATA").map_err(|_| "Failed to locate APPDATA directory".to_string())?;
     Ok(PathBuf::from(app_data).join("Rutar").join("config.json"))
 }
 
-pub(super) fn get_startup_paths_impl(state: State<'_, AppState>) -> Vec<String> {
+pub(crate) fn get_startup_paths_impl(state: State<'_, AppState>) -> Vec<String> {
     state.take_startup_paths()
 }
 
-#[cfg(windows)]
-fn list_extensions_associated_with_rutar(root: &RegKey) -> Vec<String> {
-    let classes_key = match root.open_subkey_with_flags(r"Software\Classes", KEY_READ) {
-        Ok(value) => value,
-        Err(_) => return Vec::new(),
-    };
+// --- Windows shell integration facade (no-op on non-Windows) ---------
 
-    let mut extensions = Vec::new();
-
-    for key_name in classes_key.enum_keys().flatten() {
-        if !key_name.starts_with('.') {
-            continue;
-        }
-
-        if is_extension_associated_with_rutar(root, key_name.as_str()) {
-            extensions.push(key_name.to_lowercase());
-        }
+pub(crate) fn register_windows_context_menu_impl(language: Option<String>) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        let _ = language;
+        Err("Windows context menu is only supported on Windows".to_string())
     }
 
-    extensions.sort();
-    extensions
+    #[cfg(windows)]
+    {
+        windows_integration::register_context_menu(language)
+    }
 }
 
-#[cfg(windows)]
-fn open_windows_default_apps_settings_page() -> Result<(), String> {
-    Command::new("explorer")
-        .arg("ms-settings:defaultapps")
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to open Windows default apps settings page: {}", e))
-}
-
-pub(super) fn register_windows_context_menu_impl(language: Option<String>) -> Result<(), String> {
+pub(crate) fn unregister_windows_context_menu_impl() -> Result<(), String> {
     #[cfg(not(windows))]
     {
         Err("Windows context menu is only supported on Windows".to_string())
@@ -824,37 +317,11 @@ pub(super) fn register_windows_context_menu_impl(language: Option<String>) -> Re
 
     #[cfg(windows)]
     {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let icon_path = executable_path_string()?;
-        let normalized_language = settings::normalize_language(language.as_deref());
-        let display_name = context_menu_display_name(normalized_language.as_str());
-
-        write_windows_context_shell(&hkcu, WIN_FILE_SHELL_KEY, &icon_path, "%1", display_name)?;
-        write_windows_context_shell(&hkcu, WIN_DIR_SHELL_KEY, &icon_path, "%1", display_name)?;
-        write_windows_context_shell(&hkcu, WIN_DIR_BG_SHELL_KEY, &icon_path, "%V", display_name)?;
-
-        Ok(())
+        windows_integration::unregister_context_menu()
     }
 }
 
-pub(super) fn unregister_windows_context_menu_impl() -> Result<(), String> {
-    #[cfg(not(windows))]
-    {
-        Err("Windows context menu is only supported on Windows".to_string())
-    }
-
-    #[cfg(windows)]
-    {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        remove_registry_tree(&hkcu, WIN_FILE_SHELL_KEY)?;
-        remove_registry_tree(&hkcu, WIN_DIR_SHELL_KEY)?;
-        remove_registry_tree(&hkcu, WIN_DIR_BG_SHELL_KEY)?;
-
-        Ok(())
-    }
-}
-
-pub(super) fn is_windows_context_menu_registered_impl() -> bool {
+pub(crate) fn is_windows_context_menu_registered_impl() -> bool {
     #[cfg(not(windows))]
     {
         false
@@ -862,35 +329,15 @@ pub(super) fn is_windows_context_menu_registered_impl() -> bool {
 
     #[cfg(windows)]
     {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let expected_file = match expected_registry_command("%1") {
-            Some(value) => value,
-            None => return false,
-        };
-        let expected_dir_bg = match expected_registry_command("%V") {
-            Some(value) => value,
-            None => return false,
-        };
-
-        let file_ok = read_registry_command(&hkcu, WIN_FILE_SHELL_KEY)
-            .map(|value| value == expected_file)
-            .unwrap_or(false);
-        let dir_ok = read_registry_command(&hkcu, WIN_DIR_SHELL_KEY)
-            .map(|value| value == expected_file)
-            .unwrap_or(false);
-        let dir_bg_ok = read_registry_command(&hkcu, WIN_DIR_BG_SHELL_KEY)
-            .map(|value| value == expected_dir_bg)
-            .unwrap_or(false);
-
-        file_ok && dir_ok && dir_bg_ok
+        windows_integration::is_context_menu_registered()
     }
 }
 
-pub(super) fn get_default_windows_file_association_extensions_impl() -> Vec<String> {
+pub(crate) fn get_default_windows_file_association_extensions_impl() -> Vec<String> {
     settings::default_windows_file_association_extensions()
 }
 
-pub(super) fn apply_windows_file_associations_impl(
+pub(crate) fn apply_windows_file_associations_impl(
     language: Option<String>,
     extensions: Vec<String>,
     open_settings_page: bool,
@@ -905,42 +352,11 @@ pub(super) fn apply_windows_file_associations_impl(
 
     #[cfg(windows)]
     {
-        let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
-        let normalized_language = settings::normalize_language(language.as_deref());
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let icon_path = windows_document_icon_path_string()?;
-        let executable_name = executable_file_name_string()?;
-
-        write_windows_file_association_progid(
-            &hkcu,
-            icon_path.as_str(),
-            normalized_language.as_str(),
-        )?;
-        write_windows_registered_application(
-            &hkcu,
-            executable_name.as_str(),
-            icon_path.as_str(),
-            normalized_language.as_str(),
-            normalized_extensions.as_slice(),
-        )?;
-
-        for extension in &normalized_extensions {
-            associate_extension_with_rutar(&hkcu, extension.as_str())?;
-        }
-
-        notify_windows_association_changed();
-
-        if open_settings_page {
-            if let Err(error) = open_windows_default_apps_settings_page() {
-                eprintln!("{error}");
-            }
-        }
-
-        Ok(normalized_extensions)
+        windows_integration::apply_file_associations(language, extensions, open_settings_page)
     }
 }
 
-pub(super) fn remove_windows_file_associations_impl(extensions: Vec<String>) -> Result<(), String> {
+pub(crate) fn remove_windows_file_associations_impl(extensions: Vec<String>) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = extensions;
@@ -949,43 +365,11 @@ pub(super) fn remove_windows_file_associations_impl(extensions: Vec<String>) -> 
 
     #[cfg(windows)]
     {
-        let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let executable_name = executable_file_name_string()?;
-
-        for extension in &normalized_extensions {
-            restore_extension_default_value(&hkcu, extension.as_str())?;
-        }
-
-        let remaining_extensions = list_extensions_associated_with_rutar(&hkcu);
-        if remaining_extensions.is_empty() {
-            remove_registry_tree(&hkcu, WIN_FILE_ASSOC_PROG_KEY)?;
-            remove_windows_registered_application(&hkcu)?;
-            remove_registry_tree(
-                &hkcu,
-                windows_applications_key(executable_name.as_str()).as_str(),
-            )?;
-        } else {
-            let icon_path = windows_document_icon_path_string()?;
-            let language = load_config_impl()
-                .map(|config| settings::normalize_language(Some(config.language.as_str())))
-                .unwrap_or_else(|_| settings::normalize_language(None));
-            write_windows_registered_application(
-                &hkcu,
-                executable_name.as_str(),
-                icon_path.as_str(),
-                language.as_str(),
-                remaining_extensions.as_slice(),
-            )?;
-        }
-
-        notify_windows_association_changed();
-
-        Ok(())
+        windows_integration::remove_file_associations(extensions)
     }
 }
 
-pub(super) fn get_windows_file_association_status_impl(
+pub(crate) fn get_windows_file_association_status_impl(
     extensions: Vec<String>,
 ) -> WindowsFileAssociationStatus {
     let normalized_extensions = normalize_windows_file_association_extensions(Some(extensions));
@@ -1001,13 +385,17 @@ pub(super) fn get_windows_file_association_status_impl(
     #[cfg(windows)]
     {
         WindowsFileAssociationStatus {
-            enabled: is_windows_file_association_registered(&normalized_extensions),
+            enabled: windows_integration::is_windows_file_association_registered(
+                &normalized_extensions,
+            ),
             extensions: normalized_extensions,
         }
     }
 }
 
-pub(super) fn load_config_impl() -> Result<AppConfig, String> {
+// --- Persisted config IO --------------------------------------------------
+
+pub(crate) fn load_config_impl() -> Result<AppConfig, String> {
     let path = config_file_path()?;
     if !path.exists() {
         return Ok(AppConfig::default());
@@ -1122,26 +510,26 @@ pub(super) fn load_config_impl() -> Result<AppConfig, String> {
     Ok(config)
 }
 
-pub(super) fn is_single_instance_mode_enabled_in_config_impl() -> bool {
+pub(crate) fn is_single_instance_mode_enabled_in_config_impl() -> bool {
     load_config_impl()
         .map(|config| config.single_instance_mode)
         .unwrap_or(DEFAULT_SINGLE_INSTANCE_MODE)
 }
 
-pub(super) fn is_remember_window_state_enabled_in_config_impl() -> bool {
+pub(crate) fn is_remember_window_state_enabled_in_config_impl() -> bool {
     load_config_impl()
         .map(|config| config.remember_window_state)
         .unwrap_or(true)
 }
 
-pub(super) fn load_main_window_state_in_config_impl() -> Option<settings::WindowStateConfig> {
+pub(crate) fn load_main_window_state_in_config_impl() -> Option<settings::WindowStateConfig> {
     load_config_impl()
         .ok()
         .filter(|config| config.remember_window_state)
         .and_then(|config| normalize_window_state(config.window_state))
 }
 
-pub(super) fn save_main_window_state_in_config_impl(
+pub(crate) fn save_main_window_state_in_config_impl(
     width: Option<u32>,
     height: Option<u32>,
     maximized: bool,
@@ -1156,7 +544,7 @@ pub(super) fn save_main_window_state_in_config_impl(
     save_config_impl(config)
 }
 
-pub(super) fn save_config_impl(config: AppConfig) -> Result<(), String> {
+pub(crate) fn save_config_impl(config: AppConfig) -> Result<(), String> {
     let mut normalized = normalize_app_config(config);
 
     if normalized.filter_rule_groups.is_none() {
@@ -1176,48 +564,18 @@ pub(super) fn save_config_impl(config: AppConfig) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        if is_windows_context_menu_registered_impl() {
-            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-            let display_name = context_menu_display_name(normalized.language.as_str());
-
-            set_windows_context_shell_display_name(&hkcu, WIN_FILE_SHELL_KEY, display_name)?;
-            set_windows_context_shell_display_name(&hkcu, WIN_DIR_SHELL_KEY, display_name)?;
-            set_windows_context_shell_display_name(&hkcu, WIN_DIR_BG_SHELL_KEY, display_name)?;
-        }
-
-        if is_windows_file_association_registered(&normalized.windows_file_association_extensions) {
-            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-            let icon_path = windows_document_icon_path_string()?;
-            let executable_name = executable_file_name_string()?;
-            let associated_extensions = list_extensions_associated_with_rutar(&hkcu);
-
-            write_windows_file_association_progid(
-                &hkcu,
-                icon_path.as_str(),
-                normalized.language.as_str(),
-            )?;
-
-            if !associated_extensions.is_empty() {
-                write_windows_registered_application(
-                    &hkcu,
-                    executable_name.as_str(),
-                    icon_path.as_str(),
-                    normalized.language.as_str(),
-                    associated_extensions.as_slice(),
-                )?;
-            }
-        }
+        windows_integration::sync_with_saved_config(&normalized)?;
     }
 
     Ok(())
 }
 
-pub(super) fn load_filter_rule_groups_config_impl() -> Result<Vec<FilterRuleGroupConfig>, String> {
+pub(crate) fn load_filter_rule_groups_config_impl() -> Result<Vec<FilterRuleGroupConfig>, String> {
     let config = load_config_impl()?;
     Ok(config.filter_rule_groups.unwrap_or_default())
 }
 
-pub(super) fn save_filter_rule_groups_config_impl(
+pub(crate) fn save_filter_rule_groups_config_impl(
     groups: Vec<FilterRuleGroupConfig>,
 ) -> Result<(), String> {
     let mut config = load_config_impl()?;
@@ -1225,7 +583,7 @@ pub(super) fn save_filter_rule_groups_config_impl(
     save_config_impl(config)
 }
 
-pub(super) fn import_filter_rule_groups_impl(
+pub(crate) fn import_filter_rule_groups_impl(
     path: String,
 ) -> Result<Vec<FilterRuleGroupConfig>, String> {
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -1247,7 +605,7 @@ pub(super) fn import_filter_rule_groups_impl(
     Ok(normalized)
 }
 
-pub(super) fn export_filter_rule_groups_impl(
+pub(crate) fn export_filter_rule_groups_impl(
     path: String,
     groups: Vec<FilterRuleGroupConfig>,
 ) -> Result<(), String> {
@@ -1499,7 +857,7 @@ mod tests {
         assert_eq!(normalized.tab_indent_mode, "tabs");
         assert_eq!(
             normalized.new_file_line_ending,
-            default_line_ending().label()
+            crate::state::default_line_ending().label()
         );
         assert!(!normalized.minimap);
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
