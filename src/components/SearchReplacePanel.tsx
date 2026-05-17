@@ -12,10 +12,8 @@ import {
   useSearchInput,
   useSearchPanelChrome,
   useSearchKeywordKeyDown,
-  useSearchMatchNavigation,
-  useSearchApplyResultFilter,
+  useSearchNavigation,
   useSearchResultFilterStepNavigation,
-  useSearchStepNavigation,
   useSearchReplaceHandlers,
   useSearchExecution,
   useSearchQuerySectionProps,
@@ -290,31 +288,22 @@ export function SearchReplacePanel() {
     totalMatchedLineCount,
   });
 
-  const {
-    handleSelectMatch,
-    navigateToFilterMatch,
-    navigateToMatch,
-  } = useSearchMatchNavigation({
-    activeTabId: activeTab?.id ?? null,
-    filterMatches,
-    getSearchSidebarOccludedRightPx,
-    isFilterMode,
-    matches,
-    setCursorPosition,
-    setCurrentFilterMatchIndex,
-    setCurrentMatchIndex,
-    setFeedbackMessage,
-  });
-
   const hasMoreMatches = chunkCursorRef.current !== null;
   const hasMoreFilterMatches = filterLineCursorRef.current !== null;
 
-  const navigateByStep = useSearchStepNavigation({
+  const {
+    handleApplyResultFilter,
+    handleSelectMatch,
+    navigateByStep,
+    navigateToMatch,
+  } = useSearchNavigation({
     activeCursorPosition,
     activeTabId: activeTab?.id ?? null,
+    appliedResultFilterKeyword,
     backendResultFilterKeyword,
     cachedFilterRef,
     cachedSearchRef,
+    cancelPendingBatchLoad,
     caseSensitive,
     chunkCursorRef,
     currentFilterMatchIndexRef,
@@ -322,35 +311,42 @@ export function SearchReplacePanel() {
     effectiveSearchKeyword,
     executeFilter,
     executeFirstMatchSearch,
+    executeSearch,
     filterCountCacheRef,
     filterLineCursorRef,
     filterMatches,
     filterRulesKey,
     filterRulesPayload,
     filterFailedLabel: messages.filterFailed,
+    getSearchSidebarOccludedRightPx,
     isFilterMode,
+    isResultFilterSearching,
     keyword,
     loadMoreFilterMatches,
     loadMoreLockRef,
     loadMoreMatches,
     matches,
-    navigateToFilterMatch,
-    navigateToMatch,
     nextMatchLabel: messages.nextMatch,
     prevMatchLabel: messages.prevMatch,
     rememberSearchKeyword,
+    requestStopResultFilterSearch,
+    resultFilterKeyword,
     searchFailedLabel: messages.searchFailed,
     searchMode,
+    setAppliedResultFilterKeyword,
     setCurrentFilterMatchIndex,
     setCurrentMatchIndex,
+    setCursorPosition,
     setErrorMessage,
     setFeedbackMessage,
     setFilterMatches,
     setFilterSessionId,
+    setIsResultFilterSearching,
     setMatches,
     setSearchSessionId,
     setTotalFilterMatchedLineCount,
     startTransition,
+    stopResultFilterSearchRef,
   });
 
   const { handleReplaceAll, handleReplaceCurrent } = useSearchReplaceHandlers({
@@ -401,22 +397,6 @@ export function SearchReplacePanel() {
     setResultPanelState,
   });
 
-
-  const handleApplyResultFilter = useSearchApplyResultFilter({
-    appliedResultFilterKeyword,
-    cancelPendingBatchLoad,
-    caseSensitive,
-    executeFilter,
-    executeSearch,
-    isFilterMode,
-    isResultFilterSearching,
-    keyword,
-    requestStopResultFilterSearch,
-    resultFilterKeyword,
-    setAppliedResultFilterKeyword,
-    setIsResultFilterSearching,
-    stopResultFilterSearchRef,
-  });
 
   const navigateResultFilterByStepRef = useRef<((step: number) => Promise<void>) | null>(null);
 
