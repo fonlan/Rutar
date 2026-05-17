@@ -1,49 +1,5 @@
 import { useCallback, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
-import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import type { SearchResultPanelState } from './types';
-
-interface UseSearchInputHistoryOptions {
-  recentReplaceValues: string[];
-  recentSearchKeywords: string[];
-  updateSettings: (updates: {
-    recentReplaceValues?: string[];
-    recentSearchKeywords?: string[];
-  }) => void;
-}
-
-interface UseSearchInputHistoryResult {
-  rememberReplaceValue: (value: string) => void;
-  rememberSearchKeyword: (value: string) => void;
-}
-
-export function useSearchInputHistory({
-  recentReplaceValues,
-  recentSearchKeywords,
-  updateSettings,
-}: UseSearchInputHistoryOptions): UseSearchInputHistoryResult {
-  const rememberSearchKeyword = useCallback((value: string) => {
-    if (value.length === 0) {
-      return;
-    }
-
-    const nextKeywords = appendRecentTextHistoryEntry(recentSearchKeywords, value);
-    if (nextKeywords !== recentSearchKeywords) {
-      updateSettings({ recentSearchKeywords: nextKeywords });
-    }
-  }, [recentSearchKeywords, updateSettings]);
-
-  const rememberReplaceValue = useCallback((value: string) => {
-    const nextValues = appendRecentTextHistoryEntry(recentReplaceValues, value);
-    if (nextValues !== recentReplaceValues) {
-      updateSettings({ recentReplaceValues: nextValues });
-    }
-  }, [recentReplaceValues, updateSettings]);
-
-  return {
-    rememberReplaceValue,
-    rememberSearchKeyword,
-  };
-}
 
 interface UseSearchKeywordKeyDownOptions {
   executeFilter: (forceRefresh?: boolean) => Promise<unknown>;

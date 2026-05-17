@@ -4,7 +4,9 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
 } from 'react';
+import { appendRecentTextHistoryEntry } from '@/lib/recentTextHistory';
 import type {
   SearchSidebarInputContextAction,
   SearchSidebarInputContextMenuState,
@@ -19,11 +21,35 @@ import {
   writePlainTextToClipboard,
 } from './utils';
 
-interface UseSearchInputContextMenuOptions {
+interface UseSearchInputOptions {
   isOpen: boolean;
+  recentReplaceValues: string[];
+  recentSearchKeywords: string[];
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  updateSettings: (updates: {
+    recentReplaceValues?: string[];
+    recentSearchKeywords?: string[];
+  }) => void;
 }
 
-export function useSearchInputContextMenu({ isOpen }: UseSearchInputContextMenuOptions) {
+interface UseSearchInputResult {
+  focusSearchInput: () => void;
+  handleInputContextMenuAction: (action: SearchSidebarInputContextAction) => Promise<void>;
+  handleSearchSidebarContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  inputContextMenu: SearchSidebarInputContextMenuState | null;
+  inputContextMenuRef: RefObject<HTMLDivElement | null>;
+  rememberReplaceValue: (value: string) => void;
+  rememberSearchKeyword: (value: string) => void;
+}
+
+export function useSearchInput({
+  isOpen,
+  recentReplaceValues,
+  recentSearchKeywords,
+  searchInputRef,
+  updateSettings,
+}: UseSearchInputOptions): UseSearchInputResult {
+  // === Context menu state + effects (formerly useSearchInputContextMenu) ===
   const [inputContextMenu, setInputContextMenu] = useState<SearchSidebarInputContextMenuState | null>(null);
   const inputContextMenuTargetRef = useRef<SearchSidebarTextInputElement | null>(null);
   const inputContextMenuRef = useRef<HTMLDivElement>(null);
@@ -170,10 +196,40 @@ export function useSearchInputContextMenu({ isOpen }: UseSearchInputContextMenuO
     [closeInputContextMenu]
   );
 
+  // === Recent text history (formerly useSearchInputHistory) ===
+  const rememberSearchKeyword = useCallback((value: string) => {
+    if (value.length === 0) {
+      return;
+    }
+
+    const nextKeywords = appendRecentTextHistoryEntry(recentSearchKeywords, value);
+    if (nextKeywords !== recentSearchKeywords) {
+      updateSettings({ recentSearchKeywords: nextKeywords });
+    }
+  }, [recentSearchKeywords, updateSettings]);
+
+  const rememberReplaceValue = useCallback((value: string) => {
+    const nextValues = appendRecentTextHistoryEntry(recentReplaceValues, value);
+    if (nextValues !== recentReplaceValues) {
+      updateSettings({ recentReplaceValues: nextValues });
+    }
+  }, [recentReplaceValues, updateSettings]);
+
+  // === Focus helper ===
+  const focusSearchInput = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [searchInputRef]);
+
   return {
+    focusSearchInput,
     handleInputContextMenuAction,
     handleSearchSidebarContextMenu,
     inputContextMenu,
     inputContextMenuRef,
+    rememberReplaceValue,
+    rememberSearchKeyword,
   };
 }

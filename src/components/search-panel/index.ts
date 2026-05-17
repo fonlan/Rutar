@@ -8,9 +8,9 @@ export { SearchSidebarChrome } from './SearchSidebarChrome';
 
 export { useFilterRules } from './useFilterRules';
 
+export { useSearchInput } from './useSearchInput';
 export { useSearchPanelChrome } from './useSearchPanelChrome';
-export { useSearchPanelInputSupport } from './useSearchPanelInputSupport';
-export { useSearchKeywordKeyDown } from './useSearchInputInteractions';
+export { useSearchKeywordKeyDown } from './useSearchKeywordKeyDown';
 export { useSearchMatchNavigation } from './useSearchMatchNavigation';
 export { useSearchPanelDerivedState } from './useSearchPanelDerivedState';
 export { useSearchPanelLocalState } from './useSearchPanelLocalState';
@@ -25,7 +25,6 @@ export { useSearchFirstMatchSearch } from './useSearchFirstMatchSearch';
 export { useSearchPanelRestoreEffect } from './useSearchPanelRestoreEffect';
 export { useSearchPanelResetState } from './useSearchPanelResetState';
 export { useSearchBatchControl } from './useSearchBatchControl';
-export { useSearchQueryOptions } from './useSearchQueryOptions';
 export { useSearchQuerySectionProps } from './useSearchQuerySectionProps';
 export { useSearchResultPanel } from './useSearchResultPanel';
 export { useSearchSessionLifecycle } from './useSearchSessionLifecycle';

@@ -9,8 +9,8 @@ import {
   SearchPanelOverlays,
   SearchSidebarChrome,
   useFilterRules,
+  useSearchInput,
   useSearchPanelChrome,
-  useSearchPanelInputSupport,
   useSearchKeywordKeyDown,
   useSearchMatchNavigation,
   useSearchPanelDerivedState,
@@ -26,7 +26,6 @@ import {
   useSearchPanelRestoreEffect,
   useSearchPanelResetState,
   useSearchBatchControl,
-  useSearchQueryOptions,
   useSearchQuerySectionProps,
   useSearchResultPanel,
   useSearchSessionLifecycle,
@@ -171,7 +170,7 @@ export function SearchReplacePanel() {
     inputContextMenuRef,
     rememberReplaceValue,
     rememberSearchKeyword,
-  } = useSearchPanelInputSupport({
+  } = useSearchInput({
     isOpen,
     recentReplaceValues,
     recentSearchKeywords,
@@ -742,7 +741,8 @@ export function SearchReplacePanel() {
     ]
   );
 
-  const searchQueryOptions = useSearchQueryOptions({
+  const searchQuerySectionProps = useSearchQuerySectionProps({
+    canReplace: !!activeTab,
     caseSensitive,
     handleKeywordKeyDown,
     handleReplaceAll,
@@ -769,11 +769,6 @@ export function SearchReplacePanel() {
     setReverseSearch,
     setSearchMode,
     toggleResultPanelAndRefresh,
-  });
-
-  const searchQuerySectionProps = useSearchQuerySectionProps({
-    canReplace: !!activeTab,
-    ...searchQueryOptions,
   });
 
   const {
