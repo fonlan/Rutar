@@ -14,7 +14,7 @@ import {
   useSearchKeywordKeyDown,
   useSearchNavigation,
   useSearchResultFilterStepNavigation,
-  useSearchReplaceHandlers,
+  useSearchReplace,
   useSearchExecution,
   useSearchQuerySectionProps,
   useSearchResultPanel,
@@ -349,7 +349,7 @@ export function SearchReplacePanel() {
     stopResultFilterSearchRef,
   });
 
-  const { handleReplaceAll, handleReplaceCurrent } = useSearchReplaceHandlers({
+  const { handleReplaceAll, handleReplaceCurrent } = useSearchReplace({
     activeTabId: activeTab?.id ?? null,
     activeTabLineCount: activeTab?.lineCount ?? null,
     backendResultFilterKeyword,

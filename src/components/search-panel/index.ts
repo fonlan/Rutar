@@ -13,7 +13,7 @@ export { useSearchPanelChrome } from './useSearchPanelChrome';
 export { useSearchKeywordKeyDown } from './useSearchKeywordKeyDown';
 export { useSearchNavigation } from './useSearchNavigation';
 export { useSearchResultFilterStepNavigation } from './useSearchResultFilterStepNavigation';
-export { useSearchReplaceHandlers } from './useSearchReplaceHandlers';
+export { useSearchReplace } from './useSearchReplace';
 export { useSearchExecution } from './useSearchExecution';
 export { useSearchQuerySectionProps } from './useSearchQuerySectionProps';
 export { useSearchResultPanel } from './useSearchResultPanel';

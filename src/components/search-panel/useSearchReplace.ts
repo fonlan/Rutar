@@ -12,7 +12,7 @@ type ReplaceSearchGuardOptions = Parameters<typeof resolvePreparedReplaceSearchR
 type ReplaceCurrentSuccessOptions = Parameters<typeof applyResolvedReplaceCurrentResult>[0];
 type ReplaceAllSuccessOptions = Parameters<typeof applyResolvedReplaceAllResult>[0];
 
-interface UseSearchReplaceHandlersOptions {
+export interface UseSearchReplaceOptions {
   activeTabId: string | null;
   activeTabLineCount: number | null;
   backendResultFilterKeyword: string;
@@ -46,7 +46,7 @@ interface UseSearchReplaceHandlersOptions {
   updateTab: ReplaceCurrentSuccessOptions['updateTab'];
 }
 
-export function useSearchReplaceHandlers({
+export function useSearchReplace({
   activeTabId,
   activeTabLineCount,
   backendResultFilterKeyword,
@@ -78,7 +78,7 @@ export function useSearchReplaceHandlers({
   setTotalMatchedLineCount,
   startTransition,
   updateTab,
-}: UseSearchReplaceHandlersOptions) {
+}: UseSearchReplaceOptions) {
   const handleReplaceCurrent = useCallback(async () => {
     if (!activeTabId || activeTabLineCount === null) {
       return;
