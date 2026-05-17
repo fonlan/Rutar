@@ -1,13 +1,14 @@
 import '@/lib/monaco/boot';
 import { invoke } from '@tauri-apps/api/core';
 import { message } from '@tauri-apps/plugin-dialog';
-import {
-  readImage as readClipboardImage,
-  readText as readClipboardText,
-} from '@tauri-apps/plugin-clipboard-manager';
+import { readImage as readClipboardImage } from '@tauri-apps/plugin-clipboard-manager';
 import * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import {
+  readPlainTextFromClipboardWithTauriFallback as readPlainTextFromClipboard,
+  writePlainTextToClipboard,
+} from '@/lib/clipboard';
 import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 import { t } from '@/i18n';
 import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
@@ -20,7 +21,7 @@ import {
   type MarkdownToolbarAction,
 } from '@/lib/markdownToolbar';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
-import { detectSyntaxKeyFromTab } from '@/lib/syntax';
+import { resolveMonacoLanguage } from '@/lib/monaco/language';
 import { type FileTab, useStore } from '@/store/useStore';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
 import { useEditorBookmarkDecorations } from './useEditorBookmarkDecorations';
@@ -46,77 +47,6 @@ import { useEditorContextMenuConfig } from './useEditorContextMenuConfig';
 const modelByTabId = new Map<string, monaco.editor.ITextModel>();
 const viewStateByTabId = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 const EMPTY_BOOKMARKS: number[] = [];
-function resolveMonacoLanguage(fileTab: FileTab) {
-  const syntaxKey = fileTab.syntaxOverride ?? detectSyntaxKeyFromTab(fileTab);
-  switch (syntaxKey) {
-    case 'plain_text':
-      return 'plaintext';
-    case 'markdown':
-      return 'markdown';
-    case 'dockerfile':
-      return 'dockerfile';
-    case 'makefile':
-      return 'makefile';
-    case 'javascript':
-      return 'javascript';
-    case 'typescript':
-      return 'typescript';
-    case 'rust':
-      return 'rust';
-    case 'python':
-      return 'python';
-    case 'json':
-      return 'json';
-    case 'jsonc':
-      return 'json';
-    case 'ini':
-      return 'ini';
-    case 'html':
-      return 'html';
-    case 'css':
-      return 'css';
-    case 'batch':
-      return 'bat';
-    case 'bash':
-      return 'shell';
-    case 'zsh':
-      return 'shell';
-    case 'toml':
-      return 'ini';
-    case 'yaml':
-      return 'yaml';
-    case 'xml':
-      return 'xml';
-    case 'c':
-      return 'c';
-    case 'cpp':
-      return 'cpp';
-    case 'go':
-      return 'go';
-    case 'java':
-      return 'java';
-    case 'csharp':
-      return 'csharp';
-    case 'hcl':
-      return 'hcl';
-    case 'lua':
-      return 'lua';
-    case 'php':
-      return 'php';
-    case 'kotlin':
-      return 'kotlin';
-    case 'powershell':
-      return 'powershell';
-    case 'ruby':
-      return 'ruby';
-    case 'sql':
-      return 'sql';
-    case 'swift':
-      return 'swift';
-    default:
-      return 'plaintext';
-  }
-}
 
 function resolveMainEditorModelUri(fileTab: FileTab) {
   const filePath = fileTab.path.trim();
@@ -477,23 +407,6 @@ export function Editor({
       return '';
     }
     return model.getValueInRange(selection);
-  }, []);
-  const writePlainTextToClipboard = useCallback(async (text: string) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    throw new Error('Clipboard write is not supported.');
-  }, []);
-  const readPlainTextFromClipboard = useCallback(async () => {
-    try {
-      return await readClipboardText();
-    } catch {
-      if (navigator.clipboard?.readText) {
-        return navigator.clipboard.readText();
-      }
-      throw new Error('Clipboard read is not supported.');
-    }
   }, []);
   const applySelectionEdit = useCallback((source: string, text: string) => {
     const editor = editorRef.current;

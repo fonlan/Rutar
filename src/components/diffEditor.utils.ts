@@ -1,4 +1,5 @@
 import type { ActivePanel, DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
+import type { DiffTabPayload } from '@/store/useStore';
 export { getParentDirectoryPath, pathBaseName } from '@/lib/pathUtils';
 
 export interface ViewportMetrics {
@@ -38,30 +39,41 @@ function normalizeLineText(value: string) {
   return (value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
-export function resolveAlignedDiffKind(
-  index: number,
-  alignedSourceLines: string[],
-  alignedTargetLines: string[],
-  alignedSourcePresent: boolean[],
-  alignedTargetPresent: boolean[]
-): DiffLineKind | null {
-  const sourcePresent = alignedSourcePresent[index] === true;
-  const targetPresent = alignedTargetPresent[index] === true;
-
-  if (!sourcePresent && targetPresent) {
-    return 'insert';
+export function toDiffLineKind(value: unknown): DiffLineKind | null {
+  if (value === 'insert' || value === 'delete' || value === 'modify') {
+    return value;
   }
+  return null;
+}
+
+// Resolves the diff kind for a given aligned row. Prefers the backend's
+// `alignedDiffKinds[index]` when present, then falls back to presence /
+// content comparison. Treats undefined entries in the `aligned*Present`
+// arrays as truthy (i.e. present-by-default).
+export function resolveAlignedDiffKind(
+  payload: DiffTabPayload,
+  index: number
+): DiffLineKind | null {
+  const explicitKind = toDiffLineKind(payload.alignedDiffKinds?.[index]);
+  if (explicitKind) {
+    return explicitKind;
+  }
+
+  const sourcePresent = payload.alignedSourcePresent[index] !== false;
+  const targetPresent = payload.alignedTargetPresent[index] !== false;
 
   if (sourcePresent && !targetPresent) {
     return 'delete';
   }
+  if (!sourcePresent && targetPresent) {
+    return 'insert';
+  }
 
-  const sourceLine = alignedSourceLines[index] ?? '';
-  const targetLine = alignedTargetLines[index] ?? '';
+  const sourceLine = payload.alignedSourceLines[index] ?? '';
+  const targetLine = payload.alignedTargetLines[index] ?? '';
   if (sourceLine !== targetLine) {
     return 'modify';
   }
-
   return null;
 }
 

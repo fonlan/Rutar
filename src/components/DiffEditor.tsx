@@ -6,13 +6,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { t } from '@/i18n';
 import { getDocumentText, getDocumentTextBootstrapSnapshot } from '@/lib/documentText';
+import {
+  readPlainTextFromClipboard,
+  writePlainTextToClipboard,
+} from '@/lib/clipboard';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
-import { detectSyntaxKeyFromTab } from '@/lib/syntax';
+import { resolveMonacoLanguage } from '@/lib/monaco/language';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import {
+  clampRatio,
   extractActualLines,
   findAlignedRowIndexByLineNumber,
   normalizeLineDiffResult,
+  resolveAlignedDiffKind,
 } from './diffEditor.utils';
 import { dispatchDocumentUpdated } from '@/lib/documentEvents';
 import type { DiffLineKind, LineDiffComparisonResult } from './diffEditor.types';
@@ -110,37 +116,6 @@ const DIFF_KIND_META: Record<
   },
 };
 
-function toDiffLineKind(value: unknown): DiffLineKind | null {
-  if (value === 'insert' || value === 'delete' || value === 'modify') {
-    return value;
-  }
-  return null;
-}
-
-function resolveDiffKindAtAlignedRow(payload: DiffTabPayload, index: number): DiffLineKind | null {
-  const explicitKind = toDiffLineKind(payload.alignedDiffKinds?.[index]);
-  if (explicitKind) {
-    return explicitKind;
-  }
-
-  const sourcePresent = payload.alignedSourcePresent[index] !== false;
-  const targetPresent = payload.alignedTargetPresent[index] !== false;
-
-  if (sourcePresent && !targetPresent) {
-    return 'delete';
-  }
-  if (!sourcePresent && targetPresent) {
-    return 'insert';
-  }
-
-  const sourceLine = payload.alignedSourceLines[index] ?? '';
-  const targetLine = payload.alignedTargetLines[index] ?? '';
-  if (sourceLine !== targetLine) {
-    return 'modify';
-  }
-  return null;
-}
-
 function deriveDiffPresentation(payload: DiffTabPayload): DerivedDiffPresentation {
   const alignedLineCount = Math.max(
     1,
@@ -169,7 +144,7 @@ function deriveDiffPresentation(payload: DiffTabPayload): DerivedDiffPresentatio
       targetLineNumber += 1;
     }
 
-    const kind = resolveDiffKindAtAlignedRow(payload, index);
+    const kind = resolveAlignedDiffKind(payload, index);
     rowKinds.push(kind);
     if (!kind) {
       continue;
@@ -330,85 +305,6 @@ function buildDiffPayloadFromComparison(
     alignedLineCount: Math.max(1, normalized.alignedLineCount),
   };
 }
-function resolveMonacoLanguage(fileTab: FileTab | null) {
-  if (!fileTab) {
-    return 'plaintext';
-  }
-
-  const syntaxKey = fileTab.syntaxOverride ?? detectSyntaxKeyFromTab(fileTab);
-  switch (syntaxKey) {
-    case 'plain_text':
-      return 'plaintext';
-    case 'markdown':
-      return 'markdown';
-    case 'dockerfile':
-      return 'dockerfile';
-    case 'makefile':
-      return 'makefile';
-    case 'javascript':
-      return 'javascript';
-    case 'typescript':
-      return 'typescript';
-    case 'rust':
-      return 'rust';
-    case 'python':
-      return 'python';
-    case 'json':
-      return 'json';
-    case 'jsonc':
-      return 'json';
-    case 'ini':
-      return 'ini';
-    case 'html':
-      return 'html';
-    case 'css':
-      return 'css';
-    case 'batch':
-      return 'bat';
-    case 'bash':
-    case 'zsh':
-      return 'shell';
-    case 'toml':
-      return 'ini';
-    case 'yaml':
-      return 'yaml';
-    case 'xml':
-      return 'xml';
-    case 'c':
-      return 'c';
-    case 'cpp':
-      return 'cpp';
-    case 'go':
-      return 'go';
-    case 'java':
-      return 'java';
-    case 'csharp':
-      return 'csharp';
-    case 'hcl':
-      return 'hcl';
-    case 'lua':
-      return 'lua';
-    case 'php':
-      return 'php';
-    case 'kotlin':
-      return 'kotlin';
-    case 'powershell':
-      return 'powershell';
-    case 'ruby':
-      return 'ruby';
-    case 'sql':
-      return 'sql';
-    case 'swift':
-      return 'swift';
-    default:
-      return 'plaintext';
-  }
-}
-
-function clampRatio(ratio: number) {
-  return Math.max(0.2, Math.min(0.8, ratio));
-}
-
 function getSelectedMonacoLineRange(
   selection: monaco.Selection | null,
   position: monaco.Position | null
@@ -811,19 +707,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     },
     [getPaneEditor]
   );
-  const writePlainTextToClipboard = useCallback(async (text: string) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    throw new Error('Clipboard write is not supported.');
-  }, []);
-  const readPlainTextFromClipboard = useCallback(async () => {
-    if (navigator.clipboard?.readText) {
-      return navigator.clipboard.readText();
-    }
-    throw new Error('Clipboard read is not supported.');
-  }, []);
   const handlePaneMonacoContextMenu = useCallback(
     (side: ActivePanel, event: monaco.editor.IEditorMouseEvent) => {
       event.event.preventDefault();
