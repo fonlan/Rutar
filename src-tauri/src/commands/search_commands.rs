@@ -347,29 +347,3 @@ pub fn step_result_filter_search_in_filter_document(
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn command_entrypoints_should_be_linkable() {
-        let _ = search_first_in_document as usize;
-        let _ = search_in_document_chunk as usize;
-        let _ = search_session_start_in_document as usize;
-        let _ = search_session_next_in_document as usize;
-        let _ = search_session_restore_in_document as usize;
-        let _ = dispose_search_session as usize;
-        let _ = search_count_in_document as usize;
-        let _ = search_step_from_cursor_in_document as usize;
-        let _ = replace_all_and_search_chunk_in_document as usize;
-        let _ = replace_current_and_search_chunk_in_document as usize;
-        let _ = step_result_filter_search_in_document as usize;
-        let _ = filter_count_in_document as usize;
-        let _ = filter_in_document_chunk as usize;
-        let _ = filter_session_start_in_document as usize;
-        let _ = filter_session_next_in_document as usize;
-        let _ = filter_session_restore_in_document as usize;
-        let _ = dispose_filter_session as usize;
-        let _ = step_result_filter_search_in_filter_document as usize;
-    }
-}

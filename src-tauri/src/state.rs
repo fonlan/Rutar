@@ -102,15 +102,6 @@ impl Document {
         operation_id
     }
 
-    #[allow(dead_code)]
-    pub fn mark_saved_undo_checkpoint(&mut self) {
-        self.saved_undo_depth = self.undo_stack.len();
-        self.saved_undo_operation_id = self
-            .undo_stack
-            .last()
-            .map(|operation| operation.operation_id);
-    }
-
     pub fn has_unsaved_text_changes(&self) -> bool {
         self.saved_undo_depth != self.undo_stack.len()
             || self.saved_undo_operation_id
@@ -118,6 +109,17 @@ impl Document {
                     .undo_stack
                     .last()
                     .map(|operation| operation.operation_id)
+    }
+}
+
+#[cfg(test)]
+impl Document {
+    pub fn mark_saved_undo_checkpoint(&mut self) {
+        self.saved_undo_depth = self.undo_stack.len();
+        self.saved_undo_operation_id = self
+            .undo_stack
+            .last()
+            .map(|operation| operation.operation_id);
     }
 }
 
@@ -129,8 +131,10 @@ pub struct AppState {
 
 struct FolderWatchState {
     root_path: PathBuf,
-    #[allow(dead_code)]
-    watcher: RecommendedWatcher,
+    // Held to keep the notify watcher alive; dropped on `clear_folder_watch`
+    // or when replaced. The watcher is consumed only via its Drop impl, so the
+    // field is technically unread elsewhere.
+    _watcher: RecommendedWatcher,
 }
 
 impl AppState {
@@ -163,7 +167,10 @@ impl AppState {
             .folder_watch
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *watch_state = Some(FolderWatchState { root_path, watcher });
+        *watch_state = Some(FolderWatchState {
+            root_path,
+            _watcher: watcher,
+        });
     }
 
     pub fn clear_folder_watch(&self) {
