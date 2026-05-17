@@ -6,9 +6,7 @@ export { SearchSidebarBody } from './SearchSidebarBody';
 export { SearchPanelOverlays } from './SearchPanelOverlays';
 export { SearchSidebarChrome } from './SearchSidebarChrome';
 
-export { useFilterRuleEditorState } from './useFilterRuleEditorState';
-export { useFilterRulesEditorOptions } from './useFilterRulesEditorOptions';
-export { useFilterRuleGroupPersistence } from './useFilterRuleGroupPersistence';
+export { useFilterRules } from './useFilterRules';
 
 export { useSearchPanelInputSupport } from './useSearchPanelInputSupport';
 export { useSearchKeywordKeyDown } from './useSearchInputInteractions';

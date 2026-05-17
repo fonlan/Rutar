@@ -1,12 +1,6 @@
 import { useMemo } from 'react';
-import type { FilterMatch, FilterRule, SearchMatch } from './types';
-import {
-  buildFilterRulesPayload,
-  DEFAULT_FILTER_RULE_BACKGROUND,
-  DEFAULT_FILTER_RULE_TEXT,
-  normalizeFilterRules,
-  resolveSearchKeyword,
-} from './utils';
+import type { FilterMatch, SearchMatch } from './types';
+import { resolveSearchKeyword } from './utils';
 
 interface UseSearchPanelDerivedStateOptions {
   appliedResultFilterKeyword: string;
@@ -14,7 +8,6 @@ interface UseSearchPanelDerivedStateOptions {
   currentFilterMatchIndex: number;
   currentMatchIndex: number;
   filterMatches: FilterMatch[];
-  filterRules: FilterRule[];
   keyword: string;
   matches: SearchMatch[];
   parseEscapeSequences: boolean;
@@ -26,32 +19,10 @@ export function useSearchPanelDerivedState({
   currentFilterMatchIndex,
   currentMatchIndex,
   filterMatches,
-  filterRules,
   keyword,
   matches,
   parseEscapeSequences,
 }: UseSearchPanelDerivedStateOptions) {
-  const effectiveFilterRules = useMemo(() => normalizeFilterRules(filterRules), [filterRules]);
-  const filterRulesPayload = useMemo(() => buildFilterRulesPayload(filterRules), [filterRules]);
-  const hasAnyConfiguredFilterRule = useMemo(
-    () =>
-      filterRules.length > 1
-      || filterRules.some((rule) => {
-        const nextKeyword = rule.keyword.trim();
-        return (
-          nextKeyword.length > 0
-          || rule.matchMode !== 'contains'
-          || rule.backgroundColor !== DEFAULT_FILTER_RULE_BACKGROUND
-          || rule.textColor !== DEFAULT_FILTER_RULE_TEXT
-          || rule.bold
-          || rule.italic
-          || rule.applyTo !== 'line'
-        );
-      }),
-    [filterRules]
-  );
-  const filterRulesKey = useMemo(() => JSON.stringify(filterRulesPayload), [filterRulesPayload]);
-
   const normalizedResultFilterKeyword = appliedResultFilterKeyword.trim().toLowerCase();
   const isResultFilterActive = normalizedResultFilterKeyword.length > 0;
 
@@ -89,11 +60,7 @@ export function useSearchPanelDerivedState({
 
   return {
     backendResultFilterKeyword,
-    effectiveFilterRules,
     effectiveSearchKeyword,
-    filterRulesKey,
-    filterRulesPayload,
-    hasAnyConfiguredFilterRule,
     isResultFilterActive,
     visibleCurrentFilterMatchIndex,
     visibleCurrentMatchIndex,
