@@ -8,11 +8,11 @@ export { SearchSidebarChrome } from './SearchSidebarChrome';
 
 export { useFilterRules } from './useFilterRules';
 
+export { useSearchPanelChrome } from './useSearchPanelChrome';
 export { useSearchPanelInputSupport } from './useSearchPanelInputSupport';
 export { useSearchKeywordKeyDown } from './useSearchInputInteractions';
 export { useSearchMatchNavigation } from './useSearchMatchNavigation';
 export { useSearchPanelDerivedState } from './useSearchPanelDerivedState';
-export { useSearchPanelOverlayOptions } from './useSearchPanelOverlayOptions';
 export { useSearchPanelLocalState } from './useSearchPanelLocalState';
 export { useSearchPanelUiState } from './useSearchPanelUiState';
 export { useSearchPanelRuntimeRefs } from './useSearchPanelRuntimeRefs';
@@ -25,10 +25,8 @@ export { useSearchFirstMatchSearch } from './useSearchFirstMatchSearch';
 export { useSearchPanelRestoreEffect } from './useSearchPanelRestoreEffect';
 export { useSearchPanelResetState } from './useSearchPanelResetState';
 export { useSearchBatchControl } from './useSearchBatchControl';
-export { useSearchSidebarShellOptions } from './useSearchSidebarShellOptions';
-export { useSearchPanelShellEffects } from './useSearchPanelShellEffects';
-export { useSearchPanelViewProps } from './useSearchPanelViewProps';
 export { useSearchQueryOptions } from './useSearchQueryOptions';
+export { useSearchQuerySectionProps } from './useSearchQuerySectionProps';
 export { useSearchResultPanel } from './useSearchResultPanel';
 export { useSearchSessionLifecycle } from './useSearchSessionLifecycle';
 export { useSearchPanelLoadMoreHandlers } from './useSearchPanelLoadMoreHandlers';
