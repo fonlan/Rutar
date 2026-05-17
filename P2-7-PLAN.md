@@ -2,7 +2,17 @@
 
 > 生成日期：2026-05-17
 > 对应 TODO.md 条目：**P2-7** `src/components/search-panel/` 92 文件 / 35 hook 收敛为 ~5 个域 hook + `apply*`/`resolve*` 合并；并发回收冗余测试
-> 状态：**计划阶段（尚未实施）**
+> 状态：**已完成（2026-05-17）** — 分支 `refactor/p2-7-search-panel-consolidate` 9 commit
+>
+> **实际成果**：38 hook → 12 public hook；92 文件 → 67 文件；`SearchReplacePanel.tsx` 893 → 710 行。
+>
+> **与原计划偏差**：
+> - **Stage 5a 跳过**：`applySearchPanelRunResults.ts` 已经是 14 个独立 sub-reducer 集合（每个 30–130 行），plan 假设的"780 行 mega-reducer"前提不成立，无需预拆。
+> - **`apply*`/`resolve*` 不内联到域 hook**：plain-ts util 保留独立，避免上帝 hook（2200+ 行）+ 维持单测能力。
+> - **chrome / navigation 域各保留 1 个独立 hook**：`useSearchSidebarFrame`（chrome 域 8→2）因被 navigation 域消费产生循环；`useSearchResultFilterStepNavigation`（navigation 域 4→2）因依赖晚期 `scrollResultItemIntoView`，避免再引入 ref pattern。同 stage 3a 的分块思路。
+> - **`useSearchKeywordKeyDown` / `useSearchQuerySectionProps` 保留**：单一职责小 hook（input 域 mid/late call），不强合并。
+>
+> 详见 TODO.md P2-7 完成笔记。
 
 ---
 

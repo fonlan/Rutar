@@ -1,4 +1,4 @@
-import {
+﻿import {
   startTransition,
   useMemo,
   useRef,
@@ -136,6 +136,8 @@ export function SearchReplacePanel() {
     resetSearchState,
   } = useSearchPanelStore();
 
+  const safeActiveTabId = activeTab?.id ?? null;
+
   const {
     getSearchSidebarOccludedRightPx,
     handleSearchUiBlurCapture,
@@ -210,7 +212,7 @@ export function SearchReplacePanel() {
     loadMoreMatches,
     requestStopResultFilterSearch,
   } = useSearchExecution({
-    activeTabId: activeTab?.id ?? null,
+    activeTabId: safeActiveTabId,
     appliedResultFilterKeyword,
     backendResultFilterKeyword,
     cachedFilterRef,
@@ -298,7 +300,7 @@ export function SearchReplacePanel() {
     navigateToMatch,
   } = useSearchNavigation({
     activeCursorPosition,
-    activeTabId: activeTab?.id ?? null,
+    activeTabId: safeActiveTabId,
     appliedResultFilterKeyword,
     backendResultFilterKeyword,
     cachedFilterRef,
@@ -350,7 +352,7 @@ export function SearchReplacePanel() {
   });
 
   const { handleReplaceAll, handleReplaceCurrent } = useSearchReplace({
-    activeTabId: activeTab?.id ?? null,
+    activeTabId: safeActiveTabId,
     activeTabLineCount: activeTab?.lineCount ?? null,
     backendResultFilterKeyword,
     cachedSearchRef,
@@ -396,7 +398,6 @@ export function SearchReplacePanel() {
     setIsOpen,
     setResultPanelState,
   });
-
 
   const navigateResultFilterByStepRef = useRef<((step: number) => Promise<void>) | null>(null);
 
@@ -465,7 +466,7 @@ export function SearchReplacePanel() {
   });
 
   const navigateResultFilterByStep = useSearchResultFilterStepNavigation({
-    activeTabId: activeTab?.id ?? null,
+    activeTabId: safeActiveTabId,
     cachedFilterRef,
     cachedSearchRef,
     caseSensitive,
