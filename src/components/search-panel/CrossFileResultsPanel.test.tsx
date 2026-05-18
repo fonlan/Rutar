@@ -4,7 +4,7 @@ import { getSearchPanelMessages } from '@/i18n';
 import { CrossFileResultsPanel, splitLineTextByByteRange } from './CrossFileResultsPanel';
 import type { PathSearchMatch } from './types';
 
-const messages = getSearchPanelMessages('en');
+const messages = getSearchPanelMessages('en-US');
 
 const baseProps = {
   matches: [] as PathSearchMatch[],
