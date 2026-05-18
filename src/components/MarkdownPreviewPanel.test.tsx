@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { MarkdownPreviewPanel } from "./MarkdownPreviewPanel";
+import { highlightMarkdownCodeBlocks } from "@/lib/markdownPreviewHighlight";
 import { useStore, type FileTab } from "@/store/useStore";
 
 const {
@@ -39,6 +40,7 @@ vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
 const invokeMock = vi.mocked(invoke);
 const convertFileSrcApiMock = vi.mocked(convertFileSrc);
 const openUrlMock = vi.mocked(openUrl);
+const highlightMarkdownCodeBlocksMock = vi.mocked(highlightMarkdownCodeBlocks);
 const MERMAID_HTML = '<pre><code class="language-mermaid">graph TD;A--&gt;B;\n</code></pre>';
 
 function createTab(partial?: Partial<FileTab>): FileTab {
@@ -95,6 +97,7 @@ describe("MarkdownPreviewPanel", () => {
     useStore.setState({ markdownPreviewWidthRatio: 0.5 });
     convertFileSrcApiMock.mockImplementation((filePath: string) => `http://asset.localhost/${encodeURIComponent(filePath)}`);
     invokeMock.mockResolvedValue("<h1>Hello</h1>");
+    highlightMarkdownCodeBlocksMock.mockResolvedValue(undefined);
     mermaidInitializeMock.mockImplementation(() => undefined);
     mermaidRenderMock.mockResolvedValue({ svg: "<svg><g>ok</g></svg>" });
   });
@@ -175,6 +178,82 @@ describe("MarkdownPreviewPanel", () => {
       expect(container.querySelector('span[style*="background-color: #fff7a8"]')).not.toBeNull();
     });
   });
+
+  it("keeps syntax highlighting applied on first markdown preview render", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce('<pre><code class="language-ts">const count = 1;</code></pre>');
+    highlightMarkdownCodeBlocksMock.mockImplementationOnce(async (article) => {
+      const codeElement = article?.querySelector("pre > code");
+      if (!codeElement) {
+        return;
+      }
+
+      codeElement.innerHTML = '<span class="token keyword">const</span> count = <span class="token number">1</span>;';
+      codeElement.setAttribute("data-rutar-prism-highlighted", "true");
+    });
+
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(highlightMarkdownCodeBlocksMock).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".token.keyword")?.textContent).toBe("const");
+      expect(container.querySelector("code")?.getAttribute("data-rutar-prism-highlighted")).toBe("true");
+    });
+  });
+
+  it(
+    "preserves syntax highlight under StrictMode even when the article DOM is rewritten between Prism's pre-await querySelector and post-await highlight",
+    async () => {
+      const markdownTab = createTab({ syntaxOverride: "markdown" });
+      invokeMock.mockResolvedValue('<pre><code class="language-ts">const x = 1;</code></pre>');
+      // Mirror the real Prism call shape: capture <code> nodes SYNCHRONOUSLY
+      // (before awaiting Prism), then await a microtask (Prism dynamic
+      // imports), then iterate. If the article's innerHTML was rewritten
+      // between those two phases (e.g. by StrictMode replaying the ref
+      // callback or by any debounced refresh path), the captured nodes get
+      // disconnected and the legacy implementation silently drops every
+      // highlight. The fix re-queries after the await, so the assertion still
+      // holds.
+      highlightMarkdownCodeBlocksMock.mockImplementation(async (article) => {
+        if (!article) {
+          return;
+        }
+
+        const initialCandidates = Array.from(
+          article.querySelectorAll<HTMLElement>("pre > code")
+        );
+        await Promise.resolve();
+
+        const fallbackCandidates = initialCandidates.some((codeElement) => codeElement.isConnected)
+          ? initialCandidates
+          : Array.from(article.querySelectorAll<HTMLElement>("pre > code"));
+
+        for (const codeElement of fallbackCandidates) {
+          if (!codeElement.isConnected) {
+            continue;
+          }
+          if (codeElement.getAttribute("data-rutar-prism-highlighted") === "true") {
+            continue;
+          }
+
+          codeElement.innerHTML = '<span class="token keyword">const</span> x = <span class="token number">1</span>;';
+          codeElement.setAttribute("data-rutar-prism-highlighted", "true");
+        }
+      });
+
+      const { container } = render(
+        <StrictMode>
+          <MarkdownPreviewPanel open={true} tab={markdownTab} />
+        </StrictMode>
+      );
+
+      await waitFor(() => {
+        const highlightedCode = container.querySelector("code[data-rutar-prism-highlighted='true']");
+        expect(highlightedCode).not.toBeNull();
+        expect(highlightedCode?.querySelector(".token.keyword")?.textContent).toBe("const");
+      });
+    }
+  );
 
   it("opens markdown hyperlinks with the system opener instead of navigating in-panel", async () => {
     const markdownTab = createTab({ syntaxOverride: "markdown" });

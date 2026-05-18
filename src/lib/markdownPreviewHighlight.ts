@@ -157,6 +157,25 @@ export async function highlightMarkdownCodeBlocks(article: HTMLElement | null): 
     return;
   }
 
+  // Skip the Prism load entirely when there are no code blocks at all.
+  if (!article.querySelector('pre > code')) {
+    return;
+  }
+
+  const prism = await getPrismApi();
+  if (!prism) {
+    return;
+  }
+
+  // Re-query AFTER the async Prism load: the article's children may have been
+  // swapped during initial mount (e.g. React StrictMode's mount → simulated
+  // unmount → remount writes innerHTML again, disconnecting the original code
+  // elements). Querying here guarantees we operate on the currently-connected
+  // DOM nodes.
+  if (!article.isConnected) {
+    return;
+  }
+
   const candidates = Array.from(article.querySelectorAll<HTMLElement>('pre > code')).filter(
     (element) => {
       if (isMermaidCodeBlock(element)) {
@@ -170,11 +189,6 @@ export async function highlightMarkdownCodeBlocks(article: HTMLElement | null): 
   );
 
   if (candidates.length === 0) {
-    return;
-  }
-
-  const prism = await getPrismApi();
-  if (!prism) {
     return;
   }
 

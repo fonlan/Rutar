@@ -453,19 +453,32 @@ function CachedPreviewArticle({
   tabId,
 }: CachedPreviewArticleProps) {
   const articleRef = useRef<HTMLElement | null>(null);
-  const appliedHtmlRef = useRef('');
+  // Track the actual element + html we last wrote. Keying by element identity
+  // (not just html) is required so that React StrictMode's dev-only
+  // mount → simulated unmount → remount cycle, which calls our ref callback
+  // with null and then the SAME article element again, does NOT rewrite
+  // innerHTML and clobber DOM mutations that ran in between (e.g. the parent's
+  // async Prism syntax highlighting on the original `<code>` nodes).
+  const lastWrittenElementRef = useRef<HTMLElement | null>(null);
+  const lastWrittenHtmlRef = useRef('');
   const syncInnerHtml = useCallback((element: HTMLElement | null) => {
-    if (!element || appliedHtmlRef.current === html) {
+    if (!element) {
+      return;
+    }
+    if (
+      lastWrittenElementRef.current === element
+      && lastWrittenHtmlRef.current === html
+    ) {
       return;
     }
 
     element.innerHTML = html;
-    appliedHtmlRef.current = html;
+    lastWrittenElementRef.current = element;
+    lastWrittenHtmlRef.current = html;
   }, [html]);
   const handleArticleRef = useCallback((element: HTMLElement | null) => {
     articleRef.current = element;
     if (!element) {
-      appliedHtmlRef.current = '';
       onArticleElementChange(tabId, null);
       return;
     }
