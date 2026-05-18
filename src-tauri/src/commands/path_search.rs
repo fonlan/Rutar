@@ -247,7 +247,17 @@ fn build_regex(keyword: &str, mode: &str, case_sensitive: bool) -> Result<Regex,
 // File reading
 // ============================================================================
 
+struct TextFileSnapshot {
+    text: String,
+    encoding: &'static Encoding,
+    bom: Vec<u8>,
+}
+
 fn read_text_file(path: &Path) -> Result<String, String> {
+    Ok(read_text_file_snapshot(path)?.text)
+}
+
+fn read_text_file_snapshot(path: &Path) -> Result<TextFileSnapshot, String> {
     let file =
         File::open(path).map_err(|error| format!("cannot open file: {error}"))?;
     let metadata = file
@@ -261,7 +271,11 @@ fn read_text_file(path: &Path) -> Result<String, String> {
         ));
     }
     if metadata.len() == 0 {
-        return Ok(String::new());
+        return Ok(TextFileSnapshot {
+            text: String::new(),
+            encoding: encoding_rs::UTF_8,
+            bom: Vec::new(),
+        });
     }
     let mmap =
         unsafe { Mmap::map(&file).map_err(|error| format!("cannot mmap file: {error}"))? };
@@ -270,16 +284,32 @@ fn read_text_file(path: &Path) -> Result<String, String> {
         return Err("file appears to be binary".to_string());
     }
 
-    let encoding = if let Some((enc, _)) = Encoding::for_bom(&mmap) {
-        enc
+    let (encoding, bom) = if let Some((enc, size)) = Encoding::for_bom(&mmap) {
+        (enc, mmap[..size].to_vec())
     } else {
         let mut detector = chardetng::EncodingDetector::new();
         let sample_len = mmap.len().min(8192);
         detector.feed(&mmap[..sample_len], true);
-        detector.guess(None, true)
+        (detector.guess(None, true), Vec::new())
     };
     let (cow, _, _malformed) = encoding.decode(&mmap);
-    Ok(cow.into_owned())
+    Ok(TextFileSnapshot {
+        text: cow.into_owned(),
+        encoding,
+        bom,
+    })
+}
+
+fn write_text_file_snapshot(
+    path: &Path,
+    snapshot: &TextFileSnapshot,
+    text: &str,
+) -> Result<(), String> {
+    let (encoded, _, _unmappable) = snapshot.encoding.encode(text);
+    let mut bytes = Vec::with_capacity(snapshot.bom.len() + encoded.len());
+    bytes.extend_from_slice(&snapshot.bom);
+    bytes.extend_from_slice(&encoded);
+    fs::write(path, bytes).map_err(|error| format!("write failed: {error}"))
 }
 
 fn is_binary_content(bytes: &[u8]) -> bool {
@@ -574,14 +604,16 @@ pub fn path_replace_apply_impl(
     let mut file_errors: Vec<PathSearchFileError> = Vec::new();
 
     for path in &files {
-        match read_text_file(path) {
-            Ok(text) => {
-                let count = count_matches_in_text(&text, &regex);
+        match read_text_file_snapshot(path) {
+            Ok(snapshot) => {
+                let count = count_matches_in_text(&snapshot.text, &regex);
                 if count == 0 {
                     continue;
                 }
-                let replaced = regex.replace_all(&text, effective_replace.as_str()).into_owned();
-                match fs::write(path, replaced.as_bytes()) {
+                let replaced = regex
+                    .replace_all(&snapshot.text, effective_replace.as_str())
+                    .into_owned();
+                match write_text_file_snapshot(path, &snapshot, &replaced) {
                     Ok(()) => {
                         total_matches_replaced += count;
                         files_changed.push(PathReplaceAppliedFile {
@@ -592,7 +624,7 @@ pub fn path_replace_apply_impl(
                     Err(error) => {
                         file_errors.push(PathSearchFileError {
                             file_path: path.to_string_lossy().into_owned(),
-                            error: format!("write failed: {error}"),
+                            error,
                         });
                     }
                 }
@@ -880,6 +912,50 @@ mod tests {
         assert_eq!(result.files_changed.len(), 1);
         let written = fs::read_to_string(&f).unwrap();
         assert_eq!(written, "ALPHA beta ALPHA");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn path_replace_apply_impl_should_preserve_windows_1252_encoding() {
+        let root = make_temp_root();
+        let f = root.join("latin1.txt");
+        fs::write(&f, b"caf\xe9 alpha").unwrap();
+
+        let result = path_replace_apply_impl(
+            f.to_string_lossy().into_owned(),
+            "alpha".to_string(),
+            "literal".to_string(),
+            true,
+            "beta".to_string(),
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.total_matches_replaced, 1);
+        assert_eq!(fs::read(&f).unwrap(), b"caf\xe9 beta");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn path_replace_apply_impl_should_preserve_utf8_bom() {
+        let root = make_temp_root();
+        let f = root.join("bom.txt");
+        fs::write(&f, b"\xEF\xBB\xBFalpha beta").unwrap();
+
+        let result = path_replace_apply_impl(
+            f.to_string_lossy().into_owned(),
+            "beta".to_string(),
+            "literal".to_string(),
+            true,
+            "gamma".to_string(),
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.total_matches_replaced, 1);
+        assert_eq!(fs::read(&f).unwrap(), b"\xEF\xBB\xBFalpha gamma");
 
         let _ = fs::remove_dir_all(root);
     }
