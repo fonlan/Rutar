@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -45,6 +46,15 @@ export function HistoryDropdownInput({
   const internalInputRef = useRef<HTMLInputElement>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const hasHistory = history.length > 0;
+  const normalizedValue = value.trim().toLowerCase();
+  const visibleHistory = useMemo(() => {
+    if (normalizedValue.length === 0) {
+      return history;
+    }
+
+    return history.filter((entry) => entry.toLowerCase().includes(normalizedValue));
+  }, [history, normalizedValue]);
+  const hasVisibleHistory = visibleHistory.length > 0;
   const listboxId = `${name}-history-listbox`;
 
   const focusInput = useCallback(() => {
@@ -180,14 +190,14 @@ export function HistoryDropdownInput({
         </button>
       )}
 
-      {hasHistory && isHistoryOpen && (
+      {hasVisibleHistory && isHistoryOpen && (
         <div
           id={listboxId}
           role="listbox"
           aria-label={historyLabel}
           className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-20 max-h-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-lg"
         >
-          {history.map((entry, index) => {
+          {visibleHistory.map((entry, index) => {
             const shouldUsePlaceholder = entry.length === 0 || entry.trim().length === 0;
 
             return (

@@ -484,11 +484,35 @@ describe("SearchReplacePanel", () => {
     });
 
     const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
-    fireEvent.change(keywordInput, { target: { value: "current-keyword" } });
+    fireEvent.change(keywordInput, { target: { value: "needle" } });
     fireEvent.focus(keywordInput);
     fireEvent.click(await screen.findByRole("option", { name: "needle-2" }));
 
     expect(keywordInput.value).toBe("needle-2");
+  });
+
+  it("filters recent find-history entries by the current input", async () => {
+    useStore.getState().updateSettings({
+      recentSearchKeywords: ["needle-1", "haystack", "Needle-2"],
+    });
+    useStore.getState().addTab(createTab({ id: "tab-search-history-find-filter" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "find" },
+        })
+      );
+    });
+
+    const keywordInput = (await screen.findByPlaceholderText("Find text")) as HTMLInputElement;
+    fireEvent.change(keywordInput, { target: { value: "needle" } });
+    fireEvent.focus(keywordInput);
+
+    expect(await screen.findByRole("option", { name: "needle-1" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Needle-2" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "haystack" })).not.toBeInTheDocument();
   });
 
   it("replaces the replace input with a recent replace-history entry", async () => {
@@ -507,11 +531,35 @@ describe("SearchReplacePanel", () => {
     });
 
     const replaceInput = (await screen.findByPlaceholderText("Replace with")) as HTMLInputElement;
-    fireEvent.change(replaceInput, { target: { value: "current-replace" } });
+    fireEvent.change(replaceInput, { target: { value: "replace" } });
     fireEvent.focus(replaceInput);
     fireEvent.click(await screen.findByRole("option", { name: "replace-2" }));
 
     expect(replaceInput.value).toBe("replace-2");
+  });
+
+  it("filters recent replace-history entries by the current input", async () => {
+    useStore.getState().updateSettings({
+      recentReplaceValues: ["replace-1", "other", "Replace-2"],
+    });
+    useStore.getState().addTab(createTab({ id: "tab-search-history-replace-filter" }));
+    render(<SearchReplacePanel />);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("rutar:search-open", {
+          detail: { mode: "replace" },
+        })
+      );
+    });
+
+    const replaceInput = (await screen.findByPlaceholderText("Replace with")) as HTMLInputElement;
+    fireEvent.change(replaceInput, { target: { value: "replace" } });
+    fireEvent.focus(replaceInput);
+
+    expect(await screen.findByRole("option", { name: "replace-1" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Replace-2" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "other" })).not.toBeInTheDocument();
   });
 
   it("navigates from replace-mode next-match toolbar button", async () => {
