@@ -15,6 +15,7 @@ export interface CrossFileRunOptions {
   keyword: string;
   searchMode: SearchMode;
   caseSensitive: boolean;
+  includeSubdirectories: boolean;
 }
 
 export interface UseCrossFileSearchOptions {
@@ -98,7 +99,13 @@ export function useCrossFileSearch({
   }, []);
 
   const runSearch = useCallback(
-    async ({ target, keyword, searchMode, caseSensitive }: CrossFileRunOptions) => {
+    async ({
+      target,
+      keyword,
+      searchMode,
+      caseSensitive,
+      includeSubdirectories,
+    }: CrossFileRunOptions) => {
       runVersionRef.current += 1;
       const runVersion = runVersionRef.current;
 
@@ -130,6 +137,7 @@ export function useCrossFileSearch({
           mode: searchMode,
           caseSensitive,
           maxResults: CROSS_FILE_SEARCH_CHUNK,
+          includeSubdirectories,
         });
 
         if (runVersion !== runVersionRef.current) {

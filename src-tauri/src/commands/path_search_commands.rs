@@ -10,8 +10,16 @@ pub fn path_search_start(
     mode: String,
     case_sensitive: bool,
     max_results: usize,
+    include_subdirectories: Option<bool>,
 ) -> Result<PathSearchStartPayload, String> {
-    path_search::path_search_start_impl(target, keyword, mode, case_sensitive, max_results)
+    path_search::path_search_start_impl(
+        target,
+        keyword,
+        mode,
+        case_sensitive,
+        max_results,
+        include_subdirectories.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -33,8 +41,15 @@ pub fn path_replace_preview(
     keyword: String,
     mode: String,
     case_sensitive: bool,
+    include_subdirectories: Option<bool>,
 ) -> Result<PathReplacePreviewPayload, String> {
-    path_search::path_replace_preview_impl(target, keyword, mode, case_sensitive)
+    path_search::path_replace_preview_impl(
+        target,
+        keyword,
+        mode,
+        case_sensitive,
+        include_subdirectories.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -45,6 +60,7 @@ pub fn path_replace_apply(
     case_sensitive: bool,
     replace_value: String,
     parse_escape_sequences: bool,
+    include_subdirectories: Option<bool>,
 ) -> Result<PathReplaceApplyPayload, String> {
     path_search::path_replace_apply_impl(
         target,
@@ -53,5 +69,6 @@ pub fn path_replace_apply(
         case_sensitive,
         replace_value,
         parse_escape_sequences,
+        include_subdirectories.unwrap_or(false),
     )
 }

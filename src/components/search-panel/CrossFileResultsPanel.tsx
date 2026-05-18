@@ -169,7 +169,7 @@ export function CrossFileResultsPanel({
     body = (
       <div
         ref={listRef}
-        className="max-h-[40vh] overflow-y-auto rounded-md border border-border bg-muted/20"
+        className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-muted/20"
         onScroll={handleScroll}
       >
         {fileGroups.map((group) => {
@@ -204,8 +204,8 @@ export function CrossFileResultsPanel({
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-2">
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+    <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 items-center justify-between text-[11px] text-muted-foreground">
         <span className="break-all">{summaryText}</span>
         {isSearching && !errorMessage && fileGroups.length > 0 && (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -215,7 +215,7 @@ export function CrossFileResultsPanel({
       {body}
 
       {fileErrors.length > 0 && (
-        <details className="rounded-md border border-border bg-muted/10 px-2 py-1 text-[11px] text-muted-foreground">
+        <details className="shrink-0 rounded-md border border-border bg-muted/10 px-2 py-1 text-[11px] text-muted-foreground">
           <summary className="cursor-pointer select-none">
             {messages.crossFileFileErrorsTitle(fileErrors.length)}
           </summary>

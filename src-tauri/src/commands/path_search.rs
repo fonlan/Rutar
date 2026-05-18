@@ -105,7 +105,20 @@ const SESSION_CACHE_MAX: usize = 16;
 // Target expansion
 // ============================================================================
 
-pub fn expand_target_path(target: &str) -> Result<Vec<PathBuf>, String> {
+/// Expand a user-supplied target path into a flat list of files to search.
+///
+/// Semantics:
+/// - File path: returns just the file.
+/// - Directory path: returns files in the directory. When `include_subdirectories`
+///   is true, walks recursively; otherwise only the immediate children files.
+/// - Glob pattern (any of `*`, `?`, `[`): matches files using `globset`.
+///   When the pattern contains `**` it walks recursively; the
+///   `include_subdirectories` flag is *ignored for globs* because the recursion
+///   semantics are already explicit in the pattern itself.
+pub fn expand_target_path(
+    target: &str,
+    include_subdirectories: bool,
+) -> Result<Vec<PathBuf>, String> {
     let trimmed = target.trim();
     if trimmed.is_empty() {
         return Err("target path is empty".to_string());
@@ -122,34 +135,44 @@ pub fn expand_target_path(target: &str) -> Result<Vec<PathBuf>, String> {
         return Ok(vec![path]);
     }
     if metadata.is_dir() {
-        let mut entries: Vec<PathBuf> = fs::read_dir(&path)
-            .map_err(|error| format!("cannot read directory: {error}"))?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry
-                    .file_type()
-                    .ok()
-                    .map(|t| t.is_file())
-                    .unwrap_or(false)
-            })
-            .map(|entry| entry.path())
-            .collect();
-        entries.sort();
-        return Ok(entries);
+        return Ok(collect_directory_files(&path, include_subdirectories));
     }
     Err("target path is neither file nor directory".to_string())
+}
+
+fn collect_directory_files(root: &Path, include_subdirectories: bool) -> Vec<PathBuf> {
+    let mut walker = WalkDir::new(root).follow_links(false);
+    if !include_subdirectories {
+        walker = walker.max_depth(1);
+    }
+    let mut results: Vec<PathBuf> = walker
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+        .map(|entry| entry.path().to_path_buf())
+        .collect();
+    results.sort();
+    results
 }
 
 fn contains_wildcard_chars(s: &str) -> bool {
     s.contains('*') || s.contains('?') || s.contains('[')
 }
 
+/// Normalize a glob pattern: globset matches with `/` separators only, so we
+/// translate Windows-style backslashes to forward slashes. Drive letters
+/// like `C:\` therefore become `C:/`, which globset accepts.
+fn normalize_glob_pattern(pattern: &str) -> String {
+    pattern.replace('\\', "/")
+}
+
 fn expand_glob_target(target: &str) -> Result<Vec<PathBuf>, String> {
-    let (base, _pattern_tail) = split_glob_base(target);
-    let glob = Glob::new(target)
+    let normalized = normalize_glob_pattern(target);
+    let (base, _pattern_tail) = split_glob_base(&normalized);
+    let glob = Glob::new(&normalized)
         .map_err(|error| format!("invalid glob pattern: {error}"))?
         .compile_matcher();
-    let recursive = target.contains("**");
+    let recursive = normalized.contains("**");
 
     let mut walker = WalkDir::new(&base).follow_links(false);
     if !recursive {
@@ -162,7 +185,12 @@ fn expand_glob_target(target: &str) -> Result<Vec<PathBuf>, String> {
             continue;
         }
         let path = entry.path();
-        if glob.is_match(path) {
+        // globset compares against the raw path; on Windows the candidate path
+        // uses backslashes which the pattern (now using `/`) won't match. We
+        // therefore also compare a slash-normalized form of the candidate.
+        let path_str = path.to_string_lossy();
+        let normalized_path = path_str.replace('\\', "/");
+        if glob.is_match(path) || glob.is_match(Path::new(&normalized_path)) {
             results.push(path.to_path_buf());
         }
     }
@@ -421,9 +449,10 @@ pub fn path_search_start_impl(
     mode: String,
     case_sensitive: bool,
     max_results: usize,
+    include_subdirectories: bool,
 ) -> Result<PathSearchStartPayload, String> {
     let _ = build_regex(&keyword, &mode, case_sensitive)?;
-    let files = expand_target_path(&target)?;
+    let files = expand_target_path(&target, include_subdirectories)?;
     let total_files = files.len();
     let session_id = Uuid::new_v4().to_string();
 
@@ -484,9 +513,10 @@ pub fn path_replace_preview_impl(
     keyword: String,
     mode: String,
     case_sensitive: bool,
+    include_subdirectories: bool,
 ) -> Result<PathReplacePreviewPayload, String> {
     let regex = build_regex(&keyword, &mode, case_sensitive)?;
-    let files = expand_target_path(&target)?;
+    let files = expand_target_path(&target, include_subdirectories)?;
     let total_files = files.len();
 
     let mut preview_files: Vec<PathReplacePreviewFile> = Vec::new();
@@ -529,9 +559,10 @@ pub fn path_replace_apply_impl(
     case_sensitive: bool,
     replace_value: String,
     parse_escape_sequences: bool,
+    include_subdirectories: bool,
 ) -> Result<PathReplaceApplyPayload, String> {
     let regex = build_regex(&keyword, &mode, case_sensitive)?;
-    let files = expand_target_path(&target)?;
+    let files = expand_target_path(&target, include_subdirectories)?;
     let effective_replace = if parse_escape_sequences {
         decode_replace_escape_sequences(&replace_value)
     } else {
@@ -620,7 +651,7 @@ mod tests {
         let file = root.join("a.txt");
         fs::write(&file, "hello").unwrap();
 
-        let result = expand_target_path(file.to_string_lossy().as_ref()).unwrap();
+        let result = expand_target_path(file.to_string_lossy().as_ref(), false).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], file);
 
@@ -628,14 +659,14 @@ mod tests {
     }
 
     #[test]
-    fn expand_target_path_should_return_top_level_files_for_directory() {
+    fn expand_target_path_should_return_top_level_files_for_directory_by_default() {
         let root = make_temp_root();
         fs::write(root.join("a.txt"), "a").unwrap();
         fs::write(root.join("b.md"), "b").unwrap();
         fs::create_dir(root.join("sub")).unwrap();
         fs::write(root.join("sub").join("c.txt"), "c").unwrap();
 
-        let result = expand_target_path(root.to_string_lossy().as_ref()).unwrap();
+        let result = expand_target_path(root.to_string_lossy().as_ref(), false).unwrap();
         let names: Vec<String> = result
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
@@ -648,6 +679,28 @@ mod tests {
     }
 
     #[test]
+    fn expand_target_path_should_recurse_directory_when_subdirectories_enabled() {
+        let root = make_temp_root();
+        fs::write(root.join("a.txt"), "a").unwrap();
+        fs::create_dir(root.join("sub")).unwrap();
+        fs::write(root.join("sub").join("b.txt"), "b").unwrap();
+        fs::create_dir(root.join("sub").join("deep")).unwrap();
+        fs::write(root.join("sub").join("deep").join("c.txt"), "c").unwrap();
+
+        let result = expand_target_path(root.to_string_lossy().as_ref(), true).unwrap();
+        let names: Vec<String> = result
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"a.txt".to_string()));
+        assert!(names.contains(&"b.txt".to_string()));
+        assert!(names.contains(&"c.txt".to_string()));
+        assert_eq!(names.len(), 3);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn expand_target_path_should_match_glob_wildcards() {
         let root = make_temp_root();
         fs::write(root.join("a.txt"), "a").unwrap();
@@ -655,7 +708,7 @@ mod tests {
         fs::write(root.join("c.md"), "c").unwrap();
 
         let pattern = format!("{}/*.txt", root.to_string_lossy());
-        let result = expand_target_path(&pattern).unwrap();
+        let result = expand_target_path(&pattern, false).unwrap();
         let names: Vec<String> = result
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
@@ -675,8 +728,48 @@ mod tests {
         fs::write(root.join("nested").join("b.txt"), "b").unwrap();
 
         let pattern = format!("{}/**/*.txt", root.to_string_lossy());
-        let result = expand_target_path(&pattern).unwrap();
+        // include_subdirectories is irrelevant for glob; recursion comes from `**`
+        let result = expand_target_path(&pattern, false).unwrap();
         assert_eq!(result.len(), 2);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn expand_target_path_should_accept_backslash_in_glob_pattern() {
+        let root = make_temp_root();
+        fs::create_dir(root.join("nested")).unwrap();
+        fs::write(root.join("nested").join("a.txt"), "a").unwrap();
+
+        // Some users (and Windows paths) include backslash separators in patterns.
+        let root_str = root.to_string_lossy().replace('/', "\\");
+        let pattern = format!("{root_str}\\**\\*.txt");
+        let result = expand_target_path(&pattern, false).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn expand_target_path_should_match_middle_doublestar_glob() {
+        // `dir/**/foo/*.txt` should match files inside any nested `foo` folder.
+        let root = make_temp_root();
+        fs::create_dir_all(root.join("foo")).unwrap();
+        fs::create_dir_all(root.join("nested").join("foo")).unwrap();
+        fs::create_dir_all(root.join("other")).unwrap();
+        fs::write(root.join("foo").join("a.txt"), "a").unwrap();
+        fs::write(root.join("nested").join("foo").join("b.txt"), "b").unwrap();
+        fs::write(root.join("other").join("c.txt"), "c").unwrap();
+
+        let pattern = format!("{}/**/foo/*.txt", root.to_string_lossy());
+        let result = expand_target_path(&pattern, false).unwrap();
+        let names: Vec<String> = result
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"a.txt".to_string()));
+        assert!(names.contains(&"b.txt".to_string()));
+        assert!(!names.contains(&"c.txt".to_string()));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -693,6 +786,7 @@ mod tests {
             "literal".to_string(),
             true,
             100,
+            false,
         )
         .unwrap();
 
@@ -716,6 +810,7 @@ mod tests {
             "literal".to_string(),
             true,
             2,
+            false,
         )
         .unwrap();
         assert_eq!(start.matches.len(), 2);
@@ -732,6 +827,40 @@ mod tests {
     }
 
     #[test]
+    fn path_search_start_impl_should_recurse_when_include_subdirectories_set() {
+        let root = make_temp_root();
+        fs::write(root.join("top.txt"), "needle\n").unwrap();
+        fs::create_dir(root.join("inner")).unwrap();
+        fs::write(root.join("inner").join("deep.txt"), "needle inside\n").unwrap();
+
+        let recursive = path_search_start_impl(
+            root.to_string_lossy().into_owned(),
+            "needle".to_string(),
+            "literal".to_string(),
+            true,
+            100,
+            true,
+        )
+        .unwrap();
+        assert_eq!(recursive.total_files, 2);
+        assert_eq!(recursive.matches.len(), 2);
+
+        let shallow = path_search_start_impl(
+            root.to_string_lossy().into_owned(),
+            "needle".to_string(),
+            "literal".to_string(),
+            true,
+            100,
+            false,
+        )
+        .unwrap();
+        assert_eq!(shallow.total_files, 1);
+        assert_eq!(shallow.matches.len(), 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn path_replace_apply_impl_should_replace_and_write() {
         let root = make_temp_root();
         let f = root.join("a.txt");
@@ -743,6 +872,7 @@ mod tests {
             "literal".to_string(),
             true,
             "ALPHA".to_string(),
+            false,
             false,
         )
         .unwrap();
@@ -765,11 +895,44 @@ mod tests {
             "x".to_string(),
             "literal".to_string(),
             true,
+            false,
         )
         .unwrap();
         assert_eq!(result.total_matches, 3);
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.files[0].match_count, 3);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn path_replace_preview_impl_should_recurse_when_requested() {
+        let root = make_temp_root();
+        fs::write(root.join("a.txt"), "x x").unwrap();
+        fs::create_dir(root.join("nested")).unwrap();
+        fs::write(root.join("nested").join("b.txt"), "x").unwrap();
+
+        let recursive = path_replace_preview_impl(
+            root.to_string_lossy().into_owned(),
+            "x".to_string(),
+            "literal".to_string(),
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(recursive.total_files, 2);
+        assert_eq!(recursive.total_matches, 3);
+
+        let shallow = path_replace_preview_impl(
+            root.to_string_lossy().into_owned(),
+            "x".to_string(),
+            "literal".to_string(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(shallow.total_files, 1);
+        assert_eq!(shallow.total_matches, 2);
 
         let _ = fs::remove_dir_all(root);
     }

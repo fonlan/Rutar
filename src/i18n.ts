@@ -916,6 +916,11 @@ export function getSearchPanelMessages(language: AppLanguage) {
       searchTargetPickFile: 'Choose file',
       searchTargetPickFolder: 'Choose folder',
       searchTargetClear: 'Clear target',
+      searchTargetIncludeSubdirectories: 'Include subdirectories',
+      searchTargetIncludeSubdirectoriesHint:
+        'When the target is a folder, also walk into nested subdirectories. Ignored when the target uses glob patterns (** controls recursion explicitly).',
+      searchTargetIncludeSubdirectoriesDisabledByGlob:
+        'Glob pattern already controls recursion (use ** for any depth).',
       searchTargetCrossFileNotImplemented: 'Cross-file search across the chosen target is not yet supported in this build.',
       crossFileSearching: 'Searching files…',
       crossFileLoadingMore: 'Loading more results…',
@@ -1084,6 +1089,11 @@ export function getSearchPanelMessages(language: AppLanguage) {
     searchTargetPickFile: '选择文件',
     searchTargetPickFolder: '选择文件夹',
     searchTargetClear: '清空目标',
+    searchTargetIncludeSubdirectories: '包含子目录',
+    searchTargetIncludeSubdirectoriesHint:
+      '当目标为文件夹时，递归进入所有子目录。当目标使用 glob 通配（** 已显式控制递归深度）时该选项被忽略。',
+    searchTargetIncludeSubdirectoriesDisabledByGlob:
+      'glob 模式已经控制递归（用 ** 表示任意深度子目录）。',
     searchTargetCrossFileNotImplemented: '当前版本暂未支持基于目标路径的跨文件查找/替换。',
     crossFileSearching: '正在搜索文件…',
     crossFileLoadingMore: '正在加载更多结果…',

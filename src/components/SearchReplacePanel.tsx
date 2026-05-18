@@ -53,6 +53,7 @@ export function SearchReplacePanel() {
     errorMessage,
     feedbackMessage,
     filterMatches,
+    includeSubdirectories,
     isOpen,
     isResultFilterSearching,
     isSearching,
@@ -81,6 +82,7 @@ export function SearchReplacePanel() {
     setFeedbackMessage,
     setFilterMatches,
     setFilterRuleGroups,
+    setIncludeSubdirectories,
     setIsOpen,
     setIsResultFilterSearching,
     setIsSearching,
@@ -157,6 +159,10 @@ export function SearchReplacePanel() {
     [searchTarget, activeTab?.path],
   );
   const isCrossFileMode = crossFileDecision.isCrossFile && !isFilterMode;
+  const showIncludeSubdirectoriesToggle = isCrossFileMode && !crossFileDecision.hasWildcard;
+  const includeSubdirectoriesDisabled = crossFileDecision.hasRecursiveGlob;
+  const effectiveIncludeSubdirectories =
+    crossFileDecision.hasWildcard || !isCrossFileMode ? false : includeSubdirectories;
 
   const {
     matches: crossFileMatches,
@@ -187,8 +193,16 @@ export function SearchReplacePanel() {
       keyword,
       searchMode,
       caseSensitive,
+      includeSubdirectories: effectiveIncludeSubdirectories,
     });
-  }, [caseSensitive, keyword, runCrossFileSearchInternal, searchMode, searchTarget]);
+  }, [
+    caseSensitive,
+    effectiveIncludeSubdirectories,
+    keyword,
+    runCrossFileSearchInternal,
+    searchMode,
+    searchTarget,
+  ]);
 
   const handleSelectCrossFileMatch = useCallback(
     async (match: PathSearchMatch) => {
@@ -781,6 +795,8 @@ export function SearchReplacePanel() {
     handlePickSearchTargetFolder,
     handleReplaceAll: crossFileReplaceAllHandler,
     handleReplaceCurrent,
+    includeSubdirectories: effectiveIncludeSubdirectories,
+    includeSubdirectoriesDisabled,
     isCrossFileMode,
     isReplaceMode,
     keyword,
@@ -799,12 +815,14 @@ export function SearchReplacePanel() {
     setCaseSensitive,
     setErrorMessage,
     setFeedbackMessage,
+    setIncludeSubdirectories,
     setKeyword,
     setParseEscapeSequences,
     setReplaceValue,
     setReverseSearch,
     setSearchMode,
     setSearchTarget,
+    showIncludeSubdirectoriesToggle,
     toggleResultPanelAndRefresh,
   });
 
@@ -921,6 +939,7 @@ export function SearchReplacePanel() {
         searchMode={searchMode}
         caseSensitive={caseSensitive}
         parseEscapeSequences={parseEscapeSequences}
+        includeSubdirectories={effectiveIncludeSubdirectories}
         messages={messages}
         onClose={closeCrossFileReplaceDialog}
         onCompleted={handleCrossFileReplaceCompleted}

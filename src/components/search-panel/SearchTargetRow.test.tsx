@@ -90,4 +90,68 @@ describe('SearchTargetRow', () => {
 
     expect(onPickFolder).toHaveBeenCalledTimes(1);
   });
+
+  it('does not render the include-subdirectories toggle by default', () => {
+    render(
+      <SearchTargetRow
+        {...baseProps}
+        value="C:/dir"
+        onChange={vi.fn()}
+        onPickFile={vi.fn()}
+        onPickFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Include subdirectories')).toBeNull();
+  });
+
+  it('renders the include-subdirectories toggle and forwards changes when enabled', () => {
+    const onIncludeSubdirectoriesChange = vi.fn();
+    render(
+      <SearchTargetRow
+        {...baseProps}
+        value="C:/dir"
+        onChange={vi.fn()}
+        onPickFile={vi.fn()}
+        onPickFolder={vi.fn()}
+        showIncludeSubdirectories
+        includeSubdirectories={false}
+        includeSubdirectoriesLabel="Include subdirectories"
+        includeSubdirectoriesHint="Walk into nested folders too"
+        onIncludeSubdirectoriesChange={onIncludeSubdirectoriesChange}
+      />,
+    );
+
+    const checkbox = screen.getByLabelText('Include subdirectories') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.disabled).toBe(false);
+
+    fireEvent.click(checkbox);
+    expect(onIncludeSubdirectoriesChange).toHaveBeenCalledWith(true);
+  });
+
+  it('disables the include-subdirectories toggle and exposes the glob hint', () => {
+    render(
+      <SearchTargetRow
+        {...baseProps}
+        value="C:/dir/**/*.txt"
+        onChange={vi.fn()}
+        onPickFile={vi.fn()}
+        onPickFolder={vi.fn()}
+        showIncludeSubdirectories
+        includeSubdirectories={false}
+        includeSubdirectoriesDisabled
+        includeSubdirectoriesLabel="Include subdirectories"
+        includeSubdirectoriesDisabledHint="Glob already controls recursion"
+        onIncludeSubdirectoriesChange={vi.fn()}
+      />,
+    );
+
+    const checkbox = screen.getByLabelText('Include subdirectories') as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+
+    const label = checkbox.closest('label');
+    expect(label?.getAttribute('title')).toBe('Glob already controls recursion');
+    expect(label?.className).toContain('opacity-60');
+  });
 });

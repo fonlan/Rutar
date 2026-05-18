@@ -11,6 +11,8 @@ interface UseSearchQuerySectionPropsOptions {
   handlePickSearchTargetFolder: () => void;
   handleReplaceAll: () => Promise<void>;
   handleReplaceCurrent: () => Promise<void>;
+  includeSubdirectories: boolean;
+  includeSubdirectoriesDisabled: boolean;
   isCrossFileMode: boolean;
   isReplaceMode: boolean;
   keyword: string;
@@ -29,12 +31,14 @@ interface UseSearchQuerySectionPropsOptions {
   setCaseSensitive: (checked: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setFeedbackMessage: (value: string | null) => void;
+  setIncludeSubdirectories: (checked: boolean) => void;
   setKeyword: (value: string) => void;
   setParseEscapeSequences: (checked: boolean) => void;
   setReplaceValue: (value: string) => void;
   setReverseSearch: (checked: boolean) => void;
   setSearchMode: (mode: SearchMode) => void;
   setSearchTarget: (value: string) => void;
+  showIncludeSubdirectoriesToggle: boolean;
   toggleResultPanelAndRefresh: () => void;
 }
 
@@ -46,6 +50,8 @@ export function useSearchQuerySectionProps({
   handlePickSearchTargetFolder,
   handleReplaceAll,
   handleReplaceCurrent,
+  includeSubdirectories,
+  includeSubdirectoriesDisabled,
   isCrossFileMode,
   isReplaceMode,
   keyword,
@@ -64,18 +70,22 @@ export function useSearchQuerySectionProps({
   setCaseSensitive,
   setErrorMessage,
   setFeedbackMessage,
+  setIncludeSubdirectories,
   setKeyword,
   setParseEscapeSequences,
   setReplaceValue,
   setReverseSearch,
   setSearchMode,
   setSearchTarget,
+  showIncludeSubdirectoriesToggle,
   toggleResultPanelAndRefresh,
 }: UseSearchQuerySectionPropsOptions): SearchQuerySectionProps {
   return useMemo(
     () => ({
       canReplace,
       caseSensitive,
+      includeSubdirectories,
+      includeSubdirectoriesDisabled,
       isCrossFileMode,
       isReplaceMode,
       keyword,
@@ -89,10 +99,16 @@ export function useSearchQuerySectionProps({
       searchInputRef,
       searchMode,
       searchTarget,
+      showIncludeSubdirectoriesToggle,
       onCaseSensitiveChange: (checked) => {
         setCaseSensitive(checked);
         setErrorMessage(null);
         resetSearchState();
+      },
+      onIncludeSubdirectoriesChange: (checked) => {
+        setIncludeSubdirectories(checked);
+        setErrorMessage(null);
+        setFeedbackMessage(null);
       },
       onKeywordChange: (value) => {
         setKeyword(value);
@@ -137,6 +153,8 @@ export function useSearchQuerySectionProps({
       handlePickSearchTargetFolder,
       handleReplaceAll,
       handleReplaceCurrent,
+      includeSubdirectories,
+      includeSubdirectoriesDisabled,
       isCrossFileMode,
       isReplaceMode,
       keyword,
@@ -155,12 +173,14 @@ export function useSearchQuerySectionProps({
       setCaseSensitive,
       setErrorMessage,
       setFeedbackMessage,
+      setIncludeSubdirectories,
       setKeyword,
       setParseEscapeSequences,
       setReplaceValue,
       setReverseSearch,
       setSearchMode,
       setSearchTarget,
+      showIncludeSubdirectoriesToggle,
       toggleResultPanelAndRefresh,
     ]
   );

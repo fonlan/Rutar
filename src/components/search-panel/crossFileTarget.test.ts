@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  containsRecursiveGlob,
   containsWildcardChars,
   evaluateCrossFileTarget,
   normalizeTargetPath,
@@ -40,12 +41,27 @@ describe('crossFileTarget.containsWildcardChars', () => {
   });
 });
 
+describe('crossFileTarget.containsRecursiveGlob', () => {
+  it('detects ** patterns at any position', () => {
+    expect(containsRecursiveGlob('**/foo.txt')).toBe(true);
+    expect(containsRecursiveGlob('C:/dir/**/foo.txt')).toBe(true);
+    expect(containsRecursiveGlob('foo/**')).toBe(true);
+  });
+
+  it('returns false when only single * appears', () => {
+    expect(containsRecursiveGlob('*.txt')).toBe(false);
+    expect(containsRecursiveGlob('C:/dir/*.md')).toBe(false);
+    expect(containsRecursiveGlob('C:/dir')).toBe(false);
+  });
+});
+
 describe('crossFileTarget.evaluateCrossFileTarget', () => {
   it('treats empty target as in-document mode', () => {
     expect(evaluateCrossFileTarget('', 'C:\\foo.txt')).toEqual({
       isCrossFile: false,
       isEmpty: true,
       hasWildcard: false,
+      hasRecursiveGlob: false,
     });
   });
 
@@ -54,6 +70,16 @@ describe('crossFileTarget.evaluateCrossFileTarget', () => {
       isCrossFile: true,
       isEmpty: false,
       hasWildcard: true,
+      hasRecursiveGlob: false,
+    });
+  });
+
+  it('flags recursive glob via **', () => {
+    expect(evaluateCrossFileTarget('C:/foo/**/*.txt', null)).toEqual({
+      isCrossFile: true,
+      isEmpty: false,
+      hasWildcard: true,
+      hasRecursiveGlob: true,
     });
   });
 

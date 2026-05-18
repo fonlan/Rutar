@@ -79,7 +79,7 @@ export function SearchSidebarChrome({
     >
       <div
         className={cn(
-          'flex h-full flex-col overflow-y-auto border-l border-border p-3 shadow-2xl transition-colors',
+          'flex h-full flex-col overflow-hidden border-l border-border p-3 shadow-2xl transition-colors',
           isSearchUiActive ? 'bg-background/95 backdrop-blur' : 'bg-background/65',
           isOpen ? 'pointer-events-auto' : 'pointer-events-none'
         )}
@@ -87,19 +87,21 @@ export function SearchSidebarChrome({
         onFocusCapture={onFocusCapture}
         onBlurCapture={onBlurCapture}
       >
-        <SearchPanelHeader
-          canReplace={canReplace}
-          panelMode={panelMode}
-          messages={messages}
-          onClose={onClose}
-          onModeChange={onModeChange}
-        />
+        <div className="shrink-0">
+          <SearchPanelHeader
+            canReplace={canReplace}
+            panelMode={panelMode}
+            messages={messages}
+            onClose={onClose}
+            onModeChange={onModeChange}
+          />
+        </div>
 
         {children}
 
         <div
           className={cn(
-            'mt-2 text-xs',
+            'mt-2 shrink-0 text-xs',
             errorMessage ? 'text-destructive' : 'text-muted-foreground'
           )}
         >

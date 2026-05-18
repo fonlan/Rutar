@@ -27,7 +27,11 @@ export interface SearchQuerySectionProps {
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchMode: SearchMode;
   searchTarget: string;
+  showIncludeSubdirectoriesToggle: boolean;
+  includeSubdirectories: boolean;
+  includeSubdirectoriesDisabled: boolean;
   onCaseSensitiveChange: (checked: boolean) => void;
+  onIncludeSubdirectoriesChange: (checked: boolean) => void;
   onKeywordChange: (value: string) => void;
   onKeywordClear: () => void;
   onKeywordKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
@@ -54,6 +58,7 @@ export function SearchQuerySection({
   keyword,
   messages,
   onCaseSensitiveChange,
+  onIncludeSubdirectoriesChange,
   onKeywordChange,
   onKeywordClear,
   onKeywordKeyDown,
@@ -79,6 +84,9 @@ export function SearchQuerySection({
   searchInputRef,
   searchMode,
   searchTarget,
+  showIncludeSubdirectoriesToggle,
+  includeSubdirectories,
+  includeSubdirectoriesDisabled,
 }: SearchQuerySectionProps) {
   return (
     <>
@@ -92,6 +100,13 @@ export function SearchQuerySection({
         pickTitle={messages.searchTargetPickTitle}
         placeholder={messages.searchTargetPlaceholder}
         value={searchTarget}
+        showIncludeSubdirectories={showIncludeSubdirectoriesToggle}
+        includeSubdirectories={includeSubdirectories}
+        includeSubdirectoriesDisabled={includeSubdirectoriesDisabled}
+        includeSubdirectoriesLabel={messages.searchTargetIncludeSubdirectories}
+        includeSubdirectoriesHint={messages.searchTargetIncludeSubdirectoriesHint}
+        includeSubdirectoriesDisabledHint={messages.searchTargetIncludeSubdirectoriesDisabledByGlob}
+        onIncludeSubdirectoriesChange={onIncludeSubdirectoriesChange}
       />
 
       <div className="mt-2 flex items-center gap-2">

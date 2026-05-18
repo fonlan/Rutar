@@ -19,12 +19,23 @@ export function SearchSidebarBody({
   crossFileResultsProps,
 }: SearchSidebarBodyProps) {
   if (isFilterMode) {
-    return <FilterRulesEditor {...filterRulesEditorProps} />;
+    // Filter editor can be tall (many rules) so let it scroll inside the
+    // remaining sidebar space.
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <FilterRulesEditor {...filterRulesEditorProps} />
+      </div>
+    );
   }
 
+  // Both in-document and cross-file search share the query section. In
+  // cross-file mode the results panel below should fill the remaining vertical
+  // space (it uses `flex-1` internally).
   return (
     <>
-      <SearchQuerySection {...searchQuerySectionProps} />
+      <div className="shrink-0">
+        <SearchQuerySection {...searchQuerySectionProps} />
+      </div>
       {isCrossFileMode && <CrossFileResultsPanel {...crossFileResultsProps} />}
     </>
   );

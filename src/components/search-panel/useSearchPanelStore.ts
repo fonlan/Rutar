@@ -66,6 +66,7 @@ export function useSearchPanelStore() {
   const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
   const [searchTarget, setSearchTarget] = useState('');
+  const [includeSubdirectories, setIncludeSubdirectories] = useState(false);
 
   // === Runtime refs (formerly useSearchPanelRuntimeRefs) ===
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +288,7 @@ export function useSearchPanelStore() {
     feedbackMessage,
     filterMatches,
     filterRuleGroups,
+    includeSubdirectories,
     isOpen,
     isResultFilterSearching,
     isSearching,
@@ -316,6 +318,7 @@ export function useSearchPanelStore() {
     setFeedbackMessage,
     setFilterMatches,
     setFilterRuleGroups,
+    setIncludeSubdirectories,
     setIsOpen,
     setIsResultFilterSearching,
     setIsSearching,

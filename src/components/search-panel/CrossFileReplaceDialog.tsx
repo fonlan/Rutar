@@ -30,6 +30,7 @@ export interface CrossFileReplaceDialogProps {
   searchMode: SearchMode;
   caseSensitive: boolean;
   parseEscapeSequences: boolean;
+  includeSubdirectories: boolean;
   messages: ReturnType<typeof getSearchPanelMessages>;
   onClose: () => void;
   onCompleted?: (info: {
@@ -93,6 +94,7 @@ export function CrossFileReplaceDialog({
   searchMode,
   caseSensitive,
   parseEscapeSequences,
+  includeSubdirectories,
   messages,
   onClose,
   onCompleted,
@@ -128,6 +130,7 @@ export function CrossFileReplaceDialog({
       keyword,
       mode: searchMode,
       caseSensitive,
+      includeSubdirectories,
     })
       .then((result) => {
         if (currentId !== requestIdRef.current) {
@@ -147,7 +150,15 @@ export function CrossFileReplaceDialog({
         }
         setIsLoadingPreview(false);
       });
-  }, [caseSensitive, isOpen, keyword, messages.crossFileReplaceFailed, searchMode, target]);
+  }, [
+    caseSensitive,
+    includeSubdirectories,
+    isOpen,
+    keyword,
+    messages.crossFileReplaceFailed,
+    searchMode,
+    target,
+  ]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -200,10 +211,11 @@ export function CrossFileReplaceDialog({
       const result = await invoke<PathReplaceApplyBackendResult>('path_replace_apply', {
         target,
         keyword,
-        replacement: replaceValue,
+        replaceValue,
         mode: searchMode,
         caseSensitive,
         parseEscapeSequences,
+        includeSubdirectories,
       });
       if (currentId !== requestIdRef.current) {
         return;

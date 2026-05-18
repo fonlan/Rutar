@@ -35,10 +35,23 @@ export function containsWildcardChars(value: string): boolean {
   return WILDCARD_CHARS.test(value);
 }
 
+/**
+ * Whether the target contains a recursive glob marker (`**`).
+ *
+ * The backend already honours `**` as "any depth" inside `globset` patterns,
+ * so when the user types something like `C:/dir/**\/*.txt` we treat the
+ * include-subdirectories toggle as informational only (the glob itself drives
+ * recursion).
+ */
+export function containsRecursiveGlob(value: string): boolean {
+  return value.includes('**');
+}
+
 export interface CrossFileTargetDecision {
   isCrossFile: boolean;
   isEmpty: boolean;
   hasWildcard: boolean;
+  hasRecursiveGlob: boolean;
 }
 
 export function evaluateCrossFileTarget(
@@ -47,24 +60,41 @@ export function evaluateCrossFileTarget(
 ): CrossFileTargetDecision {
   const trimmed = searchTarget.trim();
   if (!trimmed) {
-    return { isCrossFile: false, isEmpty: true, hasWildcard: false };
+    return {
+      isCrossFile: false,
+      isEmpty: true,
+      hasWildcard: false,
+      hasRecursiveGlob: false,
+    };
   }
 
   const hasWildcard = containsWildcardChars(trimmed);
+  const hasRecursiveGlob = containsRecursiveGlob(trimmed);
   if (hasWildcard) {
-    return { isCrossFile: true, isEmpty: false, hasWildcard: true };
+    return {
+      isCrossFile: true,
+      isEmpty: false,
+      hasWildcard: true,
+      hasRecursiveGlob,
+    };
   }
 
   const normalizedTarget = normalizeTargetPath(trimmed);
   const normalizedActive = normalizeTargetPath(activeTabPath ?? '');
 
   if (!normalizedActive) {
-    return { isCrossFile: true, isEmpty: false, hasWildcard: false };
+    return {
+      isCrossFile: true,
+      isEmpty: false,
+      hasWildcard: false,
+      hasRecursiveGlob: false,
+    };
   }
 
   return {
     isCrossFile: normalizedTarget !== normalizedActive,
     isEmpty: false,
     hasWildcard: false,
+    hasRecursiveGlob: false,
   };
 }
