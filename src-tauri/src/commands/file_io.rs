@@ -639,16 +639,35 @@ pub(super) async fn get_document_text_chunks_impl(
         .map_err(|error| error.to_string())
 }
 
-fn markdown_preview_options() -> markdown::Options {
-    let mut options = markdown::Options::gfm();
-    options.compile.allow_dangerous_html = true;
-    options.compile.allow_dangerous_protocol = true;
+fn markdown_preview_options() -> pulldown_cmark::Options {
+    let mut options = pulldown_cmark::Options::empty();
+    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    options.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
+    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+    options.insert(pulldown_cmark::Options::ENABLE_GFM);
+    options.insert(pulldown_cmark::Options::ENABLE_HEADING_ATTRIBUTES);
     options
 }
 
 fn render_markdown_preview_html(source: &str) -> Result<String, String> {
-    markdown::to_html_with_options(source, &markdown_preview_options())
-        .map_err(|error| error.to_string())
+    // CommonMark treats a single `\n` inside a paragraph as a soft break,
+    // which serializes to a literal newline in the HTML output and gets
+    // collapsed into a single space by the browser. Typora/Obsidian-style
+    // editors render those soft breaks as hard breaks so what you typed is
+    // what you see in the preview. We do the same by rewriting every
+    // `SoftBreak` event into a `HardBreak` before handing the stream off to
+    // pulldown-cmark's HTML renderer.
+    let parser = pulldown_cmark::Parser::new_ext(source, markdown_preview_options()).map(
+        |event| match event {
+            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+            other => other,
+        },
+    );
+
+    let mut html_output = String::with_capacity(source.len() + source.len() / 4);
+    pulldown_cmark::html::push_html(&mut html_output, parser);
+    Ok(html_output)
 }
 
 pub(super) async fn render_markdown_preview_impl(
@@ -1437,6 +1456,40 @@ mod tests {
         assert!(
             html.contains(r#"alt="Preview""#),
             "html should keep inline html alt text: {html}"
+        );
+    }
+
+    #[test]
+    fn markdown_preview_render_should_convert_soft_breaks_to_hard_breaks() {
+        // Authors typing in Typora/Obsidian-style editors expect every Enter
+        // inside the same paragraph to remain visible in the preview, but a
+        // strict CommonMark parser collapses those single newlines into spaces.
+        // The renderer must hoist soft breaks up to hard breaks so the visual
+        // line structure of the source is preserved.
+        let html = render_markdown_preview_html("line one\nline two\nline three")
+            .expect("markdown soft-break render should succeed");
+
+        assert!(
+            html.contains("line one<br />\nline two<br />\nline three")
+                || html.contains("line one<br>line two<br>line three"),
+            "soft breaks should be rendered as <br>: {html}"
+        );
+    }
+
+    #[test]
+    fn markdown_preview_render_should_keep_literal_newlines_in_code_blocks() {
+        // Fenced code blocks must keep their literal newlines so syntax
+        // highlighters and the user's mental model both line up with the source.
+        let html = render_markdown_preview_html("```ts\nconst a = 1;\nconst b = 2;\n```\n")
+            .expect("markdown code block render should succeed");
+
+        assert!(
+            html.contains("const a = 1;\nconst b = 2;"),
+            "code block should keep literal newlines: {html}"
+        );
+        assert!(
+            !html.contains("const a = 1;<br"),
+            "code block must not gain a <br>: {html}"
         );
     }
 
