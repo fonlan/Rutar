@@ -26,6 +26,19 @@ describe('highlightMarkdownCodeBlocks', () => {
     expect(tokenKeyword?.textContent).toBe('const');
   });
 
+  it('maps bat code fences to Prism batch highlighting', async () => {
+    const article = createArticleWithCode('bat', 'REM hello\necho done');
+
+    await highlightMarkdownCodeBlocks(article);
+
+    const codeElement = article.querySelector('pre > code')!;
+    expect(codeElement.getAttribute('data-rutar-prism-highlighted')).toBe('true');
+    expect(codeElement.classList.contains('language-batch')).toBe(true);
+    const tokenComment = codeElement.querySelector('.token.comment');
+    expect(tokenComment).not.toBeNull();
+    expect(tokenComment?.textContent).toBe('REM hello');
+  });
+
   it('still highlights code blocks when the article DOM is rewritten between Prism load and apply', async () => {
     const article = createArticleWithCode('ts', 'const count: number = 1;');
 

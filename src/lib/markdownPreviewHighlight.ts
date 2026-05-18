@@ -9,8 +9,11 @@ type PrismApi = {
 type GlobalScopeWithPrism = typeof globalThis & { Prism?: PrismApi };
 
 const HIGHLIGHTED_MARK_ATTRIBUTE = 'data-rutar-prism-highlighted';
+const LANGUAGE_CLASS_PATTERN = /^(?:lang|language)-.+$/i;
 
 const LANGUAGE_ALIAS_MAP: Record<string, string> = {
+  bat: 'batch',
+  cmd: 'batch',
   conf: 'ini',
   cxx: 'cpp',
   'c++': 'cpp',
@@ -82,6 +85,7 @@ async function bootstrapPrism(): Promise<PrismApi | null> {
   await import('prismjs/components/prism-typescript');
   await import('prismjs/components/prism-jsx');
   await import('prismjs/components/prism-tsx');
+  await import('prismjs/components/prism-batch');
   await import('prismjs/components/prism-bash');
   await import('prismjs/components/prism-diff');
   await import('prismjs/components/prism-docker');
@@ -143,15 +147,25 @@ function resolvePrismLanguage(prism: PrismApi, language: string): string | null 
   if (!normalized) {
     return null;
   }
-  if (Object.prototype.hasOwnProperty.call(prism.languages, normalized)) {
-    return normalized;
-  }
   const aliased = LANGUAGE_ALIAS_MAP[normalized];
   if (aliased && Object.prototype.hasOwnProperty.call(prism.languages, aliased)) {
     return aliased;
   }
+  if (Object.prototype.hasOwnProperty.call(prism.languages, normalized)) {
+    return normalized;
+  }
   return null;
 }
+
+function applyPrismLanguageClass(element: HTMLElement, language: string) {
+  for (const className of Array.from(element.classList)) {
+    if (LANGUAGE_CLASS_PATTERN.test(className)) {
+      element.classList.remove(className);
+    }
+  }
+  element.classList.add('language-' + language);
+}
+
 export async function highlightMarkdownCodeBlocks(article: HTMLElement | null): Promise<void> {
   if (!article) {
     return;
@@ -210,10 +224,7 @@ export async function highlightMarkdownCodeBlocks(article: HTMLElement | null): 
       continue;
     }
 
-    const prismClassName = 'language-' + prismLanguage;
-    if (!codeElement.classList.contains(prismClassName)) {
-      codeElement.classList.add(prismClassName);
-    }
+    applyPrismLanguageClass(codeElement, prismLanguage);
 
     try {
       prism.highlightElement(codeElement);
