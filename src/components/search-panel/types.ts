@@ -246,6 +246,60 @@ export interface TabSearchPanelSnapshot {
   searchDocumentVersion: number | null;
   filterDocumentVersion: number | null;
   filterRulesKey: string;
+  searchTarget?: string;
+}
+
+export interface PathSearchMatch {
+  filePath: string;
+  line: number;
+  column: number;
+  matchStart: number;
+  matchEnd: number;
+  lineText: string;
+}
+
+export interface PathSearchFileError {
+  filePath: string;
+  error: string;
+}
+
+export interface PathSearchStartBackendResult {
+  sessionId: string;
+  totalFiles: number;
+  matches: PathSearchMatch[];
+  completed: boolean;
+  fileErrors: PathSearchFileError[];
+  scannedFiles: number;
+}
+
+export interface PathSearchNextBackendResult {
+  matches: PathSearchMatch[];
+  completed: boolean;
+  fileErrors: PathSearchFileError[];
+  scannedFiles: number;
+}
+
+export interface PathReplacePreviewFile {
+  filePath: string;
+  matchCount: number;
+}
+
+export interface PathReplacePreviewBackendResult {
+  files: PathReplacePreviewFile[];
+  totalMatches: number;
+  totalFiles: number;
+  fileErrors: PathSearchFileError[];
+}
+
+export interface PathReplaceAppliedFile {
+  filePath: string;
+  matchCount: number;
+}
+
+export interface PathReplaceApplyBackendResult {
+  filesChanged: PathReplaceAppliedFile[];
+  totalMatchesReplaced: number;
+  fileErrors: PathSearchFileError[];
 }
 
 export type SearchSidebarTextInputElement = HTMLInputElement | HTMLTextAreaElement;

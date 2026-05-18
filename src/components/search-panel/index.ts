@@ -19,5 +19,9 @@ export { useSearchQuerySectionProps } from './useSearchQuerySectionProps';
 export { useSearchResultPanel } from './useSearchResultPanel';
 export { useSearchSidebarFrame } from './useSearchSidebarFrame';
 export { useSearchPanelStore } from './useSearchPanelStore';
+export { useSearchTargetPicker } from './useSearchTargetPicker';
+export { useCrossFileSearch } from './useCrossFileSearch';
+export { CrossFileResultsPanel } from './CrossFileResultsPanel';
+export { CrossFileReplaceDialog } from './CrossFileReplaceDialog';
 
 export { SEARCH_SIDEBAR_DEFAULT_WIDTH, SEARCH_SIDEBAR_RIGHT_OFFSET } from './utils';

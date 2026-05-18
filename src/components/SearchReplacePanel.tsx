@@ -1,13 +1,24 @@
 ﻿import {
   startTransition,
+  useCallback,
+  useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
+import type { ComponentProps } from 'react';
+import { CrossFileReplaceDialog } from '@/components/search-panel/CrossFileReplaceDialog';
+import { CrossFileResultsPanel } from '@/components/search-panel/CrossFileResultsPanel';
 import type { FilterRulesEditorProps } from '@/components/search-panel/FilterRulesEditor';
+import type { PathSearchMatch } from '@/components/search-panel/types';
+import { evaluateCrossFileTarget } from '@/components/search-panel/crossFileTarget';
+import { openFilePath } from '@/lib/openFile';
+import { useStore } from '@/store/useStore';
 import {
   SearchSidebarBody,
   SearchPanelOverlays,
   SearchSidebarChrome,
+  useCrossFileSearch,
   useFilterRules,
   useSearchInput,
   useSearchPanelChrome,
@@ -20,6 +31,7 @@ import {
   useSearchResultPanel,
   useSearchSidebarFrame,
   useSearchPanelStore,
+  useSearchTargetPicker,
 } from '@/components/search-panel';
 export function SearchReplacePanel() {
   const {
@@ -56,6 +68,7 @@ export function SearchReplacePanel() {
     reverseSearch,
     searchMode,
     searchSidebarWidth,
+    searchTarget,
     totalFilterMatchedLineCount,
     totalMatchCount,
     totalMatchedLineCount,
@@ -83,6 +96,7 @@ export function SearchReplacePanel() {
     setReverseSearch,
     setSearchMode,
     setSearchSidebarWidth,
+    setSearchTarget,
     setTotalFilterMatchedLineCount,
     setTotalMatchCount,
     setTotalMatchedLineCount,
@@ -137,6 +151,122 @@ export function SearchReplacePanel() {
   } = useSearchPanelStore();
 
   const safeActiveTabId = activeTab?.id ?? null;
+
+  const crossFileDecision = useMemo(
+    () => evaluateCrossFileTarget(searchTarget, activeTab?.path ?? null),
+    [searchTarget, activeTab?.path],
+  );
+  const isCrossFileMode = crossFileDecision.isCrossFile && !isFilterMode;
+
+  const {
+    matches: crossFileMatches,
+    totalFiles: crossFileTotalFiles,
+    scannedFiles: crossFileScannedFiles,
+    completed: crossFileCompleted,
+    isSearching: crossFileIsSearching,
+    isLoadingMore: crossFileIsLoadingMore,
+    errorMessage: crossFileErrorMessage,
+    fileErrors: crossFileFileErrors,
+    hasRunOnce: crossFileHasRunOnce,
+    runSearch: runCrossFileSearchInternal,
+    loadMore: loadMoreCrossFileMatches,
+    reset: resetCrossFileSearch,
+  } = useCrossFileSearch({
+    searchFailedLabel: messages.searchFailed,
+  });
+
+  useEffect(() => {
+    if (!isCrossFileMode) {
+      resetCrossFileSearch();
+    }
+  }, [isCrossFileMode, resetCrossFileSearch]);
+
+  const runCrossFileSearch = useCallback(async () => {
+    await runCrossFileSearchInternal({
+      target: searchTarget,
+      keyword,
+      searchMode,
+      caseSensitive,
+    });
+  }, [caseSensitive, keyword, runCrossFileSearchInternal, searchMode, searchTarget]);
+
+  const handleSelectCrossFileMatch = useCallback(
+    async (match: PathSearchMatch) => {
+      try {
+        await openFilePath(match.filePath);
+      } catch (error) {
+        console.warn('Failed to open file from cross-file result:', error);
+        return;
+      }
+      const state = useStore.getState();
+      const tabId = state.activeTabId;
+      if (!tabId) {
+        return;
+      }
+      state.setCursorPosition(tabId, match.line, match.column);
+      window.dispatchEvent(
+        new CustomEvent('rutar:navigate-to-line', {
+          detail: {
+            tabId,
+            line: match.line,
+            column: match.column,
+            length: 0,
+            lineText: match.lineText,
+            occludedRightPx: 0,
+            source: 'cross-file-search',
+          },
+        }),
+      );
+    },
+    [],
+  );
+
+  const [isCrossFileReplaceDialogOpen, setIsCrossFileReplaceDialogOpen] = useState(false);
+
+  const closeCrossFileReplaceDialog = useCallback(() => {
+    setIsCrossFileReplaceDialogOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isCrossFileMode) {
+      setIsCrossFileReplaceDialogOpen(false);
+    }
+  }, [isCrossFileMode]);
+
+  const crossFileResultsProps = useMemo<ComponentProps<typeof CrossFileResultsPanel>>(
+    () => ({
+      matches: crossFileMatches,
+      totalFiles: crossFileTotalFiles,
+      scannedFiles: crossFileScannedFiles,
+      completed: crossFileCompleted,
+      isSearching: crossFileIsSearching,
+      isLoadingMore: crossFileIsLoadingMore,
+      errorMessage: crossFileErrorMessage,
+      fileErrors: crossFileFileErrors,
+      hasRunOnce: crossFileHasRunOnce,
+      keyword,
+      resultListTextStyle,
+      messages,
+      onLoadMore: () => void loadMoreCrossFileMatches(),
+      onSelectMatch: (match) => void handleSelectCrossFileMatch(match),
+    }),
+    [
+      crossFileCompleted,
+      crossFileErrorMessage,
+      crossFileFileErrors,
+      crossFileHasRunOnce,
+      crossFileIsLoadingMore,
+      crossFileIsSearching,
+      crossFileMatches,
+      crossFileScannedFiles,
+      crossFileTotalFiles,
+      handleSelectCrossFileMatch,
+      keyword,
+      loadMoreCrossFileMatches,
+      messages,
+      resultListTextStyle,
+    ],
+  );
 
   const {
     getSearchSidebarOccludedRightPx,
@@ -351,7 +481,7 @@ export function SearchReplacePanel() {
     stopResultFilterSearchRef,
   });
 
-  const { handleReplaceAll, handleReplaceCurrent } = useSearchReplace({
+  const { handleReplaceAll: handleInDocumentReplaceAll, handleReplaceCurrent } = useSearchReplace({
     activeTabId: safeActiveTabId,
     activeTabLineCount: activeTab?.lineCount ?? null,
     backendResultFilterKeyword,
@@ -385,15 +515,76 @@ export function SearchReplacePanel() {
     updateTab,
   });
 
+  const crossFileReplaceAllHandler = useCallback(async () => {
+    if (isCrossFileMode) {
+      if (!keyword) {
+        setFeedbackMessage(null);
+        setErrorMessage(messages.noReplaceMatches);
+        return;
+      }
+      setErrorMessage(null);
+      setFeedbackMessage(null);
+      setIsCrossFileReplaceDialogOpen(true);
+      return;
+    }
+    await handleInDocumentReplaceAll();
+  }, [
+    handleInDocumentReplaceAll,
+    isCrossFileMode,
+    keyword,
+    messages.noReplaceMatches,
+    setErrorMessage,
+    setFeedbackMessage,
+  ]);
+
+  const handleCrossFileReplaceCompleted = useCallback(
+    ({
+      totalReplaced,
+      filesChanged,
+      fileErrors,
+    }: {
+      totalReplaced: number;
+      filesChanged: number;
+      fileErrors: { filePath: string; error: string }[];
+    }) => {
+      setErrorMessage(null);
+      if (fileErrors.length > 0) {
+        setFeedbackMessage(
+          messages.crossFileReplaceSuccessWithErrors(totalReplaced, filesChanged, fileErrors.length),
+        );
+      } else {
+        setFeedbackMessage(messages.crossFileReplaceSuccess(totalReplaced, filesChanged));
+      }
+
+      void runCrossFileSearch();
+    },
+    [
+      messages,
+      runCrossFileSearch,
+      setErrorMessage,
+      setFeedbackMessage,
+    ],
+  );
+
+  const handleCrossFileReplaceError = useCallback(
+    (message: string) => {
+      setFeedbackMessage(null);
+      setErrorMessage(`${messages.crossFileReplaceFailed}: ${message}`);
+    },
+    [messages.crossFileReplaceFailed, setErrorMessage, setFeedbackMessage],
+  );
+
   const handleKeywordKeyDown = useSearchKeywordKeyDown({
     executeFilter,
     executeSearch,
+    isCrossFileMode,
     isFilterMode,
     isSearching,
     keyword,
     navigateByStep,
     rememberSearchKeyword,
     reverseSearch,
+    runCrossFileSearch,
     searchInputRef,
     setIsOpen,
     setResultPanelState,
@@ -573,12 +764,24 @@ export function SearchReplacePanel() {
     ]
   );
 
+  const { handlePickSearchTargetFile, handlePickSearchTargetFolder } = useSearchTargetPicker({
+    currentTarget: searchTarget,
+    pickFileTitle: messages.searchTargetPickFile,
+    pickFolderTitle: messages.searchTargetPickFolder,
+    setErrorMessage,
+    setFeedbackMessage,
+    setSearchTarget,
+  });
+
   const searchQuerySectionProps = useSearchQuerySectionProps({
     canReplace: !!activeTab,
     caseSensitive,
     handleKeywordKeyDown,
-    handleReplaceAll,
+    handlePickSearchTargetFile,
+    handlePickSearchTargetFolder,
+    handleReplaceAll: crossFileReplaceAllHandler,
     handleReplaceCurrent,
+    isCrossFileMode,
     isReplaceMode,
     keyword,
     messages,
@@ -592,6 +795,7 @@ export function SearchReplacePanel() {
     reverseSearch,
     searchInputRef,
     searchMode,
+    searchTarget,
     setCaseSensitive,
     setErrorMessage,
     setFeedbackMessage,
@@ -600,6 +804,7 @@ export function SearchReplacePanel() {
     setReplaceValue,
     setReverseSearch,
     setSearchMode,
+    setSearchTarget,
     toggleResultPanelAndRefresh,
   });
 
@@ -662,6 +867,8 @@ export function SearchReplacePanel() {
     setResultPanelState,
     filterRulesEditorProps,
     searchQuerySectionProps,
+    crossFileResultsProps,
+    isCrossFileMode,
     focusSearchInput,
     handleInputContextMenuAction,
     handleSearchSidebarContextMenu,
@@ -705,6 +912,20 @@ export function SearchReplacePanel() {
       </SearchSidebarChrome>
 
       <SearchPanelOverlays {...searchPanelOverlaysProps} />
+
+      <CrossFileReplaceDialog
+        isOpen={isCrossFileReplaceDialogOpen}
+        target={searchTarget}
+        keyword={keyword}
+        replaceValue={replaceValue}
+        searchMode={searchMode}
+        caseSensitive={caseSensitive}
+        parseEscapeSequences={parseEscapeSequences}
+        messages={messages}
+        onClose={closeCrossFileReplaceDialog}
+        onCompleted={handleCrossFileReplaceCompleted}
+        onError={handleCrossFileReplaceError}
+      />
     </>
   );
 }

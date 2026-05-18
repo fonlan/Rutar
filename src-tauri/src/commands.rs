@@ -22,6 +22,8 @@ mod file_io;
 pub(crate) mod file_io_commands;
 mod formatting;
 mod outline;
+mod path_search;
+pub(crate) mod path_search_commands;
 mod search;
 pub(crate) mod search_commands;
 mod settings;

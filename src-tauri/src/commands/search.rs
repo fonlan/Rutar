@@ -650,7 +650,7 @@ pub(super) fn escape_regex_literal(keyword: &str) -> String {
         .collect()
 }
 
-fn decode_replace_escape_sequences(value: &str) -> String {
+pub(super) fn decode_replace_escape_sequences(value: &str) -> String {
     let mut decoded = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
 

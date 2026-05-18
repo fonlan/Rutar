@@ -65,6 +65,7 @@ export function useSearchPanelStore() {
   const [resultFilterStepLoadingDirection, setResultFilterStepLoadingDirection] = useState<'prev' | 'next' | null>(null);
   const [resultPanelHeight, setResultPanelHeight] = useState(RESULT_PANEL_DEFAULT_HEIGHT);
   const [searchSidebarWidth, setSearchSidebarWidth] = useState(SEARCH_SIDEBAR_DEFAULT_WIDTH);
+  const [searchTarget, setSearchTarget] = useState('');
 
   // === Runtime refs (formerly useSearchPanelRuntimeRefs) ===
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -232,6 +233,10 @@ export function useSearchPanelStore() {
     currentFilterMatchIndexRef.current = currentFilterMatchIndex;
   }, [currentFilterMatchIndex]);
 
+  useEffect(() => {
+    setSearchTarget(activeTab?.path ?? '');
+  }, [activeTab?.id, activeTab?.path]);
+
   const resetSearchState = useCallback((clearTotals = true) => {
     setMatches([]);
     setCurrentMatchIndex(0);
@@ -297,6 +302,7 @@ export function useSearchPanelStore() {
     reverseSearch,
     searchMode,
     searchSidebarWidth,
+    searchTarget,
     totalFilterMatchedLineCount,
     totalMatchCount,
     totalMatchedLineCount,
@@ -325,6 +331,7 @@ export function useSearchPanelStore() {
     setReverseSearch,
     setSearchMode,
     setSearchSidebarWidth,
+    setSearchTarget,
     setTotalFilterMatchedLineCount,
     setTotalMatchCount,
     setTotalMatchedLineCount,

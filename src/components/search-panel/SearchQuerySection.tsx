@@ -6,11 +6,13 @@ import {
 import { HistoryDropdownInput } from '@/components/HistoryDropdownInput';
 import { getSearchPanelMessages } from '@/i18n';
 import { ModeButton } from './ModeButton';
+import { SearchTargetRow } from './SearchTargetRow';
 import type { SearchMode } from './types';
 
 export interface SearchQuerySectionProps {
   canReplace: boolean;
   caseSensitive: boolean;
+  isCrossFileMode: boolean;
   isReplaceMode: boolean;
   keyword: string;
   messages: ReturnType<typeof getSearchPanelMessages>;
@@ -22,6 +24,7 @@ export interface SearchQuerySectionProps {
   reverseSearch: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchMode: SearchMode;
+  searchTarget: string;
   onCaseSensitiveChange: (checked: boolean) => void;
   onKeywordChange: (value: string) => void;
   onKeywordClear: () => void;
@@ -35,12 +38,16 @@ export interface SearchQuerySectionProps {
   onReplaceValueClear: () => void;
   onReverseSearchChange: (checked: boolean) => void;
   onSearchModeChange: (mode: SearchMode) => void;
+  onSearchTargetChange: (value: string) => void;
+  onPickSearchTargetFile: () => void;
+  onPickSearchTargetFolder: () => void;
   onToggleAllResults: () => void;
 }
 
 export function SearchQuerySection({
   canReplace,
   caseSensitive,
+  isCrossFileMode,
   isReplaceMode,
   keyword,
   messages,
@@ -51,12 +58,15 @@ export function SearchQuerySection({
   onNavigateNext,
   onNavigatePrev,
   onParseEscapeSequencesChange,
+  onPickSearchTargetFile,
+  onPickSearchTargetFolder,
   onReplaceAll,
   onReplaceCurrent,
   onReplaceValueChange,
   onReplaceValueClear,
   onReverseSearchChange,
   onSearchModeChange,
+  onSearchTargetChange,
   onToggleAllResults,
   parseEscapeSequences,
   recentReplaceValues,
@@ -66,10 +76,23 @@ export function SearchQuerySection({
   reverseSearch,
   searchInputRef,
   searchMode,
+  searchTarget,
 }: SearchQuerySectionProps) {
   return (
     <>
-      <div className="mt-3 flex items-center gap-2">
+      <SearchTargetRow
+        clearLabel={messages.searchTargetClear}
+        onChange={onSearchTargetChange}
+        onPickFile={onPickSearchTargetFile}
+        onPickFolder={onPickSearchTargetFolder}
+        pickFileLabel={messages.searchTargetPickFile}
+        pickFolderLabel={messages.searchTargetPickFolder}
+        pickTitle={messages.searchTargetPickTitle}
+        placeholder={messages.searchTargetPlaceholder}
+        value={searchTarget}
+      />
+
+      <div className="mt-2 flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <HistoryDropdownInput
           inputRef={searchInputRef}
@@ -146,75 +169,89 @@ export function SearchQuerySection({
 
       {isReplaceMode ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onNavigatePrev}
-            title={messages.prevMatch}
-          >
-            <ArrowUp className="h-3 w-3" />
-            {messages.previous}
-          </button>
+          {!isCrossFileMode && (
+            <>
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={onNavigatePrev}
+                title={messages.prevMatch}
+              >
+                <ArrowUp className="h-3 w-3" />
+                {messages.previous}
+              </button>
 
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onNavigateNext}
-            title={messages.nextMatch}
-          >
-            <ArrowDown className="h-3 w-3" />
-            {messages.next}
-          </button>
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={onNavigateNext}
+                title={messages.nextMatch}
+              >
+                <ArrowDown className="h-3 w-3" />
+                {messages.next}
+              </button>
 
-          <button
-            type="button"
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-            onClick={onReplaceCurrent}
-            disabled={!canReplace}
-            title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
-          >
-            {messages.replace}
-          </button>
+              <button
+                type="button"
+                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+                onClick={onReplaceCurrent}
+                disabled={!canReplace}
+                title={canReplace ? messages.replaceCurrentMatch : messages.noFileOpen}
+              >
+                {messages.replace}
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
             onClick={onReplaceAll}
-            disabled={!canReplace}
-            title={canReplace ? messages.replaceAllMatches : messages.noFileOpen}
+            disabled={!isCrossFileMode && !canReplace}
+            title={
+              isCrossFileMode
+                ? messages.crossFileReplaceTitle
+                : canReplace
+                  ? messages.replaceAllMatches
+                  : messages.noFileOpen
+            }
           >
             {messages.replaceAll}
           </button>
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onNavigatePrev}
-            title={messages.prevMatch}
-          >
-            <ArrowUp className="h-3 w-3" />
-            {messages.previous}
-          </button>
+          {!isCrossFileMode && (
+            <>
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={onNavigatePrev}
+                title={messages.prevMatch}
+              >
+                <ArrowUp className="h-3 w-3" />
+                {messages.previous}
+              </button>
 
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onNavigateNext}
-            title={messages.nextMatch}
-          >
-            <ArrowDown className="h-3 w-3" />
-            {messages.next}
-          </button>
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={onNavigateNext}
+                title={messages.nextMatch}
+              >
+                <ArrowDown className="h-3 w-3" />
+                {messages.next}
+              </button>
 
-          <button
-            type="button"
-            className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onToggleAllResults}
-            title={resultToggleTitle}
-          >
-            {messages.all}
-          </button>
+              <button
+                type="button"
+                className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={onToggleAllResults}
+                title={resultToggleTitle}
+              >
+                {messages.all}
+              </button>
+            </>
+          )}
         </div>
       )}
 

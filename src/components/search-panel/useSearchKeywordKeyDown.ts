@@ -4,12 +4,14 @@ import type { SearchResultPanelState } from './types';
 interface UseSearchKeywordKeyDownOptions {
   executeFilter: (forceRefresh?: boolean) => Promise<unknown>;
   executeSearch: (forceRefresh?: boolean) => Promise<unknown>;
+  isCrossFileMode: boolean;
   isFilterMode: boolean;
   isSearching: boolean;
   keyword: string;
   navigateByStep: (step: number) => Promise<void>;
   rememberSearchKeyword: (value: string) => void;
   reverseSearch: boolean;
+  runCrossFileSearch: () => Promise<void>;
   searchInputRef: RefObject<HTMLInputElement | null>;
   setIsOpen: (value: boolean) => void;
   setResultPanelState: (value: SearchResultPanelState) => void;
@@ -18,12 +20,14 @@ interface UseSearchKeywordKeyDownOptions {
 export function useSearchKeywordKeyDown({
   executeFilter,
   executeSearch,
+  isCrossFileMode,
   isFilterMode,
   isSearching,
   keyword,
   navigateByStep,
   rememberSearchKeyword,
   reverseSearch,
+  runCrossFileSearch,
   searchInputRef,
   setIsOpen,
   setResultPanelState,
@@ -46,6 +50,12 @@ export function useSearchKeywordKeyDown({
         }
 
         if (event.currentTarget === searchInputRef.current) {
+          if (isCrossFileMode) {
+            rememberSearchKeyword(keyword);
+            void runCrossFileSearch();
+            return;
+          }
+
           setResultPanelState('open');
           rememberSearchKeyword(keyword);
           if (!isSearching) {
@@ -62,12 +72,14 @@ export function useSearchKeywordKeyDown({
     [
       executeFilter,
       executeSearch,
+      isCrossFileMode,
       isFilterMode,
       isSearching,
       keyword,
       navigateByStep,
       rememberSearchKeyword,
       reverseSearch,
+      runCrossFileSearch,
       searchInputRef,
       setIsOpen,
       setResultPanelState,

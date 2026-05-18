@@ -101,6 +101,8 @@ interface UseSearchPanelChromeOptions {
   // === Composed props from other domains ===
   filterRulesEditorProps: FilterRulesEditorProps;
   searchQuerySectionProps: SearchQuerySectionProps;
+  crossFileResultsProps: SearchSidebarBodyProps['crossFileResultsProps'];
+  isCrossFileMode: boolean;
 
   // === Input domain handlers ===
   focusSearchInput: () => void;
@@ -208,6 +210,8 @@ export function useSearchPanelChrome({
   // composed
   filterRulesEditorProps,
   searchQuerySectionProps,
+  crossFileResultsProps,
+  isCrossFileMode,
   // input
   focusSearchInput,
   handleInputContextMenuAction,
@@ -513,11 +517,19 @@ export function useSearchPanelChrome({
 
   const searchSidebarBodyProps = useMemo<SearchSidebarBodyProps>(
     () => ({
+      crossFileResultsProps,
       filterRulesEditorProps,
+      isCrossFileMode,
       isFilterMode,
       searchQuerySectionProps,
     }),
-    [filterRulesEditorProps, isFilterMode, searchQuerySectionProps]
+    [
+      crossFileResultsProps,
+      filterRulesEditorProps,
+      isCrossFileMode,
+      isFilterMode,
+      searchQuerySectionProps,
+    ]
   );
 
   const searchSidebarChromeProps = useMemo<SearchSidebarChromeProps>(

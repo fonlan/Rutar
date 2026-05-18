@@ -7,8 +7,11 @@ interface UseSearchQuerySectionPropsOptions {
   canReplace: boolean;
   caseSensitive: boolean;
   handleKeywordKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
+  handlePickSearchTargetFile: () => void;
+  handlePickSearchTargetFolder: () => void;
   handleReplaceAll: () => Promise<void>;
   handleReplaceCurrent: () => Promise<void>;
+  isCrossFileMode: boolean;
   isReplaceMode: boolean;
   keyword: string;
   messages: ReturnType<typeof getSearchPanelMessages>;
@@ -22,6 +25,7 @@ interface UseSearchQuerySectionPropsOptions {
   reverseSearch: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchMode: SearchMode;
+  searchTarget: string;
   setCaseSensitive: (checked: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setFeedbackMessage: (value: string | null) => void;
@@ -30,6 +34,7 @@ interface UseSearchQuerySectionPropsOptions {
   setReplaceValue: (value: string) => void;
   setReverseSearch: (checked: boolean) => void;
   setSearchMode: (mode: SearchMode) => void;
+  setSearchTarget: (value: string) => void;
   toggleResultPanelAndRefresh: () => void;
 }
 
@@ -37,8 +42,11 @@ export function useSearchQuerySectionProps({
   canReplace,
   caseSensitive,
   handleKeywordKeyDown,
+  handlePickSearchTargetFile,
+  handlePickSearchTargetFolder,
   handleReplaceAll,
   handleReplaceCurrent,
+  isCrossFileMode,
   isReplaceMode,
   keyword,
   messages,
@@ -52,6 +60,7 @@ export function useSearchQuerySectionProps({
   reverseSearch,
   searchInputRef,
   searchMode,
+  searchTarget,
   setCaseSensitive,
   setErrorMessage,
   setFeedbackMessage,
@@ -60,12 +69,14 @@ export function useSearchQuerySectionProps({
   setReplaceValue,
   setReverseSearch,
   setSearchMode,
+  setSearchTarget,
   toggleResultPanelAndRefresh,
 }: UseSearchQuerySectionPropsOptions): SearchQuerySectionProps {
   return useMemo(
     () => ({
       canReplace,
       caseSensitive,
+      isCrossFileMode,
       isReplaceMode,
       keyword,
       messages,
@@ -77,6 +88,7 @@ export function useSearchQuerySectionProps({
       reverseSearch,
       searchInputRef,
       searchMode,
+      searchTarget,
       onCaseSensitiveChange: (checked) => {
         setCaseSensitive(checked);
         setErrorMessage(null);
@@ -98,6 +110,8 @@ export function useSearchQuerySectionProps({
       onNavigateNext: () => void navigateByStep(1),
       onNavigatePrev: () => void navigateByStep(-1),
       onParseEscapeSequencesChange: setParseEscapeSequences,
+      onPickSearchTargetFile: handlePickSearchTargetFile,
+      onPickSearchTargetFolder: handlePickSearchTargetFolder,
       onReplaceAll: () => void handleReplaceAll(),
       onReplaceCurrent: () => void handleReplaceCurrent(),
       onReplaceValueChange: setReplaceValue,
@@ -108,14 +122,22 @@ export function useSearchQuerySectionProps({
         setErrorMessage(null);
         resetSearchState();
       },
+      onSearchTargetChange: (value) => {
+        setSearchTarget(value);
+        setErrorMessage(null);
+        setFeedbackMessage(null);
+      },
       onToggleAllResults: toggleResultPanelAndRefresh,
     }),
     [
       canReplace,
       caseSensitive,
       handleKeywordKeyDown,
+      handlePickSearchTargetFile,
+      handlePickSearchTargetFolder,
       handleReplaceAll,
       handleReplaceCurrent,
+      isCrossFileMode,
       isReplaceMode,
       keyword,
       messages,
@@ -129,6 +151,7 @@ export function useSearchQuerySectionProps({
       reverseSearch,
       searchInputRef,
       searchMode,
+      searchTarget,
       setCaseSensitive,
       setErrorMessage,
       setFeedbackMessage,
@@ -137,6 +160,7 @@ export function useSearchQuerySectionProps({
       setReplaceValue,
       setReverseSearch,
       setSearchMode,
+      setSearchTarget,
       toggleResultPanelAndRefresh,
     ]
   );
