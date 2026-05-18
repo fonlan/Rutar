@@ -379,11 +379,33 @@ describe("SettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /Shortcuts/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Action")).toBeInTheDocument();
-      expect(screen.getByText("Shortcut")).toBeInTheDocument();
+      // The shortcuts tab now has multiple sections (global + Markdown),
+      // each rendering an "Action" / "Shortcut" header pair.
+      expect(screen.getAllByText("Action").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Shortcut").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("F3 / Shift + F3")).toBeInTheDocument();
       expect(screen.getByText("Go to Line")).toBeInTheDocument();
       expect(screen.getByText("Ctrl + G")).toBeInTheDocument();
+    });
+  });
+
+  it("renders the Typora-style Markdown shortcut section in shortcuts tab", async () => {
+    useStore.getState().toggleSettings(true);
+    render(<SettingsModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Shortcuts/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Markdown Editing")).toBeInTheDocument();
+      // Spot-check a few Typora-style shortcuts that we now expose.
+      expect(screen.getByText("Bold")).toBeInTheDocument();
+      expect(screen.getByText("Ctrl + B")).toBeInTheDocument();
+      expect(screen.getByText("Italic")).toBeInTheDocument();
+      expect(screen.getByText("Ctrl + I")).toBeInTheDocument();
+      expect(screen.getByText("Insert Link")).toBeInTheDocument();
+      expect(screen.getByText("Ctrl + K")).toBeInTheDocument();
+      expect(screen.getByText("Heading 1")).toBeInTheDocument();
+      expect(screen.getByText("Ctrl + 1")).toBeInTheDocument();
     });
   });
 

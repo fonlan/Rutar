@@ -214,6 +214,8 @@ export type I18nKey =
   | 'settings.shortcutMinify'
   | 'settings.shortcutToggleComment'
   | 'settings.shortcutRectangularSelection'
+  | 'settings.shortcutsMarkdown'
+  | 'settings.shortcutsMarkdownDesc'
   | 'settings.mouseGestures'
   | 'settings.mouseGesturesDesc'
   | 'settings.mouseGestureSequence'
@@ -501,6 +503,8 @@ const zhCN: Messages = {
   'settings.shortcutMinify': '最小化文档',
   'settings.shortcutToggleComment': '切换行注释',
   'settings.shortcutRectangularSelection': '矩形选区扩展',
+  'settings.shortcutsMarkdown': 'Markdown 编辑',
+  'settings.shortcutsMarkdownDesc': '参考 Typora 的 Edit / Paragraph / Format 快捷键习惯，仅在编辑 Markdown 文档时生效。',
   'settings.mouseGestures': '鼠标手势',
   'settings.mouseGesturesDesc': '按住右键拖动触发手势；可自定义手势序列与动作。',
   'settings.mouseGestureSequence': '手势序列',
@@ -787,6 +791,8 @@ const enUS: Messages = {
   'settings.shortcutMinify': 'Minify Document',
   'settings.shortcutToggleComment': 'Toggle Line Comment',
   'settings.shortcutRectangularSelection': 'Expand Rectangular Selection',
+  'settings.shortcutsMarkdown': 'Markdown Editing',
+  'settings.shortcutsMarkdownDesc': "Modeled after Typora's Edit / Paragraph / Format conventions. Only active while editing a Markdown document.",
   'settings.mouseGestures': 'Mouse Gestures',
   'settings.mouseGesturesDesc': 'Hold right mouse button and drag to trigger gestures. You can customize sequence and action.',
   'settings.mouseGestureSequence': 'Gesture Sequence',

@@ -145,4 +145,104 @@ describe('MarkdownToolbar', () => {
       );
     });
   });
+
+  it('includes the keyboard shortcut in the visible tooltip for inline buttons', () => {
+    const tab = createTab({ syntaxOverride: 'markdown' });
+    useStore.getState().addTab(tab);
+
+    render(<MarkdownToolbar />);
+    const boldButton = screen.getByRole('button', { name: 'Bold' });
+    // The button keeps "Bold" as its accessible name while the visible
+    // hover tooltip includes the Typora-style shortcut.
+    expect(boldButton.getAttribute('title')).toMatch(/Bold\s*\(.*B\)/);
+  });
+
+  it('dispatches the bold action when the Ctrl+B shortcut is pressed', () => {
+    const tab = createTab({ syntaxOverride: 'markdown' });
+    useStore.getState().addTab(tab);
+
+    const events: Array<{ tabId?: string; action?: { type?: string } }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail as { tabId?: string; action?: { type?: string } });
+    };
+    window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+
+    render(<MarkdownToolbar />);
+
+    fireEvent.keyDown(window, { code: 'KeyB', key: 'b', ctrlKey: true });
+
+    expect(events[0]).toEqual({
+      tabId: tab.id,
+      action: { type: 'toggle_bold' },
+    });
+
+    window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+  });
+
+  it('dispatches set_heading with the right level for Typora heading shortcuts', () => {
+    const tab = createTab({ syntaxOverride: 'markdown' });
+    useStore.getState().addTab(tab);
+
+    const events: Array<{ tabId?: string; action?: { type?: string; level?: string } }> = [];
+    const listener = (event: Event) => {
+      events.push(
+        (event as CustomEvent).detail as { tabId?: string; action?: { type?: string; level?: string } },
+      );
+    };
+    window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+
+    render(<MarkdownToolbar />);
+
+    fireEvent.keyDown(window, { code: 'Digit2', key: '2', ctrlKey: true });
+    fireEvent.keyDown(window, { code: 'Digit0', key: '0', ctrlKey: true });
+
+    expect(events).toEqual([
+      { tabId: tab.id, action: { type: 'set_heading', level: 'h2' } },
+      { tabId: tab.id, action: { type: 'set_heading', level: 'body' } },
+    ]);
+
+    window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+  });
+
+  it('does not dispatch shortcuts while typing in non-editor inputs', () => {
+    const tab = createTab({ syntaxOverride: 'markdown' });
+    useStore.getState().addTab(tab);
+
+    const events: Array<unknown> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+
+    render(<MarkdownToolbar />);
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    fireEvent.keyDown(input, { code: 'KeyB', key: 'b', ctrlKey: true });
+
+    expect(events).toEqual([]);
+
+    document.body.removeChild(input);
+    window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+  });
+
+  it('does not register Markdown shortcuts for non-Markdown tabs', () => {
+    const tab = createTab({ syntaxOverride: 'plain_text', name: 'note.txt', path: 'C:\\repo\\note.txt' });
+    useStore.getState().addTab(tab);
+
+    const events: Array<unknown> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+
+    render(<MarkdownToolbar />);
+
+    fireEvent.keyDown(window, { code: 'KeyB', key: 'b', ctrlKey: true });
+
+    expect(events).toEqual([]);
+
+    window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, listener as EventListener);
+  });
 });

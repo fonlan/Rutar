@@ -48,6 +48,11 @@ import { t } from '@/i18n';
 import { isMarkdownTab } from '@/lib/markdown';
 import { nativePathToFileUrl } from '@/lib/markdownPaths';
 import { dispatchMarkdownToolbarAction, type MarkdownHeadingLevel } from '@/lib/markdownToolbar';
+import {
+  buildShortcutLabelMap,
+  matchKeyboardEventToMarkdownShortcut,
+  shouldSkipShortcutForTarget,
+} from '@/lib/markdownToolbarShortcuts';
 import { pathBaseName } from '@/lib/pathUtils';
 import { cn } from '@/lib/utils';
 import { isDiffTab, useStore } from '@/store/useStore';
@@ -80,6 +85,22 @@ export function MarkdownToolbar() {
   const [backgroundColor, setBackgroundColor] = useState(DEFAULT_BACKGROUND_COLOR);
   const markdownEnabled = !!activeTab && isMarkdownTab(activeTab);
 
+  const isMac = useMemo(
+    () => typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent),
+    [],
+  );
+  const shortcutLabelMap = useMemo(() => buildShortcutLabelMap(isMac), [isMac]);
+  const composeTooltip = useCallback(
+    (label: string, shortcutId?: string) => {
+      if (!shortcutId) {
+        return label;
+      }
+      const shortcut = shortcutLabelMap[shortcutId];
+      return shortcut ? `${label} (${shortcut})` : label;
+    },
+    [shortcutLabelMap],
+  );
+
   const dispatchAction = useCallback(
     (action: Parameters<typeof dispatchMarkdownToolbarAction>[1]) => {
       if (!activeTab) {
@@ -89,6 +110,28 @@ export function MarkdownToolbar() {
     },
     [activeTab],
   );
+
+  useEffect(() => {
+    if (!markdownEnabled || !activeTab) {
+      return;
+    }
+    const tabId = activeTab.id;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      // Skip IME composition keystrokes.
+      if (event.isComposing || event.keyCode === 229) return;
+      if (shouldSkipShortcutForTarget(event.target)) return;
+      const shortcut = matchKeyboardEventToMarkdownShortcut(event, isMac);
+      if (!shortcut) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dispatchMarkdownToolbarAction(tabId, shortcut.buildAction());
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeTab, isMac, markdownEnabled]);
 
   const handleImageFileInsert = useCallback(
     async (mode: 'file' | 'base64') => {
@@ -139,46 +182,53 @@ export function MarkdownToolbar() {
   );
 
   const headingItems = useMemo<
-    Array<{ key: MarkdownHeadingLevel; label: string; icon: ReactNode }>
+    Array<{ key: MarkdownHeadingLevel; label: string; icon: ReactNode; shortcut?: string }>
   >(
     () => [
       {
         key: 'body',
         label: tr('markdownToolbar.heading.body'),
         icon: <Pilcrow className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.body'],
       },
       {
         key: 'h1',
         label: tr('markdownToolbar.heading.h1'),
         icon: <Heading1 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h1'],
       },
       {
         key: 'h2',
         label: tr('markdownToolbar.heading.h2'),
         icon: <Heading2 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h2'],
       },
       {
         key: 'h3',
         label: tr('markdownToolbar.heading.h3'),
         icon: <Heading3 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h3'],
       },
       {
         key: 'h4',
         label: tr('markdownToolbar.heading.h4'),
         icon: <Heading4 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h4'],
       },
       {
         key: 'h5',
         label: tr('markdownToolbar.heading.h5'),
         icon: <Heading5 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h5'],
       },
       {
         key: 'h6',
         label: tr('markdownToolbar.heading.h6'),
         icon: <Heading6 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+        shortcut: shortcutLabelMap['set_heading.h6'],
       },
     ],
-    [tr],
+    [shortcutLabelMap, tr],
   );
 
   const handleToolbarContextMenuCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -203,6 +253,7 @@ export function MarkdownToolbar() {
           key: item.key,
           label: item.label,
           icon: item.icon,
+          shortcut: item.shortcut,
           onClick: () => {
             dispatchAction({ type: 'set_heading', level: item.key });
           },
@@ -212,6 +263,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<ListOrdered className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.orderedList')}
+        tooltip={composeTooltip(tr('markdownToolbar.orderedList'), 'toggle_ordered_list')}
         onClick={() => {
           dispatchAction({ type: 'toggle_ordered_list' });
         }}
@@ -219,6 +271,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<List className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.unorderedList')}
+        tooltip={composeTooltip(tr('markdownToolbar.unorderedList'), 'toggle_unordered_list')}
         onClick={() => {
           dispatchAction({ type: 'toggle_unordered_list' });
         }}
@@ -233,6 +286,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<TextQuote className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.blockquote')}
+        tooltip={composeTooltip(tr('markdownToolbar.blockquote'), 'toggle_quote')}
         onClick={() => {
           dispatchAction({ type: 'toggle_quote' });
         }}
@@ -240,6 +294,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<ListIndentIncrease className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.indent')}
+        tooltip={composeTooltip(tr('markdownToolbar.indent'), 'indent')}
         onClick={() => {
           dispatchAction({ type: 'indent' });
         }}
@@ -247,6 +302,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<ListIndentDecrease className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.outdent')}
+        tooltip={composeTooltip(tr('markdownToolbar.outdent'), 'outdent')}
         onClick={() => {
           dispatchAction({ type: 'outdent' });
         }}
@@ -254,6 +310,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<FileCode className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.codeBlock')}
+        tooltip={composeTooltip(tr('markdownToolbar.codeBlock'), 'insert_code_block')}
         onClick={() => {
           dispatchAction({ type: 'insert_code_block' });
         }}
@@ -261,6 +318,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Table className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.table')}
+        tooltip={composeTooltip(tr('markdownToolbar.table'), 'insert_table')}
         onClick={() => {
           dispatchAction({ type: 'insert_table' });
         }}
@@ -276,6 +334,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Bold className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.bold')}
+        tooltip={composeTooltip(tr('markdownToolbar.bold'), 'toggle_bold')}
         onClick={() => {
           dispatchAction({ type: 'toggle_bold' });
         }}
@@ -283,6 +342,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Italic className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.italic')}
+        tooltip={composeTooltip(tr('markdownToolbar.italic'), 'toggle_italic')}
         onClick={() => {
           dispatchAction({ type: 'toggle_italic' });
         }}
@@ -290,6 +350,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Underline className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.underline')}
+        tooltip={composeTooltip(tr('markdownToolbar.underline'), 'toggle_underline')}
         onClick={() => {
           dispatchAction({ type: 'toggle_underline' });
         }}
@@ -297,6 +358,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Strikethrough className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.strikethrough')}
+        tooltip={composeTooltip(tr('markdownToolbar.strikethrough'), 'toggle_strikethrough')}
         onClick={() => {
           dispatchAction({ type: 'toggle_strikethrough' });
         }}
@@ -318,6 +380,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Code className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.inlineCode')}
+        tooltip={composeTooltip(tr('markdownToolbar.inlineCode'), 'toggle_inline_code')}
         onClick={() => {
           dispatchAction({ type: 'toggle_inline_code' });
         }}
@@ -344,6 +407,7 @@ export function MarkdownToolbar() {
       <MarkdownToolbarButton
         icon={<Link2 className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />}
         title={tr('markdownToolbar.link')}
+        tooltip={composeTooltip(tr('markdownToolbar.link'), 'insert_link')}
         onClick={() => {
           dispatchAction({ type: 'insert_link' });
         }}
@@ -356,6 +420,7 @@ export function MarkdownToolbar() {
             key: 'url',
             label: tr('markdownToolbar.image.url'),
             icon: <Globe className={TOOLBAR_ICON_CLASS_NAME} aria-hidden="true" />,
+            shortcut: shortcutLabelMap['insert_image_url'],
             onClick: () => {
               dispatchAction({ type: 'insert_image_url' });
             },
@@ -385,16 +450,22 @@ export function MarkdownToolbar() {
 function MarkdownToolbarButton({
   icon,
   title,
+  tooltip,
   onClick,
   className,
 }: {
   icon: ReactNode;
   title: string;
+  /** Hover tooltip text. Falls back to `title` when omitted. Use this when
+   *  you want the visible tooltip to include the keyboard shortcut while
+   *  keeping a stable accessible name on the button. */
+  tooltip?: string;
   onClick: () => void;
   className?: string;
 }) {
+  const tooltipText = tooltip ?? title;
   return (
-    <span title={title} className="inline-flex flex-shrink-0">
+    <span title={tooltipText} className="inline-flex flex-shrink-0">
       <button
         type="button"
         className={cn(
@@ -406,6 +477,7 @@ function MarkdownToolbarButton({
         }}
         onClick={onClick}
         aria-label={title}
+        title={tooltipText}
       >
         {renderToolbarIcon(icon)}
       </button>
@@ -450,7 +522,14 @@ function MarkdownToolbarMenuButton({
 }: {
   icon: ReactNode;
   title: string;
-  items: Array<{ key: string; label: string; icon?: ReactNode; onClick: () => void }>;
+  items: Array<{
+    key: string;
+    label: string;
+    icon?: ReactNode;
+    /** Optional shortcut hint shown on the right side of the menu item. */
+    shortcut?: string;
+    onClick: () => void;
+  }>;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -568,6 +647,7 @@ function MarkdownToolbarMenuButton({
               key={item.key}
               type="button"
               className="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
@@ -577,7 +657,12 @@ function MarkdownToolbarMenuButton({
               }}
             >
               {item.icon ? renderToolbarIcon(item.icon) : null}
-              <span>{item.label}</span>
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.shortcut ? (
+                <span className="ml-2 text-[10px] tracking-wide text-muted-foreground">
+                  {item.shortcut}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>

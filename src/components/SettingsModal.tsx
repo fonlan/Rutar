@@ -11,6 +11,11 @@ import {
   normalizeMouseGesturePattern,
   isValidMouseGesturePattern,
 } from '@/lib/mouseGestures';
+import {
+  MARKDOWN_TOOLBAR_SHORTCUTS,
+  formatShortcutLabel,
+  getBindingForPlatform,
+} from '@/lib/markdownToolbarShortcuts';
 import rutarDocumentLogo from '../../rutar_document.svg';
 
 const LINE_ENDING_OPTIONS = [
@@ -253,6 +258,19 @@ export function SettingsModal() {
     { action: tr('settings.shortcutToggleComment'), shortcut: `${primaryModifierLabel} + /` },
     { action: tr('settings.shortcutRectangularSelection'), shortcut: 'Alt + Shift + ↑/↓/←/→' },
   ];
+
+  const markdownShortcutRows: Array<{ action: string; shortcut: string }> = MARKDOWN_TOOLBAR_SHORTCUTS
+    .map((shortcut) => {
+      const binding = getBindingForPlatform(shortcut, isMac);
+      if (!binding) {
+        return null;
+      }
+      return {
+        action: tr(shortcut.i18nKey),
+        shortcut: formatShortcutLabel(binding, isMac),
+      };
+    })
+    .filter((row): row is { action: string; shortcut: string } => row !== null);
 
   const activePanelTitle =
     activeTab === 'general'
@@ -1708,6 +1726,39 @@ export function SettingsModal() {
                     </div>
                   </div>
                 </section>
+
+                {markdownShortcutRows.length > 0 && (
+                  <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                      <Keyboard className="w-4 h-4 text-muted-foreground" />
+                      {tr('settings.shortcutsMarkdown')}
+                    </div>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      {tr('settings.shortcutsMarkdownDesc')}
+                    </p>
+
+                    <div className="overflow-hidden rounded-lg border border-border/70">
+                      <div className="grid grid-cols-[1fr_auto] gap-3 bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        <span>{tr('settings.shortcutsAction')}</span>
+                        <span>{tr('settings.shortcutsKey')}</span>
+                      </div>
+
+                      <div className="divide-y divide-border/60">
+                        {markdownShortcutRows.map((row) => (
+                          <div
+                            key={`md-${row.action}-${row.shortcut}`}
+                            className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5"
+                          >
+                            <span className="text-sm text-foreground/90">{row.action}</span>
+                            <code className="rounded-md border border-border bg-background/80 px-2 py-0.5 text-xs font-medium text-foreground">
+                              {row.shortcut}
+                            </code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
