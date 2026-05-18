@@ -9,6 +9,8 @@ import { ModeButton } from './ModeButton';
 import { SearchTargetRow } from './SearchTargetRow';
 import type { SearchMode } from './types';
 
+const inputLeadingSlotClass = 'inline-flex h-8 w-8 shrink-0 items-center justify-center';
+
 export interface SearchQuerySectionProps {
   canReplace: boolean;
   caseSensitive: boolean;
@@ -93,7 +95,9 @@ export function SearchQuerySection({
       />
 
       <div className="mt-2 flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
+        <span className={inputLeadingSlotClass}>
+          <Search className="h-4 w-4 text-muted-foreground" />
+        </span>
         <HistoryDropdownInput
           inputRef={searchInputRef}
           value={keyword}
@@ -112,7 +116,7 @@ export function SearchQuerySection({
 
       {isReplaceMode && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="w-4 text-xs text-muted-foreground">→</span>
+          <span className={`${inputLeadingSlotClass} text-xs text-muted-foreground`}>→</span>
           <HistoryDropdownInput
             value={replaceValue}
             onChange={onReplaceValueChange}
