@@ -2319,6 +2319,40 @@ describe("Toolbar", () => {
     });
   });
 
+  it("positions recent menus below the markdown toolbar when it is visible", async () => {
+    useStore.getState().addTab(createTab());
+    useStore.getState().updateSettings({
+      recentFiles: ["C:\\repo\\recent-markdown.ts"],
+    });
+    const markdownToolbar = document.createElement("div");
+    markdownToolbar.setAttribute("data-rutar-markdown-toolbar", "true");
+    markdownToolbar.getBoundingClientRect = () => ({
+      x: 0,
+      y: 40,
+      width: 800,
+      height: 40,
+      top: 40,
+      right: 800,
+      bottom: 80,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    document.body.appendChild(markdownToolbar);
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const openFileButtons = screen.getAllByTitle("Open File (Ctrl+O)");
+    fireEvent.click(openFileButtons[1]);
+    const recentItemButton = await screen.findByTitle("C:\\repo\\recent-markdown.ts");
+    const menu = recentItemButton.closest('div[style*="position: fixed"]') as HTMLElement | null;
+
+    expect(menu?.style.top).toBe("84px");
+    document.body.removeChild(markdownToolbar);
+  });
+
   it("shows toast and removes recent file when split-menu target file is missing", async () => {
     useStore.getState().addTab(createTab());
     useStore.getState().updateSettings({

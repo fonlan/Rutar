@@ -161,6 +161,7 @@ const DEFAULT_EDIT_HISTORY_STATE: EditHistoryState = {
     canRedo: false,
     isDirty: false,
 };
+const MARKDOWN_TOOLBAR_SELECTOR = '[data-rutar-markdown-toolbar="true"]';
 
 interface ToolbarProps {
     onMarkdownPreviewToggleIntent?: (nextOpen: boolean) => void;
@@ -1443,10 +1444,14 @@ function ToolbarSplitMenu({
             }
 
             const rect = rootElement.getBoundingClientRect();
+            const markdownToolbarRect = document
+                .querySelector<HTMLElement>(MARKDOWN_TOOLBAR_SELECTOR)
+                ?.getBoundingClientRect();
+            const top = Math.max(rect.bottom, markdownToolbarRect?.bottom ?? rect.bottom) + 4;
             setMenuStyle({
                 position: 'fixed',
                 left: rect.left,
-                top: rect.bottom + 4,
+                top,
                 minWidth: Math.max(288, rect.width),
                 visibility: 'visible',
             });

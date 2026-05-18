@@ -244,6 +244,7 @@ export function MarkdownToolbar() {
     <div
       className="flex min-h-10 items-center gap-1 overflow-x-auto overflow-y-hidden border-b bg-background px-2 py-1 no-scrollbar z-40"
       data-layout-region="toolbar"
+      data-rutar-markdown-toolbar="true"
       onContextMenuCapture={handleToolbarContextMenuCapture}
     >
       <MarkdownToolbarMenuButton
