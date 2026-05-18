@@ -81,6 +81,8 @@ export interface SearchMatch {
 
 export interface SearchOpenEventDetail {
   mode?: SearchOpenMode;
+  targetPath?: string;
+  includeSubdirectories?: boolean;
 }
 
 export interface SearchRunResult {

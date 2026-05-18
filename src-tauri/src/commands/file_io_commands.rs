@@ -151,6 +151,20 @@ pub fn path_exists(path: String) -> bool {
 }
 
 #[tauri::command]
+pub async fn rename_path(
+    state: State<'_, AppState>,
+    path: String,
+    new_name: String,
+) -> Result<DirEntry, String> {
+    file_io::rename_path_impl(state, path, new_name).await
+}
+
+#[tauri::command]
+pub async fn delete_path(path: String) -> Result<(), String> {
+    file_io::delete_path_impl(path).await
+}
+
+#[tauri::command]
 pub fn open_in_file_manager(path: String) -> Result<(), String> {
     file_io::open_in_file_manager_impl(path)
 }

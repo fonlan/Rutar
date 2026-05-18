@@ -1,18 +1,171 @@
 import { useStore, type FolderEntry } from '@/store/useStore';
 import { invoke } from '@tauri-apps/api/core';
-import { File, Folder, ChevronRight, ChevronDown, FolderOpen, X } from 'lucide-react';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { File, Folder, ChevronRight, ChevronDown, FolderOpen, X, Search, Replace, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { openFilePath } from '@/lib/openFile';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { t } from '@/i18n';
 import { useResizableSidebarWidth } from '@/hooks/useResizableSidebarWidth';
 
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 600;
+const INVALID_ENTRY_NAME_CHARACTERS = /[<>:"/\\|?*\x00-\x1F]/;
+const RESERVED_WINDOWS_BASENAMES = new Set([
+    'CON',
+    'PRN',
+    'AUX',
+    'NUL',
+    'COM1',
+    'COM2',
+    'COM3',
+    'COM4',
+    'COM5',
+    'COM6',
+    'COM7',
+    'COM8',
+    'COM9',
+    'LPT1',
+    'LPT2',
+    'LPT3',
+    'LPT4',
+    'LPT5',
+    'LPT6',
+    'LPT7',
+    'LPT8',
+    'LPT9',
+]);
+
+type FileTreeContextMenuState = {
+    entry: FolderEntry;
+    x: number;
+    y: number;
+};
 
 interface FolderTreeChangePayload {
     rootPath?: string;
     directoryPaths?: string[];
+}
+
+function getParentPath(path: string) {
+    const separatorIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    if (separatorIndex < 0) {
+        return null;
+    }
+
+    const parentPath = path.slice(0, separatorIndex);
+    if (/^[a-zA-Z]:$/.test(parentPath)) {
+        return `${parentPath}\\`;
+    }
+
+    if (!parentPath && path.startsWith('/')) {
+        return '/';
+    }
+
+    return parentPath || null;
+}
+
+function normalizeComparablePath(path: string) {
+    let normalized = path.replace(/\\/g, '/');
+    while (normalized.length > 1 && normalized.endsWith('/')) {
+        normalized = normalized.slice(0, -1);
+    }
+
+    return normalized.toLowerCase();
+}
+
+function replacePathPrefix(path: string, oldPath: string, newPath: string) {
+    const normalizedPath = normalizeComparablePath(path);
+    const normalizedOldPath = normalizeComparablePath(oldPath);
+
+    if (normalizedPath === normalizedOldPath) {
+        return newPath;
+    }
+
+    if (!normalizedPath.startsWith(`${normalizedOldPath}/`)) {
+        return path;
+    }
+
+    return `${newPath}${path.slice(oldPath.length)}`;
+}
+
+function dispatchFolderTreeChanged(rootPath: string | null, directoryPaths: string[]) {
+    if (!rootPath || directoryPaths.length === 0) {
+        return;
+    }
+
+    window.dispatchEvent(
+        new CustomEvent<FolderTreeChangePayload>('rutar:folder-tree-changed', {
+            detail: {
+                rootPath,
+                directoryPaths,
+            },
+        })
+    );
+}
+
+function validateEntryName(
+    nextName: string,
+    currentEntry: FolderEntry,
+    siblingEntries: FolderEntry[],
+    tr: (key: Parameters<typeof t>[1]) => string
+) {
+    const trimmedName = nextName.trim();
+    if (!trimmedName) {
+        return tr('sidebar.renameInvalidEmpty');
+    }
+
+    if (trimmedName === '.' || trimmedName === '..') {
+        return tr('sidebar.renameInvalidReserved');
+    }
+
+    if (trimmedName.endsWith(' ') || trimmedName.endsWith('.')) {
+        return tr('sidebar.renameInvalidEnding');
+    }
+
+    if (INVALID_ENTRY_NAME_CHARACTERS.test(trimmedName)) {
+        return tr('sidebar.renameInvalidChars');
+    }
+
+    const baseName = trimmedName.split('.')[0]?.toUpperCase() ?? '';
+    if (RESERVED_WINDOWS_BASENAMES.has(baseName)) {
+        return tr('sidebar.renameInvalidReserved');
+    }
+
+    const duplicateEntry = siblingEntries.some((entry) => (
+        entry.path !== currentEntry.path && entry.name.toLowerCase() === trimmedName.toLowerCase()
+    ));
+
+    return duplicateEntry ? tr('sidebar.renameDuplicate') : null;
+}
+
+function updateTabsForRenamedPath(oldPath: string, renamedEntry: FolderEntry) {
+    const state = useStore.getState();
+
+    for (const tab of state.tabs) {
+        const nextTabPath = replacePathPrefix(tab.path, oldPath, renamedEntry.path);
+        const nextDiffPayload = tab.diffPayload
+            ? {
+                ...tab.diffPayload,
+                sourcePath: replacePathPrefix(tab.diffPayload.sourcePath, oldPath, renamedEntry.path),
+                targetPath: replacePathPrefix(tab.diffPayload.targetPath, oldPath, renamedEntry.path),
+            }
+            : undefined;
+        const hasPathChange = nextTabPath !== tab.path;
+        const hasDiffPayloadChange = !!nextDiffPayload && (
+            nextDiffPayload.sourcePath !== tab.diffPayload?.sourcePath ||
+            nextDiffPayload.targetPath !== tab.diffPayload?.targetPath
+        );
+
+        if (!hasPathChange && !hasDiffPayloadChange) {
+            continue;
+        }
+
+        state.updateTab(tab.id, {
+            ...(hasPathChange ? { path: nextTabPath, name: nextTabPath === renamedEntry.path ? renamedEntry.name : tab.name } : {}),
+            ...(hasDiffPayloadChange ? { diffPayload: nextDiffPayload } : {}),
+        });
+    }
 }
 
 export function Sidebar() {
@@ -25,6 +178,8 @@ export function Sidebar() {
     const toggleSidebar = useStore((state) => state.toggleSidebar);
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
+    const [contextMenu, setContextMenu] = useState<FileTreeContextMenuState | null>(null);
+    const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const { containerRef, previewIndicatorRef, isResizing, startResize } = useResizableSidebarWidth({
         width: sidebarWidth,
         minWidth: SIDEBAR_MIN_WIDTH,
@@ -75,6 +230,88 @@ export function Sidebar() {
         };
     }, [folderPath, refreshRootEntries]);
 
+    useEffect(() => {
+        if (!contextMenu) {
+            return;
+        }
+
+        const closeContextMenu = () => setContextMenu(null);
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                closeContextMenu();
+            }
+        };
+
+        window.addEventListener('pointerdown', closeContextMenu);
+        window.addEventListener('resize', closeContextMenu);
+        window.addEventListener('scroll', closeContextMenu, true);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('pointerdown', closeContextMenu);
+            window.removeEventListener('resize', closeContextMenu);
+            window.removeEventListener('scroll', closeContextMenu, true);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [contextMenu]);
+
+    const handleEntryContextMenu = useCallback((event: MouseEvent, entry: FolderEntry) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({
+            entry,
+            x: event.clientX,
+            y: event.clientY,
+        });
+    }, []);
+
+    const openSearchPanelForEntry = useCallback((entry: FolderEntry, mode: 'find' | 'replace') => {
+        setContextMenu(null);
+        window.dispatchEvent(
+            new CustomEvent('rutar:search-open', {
+                detail: {
+                    mode,
+                    targetPath: entry.path,
+                    includeSubdirectories: entry.is_dir,
+                },
+            })
+        );
+    }, []);
+
+    const handleRenameAction = useCallback((entry: FolderEntry) => {
+        setContextMenu(null);
+        setRenamingPath(entry.path);
+    }, []);
+
+    const handleRenameCommitted = useCallback((oldPath: string, renamedEntry: FolderEntry) => {
+        updateTabsForRenamedPath(oldPath, renamedEntry);
+
+        const parentPath = getParentPath(oldPath);
+        dispatchFolderTreeChanged(folderPath, parentPath ? [parentPath] : []);
+    }, [folderPath]);
+
+    const handleDeleteAction = useCallback(async (entry: FolderEntry) => {
+        setContextMenu(null);
+        const confirmed = await ask(
+            tr('sidebar.deleteConfirm').replace('{name}', entry.name),
+            {
+                title: 'Rutar',
+                kind: 'warning',
+            }
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await invoke('delete_path', { path: entry.path });
+            const parentPath = getParentPath(entry.path);
+            dispatchFolderTreeChanged(folderPath, parentPath ? [parentPath] : []);
+        } catch (error) {
+            window.alert(`${tr('sidebar.deleteFailed')}${error instanceof Error ? error.message : String(error)}`);
+        }
+    }, [folderPath, tr]);
+
     if (!sidebarOpen || !folderPath) return null;
 
     return (
@@ -99,9 +336,63 @@ export function Sidebar() {
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar py-2">
                 {folderEntries.map((entry) => (
-                    <FileEntry key={entry.path} entry={entry} />
+                    <FileEntry
+                        key={entry.path}
+                        entry={entry}
+                        siblings={folderEntries}
+                        renamingPath={renamingPath}
+                        onCancelRename={() => setRenamingPath(null)}
+                        onContextMenu={handleEntryContextMenu}
+                        onRenameCommitted={handleRenameCommitted}
+                    />
                 ))}
             </div>
+            {contextMenu && (
+                <div
+                    role="menu"
+                    className="fixed z-[120] min-w-[150px] rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    onContextMenu={(event) => event.preventDefault()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        onClick={() => openSearchPanelForEntry(contextMenu.entry, 'find')}
+                    >
+                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                        {tr('sidebar.context.search')}
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        onClick={() => openSearchPanelForEntry(contextMenu.entry, 'replace')}
+                    >
+                        <Replace className="h-3.5 w-3.5 text-muted-foreground" />
+                        {tr('sidebar.context.replace')}
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        onClick={() => handleRenameAction(contextMenu.entry)}
+                    >
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        {tr('sidebar.context.rename')}
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none"
+                        onClick={() => void handleDeleteAction(contextMenu.entry)}
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {tr('sidebar.context.delete')}
+                    </button>
+                </div>
+            )}
             <div
                 ref={previewIndicatorRef}
                 aria-hidden="true"
@@ -124,10 +415,32 @@ export function Sidebar() {
     );
 }
 
-function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number }) {
+interface FileEntryProps {
+    entry: FolderEntry;
+    siblings: FolderEntry[];
+    level?: number;
+    renamingPath: string | null;
+    onCancelRename: () => void;
+    onContextMenu: (event: MouseEvent, entry: FolderEntry) => void;
+    onRenameCommitted: (oldPath: string, renamedEntry: FolderEntry) => void;
+}
+
+function FileEntry({
+    entry,
+    siblings,
+    level = 0,
+    renamingPath,
+    onCancelRename,
+    onContextMenu,
+    onRenameCommitted,
+}: FileEntryProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [children, setChildren] = useState<FolderEntry[]>([]);
     const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
+    const [renameDraft, setRenameDraft] = useState(entry.name);
+    const [renameError, setRenameError] = useState<string | null>(null);
+    const renameInputRef = useRef<HTMLInputElement>(null);
+    const renameCommitInFlightRef = useRef(false);
     const setActiveTab = useStore((state) => state.setActiveTab);
     const isActiveFile = useStore((state) =>
       !entry.is_dir
@@ -136,6 +449,7 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
     );
     const language = useStore((state) => state.settings.language);
     const tr = (key: Parameters<typeof t>[1]) => t(language, key);
+    const isRenaming = renamingPath === entry.path;
 
     const loadChildren = useCallback(async () => {
         const result = await invoke<FolderEntry[]>('read_dir', { path: entry.path });
@@ -170,6 +484,78 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
     }, [entry, hasLoadedChildren, isOpen, loadChildren, setActiveTab]);
 
     useEffect(() => {
+        if (!isRenaming) {
+            return;
+        }
+
+        setRenameDraft(entry.name);
+        setRenameError(null);
+        window.requestAnimationFrame(() => {
+            renameInputRef.current?.focus();
+            renameInputRef.current?.select();
+        });
+    }, [entry.name, isRenaming]);
+
+    const keepRenameFocus = useCallback(() => {
+        window.setTimeout(() => {
+            renameInputRef.current?.focus();
+            renameInputRef.current?.select();
+        }, 0);
+    }, []);
+
+    const commitRename = useCallback(async () => {
+        if (!isRenaming || renameCommitInFlightRef.current) {
+            return;
+        }
+
+        const nextName = renameDraft.trim();
+        if (nextName === entry.name) {
+            onCancelRename();
+            return;
+        }
+
+        const validationError = validateEntryName(nextName, entry, siblings, tr);
+        if (validationError) {
+            setRenameError(validationError);
+            keepRenameFocus();
+            return;
+        }
+
+        renameCommitInFlightRef.current = true;
+        try {
+            const renamedEntry = await invoke<FolderEntry>('rename_path', {
+                path: entry.path,
+                newName: nextName,
+            });
+            onRenameCommitted(entry.path, renamedEntry);
+            onCancelRename();
+        } catch (error) {
+            setRenameError(`${tr('sidebar.renameFailed')}${error instanceof Error ? error.message : String(error)}`);
+            keepRenameFocus();
+        } finally {
+            renameCommitInFlightRef.current = false;
+        }
+    }, [entry, isRenaming, keepRenameFocus, onCancelRename, onRenameCommitted, renameDraft, siblings, tr]);
+
+    const handleRenameBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
+        event.preventDefault();
+        void commitRename();
+    }, [commitRename]);
+
+    const handleRenameKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            void commitRename();
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            onCancelRename();
+        }
+    }, [commitRename, onCancelRename]);
+
+    useEffect(() => {
         if (!entry.is_dir || !isOpen) {
             return;
         }
@@ -196,14 +582,24 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
         <div>
             <div 
                 className={cn(
-                    "group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    "group flex items-center gap-1.5 px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    isRenaming ? "cursor-text" : "cursor-pointer",
                     isActiveFile && "bg-accent/50 text-accent-foreground border-l-2 border-primary pl-[calc(level*12px+6px)]"
                 )}
                 style={{ paddingLeft: `${level * 12 + 8}px` }}
                 onClick={(event) => {
+                    if (isRenaming) {
+                        event.stopPropagation();
+                        return;
+                    }
                     void handleToggle(event);
                 }}
+                onContextMenu={(event) => onContextMenu(event, entry)}
                 onKeyDown={(event) => {
+                    if (isRenaming) {
+                        return;
+                    }
+
                     if (event.key !== 'Enter' && event.key !== ' ') {
                         return;
                     }
@@ -229,13 +625,52 @@ function FileEntry({ entry, level = 0 }: { entry: FolderEntry, level?: number })
                         <File className="w-4 h-4 text-muted-foreground/60" />
                     </>
                 )}
-                <span className="truncate flex-1">{entry.name}</span>
+                {isRenaming ? (
+                    <input
+                        ref={renameInputRef}
+                        value={renameDraft}
+                        onChange={(event) => {
+                            setRenameDraft(event.target.value);
+                            setRenameError(null);
+                        }}
+                        onBlur={handleRenameBlur}
+                        onKeyDown={handleRenameKeyDown}
+                        onClick={(event) => event.stopPropagation()}
+                        className={cn(
+                            "h-5 min-w-0 flex-1 rounded border bg-background px-1 text-xs outline-none",
+                            renameError ? "border-destructive focus-visible:ring-1 focus-visible:ring-destructive" : "border-input focus-visible:ring-1 focus-visible:ring-ring"
+                        )}
+                        aria-label={tr('sidebar.context.rename')}
+                        aria-invalid={!!renameError}
+                        title={renameError ?? entry.name}
+                        spellCheck={false}
+                    />
+                ) : (
+                    <span className="truncate flex-1">{entry.name}</span>
+                )}
             </div>
+            {isRenaming && renameError && (
+                <div
+                    className="px-2 pb-1 text-[10px] text-destructive"
+                    style={{ paddingLeft: `${level * 12 + 32}px` }}
+                >
+                    {renameError}
+                </div>
+            )}
             {isOpen && entry.is_dir && (
                 <div className="overflow-hidden animate-in slide-in-from-left-1 duration-200">
                     {children.length > 0 ? (
                         children.map((child) => (
-                            <FileEntry key={child.path} entry={child} level={level + 1} />
+                            <FileEntry
+                                key={child.path}
+                                entry={child}
+                                siblings={children}
+                                level={level + 1}
+                                renamingPath={renamingPath}
+                                onCancelRename={onCancelRename}
+                                onContextMenu={onContextMenu}
+                                onRenameCommitted={onRenameCommitted}
+                            />
                         ))
                 ) : (
                         <div 

@@ -95,8 +95,10 @@ interface UseSearchPanelChromeOptions {
   setIsOpen: (value: boolean) => void;
   setIsResultFilterSearching: (value: boolean) => void;
   setPanelMode: (value: PanelMode) => void;
+  setIncludeSubdirectories: (value: boolean) => void;
   setResultFilterKeyword: (value: string) => void;
   setResultPanelState: Dispatch<SetStateAction<SearchResultPanelState>>;
+  setSearchTarget: (value: string) => void;
 
   // === Composed props from other domains ===
   filterRulesEditorProps: FilterRulesEditorProps;
@@ -205,8 +207,10 @@ export function useSearchPanelChrome({
   setIsOpen,
   setIsResultFilterSearching,
   setPanelMode,
+  setIncludeSubdirectories,
   setResultFilterKeyword,
   setResultPanelState,
+  setSearchTarget,
   // composed
   filterRulesEditorProps,
   searchQuerySectionProps,
@@ -264,6 +268,12 @@ export function useSearchPanelChrome({
 
       setIsOpen(true);
       setPanelMode(nextMode);
+      if (typeof customEvent.detail?.targetPath === 'string') {
+        setSearchTarget(customEvent.detail.targetPath);
+      }
+      if (typeof customEvent.detail?.includeSubdirectories === 'boolean') {
+        setIncludeSubdirectories(customEvent.detail.includeSubdirectories);
+      }
       setResultPanelState('closed');
       setResultFilterKeyword('');
       setAppliedResultFilterKeyword('');
@@ -286,9 +296,11 @@ export function useSearchPanelChrome({
     setFeedbackMessage,
     setIsOpen,
     setIsResultFilterSearching,
+    setIncludeSubdirectories,
     setPanelMode,
     setResultFilterKeyword,
     setResultPanelState,
+    setSearchTarget,
     stopResultFilterSearchRef,
   ]);
 

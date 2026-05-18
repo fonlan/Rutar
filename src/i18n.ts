@@ -124,6 +124,18 @@ export type I18nKey =
   | 'status.largeFileHighlightOff'
   | 'sidebar.empty'
   | 'sidebar.close'
+  | 'sidebar.context.search'
+  | 'sidebar.context.replace'
+  | 'sidebar.context.rename'
+  | 'sidebar.context.delete'
+  | 'sidebar.deleteConfirm'
+  | 'sidebar.deleteFailed'
+  | 'sidebar.renameFailed'
+  | 'sidebar.renameInvalidEmpty'
+  | 'sidebar.renameInvalidReserved'
+  | 'sidebar.renameInvalidChars'
+  | 'sidebar.renameInvalidEnding'
+  | 'sidebar.renameDuplicate'
   | 'outline.title'
   | 'outline.empty'
   | 'outline.searchPlaceholder'
@@ -413,6 +425,18 @@ const zhCN: Messages = {
   'status.largeFileHighlightOff': '高亮已关闭（大文件模式）',
   'sidebar.empty': '空文件夹',
   'sidebar.close': '关闭侧边栏',
+  'sidebar.context.search': '搜索',
+  'sidebar.context.replace': '替换',
+  'sidebar.context.rename': '重命名',
+  'sidebar.context.delete': '删除',
+  'sidebar.deleteConfirm': '确定要删除“{name}”吗？此操作不可撤销。',
+  'sidebar.deleteFailed': '删除失败：',
+  'sidebar.renameFailed': '重命名失败：',
+  'sidebar.renameInvalidEmpty': '名称不能为空',
+  'sidebar.renameInvalidReserved': '该名称不可用',
+  'sidebar.renameInvalidChars': '名称包含非法字符',
+  'sidebar.renameInvalidEnding': '名称不能以空格或句点结尾',
+  'sidebar.renameDuplicate': '同一文件夹中已存在同名项目',
   'outline.title': '大纲',
   'outline.empty': '暂无可显示的大纲',
   'outline.searchPlaceholder': '搜索大纲...',
@@ -701,6 +725,18 @@ const enUS: Messages = {
   'status.largeFileHighlightOff': 'Highlight Off (Large File)',
   'sidebar.empty': 'Empty',
   'sidebar.close': 'Close Sidebar',
+  'sidebar.context.search': 'Search',
+  'sidebar.context.replace': 'Replace',
+  'sidebar.context.rename': 'Rename',
+  'sidebar.context.delete': 'Delete',
+  'sidebar.deleteConfirm': 'Delete "{name}"? This cannot be undone.',
+  'sidebar.deleteFailed': 'Failed to delete:',
+  'sidebar.renameFailed': 'Failed to rename:',
+  'sidebar.renameInvalidEmpty': 'Name cannot be empty',
+  'sidebar.renameInvalidReserved': 'This name is reserved',
+  'sidebar.renameInvalidChars': 'Name contains invalid characters',
+  'sidebar.renameInvalidEnding': 'Name cannot end with a space or period',
+  'sidebar.renameDuplicate': 'A file or folder with this name already exists here',
   'outline.title': 'Outline',
   'outline.empty': 'No outline data',
   'outline.searchPlaceholder': 'Search outline...',

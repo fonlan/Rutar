@@ -210,6 +210,8 @@ pub fn run() {
             commands::file_io_commands::watch_folder_tree,
             commands::file_io_commands::clear_folder_tree_watch,
             commands::file_io_commands::path_exists,
+            commands::file_io_commands::rename_path,
+            commands::file_io_commands::delete_path,
             commands::file_io_commands::open_in_file_manager,
             commands::file_io_commands::get_word_count_info,
             commands::file_io_commands::get_document_size_bytes,

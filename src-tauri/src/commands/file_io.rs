@@ -5,7 +5,7 @@ use notify::{
     Event, EventKind, RecursiveMode, Watcher,
 };
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone, serde::Serialize)]
@@ -1086,6 +1086,158 @@ pub(super) fn read_dir_if_directory_impl(path: String) -> Result<Option<Vec<DirE
 
 pub(super) fn path_exists_impl(path: String) -> bool {
     PathBuf::from(path).exists()
+}
+
+fn validate_file_tree_entry_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Name cannot be empty".to_string());
+    }
+
+    if trimmed == "." || trimmed == ".." {
+        return Err("Name is reserved".to_string());
+    }
+
+    if trimmed.ends_with(' ') || trimmed.ends_with('.') {
+        return Err("Name cannot end with a space or period".to_string());
+    }
+
+    if trimmed
+        .chars()
+        .any(|ch| ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+    {
+        return Err("Name contains invalid characters".to_string());
+    }
+
+    let base_name = trimmed
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    if matches!(
+        base_name.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    ) {
+        return Err("Name is reserved".to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn paths_refer_to_same_entry(left: &Path, right: &Path) -> bool {
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
+}
+
+fn update_open_document_paths_after_rename(
+    state: &State<'_, AppState>,
+    source_path: &Path,
+    target_path: &Path,
+) {
+    for mut doc in state.documents.iter_mut() {
+        let Some(current_path) = doc.path.as_ref() else {
+            continue;
+        };
+
+        if current_path == source_path {
+            doc.path = Some(target_path.to_path_buf());
+            continue;
+        }
+
+        if let Ok(relative_path) = current_path.strip_prefix(source_path) {
+            doc.path = Some(target_path.join(relative_path));
+        }
+    }
+}
+
+pub(super) async fn rename_path_impl(
+    state: State<'_, AppState>,
+    path: String,
+    new_name: String,
+) -> Result<DirEntry, String> {
+    let source_path = PathBuf::from(path);
+    if !source_path.exists() {
+        return Err("Path does not exist".to_string());
+    }
+
+    let safe_name = validate_file_tree_entry_name(&new_name)?;
+    let parent_path = source_path
+        .parent()
+        .ok_or_else(|| "Cannot rename this path".to_string())?
+        .to_path_buf();
+    let target_path = parent_path.join(&safe_name);
+
+    if source_path == target_path {
+        return Ok(DirEntry {
+            name: safe_name,
+            path: target_path.to_string_lossy().to_string(),
+            is_dir: target_path.is_dir(),
+        });
+    }
+
+    if target_path.exists() && !paths_refer_to_same_entry(&source_path, &target_path) {
+        return Err("A file or folder with this name already exists".to_string());
+    }
+
+    let source_for_io = source_path.clone();
+    let target_for_io = target_path.clone();
+    tauri::async_runtime::spawn_blocking(move || fs::rename(&source_for_io, &target_for_io))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+
+    update_open_document_paths_after_rename(&state, &source_path, &target_path);
+
+    Ok(DirEntry {
+        name: safe_name,
+        path: target_path.to_string_lossy().to_string(),
+        is_dir: target_path.is_dir(),
+    })
+}
+
+pub(super) async fn delete_path_impl(path: String) -> Result<(), String> {
+    let target_path = PathBuf::from(path);
+    let metadata = fs::symlink_metadata(&target_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "Path does not exist".to_string()
+        } else {
+            error.to_string()
+        }
+    })?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        if metadata.file_type().is_dir() {
+            fs::remove_dir_all(&target_path)
+        } else {
+            fs::remove_file(&target_path)
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn open_in_file_manager_impl(path: String) -> Result<(), String> {
