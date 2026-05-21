@@ -9,10 +9,12 @@ import { useStore, type FileTab } from "@/store/useStore";
 
 const {
   convertFileSrcMock,
+  katexRenderMock,
   mermaidInitializeMock,
   mermaidRenderMock,
 } = vi.hoisted(() => ({
   convertFileSrcMock: vi.fn(),
+  katexRenderMock: vi.fn(),
   mermaidInitializeMock: vi.fn(),
   mermaidRenderMock: vi.fn(),
 }));
@@ -28,6 +30,12 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 vi.mock("@/lib/markdownPreviewHighlight", () => ({
   highlightMarkdownCodeBlocks: vi.fn(async () => undefined),
+}));
+
+vi.mock("katex", () => ({
+  default: {
+    render: katexRenderMock,
+  },
 }));
 
 vi.mock("mermaid/dist/mermaid.core.mjs", () => ({
@@ -177,6 +185,36 @@ describe("MarkdownPreviewPanel", () => {
       expect(container.querySelector("font")).not.toBeNull();
       expect(container.querySelector('span[style*="background-color: #fff7a8"]')).not.toBeNull();
     });
+  });
+
+  it("renders markdown math spans with KaTeX display modes", async () => {
+    const markdownTab = createTab({ syntaxOverride: "markdown" });
+    invokeMock.mockResolvedValueOnce(
+      '<p>Inline <span class="math math-inline">x^2</span></p><p><span class="math math-display">\\sum_{k=1}^n k</span></p>'
+    );
+    katexRenderMock.mockImplementation((source: string, element: HTMLElement) => {
+      element.textContent = `rendered:${source}`;
+    });
+
+    const { container } = render(<MarkdownPreviewPanel open={true} tab={markdownTab} />);
+
+    await waitFor(() => {
+      expect(katexRenderMock).toHaveBeenCalledTimes(2);
+    });
+    expect(katexRenderMock).toHaveBeenNthCalledWith(
+      1,
+      "x^2",
+      expect.any(HTMLElement),
+      expect.objectContaining({ displayMode: false, throwOnError: false })
+    );
+    expect(katexRenderMock).toHaveBeenNthCalledWith(
+      2,
+      "\\sum_{k=1}^n k",
+      expect.any(HTMLElement),
+      expect.objectContaining({ displayMode: true, throwOnError: false })
+    );
+    expect(container.querySelector(".math-inline")?.textContent).toBe("rendered:x^2");
+    expect(container.querySelector(".math-display")?.textContent).toBe("rendered:\\sum_{k=1}^n k");
   });
 
   it("keeps syntax highlighting applied on first markdown preview render", async () => {

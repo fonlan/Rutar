@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.563.0",
+    "katex": "^0.16.28",
     "mermaid": "^11.12.2",
     "monaco-editor": "^0.55.1",
     "prismjs": "^1.30.0",

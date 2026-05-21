@@ -463,6 +463,13 @@ option {
   color: #fca5a5;
 }
 
+.markdown-preview .math-display {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.35rem 0;
+}
+
 .markdown-preview hr {
   border: 0;
   border-top: 1px solid hsl(var(--border));

@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import {
   useCallback,
   useEffect,
@@ -67,6 +69,7 @@ const MIN_PREVIEW_WIDTH_RATIO = 0.2;
 const MAX_PREVIEW_WIDTH_RATIO = 0.8;
 const LIVE_UPDATE_DEBOUNCE_MS = 140;
 const MARKDOWN_PREVIEW_OPEN_TARGET_ATTRIBUTE = 'data-rutar-open-target';
+const MARKDOWN_MATH_SELECTOR = '.math.math-inline, .math.math-display';
 const MERMAID_VIEWPORT_SELECTOR = '[data-mermaid-viewport]';
 const MERMAID_CANVAS_SELECTOR = '[data-mermaid-canvas]';
 const MERMAID_SVG_SELECTOR = `${MERMAID_CANVAS_SELECTOR} svg`;
@@ -83,6 +86,25 @@ const PREVIEW_IMAGE_CONTEXT_MENU_WIDTH = 160;
 const PREVIEW_IMAGE_CONTEXT_MENU_HEIGHT = 42;
 const PREVIEW_IMAGE_CONTEXT_MENU_PADDING = 8;
 let mermaidApiPromise: Promise<MermaidApi> | null = null;
+
+function renderMarkdownMath(articleElement: HTMLElement) {
+  const mathElements = Array.from(
+    articleElement.querySelectorAll<HTMLElement>(MARKDOWN_MATH_SELECTOR)
+  );
+
+  for (const mathElement of mathElements) {
+    if (mathElement.dataset.rutarKatexRendered === 'true') {
+      continue;
+    }
+
+    const source = mathElement.textContent ?? '';
+    katex.render(source, mathElement, {
+      displayMode: mathElement.classList.contains('math-display'),
+      throwOnError: false,
+    });
+    mathElement.dataset.rutarKatexRendered = 'true';
+  }
+}
 
 function syncMarkdownOpenTargetAttribute(
   element: Element,
@@ -226,6 +248,14 @@ function previewHtmlContainsMermaid(html: string) {
   }
 
   return html.includes('language-mermaid') || html.includes('lang-mermaid');
+}
+
+function previewHtmlContainsMath(html: string) {
+  if (!html) {
+    return false;
+  }
+
+  return html.includes('math-inline') || html.includes('math-display');
 }
 
 async function getMermaidApi() {
@@ -525,6 +555,8 @@ export function MarkdownPreviewPanel({
   const latestScrollRatioRef = useRef<ScrollRatioState>({ top: 0, left: 0 });
   const previewHtmlCacheRef = useRef<Map<string, string>>(new Map());
   const previewContainsMermaidByTabIdRef = useRef<Map<string, boolean>>(new Map());
+  const previewContainsMathByTabIdRef = useRef<Map<string, boolean>>(new Map());
+  const mathProcessedHtmlByTabIdRef = useRef<Map<string, string>>(new Map());
   const mermaidRenderVersionRef = useRef(0);
   const mermaidProcessedHtmlByTabIdRef = useRef<Map<string, string>>(new Map());
   const mermaidRenderSignatureByTabIdRef = useRef<Map<string, string>>(new Map());
@@ -697,7 +729,9 @@ export function MarkdownPreviewPanel({
       const previousHtml = previewHtmlCacheRef.current.get(tab.id);
       previewHtmlCacheRef.current.set(tab.id, nextHtml);
       previewContainsMermaidByTabIdRef.current.set(tab.id, previewHtmlContainsMermaid(nextHtml));
+      previewContainsMathByTabIdRef.current.set(tab.id, previewHtmlContainsMath(nextHtml));
       if (previousHtml !== nextHtml) {
+        mathProcessedHtmlByTabIdRef.current.delete(tab.id);
         mermaidProcessedHtmlByTabIdRef.current.delete(tab.id);
         mermaidRenderSignatureByTabIdRef.current.delete(tab.id);
       }
@@ -1216,6 +1250,36 @@ export function MarkdownPreviewPanel({
       window.cancelAnimationFrame(rafId);
     };
   }, [activePreviewHtmlSource, applyScrollRatio, markdownEnabled, open, previewWidthRatio]);
+
+  useEffect(() => {
+    if (!open || !markdownEnabled || !activePreviewHtmlSource) {
+      return;
+    }
+
+    if (!tab || !(previewContainsMathByTabIdRef.current.get(tab.id) ?? false)) {
+      return;
+    }
+
+    if (mathProcessedHtmlByTabIdRef.current.get(tab.id) === activePreviewHtmlSource) {
+      return;
+    }
+
+    const article = getActivePreviewArticleElement();
+    if (!article) {
+      return;
+    }
+
+    renderMarkdownMath(article);
+    mathProcessedHtmlByTabIdRef.current.set(tab.id, activePreviewHtmlSource);
+    applyScrollRatio(latestScrollRatioRef.current);
+  }, [
+    activePreviewHtmlSource,
+    applyScrollRatio,
+    getActivePreviewArticleElement,
+    markdownEnabled,
+    open,
+    tab,
+  ]);
 
   useEffect(() => {
     if (!open || !markdownEnabled || !activePreviewHtmlSource) {

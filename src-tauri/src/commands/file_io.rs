@@ -647,6 +647,7 @@ fn markdown_preview_options() -> pulldown_cmark::Options {
     options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
     options.insert(pulldown_cmark::Options::ENABLE_GFM);
     options.insert(pulldown_cmark::Options::ENABLE_HEADING_ATTRIBUTES);
+    options.insert(pulldown_cmark::Options::ENABLE_MATH);
     options
 }
 
@@ -1571,6 +1572,32 @@ mod tests {
         assert!(html.contains("done"));
         assert!(html.contains(r##"<font color="#ff0000">Red</font>"##));
         assert!(html.contains("<table>"));
+    }
+
+    #[test]
+    fn markdown_preview_render_should_emit_math_spans() {
+        let html = render_markdown_preview_html(
+            r##"Inline $x^2 + y^2$.
+
+$$
+\sum_{k=1}^n k
+$$
+"##,
+        )
+        .expect("markdown math render should succeed");
+
+        assert!(
+            html.contains(r#"<span class="math math-inline">x^2 + y^2</span>"#),
+            "html should contain inline math span: {html}"
+        );
+        assert!(
+            html.contains(r#"<span class="math math-display">"#),
+            "html should contain display math span: {html}"
+        );
+        assert!(
+            html.contains(r#"\sum_{k=1}^n k"#),
+            "html should keep display math source: {html}"
+        );
     }
 
     #[test]
