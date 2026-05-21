@@ -13,6 +13,8 @@ src-tauri/Cargo.lock
 .claude/
 .opencode/
 .codex/
+.cursor/
+.codegraph/
 .idea/
 .knowledge/
 .agents/
