@@ -177,8 +177,10 @@ vi.mock('monaco-editor', () => {
         dispose: vi.fn(),
       };
     }),
+    onDidLayoutChange: vi.fn(() => ({ dispose: vi.fn() })),
     setModel: vi.fn(),
     getModel: vi.fn(() => model),
+    getLayoutInfo: vi.fn(() => ({ height: 320, viewportColumn: 100 })),
     saveViewState: vi.fn(() => null),
     restoreViewState: vi.fn(),
     setPosition: vi.fn(),
@@ -1364,7 +1366,16 @@ describe('Editor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
@@ -1398,9 +1409,10 @@ describe('Editor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          minimap: {
+          minimap: expect.objectContaining({
             enabled: false,
-          },
+            autohide: 'none',
+          }),
         })
       );
       expect(monacoMockState.editorInstance.layout).toHaveBeenCalledTimes(1);
@@ -1424,7 +1436,16 @@ describe('Editor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })

@@ -22,6 +22,13 @@ import {
 } from '@/lib/markdownToolbar';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { resolveMonacoLanguage } from '@/lib/monaco/language';
+import { resolveMonacoMinimapOptions } from '@/lib/monaco/minimap';
+import {
+  resolveMonacoScrollbarOptions,
+  resolveMonacoWordWrapOptions,
+  resolveMonacoWordWrapColumn,
+  updateMonacoWordWrapColumn,
+} from '@/lib/monaco/wrapping';
 import { type FileTab, useStore } from '@/store/useStore';
 import { EditorBase64DecodeToast } from './EditorBase64DecodeToast';
 import { useEditorBookmarkDecorations } from './useEditorBookmarkDecorations';
@@ -237,6 +244,7 @@ export function Editor({
   const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const wordWrapColumnRef = useRef<number | null>(null);
   const activeTabIdRef = useRef<string | null>(null);
   const applyingRemoteTextRef = useRef(false);
   const ignoreDocumentUpdatedCountRef = useRef(0);
@@ -838,8 +846,9 @@ export function Editor({
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-      wordWrap: settings.wordWrap ? 'on' : 'off',
-      minimap: { enabled: settings.minimap && !tab.largeFileMode },
+      ...resolveMonacoWordWrapOptions(settings.wordWrap),
+      minimap: resolveMonacoMinimapOptions(settings.minimap && !tab.largeFileMode, settings.wordWrap),
+      scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
       smoothScrolling: !tab.largeFileMode,
       bracketPairColorization: {
         enabled: !tab.largeFileMode,
@@ -853,8 +862,6 @@ export function Editor({
       glyphMargin: false,
       lineDecorationsWidth: 10,
       folding: !tab.largeFileMode,
-      wrappingStrategy: 'simple',
-      scrollBeyondLastColumn: 0,
       scrollBeyondLastLine: false,
       contextmenu: false,
       find: {
@@ -863,6 +870,9 @@ export function Editor({
     });
 
     editorRef.current = editor;
+    const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
+      updateMonacoWordWrapColumn(editor, useStore.getState().settings.wordWrap, layoutInfo, wordWrapColumnRef);
+    });
     const editorDomNode = containerRef.current;
     const suppressFindWidgetHoverTooltip = (event: MouseEvent) => {
       const target = event.target;
@@ -1021,6 +1031,7 @@ export function Editor({
       cursorDisposable.dispose();
       mouseDownDisposable.dispose();
       contextMenuDisposable.dispose();
+      layoutDisposable.dispose();
       editorDomNode?.removeEventListener('mouseover', suppressFindWidgetHoverTooltip, true);
       window.removeEventListener('paste', handleEditorPaste, true);
 
@@ -1052,14 +1063,17 @@ export function Editor({
     }
 
     monaco.editor.setTheme(resolveRutarMonacoTheme(settings.theme));
+    const layoutInfo = editor.getLayoutInfo();
+    wordWrapColumnRef.current = resolveMonacoWordWrapColumn(layoutInfo);
     editor.updateOptions({
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-      wordWrap: settings.wordWrap ? 'on' : 'off',
+      ...resolveMonacoWordWrapOptions(settings.wordWrap, layoutInfo),
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
-      minimap: { enabled: settings.minimap && !tab.largeFileMode },
+      minimap: resolveMonacoMinimapOptions(settings.minimap && !tab.largeFileMode, settings.wordWrap),
+      scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
       smoothScrolling: !tab.largeFileMode,
       lineDecorationsWidth: 10,
       bracketPairColorization: {
@@ -1070,8 +1084,6 @@ export function Editor({
       renderValidationDecorations: tab.largeFileMode ? 'off' : 'on',
       renderLineHighlight: settings.highlightCurrentLine ? 'line' : 'none',
       folding: !tab.largeFileMode,
-      wrappingStrategy: 'simple',
-      scrollBeyondLastColumn: 0,
       contextmenu: false,
       find: {
         addExtraSpaceOnTop: false,

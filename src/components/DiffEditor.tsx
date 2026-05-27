@@ -12,6 +12,13 @@ import {
 } from '@/lib/clipboard';
 import { resolveRutarMonacoTheme } from '@/lib/monaco/theme';
 import { resolveMonacoLanguage } from '@/lib/monaco/language';
+import { resolveMonacoMinimapOptions } from '@/lib/monaco/minimap';
+import {
+  resolveMonacoScrollbarOptions,
+  resolveMonacoWordWrapOptions,
+  resolveMonacoWordWrapColumn,
+  updateMonacoWordWrapColumn,
+} from '@/lib/monaco/wrapping';
 import { type DiffPanelSide, type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
 import {
   clampRatio,
@@ -392,6 +399,8 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const targetHostRef = useRef<HTMLDivElement | null>(null);
   const sourceEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const targetEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const sourceWordWrapColumnRef = useRef<number | null>(null);
+  const targetWordWrapColumnRef = useRef<number | null>(null);
   const sourceModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const targetModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const sourceApplyingRef = useRef(false);
@@ -813,17 +822,24 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   );
 
   const applyEditorOptions = useCallback(
-    (_side: ActivePanel, editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
+    (side: ActivePanel, editor: monaco.editor.IStandaloneCodeEditor, paneTab: FileTab | null) => {
       const currentSettings = settingsRef.current;
       const largeFileMode = Boolean(paneTab?.largeFileMode);
+      const layoutInfo = editor.getLayoutInfo();
+      const wordWrapColumn = resolveMonacoWordWrapColumn(layoutInfo);
+      if (side === 'source') {
+        sourceWordWrapColumnRef.current = wordWrapColumn;
+      } else {
+        targetWordWrapColumnRef.current = wordWrapColumn;
+      }
       editor.updateOptions({
         fontFamily: currentSettings.fontFamily,
         fontSize: currentSettings.fontSize,
         lineNumbers: currentSettings.showLineNumbers ? 'on' : 'off',
-        wordWrap: currentSettings.wordWrap ? 'on' : 'off',
+        ...resolveMonacoWordWrapOptions(currentSettings.wordWrap, layoutInfo),
         tabSize: currentSettings.tabWidth,
         insertSpaces: currentSettings.tabIndentMode === 'spaces',
-        minimap: { enabled: currentSettings.minimap && !largeFileMode },
+        minimap: resolveMonacoMinimapOptions(currentSettings.minimap && !largeFileMode, currentSettings.wordWrap),
         lineDecorationsWidth: 10,
         smoothScrolling: !largeFileMode,
         bracketPairColorization: {
@@ -834,15 +850,13 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         renderValidationDecorations: largeFileMode ? 'off' : 'on',
         renderLineHighlight: 'none',
         folding: !largeFileMode,
-        wrappingStrategy: 'simple',
-        scrollBeyondLastColumn: 0,
         scrollBeyondLastLine: false,
         contextmenu: false,
-        scrollbar: {
+        scrollbar: resolveMonacoScrollbarOptions(currentSettings.wordWrap, {
           vertical: 'hidden',
           verticalScrollbarSize: 0,
           alwaysConsumeMouseWheel: false,
-        },
+        }),
         find: {
           addExtraSpaceOnTop: false,
         },
@@ -1311,6 +1325,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     sourceEditorRef.current = editor;
     applyEditorOptions('source', editor, sourceTab);
+    const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
+      updateMonacoWordWrapColumn(editor, settingsRef.current.wordWrap, layoutInfo, sourceWordWrapColumnRef);
+    });
     const initialSourceSyncRafId = window.requestAnimationFrame(() => {
       if (!editor.getModel()) {
         return;
@@ -1369,6 +1386,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       scrollDisposable.dispose();
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
+      layoutDisposable.dispose();
       sourceDecorationIdsRef.current = editor.deltaDecorations(sourceDecorationIdsRef.current, []);
       clearPaneQuotePairDecorations('source', editor);
       editor.changeViewZones((accessor) => {
@@ -1403,6 +1421,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     });
     targetEditorRef.current = editor;
     applyEditorOptions('target', editor, targetTab);
+    const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
+      updateMonacoWordWrapColumn(editor, settingsRef.current.wordWrap, layoutInfo, targetWordWrapColumnRef);
+    });
     const initialTargetSyncRafId = window.requestAnimationFrame(() => {
       if (!editor.getModel()) {
         return;
@@ -1461,6 +1482,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       scrollDisposable.dispose();
       contentSizeDisposable.dispose();
       contextMenuDisposable.dispose();
+      layoutDisposable.dispose();
       targetDecorationIdsRef.current = editor.deltaDecorations(targetDecorationIdsRef.current, []);
       clearPaneQuotePairDecorations('target', editor);
       editor.changeViewZones((accessor) => {

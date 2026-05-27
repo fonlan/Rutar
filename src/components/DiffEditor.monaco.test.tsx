@@ -129,6 +129,7 @@ vi.mock('monaco-editor', () => {
         }
         return { dispose: vi.fn() };
       }),
+      onDidLayoutChange: vi.fn(() => ({ dispose: vi.fn() })),
       setModel: vi.fn((nextModel: any) => {
         model = nextModel;
       }),
@@ -166,6 +167,7 @@ vi.mock('monaco-editor', () => {
       }),
       getLayoutInfo: vi.fn(() => ({
         height: 320,
+        viewportColumn: 100,
       })),
       getScrollHeight: vi.fn(() => 1200),
       getScrollTop: vi.fn(() => scrollTop),
@@ -730,16 +732,18 @@ describe('DiffEditor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          minimap: {
+          minimap: expect.objectContaining({
             enabled: false,
-          },
+            autohide: 'none',
+          }),
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          minimap: {
+          minimap: expect.objectContaining({
             enabled: false,
-          },
+            autohide: 'none',
+          }),
         })
       );
       expect(monacoDiffMockState.sourceEditor.layout).toHaveBeenCalledTimes(1);
@@ -784,14 +788,32 @@ describe('DiffEditor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
@@ -825,14 +847,32 @@ describe('DiffEditor (Monaco)', () => {
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
       );
       expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
-          wordWrap: 'on',
+          wordWrap: 'bounded',
+          wordWrapColumn: 92,
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'mouseover',
+          }),
+          scrollbar: expect.objectContaining({
+            horizontal: 'hidden',
+            horizontalScrollbarSize: 0,
+          }),
           wrappingStrategy: 'simple',
           scrollBeyondLastColumn: 0,
         })
