@@ -221,6 +221,7 @@ function createInvokeHandler(overrides: Record<string, InvokeOverride> = {}) {
         tabWidth: 4,
         newFileLineEnding: 'LF',
         wordWrap: false,
+        minimapAutohide: true,
         doubleClickCloseTab: true,
         showLineNumbers: true,
         highlightCurrentLine: true,
@@ -327,7 +328,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -466,7 +467,7 @@ describe('App component', () => {
       })
     );
 
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
     try {
       render(React.createElement(App));
 
@@ -503,7 +504,7 @@ describe('App component', () => {
   });
 
   it('logs error when registering close guard fails', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
@@ -685,7 +686,7 @@ describe('App component', () => {
   });
 
   it('logs error when save_config fails', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     vi.mocked(invoke).mockImplementation(
       createInvokeHandler({
@@ -1307,7 +1308,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1361,7 +1362,7 @@ describe('App component', () => {
       }
       return () => undefined;
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1475,7 +1476,7 @@ describe('App component', () => {
       }
       return () => undefined;
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1529,7 +1530,7 @@ describe('App component', () => {
       }),
       onCloseRequested: vi.fn(async () => () => undefined),
     } as never);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1553,7 +1554,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1684,7 +1685,7 @@ describe('App component', () => {
       })
     );
     vi.mocked(ask).mockResolvedValue(false);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1809,7 +1810,7 @@ describe('App component', () => {
       })
     );
     vi.mocked(ask).mockResolvedValue(true);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -1864,7 +1865,7 @@ describe('App component', () => {
       })
     );
     vi.mocked(ask).mockResolvedValue(true);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -3003,7 +3004,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       const { container } = render(React.createElement(App));
@@ -3599,7 +3600,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       const { container } = render(React.createElement(App));
@@ -3686,7 +3687,7 @@ describe('App component', () => {
         }),
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       const { container } = render(React.createElement(App));
@@ -4645,7 +4646,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -4671,7 +4672,7 @@ describe('App component', () => {
       })
     );
     vi.mocked(openFilePaths).mockRejectedValueOnce(new Error('startup-open-failed'));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -4695,7 +4696,7 @@ describe('App component', () => {
         },
       })
     );
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     try {
       render(React.createElement(App));
@@ -4813,7 +4814,7 @@ describe('App component', () => {
 
   it('logs error when loading windows context-menu status fails', async () => {
     const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     vi.mocked(invoke).mockImplementation(
       createInvokeHandler({
@@ -4840,7 +4841,7 @@ describe('App component', () => {
 
   it('logs error when loading windows file-association status fails', async () => {
     const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows 11');
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     vi.mocked(invoke).mockImplementation(
       createInvokeHandler({

@@ -93,6 +93,7 @@ interface AppConfig {
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   minimap?: boolean;
+  minimapAutohide?: boolean;
   doubleClickCloseTab: boolean;
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
@@ -260,6 +261,7 @@ function App() {
       newFileLineEnding: state.settings.newFileLineEnding,
       wordWrap: state.settings.wordWrap,
       minimap: state.settings.minimap,
+      minimapAutohide: state.settings.minimapAutohide,
       doubleClickCloseTab: state.settings.doubleClickCloseTab,
       showLineNumbers: state.settings.showLineNumbers,
       highlightCurrentLine: state.settings.highlightCurrentLine,
@@ -1021,6 +1023,7 @@ function App() {
           newFileLineEnding: normalizeLineEnding(config.newFileLineEnding),
           wordWrap: !!config.wordWrap,
           minimap: config.minimap !== false,
+          minimapAutohide: config.minimapAutohide !== false,
           doubleClickCloseTab: config.doubleClickCloseTab !== false,
           showLineNumbers: config.showLineNumbers !== false,
           highlightCurrentLine: config.highlightCurrentLine !== false,
@@ -1075,6 +1078,7 @@ function App() {
           newFileLineEnding: settings.newFileLineEnding,
           wordWrap: settings.wordWrap,
           minimap: settings.minimap,
+          minimapAutohide: settings.minimapAutohide,
           doubleClickCloseTab: settings.doubleClickCloseTab,
           showLineNumbers: settings.showLineNumbers,
           highlightCurrentLine: settings.highlightCurrentLine,
@@ -1108,6 +1112,7 @@ function App() {
     settings.theme,
     settings.wordWrap,
     settings.minimap,
+    settings.minimapAutohide,
     settings.doubleClickCloseTab,
     settings.showLineNumbers,
     settings.highlightCurrentLine,
@@ -1312,7 +1317,7 @@ function App() {
         <GoToLineModal />
         <SearchReplacePanel />
       </Suspense>
-      
+
       <div className="flex-1 flex overflow-hidden relative">
         <Suspense fallback={null}>
           <Sidebar />
@@ -1323,7 +1328,7 @@ function App() {
             parseError={outlineError}
           />
         </Suspense>
-        
+
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 flex overflow-hidden relative">
             <div className="min-w-0 flex-1 relative overflow-hidden" data-rutar-gesture-area="true">

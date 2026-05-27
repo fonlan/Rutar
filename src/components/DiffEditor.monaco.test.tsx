@@ -824,6 +824,59 @@ describe('DiffEditor (Monaco)', () => {
 
     expect(monacoDiffMockState.createCallCount).toBe(2);
   });
+  it('uses the minimap autohide setting independently of diff pane word wrap', async () => {
+    const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
+    const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });
+    const diffTab = createFileTab({
+      id: 'tab-diff',
+      tabType: 'diff',
+      diffPayload: createDiffPayload(),
+    }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
+
+    useStore.setState({
+      tabs: [sourceTab, targetTab, diffTab],
+      activeTabId: diffTab.id,
+      settings: {
+        ...useStore.getState().settings,
+        wordWrap: false,
+        minimap: true,
+        minimapAutohide: true,
+      },
+    });
+
+    render(<DiffEditor tab={diffTab} />);
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.createCallCount).toBe(2);
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({ minimapAutohide: false });
+    });
+
+    await waitFor(() => {
+      expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'off',
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'none',
+          }),
+        })
+      );
+      expect(monacoDiffMockState.targetEditor.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'off',
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'none',
+          }),
+        })
+      );
+    });
+
+    expect(monacoDiffMockState.createCallCount).toBe(2);
+  });
   it('uses Monaco viewport wrapping options when diff pane word wrap starts enabled', async () => {
     const sourceTab = createFileTab({ id: 'tab-source', name: 'source.ts' });
     const targetTab = createFileTab({ id: 'tab-target', name: 'target.ts' });

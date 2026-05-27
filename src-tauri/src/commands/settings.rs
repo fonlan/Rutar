@@ -63,6 +63,10 @@ fn default_minimap() -> bool {
     true
 }
 
+fn default_minimap_autohide() -> bool {
+    true
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowStateConfig {
@@ -96,6 +100,8 @@ pub struct AppConfig {
     pub(super) word_wrap: bool,
     #[serde(default = "default_minimap")]
     pub(super) minimap: bool,
+    #[serde(default = "default_minimap_autohide")]
+    pub(super) minimap_autohide: bool,
     pub(super) double_click_close_tab: bool,
     pub(super) show_line_numbers: bool,
     pub(super) highlight_current_line: bool,
@@ -137,6 +143,7 @@ pub struct PartialAppConfig {
     pub(super) new_file_line_ending: Option<String>,
     pub(super) word_wrap: Option<bool>,
     pub(super) minimap: Option<bool>,
+    pub(super) minimap_autohide: Option<bool>,
     pub(super) double_click_close_tab: Option<bool>,
     pub(super) show_line_numbers: Option<bool>,
     pub(super) highlight_current_line: Option<bool>,
@@ -166,6 +173,7 @@ impl Default for AppConfig {
             new_file_line_ending: default_new_file_line_ending(),
             word_wrap: false,
             minimap: default_minimap(),
+            minimap_autohide: default_minimap_autohide(),
             double_click_close_tab: DEFAULT_DOUBLE_CLICK_CLOSE_TAB,
             show_line_numbers: DEFAULT_SHOW_LINE_NUMBERS,
             highlight_current_line: DEFAULT_HIGHLIGHT_CURRENT_LINE,
@@ -275,6 +283,7 @@ mod tests {
         assert_eq!(config.tab_indent_mode, "tabs");
         assert_eq!(config.new_file_line_ending, default_line_ending().label());
         assert!(config.minimap);
+        assert!(config.minimap_autohide);
         assert_eq!(config.single_instance_mode, DEFAULT_SINGLE_INSTANCE_MODE);
         assert!(config.remember_window_state);
         assert!(config.recent_search_keywords.is_empty());

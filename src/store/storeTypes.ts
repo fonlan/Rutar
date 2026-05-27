@@ -135,6 +135,7 @@ export interface SettingsState {
   newFileLineEnding: LineEnding;
   wordWrap: boolean;
   minimap: boolean;
+  minimapAutohide: boolean;
   doubleClickCloseTab: boolean;
   showLineNumbers: boolean;
   highlightCurrentLine: boolean;
@@ -162,7 +163,7 @@ export interface AppState {
   activeTabId: string | null;
   activeDiffPanelByTab: Record<string, DiffPanelSide>;
   settings: SettingsState;
-  
+
   sidebarOpen: boolean;
   sidebarWidth: number;
   outlineOpen: boolean;
@@ -184,10 +185,10 @@ export interface AppState {
   setActiveTab: (id: string) => void;
   setActiveDiffPanel: (diffTabId: string, panel: DiffPanelSide) => void;
   updateTab: (id: string, updates: Partial<FileTab>) => void;
-  
+
   toggleSettings: (open?: boolean) => void;
   updateSettings: (updates: Partial<SettingsState>) => void;
-  
+
   setFolder: (path: string | null, entries: FolderEntry[]) => void;
   toggleSidebar: (open?: boolean) => void;
   setSidebarWidth: (width: number) => void;

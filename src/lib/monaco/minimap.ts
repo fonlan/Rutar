@@ -5,9 +5,9 @@ export interface MonacoMinimapOptions {
   autohide: MonacoMinimapAutohide;
 }
 
-export function resolveMonacoMinimapOptions(enabled: boolean, wordWrap: boolean): MonacoMinimapOptions {
+export function resolveMonacoMinimapOptions(enabled: boolean, autohide: boolean): MonacoMinimapOptions {
   return {
     enabled,
-    autohide: enabled && wordWrap ? 'mouseover' : 'none',
+    autohide: enabled && autohide ? 'mouseover' : 'none',
   };
 }

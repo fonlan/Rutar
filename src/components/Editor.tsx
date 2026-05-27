@@ -214,26 +214,27 @@ export function Editor({
   diffHighlightLines?: number[];
 }) {
   const settings = useStore(
-      useShallow((state) => ({
-        language: state.settings.language,
-        fontFamily: state.settings.fontFamily,
-        fontSize: state.settings.fontSize,
-        showLineNumbers: state.settings.showLineNumbers,
-        wordWrap: state.settings.wordWrap,
-        minimap: state.settings.minimap,
-        highlightCurrentLine: state.settings.highlightCurrentLine,
-        tabIndentMode: state.settings.tabIndentMode,
-        tabWidth: state.settings.tabWidth,
-        theme: state.settings.theme,
-      })),
-    );
-    const trackedTabIds = useStore(
-      useShallow((state) =>
-        state.tabs
-          .filter((candidate) => candidate.tabType !== 'diff')
-          .map((candidate) => candidate.id),
-      ),
-    );
+    useShallow((state) => ({
+      language: state.settings.language,
+      fontFamily: state.settings.fontFamily,
+      fontSize: state.settings.fontSize,
+      showLineNumbers: state.settings.showLineNumbers,
+      wordWrap: state.settings.wordWrap,
+      minimap: state.settings.minimap,
+      minimapAutohide: state.settings.minimapAutohide,
+      highlightCurrentLine: state.settings.highlightCurrentLine,
+      tabIndentMode: state.settings.tabIndentMode,
+      tabWidth: state.settings.tabWidth,
+      theme: state.settings.theme,
+    })),
+  );
+  const trackedTabIds = useStore(
+    useShallow((state) =>
+      state.tabs
+        .filter((candidate) => candidate.tabType !== 'diff')
+        .map((candidate) => candidate.id),
+    ),
+  );
   const updateTab = useStore((state) => state.updateTab);
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
@@ -626,17 +627,17 @@ export function Editor({
         current[submenuKey] === nextAlign
           ? current
           : {
-              ...current,
-              [submenuKey]: nextAlign,
-            }
+            ...current,
+            [submenuKey]: nextAlign,
+          }
       );
       setSubmenuMaxHeights((current) =>
         current[submenuKey] === nextMaxHeight
           ? current
           : {
-              ...current,
-              [submenuKey]: nextMaxHeight,
-            }
+            ...current,
+            [submenuKey]: nextMaxHeight,
+          }
       );
     },
     []
@@ -847,7 +848,10 @@ export function Editor({
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
       ...resolveMonacoWordWrapOptions(settings.wordWrap),
-      minimap: resolveMonacoMinimapOptions(settings.minimap && !tab.largeFileMode, settings.wordWrap),
+      minimap: resolveMonacoMinimapOptions(
+        settings.minimap && !tab.largeFileMode,
+        settings.minimapAutohide
+      ),
       scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
       smoothScrolling: !tab.largeFileMode,
       bracketPairColorization: {
@@ -1072,7 +1076,10 @@ export function Editor({
       ...resolveMonacoWordWrapOptions(settings.wordWrap, layoutInfo),
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
-      minimap: resolveMonacoMinimapOptions(settings.minimap && !tab.largeFileMode, settings.wordWrap),
+      minimap: resolveMonacoMinimapOptions(
+        settings.minimap && !tab.largeFileMode,
+        settings.minimapAutohide
+      ),
       scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
       smoothScrolling: !tab.largeFileMode,
       lineDecorationsWidth: 10,
@@ -1100,6 +1107,7 @@ export function Editor({
     settings.theme,
     settings.wordWrap,
     settings.minimap,
+    settings.minimapAutohide,
     settings.highlightCurrentLine,
     tab.largeFileMode,
     updateQuotePairDecorations,
@@ -1278,9 +1286,9 @@ export function Editor({
       const savedCursor = useStore.getState().cursorPositionByTab[tab.id];
       const preservedCursor = preserveCaret
         ? {
-            lineNumber: currentPosition?.lineNumber ?? savedCursor?.line ?? cursorSnapshotRef.current.line,
-            column: currentPosition?.column ?? savedCursor?.column ?? cursorSnapshotRef.current.column,
-          }
+          lineNumber: currentPosition?.lineNumber ?? savedCursor?.line ?? cursorSnapshotRef.current.line,
+          column: currentPosition?.column ?? savedCursor?.column ?? cursorSnapshotRef.current.column,
+        }
         : null;
 
       void ensureEditorModelLoaded(resolveCurrentTab(), 'refresh').then(() => {
@@ -1298,9 +1306,9 @@ export function Editor({
 
         const targetPosition = hasExplicitRestoreCursor
           ? clampMonacoPosition(model, {
-              lineNumber: restoreLine,
-              column: restoreColumn,
-            })
+            lineNumber: restoreLine,
+            column: restoreColumn,
+          })
           : preservedCursor
             ? clampMonacoPosition(model, preservedCursor)
             : null;

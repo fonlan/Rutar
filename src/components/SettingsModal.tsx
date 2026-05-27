@@ -199,6 +199,8 @@ export function SettingsModal() {
   const showLineNumbersDesc = tr('settings.showLineNumbersDesc');
   const minimapLabel = tr('settings.minimap');
   const minimapDesc = tr('settings.minimapDesc');
+  const minimapAutohideLabel = tr('settings.minimapAutohide');
+  const minimapAutohideDesc = tr('settings.minimapAutohideDesc');
   const doubleClickCloseTabLabel = tr('settings.doubleClickCloseTab');
   const doubleClickCloseTabDesc = tr('settings.doubleClickCloseTabDesc');
   const wordWrapDesc = tr('settings.wordWrapDesc');
@@ -276,23 +278,23 @@ export function SettingsModal() {
     activeTab === 'general'
       ? tr('settings.general')
       : activeTab === 'appearance'
-      ? tr('settings.appearance')
-      : activeTab === 'mouseGestures'
-      ? tr('settings.mouseGestures')
-      : activeTab === 'shortcuts'
-      ? shortcutsTabTitle
-      : aboutTabTitle;
+        ? tr('settings.appearance')
+        : activeTab === 'mouseGestures'
+          ? tr('settings.mouseGestures')
+          : activeTab === 'shortcuts'
+            ? shortcutsTabTitle
+            : aboutTabTitle;
 
   const activePanelDesc =
     activeTab === 'general'
       ? tr('settings.generalPanelDesc')
       : activeTab === 'appearance'
-      ? tr('settings.appearancePanelDesc')
-      : activeTab === 'mouseGestures'
-      ? mouseGesturesPanelDesc
-      : activeTab === 'shortcuts'
-      ? shortcutsPanelDesc
-      : aboutPanelDesc;
+        ? tr('settings.appearancePanelDesc')
+        : activeTab === 'mouseGestures'
+          ? mouseGesturesPanelDesc
+          : activeTab === 'shortcuts'
+            ? shortcutsPanelDesc
+            : aboutPanelDesc;
 
   const windowsContextLabel = tr('settings.windowsContextMenu');
   const windowsContextDesc = tr('settings.windowsContextMenuDesc');
@@ -681,9 +683,9 @@ export function SettingsModal() {
     const nextGestures = settings.mouseGestures.map((gesture, gestureIndex) =>
       gestureIndex === index
         ? {
-            ...gesture,
-            pattern: normalizedPattern,
-          }
+          ...gesture,
+          pattern: normalizedPattern,
+        }
         : gesture,
     );
 
@@ -694,9 +696,9 @@ export function SettingsModal() {
     const nextGestures = settings.mouseGestures.map((gesture, gestureIndex) =>
       gestureIndex === index
         ? {
-            ...gesture,
-            action,
-          }
+          ...gesture,
+          action,
+        }
         : gesture,
     );
 
@@ -755,12 +757,12 @@ export function SettingsModal() {
   if (!settings.isOpen) return null;
 
   return (
-    <div 
-        className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-[2px]"
-        onMouseDown={handleBackdropMouseDown}
-        role="presentation"
+    <div
+      className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-[2px]"
+      onMouseDown={handleBackdropMouseDown}
+      role="presentation"
     >
-      <div 
+      <div
         className="pointer-events-auto h-[min(88vh,700px)] w-[min(94vw,980px)] bg-background/95 border rounded-xl shadow-2xl flex overflow-hidden ring-1 ring-border"
         role="dialog"
         aria-modal="true"
@@ -862,12 +864,12 @@ export function SettingsModal() {
                 {activePanelDesc}
               </p>
             </div>
-            <button 
-                onClick={() => toggleSettings(false)}
-                className="rounded-md p-1.5 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label={tr('settings.close')}
+            <button
+              onClick={() => toggleSettings(false)}
+              className="rounded-md p-1.5 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label={tr('settings.close')}
             >
-                <X className="w-4 h-4" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
@@ -1638,6 +1640,47 @@ export function SettingsModal() {
                         className={cn(
                           'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
                           settings.minimap
+                            ? 'opacity-95 text-primary-foreground'
+                            : 'opacity-0 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOnText}
+                      </span>
+                      <span className="relative z-10 h-5 w-5 rounded-full border border-black/10 bg-white shadow-sm transition-transform dark:border-white/20" />
+                    </button>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{minimapAutohideLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{minimapAutohideDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ minimapAutohide: !settings.minimapAutohide })}
+                      className={cn(
+                        'relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow] duration-200',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        settings.minimapAutohide
+                          ? 'justify-end border-emerald-500/90 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.35)] dark:border-emerald-400/90 dark:bg-emerald-500/85'
+                          : 'justify-start border-zinc-400/80 bg-zinc-300/70 dark:border-zinc-500/90 dark:bg-zinc-700/80'
+                      )}
+                      aria-pressed={!!settings.minimapAutohide}
+                      aria-label={minimapAutohideLabel}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute left-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.minimapAutohide
+                            ? 'opacity-0 text-primary-foreground/80'
+                            : 'opacity-90 text-zinc-700 dark:text-zinc-200'
+                        )}
+                      >
+                        {switchOffText}
+                      </span>
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute right-2 text-[9px] font-semibold tracking-[0.08em] transition-opacity',
+                          settings.minimapAutohide
                             ? 'opacity-95 text-primary-foreground'
                             : 'opacity-0 text-zinc-700 dark:text-zinc-200'
                         )}

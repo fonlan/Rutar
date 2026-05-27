@@ -1420,6 +1420,44 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the minimap autohide setting independently of word wrap', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        wordWrap: false,
+        minimap: true,
+        minimapAutohide: true,
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({ minimapAutohide: false });
+    });
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wordWrap: 'off',
+          minimap: expect.objectContaining({
+            enabled: true,
+            autohide: 'none',
+          }),
+        })
+      );
+    });
+
+    expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+  });
   it('uses Monaco viewport wrapping options when word wrap starts enabled', async () => {
     const tab = createTab();
     useStore.setState({

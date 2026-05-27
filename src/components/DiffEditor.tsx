@@ -375,6 +375,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       showLineNumbers: state.settings.showLineNumbers,
       wordWrap: state.settings.wordWrap,
       minimap: state.settings.minimap,
+      minimapAutohide: state.settings.minimapAutohide,
       tabIndentMode: state.settings.tabIndentMode,
       tabWidth: state.settings.tabWidth,
       theme: state.settings.theme,
@@ -839,7 +840,10 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         ...resolveMonacoWordWrapOptions(currentSettings.wordWrap, layoutInfo),
         tabSize: currentSettings.tabWidth,
         insertSpaces: currentSettings.tabIndentMode === 'spaces',
-        minimap: resolveMonacoMinimapOptions(currentSettings.minimap && !largeFileMode, currentSettings.wordWrap),
+        minimap: resolveMonacoMinimapOptions(
+          currentSettings.minimap && !largeFileMode,
+          currentSettings.minimapAutohide
+        ),
         lineDecorationsWidth: 10,
         smoothScrolling: !largeFileMode,
         bracketPairColorization: {
@@ -1132,15 +1136,15 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         const nextText =
           toSide === 'source'
             ? serializeActualDiffLines(
-                appliedLineDiff.alignedSourceLines,
-                appliedLineDiff.alignedSourcePresent,
-                trailingNewline
-              )
+              appliedLineDiff.alignedSourceLines,
+              appliedLineDiff.alignedSourcePresent,
+              trailingNewline
+            )
             : serializeActualDiffLines(
-                appliedLineDiff.alignedTargetLines,
-                appliedLineDiff.alignedTargetPresent,
-                trailingNewline
-              );
+              appliedLineDiff.alignedTargetLines,
+              appliedLineDiff.alignedTargetPresent,
+              trailingNewline
+            );
         const applyingRef = toSide === 'source' ? sourceApplyingRef : targetApplyingRef;
         applyingRef.current = true;
         try {
@@ -1263,6 +1267,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     settings.showLineNumbers,
     settings.wordWrap,
     settings.minimap,
+    settings.minimapAutohide,
     settings.tabWidth,
     settings.tabIndentMode,
     settings.theme,

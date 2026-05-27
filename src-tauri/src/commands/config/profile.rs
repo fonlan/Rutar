@@ -264,6 +264,7 @@ pub(crate) fn normalize_app_config(config: AppConfig) -> AppConfig {
         )),
         word_wrap: config.word_wrap,
         minimap: config.minimap,
+        minimap_autohide: config.minimap_autohide,
         double_click_close_tab: config.double_click_close_tab,
         show_line_numbers: config.show_line_numbers,
         highlight_current_line: config.highlight_current_line,
@@ -449,6 +450,9 @@ pub(crate) fn load_config_impl() -> Result<AppConfig, String> {
 
     if let Some(minimap) = partial.minimap {
         config.minimap = minimap;
+    }
+    if let Some(minimap_autohide) = partial.minimap_autohide {
+        config.minimap_autohide = minimap_autohide;
     }
     if let Some(double_click_close_tab) = partial.double_click_close_tab {
         config.double_click_close_tab = double_click_close_tab;
@@ -817,6 +821,7 @@ mod tests {
             new_file_line_ending: "bad".to_string(),
             word_wrap: true,
             minimap: false,
+            minimap_autohide: false,
             double_click_close_tab: true,
             show_line_numbers: true,
             highlight_current_line: true,
@@ -860,6 +865,7 @@ mod tests {
             crate::state::default_line_ending().label()
         );
         assert!(!normalized.minimap);
+        assert!(!normalized.minimap_autohide);
         assert_eq!(normalized.recent_files, vec!["a".to_string()]);
         assert_eq!(normalized.recent_folders, vec!["b".to_string()]);
         assert_eq!(

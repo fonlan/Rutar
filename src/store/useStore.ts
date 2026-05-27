@@ -56,6 +56,7 @@ export const useStore = create<AppState>((set) => ({
     newFileLineEnding: defaultNewFileLineEnding,
     wordWrap: false,
     minimap: true,
+    minimapAutohide: true,
     doubleClickCloseTab: true,
     showLineNumbers: true,
     highlightCurrentLine: true,
@@ -92,14 +93,14 @@ export const useStore = create<AppState>((set) => ({
     const nextCursorPositionByTab = state.cursorPositionByTab[tab.id]
       ? state.cursorPositionByTab
       : {
-          ...state.cursorPositionByTab,
-          [tab.id]: { line: 1, column: 1 },
-        };
+        ...state.cursorPositionByTab,
+        [tab.id]: { line: 1, column: 1 },
+      };
     const nextActiveDiffPanelByTab = tab.tabType === 'diff'
       ? {
-          ...state.activeDiffPanelByTab,
-          [tab.id]: state.activeDiffPanelByTab[tab.id] ?? 'source',
-        }
+        ...state.activeDiffPanelByTab,
+        [tab.id]: state.activeDiffPanelByTab[tab.id] ?? 'source',
+      }
       : state.activeDiffPanelByTab;
 
     return {
@@ -113,7 +114,7 @@ export const useStore = create<AppState>((set) => ({
     const newTabs = state.tabs.filter((t) => t.id !== id);
     let newActiveId = state.activeTabId;
     if (state.activeTabId === id) {
-        newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+      newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
     }
     const nextBookmarks = { ...state.bookmarksByTab };
     delete nextBookmarks[id];
