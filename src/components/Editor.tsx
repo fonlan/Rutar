@@ -250,6 +250,10 @@ export function Editor({
   const applyingRemoteTextRef = useRef(false);
   const ignoreDocumentUpdatedCountRef = useRef(0);
   const syncChainRef = useRef(Promise.resolve());
+  const markdownIndentationSettingsRef = useRef({
+    tabIndentMode: settings.tabIndentMode,
+    tabWidth: settings.tabWidth,
+  });
   const cursorSnapshotRef = useRef<{ line: number; column: number }>({ line: 1, column: 1 });
   const engineStateRef = useRef<MonacoEngineState>({
     modelId: tab.id,
@@ -278,6 +282,10 @@ export function Editor({
   const [submenuMaxHeights, setSubmenuMaxHeights] = useState<Record<EditorSubmenuKey, number | null>>(
     () => ({ ...DEFAULT_SUBMENU_MAX_HEIGHTS })
   );
+  markdownIndentationSettingsRef.current = {
+    tabIndentMode: settings.tabIndentMode,
+    tabWidth: settings.tabWidth,
+  };
   const monacoLanguage = useMemo(() => resolveMonacoLanguage(tab), [tab]);
   const tr = useCallback((key: string) => t(settings.language, key as Parameters<typeof t>[1]), [settings.language]);
   const resolveCurrentTab = useCallback(
@@ -455,7 +463,10 @@ export function Editor({
       selectionStart: startOffset,
       selectionEnd: endOffset,
       action,
-      indentationUnit: buildIndentationUnit(settings.tabIndentMode, settings.tabWidth),
+      indentationUnit: buildIndentationUnit(
+        markdownIndentationSettingsRef.current.tabIndentMode,
+        markdownIndentationSettingsRef.current.tabWidth,
+      ),
     });
     if (!result) {
       return;
@@ -492,7 +503,7 @@ export function Editor({
     });
     editor.revealPositionInCenterIfOutsideViewport(nextSelectionEnd);
     editor.focus();
-  }, [settings.tabIndentMode, settings.tabWidth]);
+  }, []);
   const insertNativeClipboardImageAsMarkdown = useCallback(async () => {
     const currentTab = resolveCurrentTab();
     if (!isMarkdownTab(currentTab)) {

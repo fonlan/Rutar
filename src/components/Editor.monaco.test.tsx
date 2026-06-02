@@ -1387,6 +1387,45 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
   });
 
+  it('does not recreate Monaco editor or drop model text when changing tab indentation mode', async () => {
+    const tab = createTab();
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        tabIndentMode: 'tabs',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+      expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    });
+    monacoMockState.editorInstance.layout.mockClear();
+    monacoMockState.model.setValue('unsaved text in current tab');
+
+    act(() => {
+      useStore.getState().updateSettings({ tabIndentMode: 'spaces' });
+    });
+
+    await waitFor(() => {
+      expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          insertSpaces: true,
+        })
+      );
+      expect(monacoMockState.editorInstance.layout).toHaveBeenCalledTimes(1);
+    });
+
+    expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.setModel).toHaveBeenCalledTimes(1);
+    expect(monacoMockState.editorInstance.dispose).not.toHaveBeenCalled();
+    expect(monacoMockState.model.getValue()).toBe('unsaved text in current tab');
+  });
+
   it('does not recreate Monaco editor when toggling minimap', async () => {
     const tab = createTab();
     useStore.setState({
