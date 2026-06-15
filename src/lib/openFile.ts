@@ -73,6 +73,7 @@ function patchTabWithFileInfo(tabId: string, fileInfo: FileTab) {
     lineCount: fileInfo.lineCount,
     sizeBytes: fileInfo.sizeBytes,
     largeFileMode: fileInfo.largeFileMode,
+    wordWrap: useStore.getState().settings.wordWrap,
     syntaxOverride: fileInfo.syntaxOverride ?? null,
     isDirty: false,
   });

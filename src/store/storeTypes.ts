@@ -9,6 +9,7 @@ export interface FileTab {
   lineCount: number;
   sizeBytes?: number;
   largeFileMode: boolean;
+  wordWrap: boolean;
   syntaxOverride?: SyntaxKey | null;
   isDirty?: boolean;
   tabType?: 'file' | 'diff';

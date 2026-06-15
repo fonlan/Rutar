@@ -177,7 +177,6 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const setFolder = useStore((state) => state.setFolder);
     const language = useStore((state) => state.settings.language);
     const tabWidth = useStore((state) => state.settings.tabWidth);
-    const wordWrap = useStore((state) => state.settings.wordWrap);
     const showLineNumbers = useStore((state) => state.settings.showLineNumbers);
     const newFileLineEnding = useStore((state) => state.settings.newFileLineEnding);
     const updateSettings = useStore((state) => state.updateSettings);
@@ -206,6 +205,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const activeEditTab = activeTab ?? activeDiffPanelTab;
     const activeTabIdForActions = activeEditTab?.id ?? null;
     const activeTabLargeFileMode = !!activeEditTab?.largeFileMode;
+    const activeWordWrap = !!activeRootTab?.wordWrap;
     const canEdit = !!activeEditTab;
     const canFormat = !!activeTab && isStructuredFormatSupported(activeTab);
     const canOutline = !!activeTab && !!detectOutlineType(activeTab);
@@ -881,8 +881,12 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     }, [activeTab]);
 
     const handleToggleWordWrap = useCallback(() => {
-        updateSettings({ wordWrap: !wordWrap });
-    }, [wordWrap, updateSettings]);
+        if (!activeRootTab) {
+            return;
+        }
+
+        updateTab(activeRootTab.id, { wordWrap: !activeRootTab.wordWrap });
+    }, [activeRootTab, updateTab]);
 
     const handleToggleLineNumbers = useCallback(() => {
         updateSettings({ showLineNumbers: !showLineNumbers });
@@ -1266,7 +1270,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 icon={WrapText}
                 title={tr('toolbar.toggleWordWrap')}
                 onClick={handleToggleWordWrap}
-                active={!!wordWrap}
+                active={activeWordWrap}
                 disabled={!activeTab}
             />
             <ToolbarBtn

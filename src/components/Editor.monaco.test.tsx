@@ -266,6 +266,7 @@ function createTab(overrides: Partial<FileTab> = {}): FileTab {
     lineEnding: 'LF',
     lineCount: 1,
     largeFileMode: false,
+    wordWrap: false,
     tabType: 'file',
     ...overrides,
   };
@@ -1351,7 +1352,7 @@ describe('Editor (Monaco)', () => {
       },
     });
 
-    render(<Editor tab={tab} />);
+    const { rerender } = render(<Editor tab={tab} />);
 
     await waitFor(() => {
       expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
@@ -1359,9 +1360,11 @@ describe('Editor (Monaco)', () => {
     });
     monacoMockState.editorInstance.layout.mockClear();
 
+    const wrappedTab = { ...tab, wordWrap: true };
     act(() => {
-      useStore.getState().updateSettings({ wordWrap: true });
+      useStore.getState().updateTab(tab.id, { wordWrap: true });
     });
+    rerender(<Editor tab={wrappedTab} />);
 
     await waitFor(() => {
       expect(monacoMockState.editorInstance.updateOptions).toHaveBeenCalledWith(
@@ -1498,13 +1501,13 @@ describe('Editor (Monaco)', () => {
     expect(monacoMockState.editorCreate).toHaveBeenCalledTimes(1);
   });
   it('uses Monaco viewport wrapping options when word wrap starts enabled', async () => {
-    const tab = createTab();
+    const tab = createTab({ wordWrap: true });
     useStore.setState({
       tabs: [tab],
       activeTabId: tab.id,
       settings: {
         ...useStore.getState().settings,
-        wordWrap: true,
+        wordWrap: false,
       },
     });
 

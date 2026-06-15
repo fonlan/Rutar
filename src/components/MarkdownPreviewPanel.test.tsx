@@ -60,6 +60,7 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     lineEnding: "LF",
     lineCount: 8,
     largeFileMode: false,
+    wordWrap: false,
     isDirty: false,
     ...partial,
   };

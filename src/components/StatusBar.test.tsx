@@ -20,6 +20,7 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     lineCount: 12,
     sizeBytes: 1536,
     largeFileMode: false,
+    wordWrap: false,
     ...partial,
   };
 }

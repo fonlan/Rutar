@@ -11,6 +11,7 @@ describe("isReusableBlankTab", () => {
         lineEnding: "LF",
         lineCount: 1,
         largeFileMode: false,
+        wordWrap: false,
         isDirty: false,
       })
     ).toBe(true);
@@ -26,6 +27,7 @@ describe("isReusableBlankTab", () => {
         lineEnding: "LF",
         lineCount: 1,
         largeFileMode: false,
+        wordWrap: false,
         isDirty: false,
       })
     ).toBe(false);
@@ -39,6 +41,7 @@ describe("isReusableBlankTab", () => {
         lineEnding: "LF",
         lineCount: 2,
         largeFileMode: false,
+        wordWrap: false,
         isDirty: false,
       })
     ).toBe(false);
@@ -52,6 +55,7 @@ describe("isReusableBlankTab", () => {
         lineEnding: "LF",
         lineCount: 1,
         largeFileMode: false,
+        wordWrap: false,
         isDirty: true,
       })
     ).toBe(false);

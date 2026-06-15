@@ -533,6 +533,7 @@ export function TitleBar() {
                 lineEnding: compareSourceTab.lineEnding,
                 lineCount: normalizedLineDiff.alignedLineCount,
                 largeFileMode: false,
+                wordWrap: settings.wordWrap,
                 syntaxOverride: 'plain_text',
                 isDirty: false,
                 tabType: 'diff',

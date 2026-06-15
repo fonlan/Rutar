@@ -74,6 +74,7 @@ function createTab(partial?: Partial<FileTab>): FileTab {
     lineEnding: "LF",
     lineCount: 20,
     largeFileMode: false,
+    wordWrap: false,
     isDirty: false,
     ...partial,
   };
@@ -181,7 +182,7 @@ describe("Toolbar", () => {
     expect(previewWrapper.querySelector("button")).toBeDisabled();
   });
 
-  it("toggles wordWrap setting via toolbar button", async () => {
+  it("toggles active tab wordWrap via toolbar button", async () => {
     useStore.getState().addTab(createTab());
     render(<Toolbar />);
     await waitFor(() => {
@@ -195,7 +196,9 @@ describe("Toolbar", () => {
     fireEvent.click(toggleButton as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(useStore.getState().settings.wordWrap).toBe(true);
+      const state = useStore.getState();
+      expect(state.tabs.find((tab) => tab.id === "tab-toolbar")?.wordWrap).toBe(true);
+      expect(state.settings.wordWrap).toBe(false);
     });
   });
 
@@ -555,6 +558,7 @@ describe("Toolbar", () => {
       lineEnding: "LF",
       lineCount: 1,
       largeFileMode: false,
+      wordWrap: false,
       isDirty: false,
       tabType: "diff",
       diffPayload: {
@@ -790,6 +794,7 @@ describe("Toolbar", () => {
       lineEnding: "LF",
       lineCount: 1,
       largeFileMode: false,
+      wordWrap: false,
       isDirty: false,
       tabType: "diff",
       diffPayload: {
@@ -2136,6 +2141,7 @@ describe("Toolbar", () => {
       lineEnding: "LF",
       lineCount: 1,
       largeFileMode: false,
+      wordWrap: false,
       isDirty: false,
       tabType: "diff",
       diffPayload: {
@@ -2197,6 +2203,7 @@ describe("Toolbar", () => {
       lineEnding: "LF",
       lineCount: 1,
       largeFileMode: false,
+      wordWrap: false,
       isDirty: false,
       tabType: "diff",
       diffPayload: {

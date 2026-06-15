@@ -373,7 +373,6 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       fontFamily: state.settings.fontFamily,
       fontSize: state.settings.fontSize,
       showLineNumbers: state.settings.showLineNumbers,
-      wordWrap: state.settings.wordWrap,
       minimap: state.settings.minimap,
       minimapAutohide: state.settings.minimapAutohide,
       tabIndentMode: state.settings.tabIndentMode,
@@ -382,6 +381,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     })),
   );
   const updateTab = useStore((state) => state.updateTab);
+  const wordWrap = tab.wordWrap;
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const setActiveDiffPanel = useStore((state) => state.setActiveDiffPanel);
   const persistedActivePanel = useStore((state) => state.activeDiffPanelByTab[tab.id]);
@@ -414,6 +414,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   const sourceViewZoneIdsRef = useRef<string[]>([]);
   const targetViewZoneIdsRef = useRef<string[]>([]);
   const settingsRef = useRef(settings);
+  const wordWrapRef = useRef(wordWrap);
   const sharedScrollRef = useRef<HTMLDivElement | null>(null);
   const sharedScrollContentRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncLockRef = useRef(false);
@@ -461,6 +462,9 @@ export function DiffEditor({ tab }: DiffEditorProps) {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+  useEffect(() => {
+    wordWrapRef.current = wordWrap;
+  }, [wordWrap]);
   const hasDiffRows = diffRowIndexes.length > 0;
   const clearScheduledDiffRefresh = useCallback(() => {
     if (diffRefreshTimerRef.current !== null) {
@@ -837,7 +841,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         fontFamily: currentSettings.fontFamily,
         fontSize: currentSettings.fontSize,
         lineNumbers: currentSettings.showLineNumbers ? 'on' : 'off',
-        ...resolveMonacoWordWrapOptions(currentSettings.wordWrap, layoutInfo),
+        ...resolveMonacoWordWrapOptions(wordWrap, layoutInfo),
         tabSize: currentSettings.tabWidth,
         insertSpaces: currentSettings.tabIndentMode === 'spaces',
         minimap: resolveMonacoMinimapOptions(
@@ -856,7 +860,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
         folding: !largeFileMode,
         scrollBeyondLastLine: false,
         contextmenu: false,
-        scrollbar: resolveMonacoScrollbarOptions(currentSettings.wordWrap, {
+        scrollbar: resolveMonacoScrollbarOptions(wordWrap, {
           vertical: 'hidden',
           verticalScrollbarSize: 0,
           alwaysConsumeMouseWheel: false,
@@ -867,7 +871,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       });
       editor.layout();
     },
-    []
+    [wordWrap]
   );
 
   const queueSyncEdits = useCallback(
@@ -1265,7 +1269,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     settings.fontFamily,
     settings.fontSize,
     settings.showLineNumbers,
-    settings.wordWrap,
+    wordWrap,
     settings.minimap,
     settings.minimapAutohide,
     settings.tabWidth,
@@ -1311,7 +1315,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
       diffPresentation.alignedLineCount,
       ratio,
       settings.fontSize,
-      settings.wordWrap,
+      wordWrap,
       sourceTab?.lineCount,
       targetTab?.lineCount,
     ],
@@ -1331,7 +1335,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     sourceEditorRef.current = editor;
     applyEditorOptions('source', editor, sourceTab);
     const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
-      updateMonacoWordWrapColumn(editor, settingsRef.current.wordWrap, layoutInfo, sourceWordWrapColumnRef);
+      updateMonacoWordWrapColumn(editor, wordWrapRef.current, layoutInfo, sourceWordWrapColumnRef);
     });
     const initialSourceSyncRafId = window.requestAnimationFrame(() => {
       if (!editor.getModel()) {
@@ -1427,7 +1431,7 @@ export function DiffEditor({ tab }: DiffEditorProps) {
     targetEditorRef.current = editor;
     applyEditorOptions('target', editor, targetTab);
     const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
-      updateMonacoWordWrapColumn(editor, settingsRef.current.wordWrap, layoutInfo, targetWordWrapColumnRef);
+      updateMonacoWordWrapColumn(editor, wordWrapRef.current, layoutInfo, targetWordWrapColumnRef);
     });
     const initialTargetSyncRafId = window.requestAnimationFrame(() => {
       if (!editor.getModel()) {

@@ -29,6 +29,7 @@ function createTab(overrides: Partial<FileTab> = {}): FileTab {
     lineEnding: 'LF',
     lineCount: 20,
     largeFileMode: false,
+    wordWrap: false,
     tabType: 'file',
     ...overrides,
   };

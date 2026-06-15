@@ -252,6 +252,7 @@ function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
     lineEnding: 'LF',
     lineCount: 1,
     largeFileMode: false,
+    wordWrap: false,
     tabType: 'file',
     ...overrides,
   };
@@ -771,7 +772,7 @@ describe('DiffEditor (Monaco)', () => {
       },
     });
 
-    render(<DiffEditor tab={diffTab} />);
+    const { rerender } = render(<DiffEditor tab={diffTab} />);
 
     await waitFor(() => {
       expect(monacoDiffMockState.createCallCount).toBe(2);
@@ -781,9 +782,11 @@ describe('DiffEditor (Monaco)', () => {
     monacoDiffMockState.sourceEditor.layout.mockClear();
     monacoDiffMockState.targetEditor.layout.mockClear();
 
+    const wrappedDiffTab = { ...diffTab, wordWrap: true };
     act(() => {
-      useStore.getState().updateSettings({ wordWrap: true });
+      useStore.getState().updateTab(diffTab.id, { wordWrap: true });
     });
+    rerender(<DiffEditor tab={wrappedDiffTab} />);
 
     await waitFor(() => {
       expect(monacoDiffMockState.sourceEditor.updateOptions).toHaveBeenCalledWith(
@@ -883,6 +886,7 @@ describe('DiffEditor (Monaco)', () => {
     const diffTab = createFileTab({
       id: 'tab-diff',
       tabType: 'diff',
+      wordWrap: true,
       diffPayload: createDiffPayload(),
     }) as FileTab & { tabType: 'diff'; diffPayload: DiffTabPayload };
 
@@ -891,7 +895,7 @@ describe('DiffEditor (Monaco)', () => {
       activeTabId: diffTab.id,
       settings: {
         ...useStore.getState().settings,
-        wordWrap: true,
+        wordWrap: false,
       },
     });
 

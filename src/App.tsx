@@ -244,6 +244,7 @@ function App() {
         path: tab.path,
         lineCount: tab.lineCount,
         largeFileMode: tab.largeFileMode,
+        wordWrap: tab.wordWrap,
         syntaxOverride: tab.syntaxOverride,
         tabType: tab.tabType,
         diffPayload: tab.diffPayload,
@@ -471,7 +472,9 @@ function App() {
         state.toggleBookmarkSidebar();
         return;
       case 'toggleWordWrap':
-        state.updateSettings({ wordWrap: !state.settings.wordWrap });
+        if (activeTab) {
+          state.updateTab(activeTab.id, { wordWrap: !activeTab.wordWrap });
+        }
         return;
       case 'openSettings':
         state.toggleSettings(true);

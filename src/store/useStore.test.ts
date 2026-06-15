@@ -10,6 +10,7 @@ function createFileTab(partial?: Partial<FileTab>): FileTab {
     lineEnding: "LF",
     lineCount: 1,
     largeFileMode: false,
+    wordWrap: false,
     isDirty: false,
     ...partial,
   };
@@ -76,6 +77,17 @@ describe("useStore", () => {
     expect(state.cursorPositionByTab["file-1"]).toEqual({ line: 1, column: 1 });
     expect(state.cursorPositionByTab["diff-1"]).toEqual({ line: 1, column: 1 });
     expect(state.activeDiffPanelByTab["diff-1"]).toBe("source");
+  });
+
+  it("addTab initializes wordWrap from settings without overriding explicit tab value", () => {
+    useStore.getState().updateSettings({ wordWrap: true });
+
+    useStore.getState().addTab(createFileTab({ id: "settings-default", wordWrap: undefined as unknown as boolean }));
+    useStore.getState().addTab(createFileTab({ id: "explicit-off", wordWrap: false }));
+    const state = useStore.getState();
+
+    expect(state.tabs.find((item) => item.id === "settings-default")?.wordWrap).toBe(true);
+    expect(state.tabs.find((item) => item.id === "explicit-off")?.wordWrap).toBe(false);
   });
 
   it("closeTab removes related states and falls back active tab", () => {

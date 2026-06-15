@@ -4,6 +4,7 @@ import type { FileTab } from "@/store/useStore";
 interface MockStoreState {
   tabs: FileTab[];
   activeTabId: string | null;
+  settings: { wordWrap: boolean };
   setActiveTab: ReturnType<typeof vi.fn>;
   addTab: ReturnType<typeof vi.fn>;
   updateTab: ReturnType<typeof vi.fn>;
@@ -18,6 +19,7 @@ function createFileInfo(partial?: Partial<FileTab>): FileTab {
     lineEnding: "LF",
     lineCount: 12,
     largeFileMode: false,
+    wordWrap: false,
     isDirty: false,
     ...partial,
   };
@@ -27,6 +29,7 @@ function createStoreState(partial?: Partial<MockStoreState>): MockStoreState {
   const state: MockStoreState = {
     tabs: [],
     activeTabId: null,
+    settings: { wordWrap: false },
     setActiveTab: vi.fn((id: string) => {
       state.activeTabId = id;
     }),
@@ -144,6 +147,7 @@ describe("openFile", () => {
     const storeState = createStoreState({
       tabs: [blankTab],
       activeTabId: blankTab.id,
+      settings: { wordWrap: true },
     });
     const { module, invokeMock, isReusableBlankTabMock } = await loadOpenFileModule(storeState);
     invokeMock.mockImplementation(async (command: string) => {
@@ -163,6 +167,7 @@ describe("openFile", () => {
         name: openedInfo.name,
         path: openedInfo.path,
         lineCount: openedInfo.lineCount,
+        wordWrap: true,
         isDirty: false,
       })
     );

@@ -219,7 +219,6 @@ export function Editor({
       fontFamily: state.settings.fontFamily,
       fontSize: state.settings.fontSize,
       showLineNumbers: state.settings.showLineNumbers,
-      wordWrap: state.settings.wordWrap,
       minimap: state.settings.minimap,
       minimapAutohide: state.settings.minimapAutohide,
       highlightCurrentLine: state.settings.highlightCurrentLine,
@@ -236,6 +235,7 @@ export function Editor({
     ),
   );
   const updateTab = useStore((state) => state.updateTab);
+  const wordWrap = tab.wordWrap;
   const setCursorPosition = useStore((state) => state.setCursorPosition);
   const bookmarkSidebarOpen = useStore((state) => state.bookmarkSidebarOpen);
   const bookmarks = useStore((state) => state.bookmarksByTab[tab.id] ?? EMPTY_BOOKMARKS);
@@ -245,6 +245,7 @@ export function Editor({
   const toggleBookmarkSidebar = useStore((state) => state.toggleBookmarkSidebar);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const wordWrapRef = useRef(wordWrap);
   const wordWrapColumnRef = useRef<number | null>(null);
   const activeTabIdRef = useRef<string | null>(null);
   const applyingRemoteTextRef = useRef(false);
@@ -286,7 +287,10 @@ export function Editor({
     tabIndentMode: settings.tabIndentMode,
     tabWidth: settings.tabWidth,
   };
-  const monacoLanguage = useMemo(() => resolveMonacoLanguage(tab), [tab]);
+  const monacoLanguage = useMemo(
+    () => resolveMonacoLanguage(tab),
+    [tab.name, tab.path, tab.syntaxOverride]
+  );
   const tr = useCallback((key: string) => t(settings.language, key as Parameters<typeof t>[1]), [settings.language]);
   const resolveCurrentTab = useCallback(
     () =>
@@ -294,7 +298,7 @@ export function Editor({
         .getState()
         .tabs
         .find((candidate) => candidate.id === tab.id && candidate.tabType !== 'diff') ?? tab,
-    [tab]
+    [tab.id]
   );
   const {
     deleteLabel,
@@ -858,12 +862,12 @@ export function Editor({
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-      ...resolveMonacoWordWrapOptions(settings.wordWrap),
+      ...resolveMonacoWordWrapOptions(wordWrap),
       minimap: resolveMonacoMinimapOptions(
         settings.minimap && !tab.largeFileMode,
         settings.minimapAutohide
       ),
-      scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
+      scrollbar: resolveMonacoScrollbarOptions(wordWrap),
       smoothScrolling: !tab.largeFileMode,
       bracketPairColorization: {
         enabled: !tab.largeFileMode,
@@ -886,7 +890,7 @@ export function Editor({
 
     editorRef.current = editor;
     const layoutDisposable = editor.onDidLayoutChange((layoutInfo) => {
-      updateMonacoWordWrapColumn(editor, useStore.getState().settings.wordWrap, layoutInfo, wordWrapColumnRef);
+      updateMonacoWordWrapColumn(editor, wordWrapRef.current, layoutInfo, wordWrapColumnRef);
     });
     const editorDomNode = containerRef.current;
     const suppressFindWidgetHoverTooltip = (event: MouseEvent) => {
@@ -1069,6 +1073,10 @@ export function Editor({
     updateQuotePairDecorations,
   ]);
 
+  useEffect(() => {
+    wordWrapRef.current = wordWrap;
+  }, [wordWrap]);
+
   useEditorBookmarkDecorations(editorRef, bookmarks, tab.id);
 
   useEffect(() => {
@@ -1084,14 +1092,14 @@ export function Editor({
       fontFamily: settings.fontFamily,
       fontSize: settings.fontSize,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-      ...resolveMonacoWordWrapOptions(settings.wordWrap, layoutInfo),
+      ...resolveMonacoWordWrapOptions(wordWrap, layoutInfo),
       tabSize: settings.tabWidth,
       insertSpaces: settings.tabIndentMode === 'spaces',
       minimap: resolveMonacoMinimapOptions(
         settings.minimap && !tab.largeFileMode,
         settings.minimapAutohide
       ),
-      scrollbar: resolveMonacoScrollbarOptions(settings.wordWrap),
+      scrollbar: resolveMonacoScrollbarOptions(wordWrap),
       smoothScrolling: !tab.largeFileMode,
       lineDecorationsWidth: 10,
       bracketPairColorization: {
@@ -1116,7 +1124,7 @@ export function Editor({
     settings.tabIndentMode,
     settings.tabWidth,
     settings.theme,
-    settings.wordWrap,
+    wordWrap,
     settings.minimap,
     settings.minimapAutohide,
     settings.highlightCurrentLine,

@@ -175,6 +175,7 @@ function createFileTab(overrides: Partial<FileTab> = {}): FileTab {
     lineEnding: 'LF',
     lineCount: 5,
     largeFileMode: false,
+    wordWrap: false,
     tabType: 'file',
     ...overrides,
   };
@@ -2810,7 +2811,9 @@ describe('App component', () => {
 
     runGesture(513, 40, 80, 40, 20);
     await waitFor(() => {
-      expect(useStore.getState().settings.wordWrap).toBe(true);
+      const state = useStore.getState();
+      expect(state.tabs.find((tab) => tab.id === fileTab.id)?.wordWrap).toBe(true);
+      expect(state.settings.wordWrap).toBe(false);
     });
 
     runGesture(514, 40, 20, 40, 80);

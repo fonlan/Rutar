@@ -90,22 +90,26 @@ export const useStore = create<AppState>((set) => ({
   folderEntries: [],
 
   addTab: (tab) => set((state) => {
-    const nextCursorPositionByTab = state.cursorPositionByTab[tab.id]
+    const nextTab: FileTab = {
+      ...tab,
+      wordWrap: tab.wordWrap ?? state.settings.wordWrap,
+    };
+    const nextCursorPositionByTab = state.cursorPositionByTab[nextTab.id]
       ? state.cursorPositionByTab
       : {
         ...state.cursorPositionByTab,
-        [tab.id]: { line: 1, column: 1 },
+        [nextTab.id]: { line: 1, column: 1 },
       };
-    const nextActiveDiffPanelByTab = tab.tabType === 'diff'
+    const nextActiveDiffPanelByTab = nextTab.tabType === 'diff'
       ? {
         ...state.activeDiffPanelByTab,
-        [tab.id]: state.activeDiffPanelByTab[tab.id] ?? 'source',
+        [nextTab.id]: state.activeDiffPanelByTab[nextTab.id] ?? 'source',
       }
       : state.activeDiffPanelByTab;
 
     return {
-      tabs: [...state.tabs, tab],
-      activeTabId: tab.id,
+      tabs: [...state.tabs, nextTab],
+      activeTabId: nextTab.id,
       cursorPositionByTab: nextCursorPositionByTab,
       activeDiffPanelByTab: nextActiveDiffPanelByTab,
     };
