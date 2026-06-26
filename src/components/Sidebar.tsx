@@ -74,6 +74,34 @@ function normalizeComparablePath(path: string) {
     return normalized.toLowerCase();
 }
 
+function normalizeFolderEventPath(path: string) {
+    let normalized = path.replace(/\\/g, '/');
+    while (normalized.length > 1 && normalized.endsWith('/')) {
+        normalized = normalized.slice(0, -1);
+    }
+
+    return normalized;
+}
+
+function areFolderEventPathsEqual(left: string | undefined, right: string) {
+    if (!left) {
+        return false;
+    }
+
+    const normalizedLeft = normalizeFolderEventPath(left);
+    const normalizedRight = normalizeFolderEventPath(right);
+    if (normalizedLeft === normalizedRight) {
+        return true;
+    }
+
+    const isWindowsPath = /^[a-zA-Z]:\//.test(normalizedLeft) || /^[a-zA-Z]:\//.test(normalizedRight);
+    return isWindowsPath && normalizedLeft.toLowerCase() === normalizedRight.toLowerCase();
+}
+
+function includesFolderEventPath(paths: string[] | undefined, targetPath: string) {
+    return paths?.some((path) => areFolderEventPathsEqual(path, targetPath)) ?? false;
+}
+
 function replacePathPrefix(path: string, oldPath: string, newPath: string) {
     const normalizedPath = normalizeComparablePath(path);
     const normalizedOldPath = normalizeComparablePath(oldPath);
@@ -213,11 +241,11 @@ export function Sidebar() {
 
         const handleFolderTreeChanged = (event: Event) => {
             const payload = (event as CustomEvent<FolderTreeChangePayload>).detail;
-            if (payload?.rootPath !== folderPath) {
+            if (!areFolderEventPathsEqual(payload.rootPath, folderPath)) {
                 return;
             }
 
-            if (!payload.directoryPaths?.includes(folderPath)) {
+            if (!includesFolderEventPath(payload.directoryPaths, folderPath)) {
                 return;
             }
 
@@ -562,7 +590,7 @@ function FileEntry({
 
         const handleFolderTreeChanged = (event: Event) => {
             const payload = (event as CustomEvent<FolderTreeChangePayload>).detail;
-            if (!payload?.directoryPaths?.includes(entry.path)) {
+            if (!includesFolderEventPath(payload?.directoryPaths, entry.path)) {
                 return;
             }
 

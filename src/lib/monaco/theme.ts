@@ -39,7 +39,10 @@ export function defineRutarMonacoThemes(monaco: typeof Monaco) {
       { token: 'comment.yaml', foreground: '6E7781', fontStyle: 'italic' },
       ...sharedYamlTokenRules,
     ],
-    colors: {},
+    colors: {
+      'editor.selectionBackground': '#2563eb66',
+      'editor.inactiveSelectionBackground': '#2563eb44',
+    },
   });
 
   monaco.editor.defineTheme(RUTAR_MONACO_DARK_THEME, {
@@ -83,7 +86,10 @@ export function defineRutarMonacoThemes(monaco: typeof Monaco) {
         }
       }),
     ],
-    colors: {},
+    colors: {
+      'editor.selectionBackground': '#60a5fa66',
+      'editor.inactiveSelectionBackground': '#60a5fa44',
+    },
   });
 
   monacoThemesConfigured = true;

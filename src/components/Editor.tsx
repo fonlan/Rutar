@@ -80,6 +80,38 @@ function clampMonacoPosition(
   };
 }
 
+type MonacoScrollAnchor = {
+  lineNumber: number;
+  topOffset: number;
+};
+
+function captureMonacoScrollAnchor(editor: monaco.editor.IStandaloneCodeEditor): MonacoScrollAnchor | null {
+  const visibleRange = editor.getVisibleRanges()[0];
+  if (!visibleRange) {
+    return null;
+  }
+
+  const lineNumber = Math.max(1, Math.floor(visibleRange.startLineNumber));
+  return {
+    lineNumber,
+    topOffset: editor.getScrollTop() - editor.getTopForLineNumber(lineNumber),
+  };
+}
+
+function restoreMonacoScrollAnchor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  model: monaco.editor.ITextModel,
+  anchor: MonacoScrollAnchor | null
+) {
+  if (!anchor) {
+    return;
+  }
+
+  const lineCount = Math.max(1, model.getLineCount());
+  const lineNumber = Math.max(1, Math.min(anchor.lineNumber, lineCount));
+  editor.setScrollTop(Math.max(0, editor.getTopForLineNumber(lineNumber) + anchor.topOffset));
+}
+
 function clipboardEventHasTextPayload(clipboardData: DataTransfer) {
   return (
     clipboardData.getData('text/plain').trim().length > 0
@@ -1301,6 +1333,7 @@ export function Editor({
       const restoreLine = customEvent.detail?.restoreCursorLine;
       const restoreColumn = customEvent.detail?.restoreCursorColumn;
       const preservedViewState = preserveScroll ? editor.saveViewState() ?? null : null;
+      const preservedScrollAnchor = preserveScroll ? captureMonacoScrollAnchor(editor) : null;
       const currentPosition = editor.getPosition();
       const savedCursor = useStore.getState().cursorPositionByTab[tab.id];
       const preservedCursor = preserveCaret
@@ -1335,6 +1368,9 @@ export function Editor({
         if (preservedViewState) {
           editor.restoreViewState(preservedViewState);
         }
+        if (preserveScroll) {
+          restoreMonacoScrollAnchor(editor, model, preservedScrollAnchor);
+        }
 
         if (targetPosition) {
           editor.setPosition(targetPosition);
@@ -1344,9 +1380,7 @@ export function Editor({
           };
           setCursorPosition(tab.id, targetPosition.lineNumber, targetPosition.column);
 
-          if (preserveScroll) {
-            editor.revealPositionInCenterIfOutsideViewport(targetPosition);
-          } else {
+          if (!preserveScroll) {
             editor.revealPositionInCenter(targetPosition);
           }
         }

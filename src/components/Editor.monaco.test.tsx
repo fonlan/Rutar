@@ -181,6 +181,10 @@ vi.mock('monaco-editor', () => {
     setModel: vi.fn(),
     getModel: vi.fn(() => model),
     getLayoutInfo: vi.fn(() => ({ height: 320, viewportColumn: 100 })),
+    getVisibleRanges: vi.fn(() => [{ startLineNumber: 1, endLineNumber: 20 }]),
+    getScrollTop: vi.fn(() => 0),
+    getTopForLineNumber: vi.fn((lineNumber: number) => (Math.max(1, lineNumber) - 1) * 20),
+    setScrollTop: vi.fn(),
     saveViewState: vi.fn(() => null),
     restoreViewState: vi.fn(),
     setPosition: vi.fn(),
@@ -359,6 +363,13 @@ describe('Editor (Monaco)', () => {
     monacoMockState.findActionRun.mockResolvedValue(undefined);
     monacoMockState.editorInstance.saveViewState.mockReset();
     monacoMockState.editorInstance.saveViewState.mockReturnValue(null);
+    monacoMockState.editorInstance.getVisibleRanges.mockReset();
+    monacoMockState.editorInstance.getVisibleRanges.mockReturnValue([{ startLineNumber: 1, endLineNumber: 20 }]);
+    monacoMockState.editorInstance.getScrollTop.mockReset();
+    monacoMockState.editorInstance.getScrollTop.mockReturnValue(0);
+    monacoMockState.editorInstance.getTopForLineNumber.mockReset();
+    monacoMockState.editorInstance.getTopForLineNumber.mockImplementation((lineNumber: number) => (Math.max(1, lineNumber) - 1) * 20);
+    monacoMockState.editorInstance.setScrollTop.mockReset();
     monacoMockState.editorInstance.getPosition.mockReset();
     monacoMockState.editorInstance.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
     monacoMockState.editorInstance.hasTextFocus.mockReset();
@@ -519,12 +530,15 @@ describe('Editor (Monaco)', () => {
 
     const savedViewState = { scrollTop: 240 };
     monacoMockState.editorInstance.saveViewState.mockReturnValue(savedViewState);
+    monacoMockState.editorInstance.getVisibleRanges.mockReturnValue([{ startLineNumber: 8, endLineNumber: 20 }]);
+    monacoMockState.editorInstance.getScrollTop.mockReturnValue(148);
     monacoMockState.editorInstance.getPosition.mockReturnValue({
       lineNumber: 4,
       column: 12,
     });
     monacoMockState.editorInstance.restoreViewState.mockClear();
     monacoMockState.editorInstance.setPosition.mockClear();
+    monacoMockState.editorInstance.setScrollTop.mockClear();
     monacoMockState.editorInstance.revealPositionInCenter.mockClear();
     monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport.mockClear();
     vi.mocked(invoke).mockClear();
@@ -562,16 +576,14 @@ describe('Editor (Monaco)', () => {
 
     await waitFor(() => {
       expect(monacoMockState.editorInstance.restoreViewState).toHaveBeenCalledWith(savedViewState);
+      expect(monacoMockState.editorInstance.setScrollTop).toHaveBeenCalledWith(8);
       expect(monacoMockState.editorInstance.setPosition).toHaveBeenCalledWith({
-        lineNumber: 1,
-        column: 6,
-      });
-      expect(monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport).toHaveBeenCalledWith({
         lineNumber: 1,
         column: 6,
       });
     });
 
+    expect(monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport).not.toHaveBeenCalled();
     expect(monacoMockState.editorInstance.revealPositionInCenter).not.toHaveBeenCalled();
     expect(useStore.getState().cursorPositionByTab[tab.id]).toEqual({
       line: 1,

@@ -150,6 +150,10 @@ describe('setupMonacoEnvironment', () => {
             foreground: '0F766E',
           }),
         ]),
+        colors: expect.objectContaining({
+          'editor.selectionBackground': '#2563eb66',
+          'editor.inactiveSelectionBackground': '#2563eb44',
+        }),
       })
     );
     expect(setupMonacoMockState.defineTheme).toHaveBeenNthCalledWith(
@@ -174,6 +178,10 @@ describe('setupMonacoEnvironment', () => {
             foreground: '8BD5CA',
           }),
         ]),
+        colors: expect.objectContaining({
+          'editor.selectionBackground': '#60a5fa66',
+          'editor.inactiveSelectionBackground': '#60a5fa44',
+        }),
       })
     );
 

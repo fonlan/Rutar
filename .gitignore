@@ -19,6 +19,7 @@ src-tauri/Cargo.lock
 .knowledge/
 .agents/
 .mem/
+.foco/
 *.swp
 *.swo
 *~

@@ -155,6 +155,35 @@ describe("Sidebar", () => {
     expect(screen.queryByText("old.ts")).toBeNull();
   });
 
+  it("refreshes root folder entries when folder-tree-changed path uses normalized Windows separators", async () => {
+    invokeMock.mockResolvedValueOnce([
+      { path: "C:\\repo\\project\\new.ts", name: "new.ts", is_dir: false },
+    ]);
+    useStore.setState({
+      sidebarOpen: true,
+      folderPath: "C:\\repo\\project",
+      folderEntries: [{ path: "C:\\repo\\project\\old.ts", name: "old.ts", is_dir: false }],
+    });
+
+    render(<Sidebar />);
+    expect(screen.getByText("old.ts")).toBeInTheDocument();
+
+    fireEvent(
+      window,
+      new CustomEvent("rutar:folder-tree-changed", {
+        detail: {
+          rootPath: "c:/repo/project/",
+          directoryPaths: ["c:/repo/project/"],
+        },
+      })
+    );
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("read_dir_if_directory", { path: "C:\\repo\\project" });
+    });
+    expect(screen.getByText("new.ts")).toBeInTheDocument();
+    expect(screen.queryByText("old.ts")).toBeNull();
+  });
   it("refreshes expanded directory children when folder-tree-changed targets that directory", async () => {
     invokeMock
       .mockResolvedValueOnce([{ path: "C:\\repo\\project\\src\\index.ts", name: "index.ts", is_dir: false }])
