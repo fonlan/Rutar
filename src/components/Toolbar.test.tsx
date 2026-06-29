@@ -3310,7 +3310,7 @@ describe("Toolbar", () => {
         fireEvent.click(screen.getByTitle("Restore Original").querySelector("button") as HTMLButtonElement);
       });
 
-      expect(replaceEvents.at(-1)).toEqual({ tabId: "tab-one", text: "tab-one original" });
+      expect(replaceEvents[replaceEvents.length - 1]).toEqual({ tabId: "tab-one", text: "tab-one original" });
     } finally {
       window.removeEventListener("rutar:replace-document-text", handleReplace as EventListener);
     }
