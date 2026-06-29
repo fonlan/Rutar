@@ -29,7 +29,9 @@
           "'self'",
           "ipc:",
           "http://ipc.localhost",
-          "https://ipc.localhost"
+          "https://ipc.localhost",
+          "https:",
+          "http:"
         ],
         "img-src": [
           "'self'",
