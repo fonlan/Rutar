@@ -25,7 +25,17 @@ import {
   shouldEnableBulkTabCloseActions,
   type TabCloseDecision,
 } from '@/lib/tabClose';
-import { FileTab, useStore, AppLanguage, AppTheme, LineEnding, TabIndentMode, isDiffTab } from '@/store/useStore';
+import {
+  type FileTab,
+  type AppLanguage,
+  type AppTheme,
+  type LineEnding,
+  type TabIndentMode,
+  type TranslationSettings,
+  useStore,
+  isDiffTab,
+  defaultTranslationSettings,
+} from '@/store/useStore';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { addRecentFolderPath, sanitizeRecentPathList } from '@/lib/recentPaths';
 import { dispatchDocumentUpdated } from '@/lib/documentEvents';
@@ -83,6 +93,37 @@ function normalizeTabIndentMode(value?: string): TabIndentMode {
   return value === 'spaces' ? 'spaces' : 'tabs';
 }
 
+function normalizeTranslationProxyUrl(value: unknown): string {
+  if (!value || typeof value !== 'object' || !('proxyUrl' in value)) {
+    return '';
+  }
+
+  const proxyUrl = (value as { proxyUrl?: unknown }).proxyUrl;
+  return typeof proxyUrl === 'string' ? proxyUrl : '';
+}
+
+function normalizeTranslationSettings(value: unknown): TranslationSettings {
+  if (!value || typeof value !== 'object') {
+    return defaultTranslationSettings;
+  }
+
+  const settings = value as Partial<TranslationSettings>;
+  const targetLanguage = typeof settings.targetLanguage === 'string' && settings.targetLanguage.trim()
+    ? settings.targetLanguage.trim()
+    : defaultTranslationSettings.targetLanguage;
+
+  return {
+    engine: settings.engine === 'microsoft' ? 'microsoft' : 'google',
+    targetLanguage,
+    google: {
+      proxyUrl: normalizeTranslationProxyUrl(settings.google),
+    },
+    microsoft: {
+      proxyUrl: normalizeTranslationProxyUrl(settings.microsoft),
+    },
+  };
+}
+
 interface AppConfig {
   language: AppLanguage;
   theme: AppTheme;
@@ -107,6 +148,7 @@ interface AppConfig {
   windowsFileAssociationExtensions: string[];
   mouseGesturesEnabled?: boolean;
   mouseGestures?: MouseGestureBinding[];
+  translation?: unknown;
 }
 
 interface WindowsFileAssociationStatus {
@@ -277,6 +319,7 @@ function App() {
       windowsFileAssociationExtensions: state.settings.windowsFileAssociationExtensions,
       mouseGesturesEnabled: state.settings.mouseGesturesEnabled,
       mouseGestures: state.settings.mouseGestures,
+      translation: state.settings.translation,
     })),
   );
   const updateSettings = useStore((state) => state.updateSettings);
@@ -1042,6 +1085,7 @@ function App() {
             : [],
           mouseGesturesEnabled: config.mouseGesturesEnabled !== false,
           mouseGestures: sanitizeMouseGestures(config.mouseGestures),
+          translation: normalizeTranslationSettings(config.translation),
         });
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -1095,6 +1139,7 @@ function App() {
           windowsFileAssociationExtensions: settings.windowsFileAssociationExtensions,
           mouseGesturesEnabled: settings.mouseGesturesEnabled,
           mouseGestures: settings.mouseGestures,
+          translation: settings.translation,
         },
       }).catch((error) => {
         console.error('Failed to save config:', error);
@@ -1129,6 +1174,7 @@ function App() {
     settings.windowsFileAssociationExtensions,
     settings.mouseGesturesEnabled,
     settings.mouseGestures,
+    settings.translation,
   ]);
 
   useEffect(() => {

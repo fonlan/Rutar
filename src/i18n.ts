@@ -57,6 +57,9 @@ export type I18nKey =
   | 'toolbar.wordCount.lines'
   | 'toolbar.wordCount.paragraphs'
   | 'toolbar.wordCount.failed'
+  | 'toolbar.translate'
+  | 'toolbar.translate.restore'
+  | 'toolbar.translate.failed'
   | 'toolbar.disabled.noActiveDocument'
   | 'toolbar.disabled.noUnsavedChanges'
   | 'toolbar.disabled.noUnsavedDocuments'
@@ -197,6 +200,21 @@ export type I18nKey =
   | 'settings.newFileLineEnding'
   | 'settings.newFileLineEndingDesc'
   | 'settings.wordWrapDesc'
+  | 'settings.translation'
+  | 'settings.translationDesc'
+  | 'settings.translationEngine'
+  | 'settings.translationEngineDesc'
+  | 'settings.translationEngine.google'
+  | 'settings.translationEngine.microsoft'
+  | 'settings.translationTargetLanguage'
+  | 'settings.translationTargetLanguageDesc'
+  | 'settings.translationTargetLanguagePlaceholder'
+  | 'settings.translationGoogleProxyUrl'
+  | 'settings.translationGoogleProxyUrlDesc'
+  | 'settings.translationGoogleProxyUrlPlaceholder'
+  | 'settings.translationMicrosoftProxyUrl'
+  | 'settings.translationMicrosoftProxyUrlDesc'
+  | 'settings.translationMicrosoftProxyUrlPlaceholder'
   | 'settings.switchOn'
   | 'settings.switchOff'
   | 'settings.windowsContextMenu'
@@ -360,6 +378,9 @@ const zhCN: Messages = {
   'toolbar.wordCount.lines': '行数',
   'toolbar.wordCount.paragraphs': '段落数',
   'toolbar.wordCount.failed': '字数统计失败：',
+  'toolbar.translate': '翻译全文',
+  'toolbar.translate.restore': '恢复原文',
+  'toolbar.translate.failed': '翻译失败：',
   'toolbar.disabled.noActiveDocument': '当前没有打开的文档',
   'toolbar.disabled.noUnsavedChanges': '当前文档没有未保存更改',
   'toolbar.disabled.noUnsavedDocuments': '没有可保存的更改',
@@ -500,6 +521,21 @@ const zhCN: Messages = {
   'settings.newFileLineEnding': '新建文件换行符',
   'settings.newFileLineEndingDesc': '控制新建空白文件的默认换行符。',
   'settings.wordWrapDesc': '超过容器宽度时自动换行，减少横向滚动。',
+  'settings.translation': '全文翻译',
+  'settings.translationDesc': '配置全文翻译使用的服务与代理。',
+  'settings.translationEngine': '翻译引擎',
+  'settings.translationEngineDesc': '选择全文翻译使用的服务。',
+  'settings.translationEngine.google': 'Google 翻译',
+  'settings.translationEngine.microsoft': 'Microsoft 翻译',
+  'settings.translationTargetLanguage': '目标语言',
+  'settings.translationTargetLanguageDesc': '全文翻译输出语言，例如 zh-CN 或 en。',
+  'settings.translationTargetLanguagePlaceholder': 'zh-CN',
+  'settings.translationGoogleProxyUrl': 'Google 代理 URL',
+  'settings.translationGoogleProxyUrlDesc': '可选。留空时使用默认 Google 翻译请求。',
+  'settings.translationGoogleProxyUrlPlaceholder': 'https://example.com/google-translate',
+  'settings.translationMicrosoftProxyUrl': 'Microsoft 代理 URL',
+  'settings.translationMicrosoftProxyUrlDesc': '必填。Microsoft 翻译通过代理端点鉴权，前端不保存密钥。',
+  'settings.translationMicrosoftProxyUrlPlaceholder': 'https://example.com/microsoft-translate',
   'settings.switchOn': '开',
   'settings.switchOff': '关',
   'settings.windowsContextMenu': 'Windows 11 右键菜单',
@@ -662,6 +698,9 @@ const enUS: Messages = {
   'toolbar.wordCount.lines': 'Lines',
   'toolbar.wordCount.paragraphs': 'Paragraphs',
   'toolbar.wordCount.failed': 'Word count failed:',
+  'toolbar.translate': 'Translate Document',
+  'toolbar.translate.restore': 'Restore Original',
+  'toolbar.translate.failed': 'Translation failed:',
   'toolbar.disabled.noActiveDocument': 'No active document',
   'toolbar.disabled.noUnsavedChanges': 'No unsaved changes',
   'toolbar.disabled.noUnsavedDocuments': 'No unsaved documents',
@@ -802,6 +841,21 @@ const enUS: Messages = {
   'settings.newFileLineEnding': 'New File Line Ending',
   'settings.newFileLineEndingDesc': 'Choose the default line ending for newly created empty files.',
   'settings.wordWrapDesc': 'Wrap long lines to avoid horizontal scrolling.',
+  'settings.translation': 'Translation',
+  'settings.translationDesc': 'Configure the service and proxy used for full-document translation.',
+  'settings.translationEngine': 'Translation Engine',
+  'settings.translationEngineDesc': 'Choose the service used for full-document translation.',
+  'settings.translationEngine.google': 'Google Translate',
+  'settings.translationEngine.microsoft': 'Microsoft Translator',
+  'settings.translationTargetLanguage': 'Target Language',
+  'settings.translationTargetLanguageDesc': 'Output language for full-document translation, such as zh-CN or en.',
+  'settings.translationTargetLanguagePlaceholder': 'zh-CN',
+  'settings.translationGoogleProxyUrl': 'Google Proxy URL',
+  'settings.translationGoogleProxyUrlDesc': 'Optional. Leave empty to use the default Google Translate request.',
+  'settings.translationGoogleProxyUrlPlaceholder': 'https://example.com/google-translate',
+  'settings.translationMicrosoftProxyUrl': 'Microsoft Proxy URL',
+  'settings.translationMicrosoftProxyUrlDesc': 'Required. Microsoft translation is authenticated by the proxy endpoint; no keys are saved in the frontend.',
+  'settings.translationMicrosoftProxyUrlPlaceholder': 'https://example.com/microsoft-translate',
   'settings.switchOn': 'ON',
   'settings.switchOff': 'OFF',
   'settings.windowsContextMenu': 'Windows 11 Context Menu',

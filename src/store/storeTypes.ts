@@ -88,6 +88,25 @@ export type SyntaxKey =
 export type AppLanguage = 'zh-CN' | 'en-US';
 export type AppTheme = 'light' | 'dark';
 export type TabIndentMode = 'tabs' | 'spaces';
+export type TranslationEngine = 'google' | 'microsoft';
+
+export interface TranslationEngineSettings {
+  proxyUrl: string;
+}
+
+export interface TranslationSettings {
+  engine: TranslationEngine;
+  targetLanguage: string;
+  google: TranslationEngineSettings;
+  microsoft: TranslationEngineSettings;
+}
+
+export const defaultTranslationSettings: TranslationSettings = {
+  engine: 'google',
+  targetLanguage: 'zh-CN',
+  google: { proxyUrl: '' },
+  microsoft: { proxyUrl: '' },
+};
 
 export type OutlineType =
   | 'markdown'
@@ -152,6 +171,7 @@ export interface SettingsState {
   windowsFileAssociationExtensions: string[];
   mouseGesturesEnabled: boolean;
   mouseGestures: MouseGestureBinding[];
+  translation: TranslationSettings;
 }
 
 export const defaultNewFileLineEnding: LineEnding =

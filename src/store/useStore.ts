@@ -18,7 +18,10 @@ import {
   type CursorPosition,
   type TabBookmarks,
   type SettingsState,
+  type TranslationEngine,
+  type TranslationSettings,
   defaultNewFileLineEnding,
+  defaultTranslationSettings,
 } from './storeTypes';
 import { getDefaultMouseGestures } from '@/lib/mouseGestures';
 
@@ -38,8 +41,10 @@ export type {
   CursorPosition,
   TabBookmarks,
   SettingsState,
+  TranslationEngine,
+  TranslationSettings,
 };
-export { isDiffTab };
+export { isDiffTab, defaultTranslationSettings };
 
 export const useStore = create<AppState>((set) => ({
   tabs: [],
@@ -72,6 +77,7 @@ export const useStore = create<AppState>((set) => ({
     windowsFileAssociationExtensions: [],
     mouseGesturesEnabled: true,
     mouseGestures: getDefaultMouseGestures(),
+    translation: defaultTranslationSettings,
   },
   sidebarOpen: false,
   sidebarWidth: 240,

@@ -8,7 +8,7 @@ import { ask } from '@tauri-apps/plugin-dialog';
 import { openFilePaths } from '@/lib/openFile';
 import { detectOutlineType, loadOutline } from '@/lib/outline';
 import { confirmTabClose, saveTab } from '@/lib/tabClose';
-import { type DiffTabPayload, type FileTab, useStore } from '@/store/useStore';
+import { type DiffTabPayload, type FileTab, defaultTranslationSettings, useStore } from '@/store/useStore';
 
 const mockEditorLifecycle = {
   mounts: 0,
@@ -721,6 +721,17 @@ describe('App component', () => {
     }
   });
 
+  it('loads default translation settings when config omits them', async () => {
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+      expect(useStore.getState().settings.translation).toEqual(defaultTranslationSettings);
+    });
+  });
+
   it('persists pinned tab paths into save_config payload', async () => {
     const pinnedPath = 'C:\\repo\\pinned-save.ts';
     vi.mocked(invoke).mockImplementation(createInvokeHandler());
@@ -749,6 +760,43 @@ describe('App component', () => {
         expect.objectContaining({
           config: expect.objectContaining({
             pinnedTabPaths: [pinnedPath],
+          }),
+        })
+      );
+    });
+  });
+
+  it('persists translation settings into save_config payload', async () => {
+    const translation = {
+      engine: 'microsoft' as const,
+      targetLanguage: 'en',
+      google: { proxyUrl: 'https://proxy.example/google' },
+      microsoft: { proxyUrl: 'https://proxy.example/microsoft' },
+    };
+    vi.mocked(invoke).mockImplementation(createInvokeHandler());
+
+    render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith('load_config');
+    });
+
+    act(() => {
+      useStore.getState().updateSettings({ translation });
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 260);
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        'save_config',
+        expect.objectContaining({
+          config: expect.objectContaining({
+            translation,
           }),
         })
       );
