@@ -91,7 +91,7 @@ export type TabIndentMode = 'tabs' | 'spaces';
 export type TranslationEngine = 'google' | 'microsoft';
 
 export interface TranslationEngineSettings {
-  proxyUrl: string;
+  proxyServer: string;
 }
 
 export interface TranslationSettings {
@@ -104,8 +104,8 @@ export interface TranslationSettings {
 export const defaultTranslationSettings: TranslationSettings = {
   engine: 'google',
   targetLanguage: 'zh-CN',
-  google: { proxyUrl: '' },
-  microsoft: { proxyUrl: '' },
+  google: { proxyServer: '' },
+  microsoft: { proxyServer: '' },
 };
 
 export type OutlineType =

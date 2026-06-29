@@ -1,31 +1,51 @@
+import { invoke } from '@tauri-apps/api/core';
 import type { TranslationEngine, TranslationSettings } from '@/store/useStore';
+
+type BackendTranslate = (cmd: string, args?: Record<string, unknown>) => Promise<string>;
 
 interface TranslateDocumentTextOptions {
   settings: TranslationSettings;
   text: string;
   fetcher?: typeof fetch;
+  backendTranslate?: BackendTranslate;
 }
 
 type GoogleTranslateResponse = Array<Array<[string]>>;
 
-function resolveTranslationProxyUrl(settings: TranslationSettings, engine: TranslationEngine) {
-  return settings[engine].proxyUrl.trim();
+function resolveTranslationProxyServer(settings: TranslationSettings, engine: TranslationEngine) {
+  return settings[engine].proxyServer.trim();
+}
+
+function validateProxyServer(proxyServer: string) {
+  if (!proxyServer) {
+    return;
+  }
+
+  let protocol: string;
+  try {
+    protocol = new URL(proxyServer).protocol;
+  } catch {
+    throw new Error('Proxy server must be a valid http://, https://, or socks5:// URL.');
+  }
+
+  if (!['http:', 'https:', 'socks5:'].includes(protocol)) {
+    throw new Error('Proxy server must use http://, https://, or socks5://.');
+  }
 }
 
 export function resolveTranslationRequest(settings: TranslationSettings) {
   const engine = settings.engine;
-  const proxyUrl = resolveTranslationProxyUrl(settings, engine);
-  if (proxyUrl) {
+  const proxyServer = resolveTranslationProxyServer(settings, engine);
+  validateProxyServer(proxyServer);
+
+  if (engine === 'microsoft') {
     return {
       engine,
       method: 'POST' as const,
-      url: proxyUrl,
-      useProxy: true,
+      proxyServer,
+      url: 'https://api.cognitive.microsofttranslator.com/translate',
+      useBackend: true,
     };
-  }
-
-  if (engine === 'microsoft') {
-    throw new Error('Microsoft translation requires a configured proxy URL.');
   }
 
   const params = new URLSearchParams({
@@ -38,8 +58,9 @@ export function resolveTranslationRequest(settings: TranslationSettings) {
   return {
     engine,
     method: 'GET' as const,
+    proxyServer,
     url: `https://translate.googleapis.com/translate_a/single?${params.toString()}`,
-    useProxy: false,
+    useBackend: !!proxyServer,
   };
 }
 
@@ -82,23 +103,24 @@ export async function translateDocumentText({
   settings,
   text,
   fetcher = fetch,
+  backendTranslate = (cmd, args) => invoke<string>(cmd, args),
 }: TranslateDocumentTextOptions): Promise<string> {
   const request = resolveTranslationRequest(settings);
-  const response = request.useProxy
-    ? await fetcher(request.url, {
-      method: request.method,
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
+
+  if (request.useBackend) {
+    return backendTranslate('translate_document_text', {
+      request: {
         engine: request.engine,
-        text,
+        proxyServer: request.proxyServer || null,
         targetLanguage: settings.targetLanguage,
-      }),
-    })
-    : await fetcher(`${request.url}&q=${encodeURIComponent(text)}`, {
-      method: request.method,
+        text,
+      },
     });
+  }
+
+  const response = await fetcher(`${request.url}&q=${encodeURIComponent(text)}`, {
+    method: request.method,
+  });
 
   if (!response.ok) {
     throw new Error(`Translation request failed with HTTP ${response.status}.`);

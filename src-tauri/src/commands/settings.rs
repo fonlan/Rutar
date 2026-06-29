@@ -52,6 +52,14 @@ fn default_mouse_gestures() -> Vec<MouseGestureConfig> {
     ]
 }
 
+fn default_translation_target_language() -> String {
+    "zh-CN".to_string()
+}
+
+fn default_translation_settings() -> TranslationSettingsConfig {
+    TranslationSettingsConfig::default()
+}
+
 fn default_new_file_line_ending() -> String {
     default_line_ending().label().to_string()
 }
@@ -65,6 +73,38 @@ fn default_minimap() -> bool {
 
 fn default_minimap_autohide() -> bool {
     true
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationEngineConfig {
+    #[serde(default)]
+    pub(super) proxy_server: String,
+    #[serde(default, skip_serializing)]
+    pub(super) proxy_url: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationSettingsConfig {
+    pub(super) engine: String,
+    #[serde(default = "default_translation_target_language")]
+    pub(super) target_language: String,
+    #[serde(default)]
+    pub(super) google: TranslationEngineConfig,
+    #[serde(default)]
+    pub(super) microsoft: TranslationEngineConfig,
+}
+
+impl Default for TranslationSettingsConfig {
+    fn default() -> Self {
+        Self {
+            engine: "google".to_string(),
+            target_language: default_translation_target_language(),
+            google: TranslationEngineConfig::default(),
+            microsoft: TranslationEngineConfig::default(),
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -125,6 +165,8 @@ pub struct AppConfig {
     pub(super) mouse_gestures_enabled: bool,
     #[serde(default = "default_mouse_gestures")]
     pub(super) mouse_gestures: Vec<MouseGestureConfig>,
+    #[serde(default = "default_translation_settings")]
+    pub(super) translation: TranslationSettingsConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) window_state: Option<WindowStateConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -157,6 +199,7 @@ pub struct PartialAppConfig {
     pub(super) windows_file_association_extensions: Option<Vec<String>>,
     pub(super) mouse_gestures_enabled: Option<bool>,
     pub(super) mouse_gestures: Option<Vec<MouseGestureConfig>>,
+    pub(super) translation: Option<TranslationSettingsConfig>,
     pub(super) window_state: Option<WindowStateConfig>,
     pub(super) filter_rule_groups: Option<Vec<FilterRuleGroupConfig>>,
 }
@@ -187,6 +230,7 @@ impl Default for AppConfig {
             windows_file_association_extensions: default_windows_file_association_extensions(),
             mouse_gestures_enabled: default_mouse_gestures_enabled(),
             mouse_gestures: default_mouse_gestures(),
+            translation: default_translation_settings(),
             window_state: None,
             filter_rule_groups: None,
         }
@@ -291,6 +335,8 @@ mod tests {
         assert!(config.pinned_tab_paths.is_empty());
         assert!(config.mouse_gestures_enabled);
         assert!(!config.mouse_gestures.is_empty());
+        assert_eq!(config.translation.engine, "google");
+        assert_eq!(config.translation.target_language, "zh-CN");
     }
 
     #[test]

@@ -29,6 +29,7 @@ pub(crate) mod search_commands;
 mod settings;
 mod syntax;
 mod text_utils;
+mod translation;
 mod types;
 
 use self::constants::*;
@@ -228,6 +229,13 @@ pub fn export_filter_rule_groups(
 #[tauri::command]
 pub fn get_startup_paths(state: State<'_, AppState>) -> Vec<String> {
     config::get_startup_paths_impl(state)
+}
+
+#[tauri::command]
+pub async fn translate_document_text(
+    request: translation::TranslationRequest,
+) -> Result<String, String> {
+    translation::translate_document_text_impl(request).await
 }
 
 #[tauri::command]

@@ -93,13 +93,17 @@ function normalizeTabIndentMode(value?: string): TabIndentMode {
   return value === 'spaces' ? 'spaces' : 'tabs';
 }
 
-function normalizeTranslationProxyUrl(value: unknown): string {
-  if (!value || typeof value !== 'object' || !('proxyUrl' in value)) {
+function normalizeTranslationProxyServer(value: unknown): string {
+  if (!value || typeof value !== 'object') {
     return '';
   }
 
-  const proxyUrl = (value as { proxyUrl?: unknown }).proxyUrl;
-  return typeof proxyUrl === 'string' ? proxyUrl : '';
+  const proxySettings = value as { proxyServer?: unknown; proxyUrl?: unknown };
+  if (typeof proxySettings.proxyServer === 'string') {
+    return proxySettings.proxyServer;
+  }
+
+  return typeof proxySettings.proxyUrl === 'string' ? proxySettings.proxyUrl : '';
 }
 
 function normalizeTranslationSettings(value: unknown): TranslationSettings {
@@ -116,10 +120,10 @@ function normalizeTranslationSettings(value: unknown): TranslationSettings {
     engine: settings.engine === 'microsoft' ? 'microsoft' : 'google',
     targetLanguage,
     google: {
-      proxyUrl: normalizeTranslationProxyUrl(settings.google),
+      proxyServer: normalizeTranslationProxyServer(settings.google),
     },
     microsoft: {
-      proxyUrl: normalizeTranslationProxyUrl(settings.microsoft),
+      proxyServer: normalizeTranslationProxyServer(settings.microsoft),
     },
   };
 }

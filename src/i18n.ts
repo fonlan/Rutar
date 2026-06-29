@@ -209,12 +209,12 @@ export type I18nKey =
   | 'settings.translationTargetLanguage'
   | 'settings.translationTargetLanguageDesc'
   | 'settings.translationTargetLanguagePlaceholder'
-  | 'settings.translationGoogleProxyUrl'
-  | 'settings.translationGoogleProxyUrlDesc'
-  | 'settings.translationGoogleProxyUrlPlaceholder'
-  | 'settings.translationMicrosoftProxyUrl'
-  | 'settings.translationMicrosoftProxyUrlDesc'
-  | 'settings.translationMicrosoftProxyUrlPlaceholder'
+  | 'settings.translationGoogleProxyServer'
+  | 'settings.translationGoogleProxyServerDesc'
+  | 'settings.translationGoogleProxyServerPlaceholder'
+  | 'settings.translationMicrosoftProxyServer'
+  | 'settings.translationMicrosoftProxyServerDesc'
+  | 'settings.translationMicrosoftProxyServerPlaceholder'
   | 'settings.switchOn'
   | 'settings.switchOff'
   | 'settings.windowsContextMenu'
@@ -522,20 +522,20 @@ const zhCN: Messages = {
   'settings.newFileLineEndingDesc': '控制新建空白文件的默认换行符。',
   'settings.wordWrapDesc': '超过容器宽度时自动换行，减少横向滚动。',
   'settings.translation': '全文翻译',
-  'settings.translationDesc': '配置全文翻译使用的服务与代理。',
+  'settings.translationDesc': '配置全文翻译使用的服务与代理服务器。',
   'settings.translationEngine': '翻译引擎',
-  'settings.translationEngineDesc': '选择全文翻译使用的服务。',
+  'settings.translationEngineDesc': '选择全文翻译使用的服务；代理服务器仅对当前选择的引擎生效。',
   'settings.translationEngine.google': 'Google 翻译',
   'settings.translationEngine.microsoft': 'Microsoft 翻译',
   'settings.translationTargetLanguage': '目标语言',
   'settings.translationTargetLanguageDesc': '全文翻译输出语言，例如 zh-CN 或 en。',
   'settings.translationTargetLanguagePlaceholder': 'zh-CN',
-  'settings.translationGoogleProxyUrl': 'Google 代理 URL',
-  'settings.translationGoogleProxyUrlDesc': '可选。留空时使用默认 Google 翻译请求。',
-  'settings.translationGoogleProxyUrlPlaceholder': 'https://example.com/google-translate',
-  'settings.translationMicrosoftProxyUrl': 'Microsoft 代理 URL',
-  'settings.translationMicrosoftProxyUrlDesc': '必填。Microsoft 翻译通过代理端点鉴权，前端不保存密钥。',
-  'settings.translationMicrosoftProxyUrlPlaceholder': 'https://example.com/microsoft-translate',
+  'settings.translationGoogleProxyServer': 'Google 代理服务器',
+  'settings.translationGoogleProxyServerDesc': '可选。支持 http://、https:// 或 socks5:// 代理服务器；留空时直连 Google 翻译。',
+  'settings.translationGoogleProxyServerPlaceholder': 'socks5://127.0.0.1:7890',
+  'settings.translationMicrosoftProxyServer': 'Microsoft 代理服务器',
+  'settings.translationMicrosoftProxyServerDesc': '可选。支持 http://、https:// 或 socks5:// 代理服务器；仅在选择 Microsoft 翻译时使用。',
+  'settings.translationMicrosoftProxyServerPlaceholder': 'http://127.0.0.1:7890',
   'settings.switchOn': '开',
   'settings.switchOff': '关',
   'settings.windowsContextMenu': 'Windows 11 右键菜单',
@@ -842,20 +842,20 @@ const enUS: Messages = {
   'settings.newFileLineEndingDesc': 'Choose the default line ending for newly created empty files.',
   'settings.wordWrapDesc': 'Wrap long lines to avoid horizontal scrolling.',
   'settings.translation': 'Translation',
-  'settings.translationDesc': 'Configure the service and proxy used for full-document translation.',
+  'settings.translationDesc': 'Configure the service and proxy server used for full-document translation.',
   'settings.translationEngine': 'Translation Engine',
-  'settings.translationEngineDesc': 'Choose the service used for full-document translation.',
+  'settings.translationEngineDesc': 'Choose the service for full-document translation; the proxy server only affects the selected engine.',
   'settings.translationEngine.google': 'Google Translate',
   'settings.translationEngine.microsoft': 'Microsoft Translator',
   'settings.translationTargetLanguage': 'Target Language',
   'settings.translationTargetLanguageDesc': 'Output language for full-document translation, such as zh-CN or en.',
   'settings.translationTargetLanguagePlaceholder': 'zh-CN',
-  'settings.translationGoogleProxyUrl': 'Google Proxy URL',
-  'settings.translationGoogleProxyUrlDesc': 'Optional. Leave empty to use the default Google Translate request.',
-  'settings.translationGoogleProxyUrlPlaceholder': 'https://example.com/google-translate',
-  'settings.translationMicrosoftProxyUrl': 'Microsoft Proxy URL',
-  'settings.translationMicrosoftProxyUrlDesc': 'Required. Microsoft translation is authenticated by the proxy endpoint; no keys are saved in the frontend.',
-  'settings.translationMicrosoftProxyUrlPlaceholder': 'https://example.com/microsoft-translate',
+  'settings.translationGoogleProxyServer': 'Google Proxy Server',
+  'settings.translationGoogleProxyServerDesc': 'Optional. Supports http://, https://, or socks5:// proxy servers; leave empty to connect directly to Google Translate.',
+  'settings.translationGoogleProxyServerPlaceholder': 'socks5://127.0.0.1:7890',
+  'settings.translationMicrosoftProxyServer': 'Microsoft Proxy Server',
+  'settings.translationMicrosoftProxyServerDesc': 'Optional. Supports http://, https://, or socks5:// proxy servers; used only when Microsoft Translator is selected.',
+  'settings.translationMicrosoftProxyServerPlaceholder': 'http://127.0.0.1:7890',
   'settings.switchOn': 'ON',
   'settings.switchOff': 'OFF',
   'settings.windowsContextMenu': 'Windows 11 Context Menu',

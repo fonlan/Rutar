@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
 import { defaultTranslationSettings, type TranslationSettings } from '@/store/useStore';
 import {
   parseTranslationResponse,
@@ -41,34 +46,38 @@ describe('translation', () => {
     );
   });
 
-  it('posts minimal JSON to a configured proxy', async () => {
-    const fetcher = vi.fn(async () => createJsonResponse({ translatedText: 'Bonjour' }));
+  it('uses the selected engine proxy server through the backend', async () => {
+    const backendTranslate = vi.fn(async () => 'Bonjour');
+    const fetcher = vi.fn();
     const settings = createSettings({
       engine: 'microsoft',
       targetLanguage: 'fr',
-      microsoft: { proxyUrl: 'https://example.test/translate' },
+      google: { proxyServer: 'socks5://127.0.0.1:7000' },
+      microsoft: { proxyServer: 'http://127.0.0.1:7890' },
     });
 
-    await expect(translateDocumentText({ settings, text: 'Hello', fetcher })).resolves.toBe('Bonjour');
+    await expect(translateDocumentText({
+      settings,
+      text: 'Hello',
+      fetcher,
+      backendTranslate,
+    })).resolves.toBe('Bonjour');
 
-    expect(fetcher).toHaveBeenCalledWith(
-      'https://example.test/translate',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          engine: 'microsoft',
-          text: 'Hello',
-          targetLanguage: 'fr',
-        }),
-      }
-    );
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(backendTranslate).toHaveBeenCalledWith('translate_document_text', {
+      request: {
+        engine: 'microsoft',
+        proxyServer: 'http://127.0.0.1:7890',
+        targetLanguage: 'fr',
+        text: 'Hello',
+      },
+    });
   });
 
-  it('rejects Microsoft without a proxy URL', () => {
-    expect(() => resolveTranslationRequest(createSettings({ engine: 'microsoft' }))).toThrow(
-      'Microsoft translation requires a configured proxy URL.'
-    );
+  it('rejects unsupported proxy server schemes', () => {
+    expect(() => resolveTranslationRequest(createSettings({
+      google: { proxyServer: 'ftp://127.0.0.1:21' },
+    }))).toThrow('Proxy server must use http://, https://, or socks5://.');
   });
 
   it('parses proxy string and object responses', () => {

@@ -770,8 +770,8 @@ describe('App component', () => {
     const translation = {
       engine: 'microsoft' as const,
       targetLanguage: 'en',
-      google: { proxyUrl: 'https://proxy.example/google' },
-      microsoft: { proxyUrl: 'https://proxy.example/microsoft' },
+      google: { proxyServer: 'socks5://127.0.0.1:7000' },
+      microsoft: { proxyServer: 'http://127.0.0.1:7890' },
     };
     vi.mocked(invoke).mockImplementation(createInvokeHandler());
 

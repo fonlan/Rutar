@@ -255,6 +255,7 @@ pub fn run() {
             commands::path_search_commands::path_search_dispose,
             commands::path_search_commands::path_replace_preview,
             commands::path_search_commands::path_replace_apply,
+            commands::translate_document_text,
             commands::get_document_version,
             commands::compare_documents_by_line,
             commands::get_unsaved_change_line_numbers,

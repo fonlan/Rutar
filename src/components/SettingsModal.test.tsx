@@ -109,18 +109,18 @@ describe("SettingsModal", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Translation Engine" }), {
       target: { value: "microsoft" },
     });
-    fireEvent.change(screen.getByLabelText("Google Proxy URL"), {
-      target: { value: "https://proxy.example/google" },
+    fireEvent.change(screen.getByLabelText("Google Proxy Server"), {
+      target: { value: "socks5://127.0.0.1:7000" },
     });
-    fireEvent.change(screen.getByLabelText("Microsoft Proxy URL"), {
-      target: { value: "https://proxy.example/microsoft" },
+    fireEvent.change(screen.getByLabelText("Microsoft Proxy Server"), {
+      target: { value: "http://127.0.0.1:7890" },
     });
 
     await waitFor(() => {
       expect(useStore.getState().settings.translation).toMatchObject({
         engine: "microsoft",
-        google: { proxyUrl: "https://proxy.example/google" },
-        microsoft: { proxyUrl: "https://proxy.example/microsoft" },
+        google: { proxyServer: "socks5://127.0.0.1:7000" },
+        microsoft: { proxyServer: "http://127.0.0.1:7890" },
       });
     });
   });

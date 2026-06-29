@@ -320,8 +320,8 @@ export function SettingsModal() {
   const mouseGestureDeleteLabel = tr('settings.mouseGestureDelete');
   const translationLabel = tr('settings.translation');
   const translationEngineLabel = tr('settings.translationEngine');
-  const translationGoogleProxyUrlLabel = tr('settings.translationGoogleProxyUrl');
-  const translationMicrosoftProxyUrlLabel = tr('settings.translationMicrosoftProxyUrl');
+  const translationGoogleProxyServerLabel = tr('settings.translationGoogleProxyServer');
+  const translationMicrosoftProxyServerLabel = tr('settings.translationMicrosoftProxyServer');
 
   const handleOpenProjectHome = async () => {
     try {
@@ -937,60 +937,60 @@ export function SettingsModal() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-google-proxy-url">
-                        {translationGoogleProxyUrlLabel}
+                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-google-proxy-server">
+                        {translationGoogleProxyServerLabel}
                       </label>
                       <input
-                        id="settings-translation-google-proxy-url"
+                        id="settings-translation-google-proxy-server"
                         className={controlClassName}
-                        type="url"
-                        value={settings.translation.google.proxyUrl}
+                        type="text"
+                        value={settings.translation.google.proxyServer}
                         onChange={(event) => {
                           updateSettings({
                             translation: {
                               ...settings.translation,
                               google: {
                                 ...settings.translation.google,
-                                proxyUrl: event.target.value,
+                                proxyServer: event.target.value,
                               },
                             },
                           });
                         }}
-                        aria-label={translationGoogleProxyUrlLabel}
-                        name="settings-translation-google-proxy-url"
-                        placeholder={tr('settings.translationGoogleProxyUrlPlaceholder')}
+                        aria-label={translationGoogleProxyServerLabel}
+                        name="settings-translation-google-proxy-server"
+                        placeholder={tr('settings.translationGoogleProxyServerPlaceholder')}
                       />
                       <p className="text-xs text-muted-foreground">
-                        {tr('settings.translationGoogleProxyUrlDesc')}
+                        {tr('settings.translationGoogleProxyServerDesc')}
                       </p>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-microsoft-proxy-url">
-                        {translationMicrosoftProxyUrlLabel}
+                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-microsoft-proxy-server">
+                        {translationMicrosoftProxyServerLabel}
                       </label>
                       <input
-                        id="settings-translation-microsoft-proxy-url"
+                        id="settings-translation-microsoft-proxy-server"
                         className={controlClassName}
-                        type="url"
-                        value={settings.translation.microsoft.proxyUrl}
+                        type="text"
+                        value={settings.translation.microsoft.proxyServer}
                         onChange={(event) => {
                           updateSettings({
                             translation: {
                               ...settings.translation,
                               microsoft: {
                                 ...settings.translation.microsoft,
-                                proxyUrl: event.target.value,
+                                proxyServer: event.target.value,
                               },
                             },
                           });
                         }}
-                        aria-label={translationMicrosoftProxyUrlLabel}
-                        name="settings-translation-microsoft-proxy-url"
-                        placeholder={tr('settings.translationMicrosoftProxyUrlPlaceholder')}
+                        aria-label={translationMicrosoftProxyServerLabel}
+                        name="settings-translation-microsoft-proxy-server"
+                        placeholder={tr('settings.translationMicrosoftProxyServerPlaceholder')}
                       />
                       <p className="text-xs text-muted-foreground">
-                        {tr('settings.translationMicrosoftProxyUrlDesc')}
+                        {tr('settings.translationMicrosoftProxyServerDesc')}
                       </p>
                     </div>
                   </div>

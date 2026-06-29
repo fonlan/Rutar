@@ -232,6 +232,43 @@ pub(crate) fn normalize_mouse_gestures(
     normalized
 }
 
+pub(crate) fn normalize_translation_engine_settings(
+    settings: settings::TranslationEngineConfig,
+) -> settings::TranslationEngineConfig {
+    let proxy_server = if settings.proxy_server.trim().is_empty() {
+        settings.proxy_url.trim().to_string()
+    } else {
+        settings.proxy_server.trim().to_string()
+    };
+
+    settings::TranslationEngineConfig {
+        proxy_server,
+        proxy_url: String::new(),
+    }
+}
+
+pub(crate) fn normalize_translation_settings(
+    settings: Option<settings::TranslationSettingsConfig>,
+) -> settings::TranslationSettingsConfig {
+    let settings = settings.unwrap_or_default();
+    let target_language = settings.target_language.trim();
+
+    settings::TranslationSettingsConfig {
+        engine: if settings.engine == "microsoft" {
+            "microsoft".to_string()
+        } else {
+            "google".to_string()
+        },
+        target_language: if target_language.is_empty() {
+            "zh-CN".to_string()
+        } else {
+            target_language.to_string()
+        },
+        google: normalize_translation_engine_settings(settings.google),
+        microsoft: normalize_translation_engine_settings(settings.microsoft),
+    }
+}
+
 pub(crate) fn normalize_window_state(
     window_state: Option<settings::WindowStateConfig>,
 ) -> Option<settings::WindowStateConfig> {
@@ -280,6 +317,7 @@ pub(crate) fn normalize_app_config(config: AppConfig) -> AppConfig {
         )),
         mouse_gestures_enabled: config.mouse_gestures_enabled,
         mouse_gestures: normalize_mouse_gestures(Some(config.mouse_gestures)),
+        translation: normalize_translation_settings(Some(config.translation)),
         window_state: normalize_window_state(config.window_state),
         filter_rule_groups: normalize_filter_rule_groups(config.filter_rule_groups),
     }
@@ -506,6 +544,8 @@ pub(crate) fn load_config_impl() -> Result<AppConfig, String> {
     if let Some(mouse_gestures) = partial.mouse_gestures {
         config.mouse_gestures = normalize_mouse_gestures(Some(mouse_gestures));
     }
+
+    config.translation = normalize_translation_settings(partial.translation);
 
     config.window_state = normalize_window_state(partial.window_state);
 
@@ -842,6 +882,18 @@ mod tests {
                 pattern: " l ".to_string(),
                 action: "previousTab".to_string(),
             }],
+            translation: settings::TranslationSettingsConfig {
+                engine: "microsoft".to_string(),
+                target_language: " en ".to_string(),
+                google: settings::TranslationEngineConfig {
+                    proxy_server: " socks5://127.0.0.1:7000 ".to_string(),
+                    proxy_url: String::new(),
+                },
+                microsoft: settings::TranslationEngineConfig {
+                    proxy_server: String::new(),
+                    proxy_url: " http://127.0.0.1:7890 ".to_string(),
+                },
+            },
             window_state: Some(settings::WindowStateConfig {
                 width: Some(0),
                 height: Some(1),
@@ -883,6 +935,16 @@ mod tests {
         );
         assert_eq!(normalized.mouse_gestures.len(), 1);
         assert_eq!(normalized.mouse_gestures[0].pattern, "L");
+        assert_eq!(normalized.translation.engine, "microsoft");
+        assert_eq!(normalized.translation.target_language, "en");
+        assert_eq!(
+            normalized.translation.google.proxy_server,
+            "socks5://127.0.0.1:7000"
+        );
+        assert_eq!(
+            normalized.translation.microsoft.proxy_server,
+            "http://127.0.0.1:7890"
+        );
         assert!(normalized.filter_rule_groups.is_some());
     }
 }
