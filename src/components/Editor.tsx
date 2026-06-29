@@ -1398,6 +1398,35 @@ export function Editor({
       applySelectionEdit('rutar-paste', text);
     };
 
+    const handleReplaceDocumentText = (event: Event) => {
+      const customEvent = event as CustomEvent<{ tabId?: string; text?: string }>;
+      if (customEvent.detail?.tabId !== tab.id || typeof customEvent.detail?.text !== 'string') {
+        return;
+      }
+
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model) {
+        return;
+      }
+
+      const lineCount = model.getLineCount();
+      editor.executeEdits('rutar-translate', [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: lineCount,
+            endColumn: model.getLineMaxColumn(lineCount),
+          },
+          text: customEvent.detail.text,
+        },
+      ]);
+      editor.setPosition({ lineNumber: 1, column: 1 });
+      editor.revealPositionInCenterIfOutsideViewport({ lineNumber: 1, column: 1 });
+      editor.focus();
+    };
+
     const handleMarkdownToolbarAction = (event: Event) => {
       const customEvent = event as CustomEvent<{
         tabId?: string;
@@ -1490,6 +1519,7 @@ export function Editor({
     window.addEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
     window.addEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
     window.addEventListener('rutar:paste-text', handlePaste as EventListener);
+    window.addEventListener('rutar:replace-document-text', handleReplaceDocumentText as EventListener);
     window.addEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, handleMarkdownToolbarAction as EventListener);
     window.addEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
     window.addEventListener('rutar:search-close', handleSearchClose as EventListener);
@@ -1501,6 +1531,7 @@ export function Editor({
       window.removeEventListener('rutar:navigate-to-outline', handleNavigate as EventListener);
       window.removeEventListener('rutar:force-refresh', handleForceRefresh as EventListener);
       window.removeEventListener('rutar:paste-text', handlePaste as EventListener);
+      window.removeEventListener('rutar:replace-document-text', handleReplaceDocumentText as EventListener);
       window.removeEventListener(MARKDOWN_TOOLBAR_ACTION_EVENT, handleMarkdownToolbarAction as EventListener);
       window.removeEventListener('rutar:editor-clipboard-action', handleClipboardAction as EventListener);
       window.removeEventListener('rutar:search-close', handleSearchClose as EventListener);

@@ -651,6 +651,64 @@ describe('Editor (Monaco)', () => {
     });
   });
 
+  it('replaces the active document through the translation event', async () => {
+    const tab = createTab({ lineCount: 2 });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+    render(<Editor tab={tab} />);
+    await waitFor(() => {
+      expect(monacoMockState.editorCreate).toHaveBeenCalled();
+    });
+
+    monacoMockState.model.value = 'alpha\nbeta';
+    monacoMockState.editorInstance.executeEdits.mockClear();
+    monacoMockState.editorInstance.setPosition.mockClear();
+    monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport.mockClear();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:replace-document-text', {
+          detail: { tabId: 'other-tab', text: 'ignored' },
+        })
+      );
+    });
+    expect(monacoMockState.editorInstance.executeEdits).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rutar:replace-document-text', {
+          detail: { tabId: tab.id, text: 'translated' },
+        })
+      );
+    });
+
+    expect(monacoMockState.editorInstance.executeEdits).toHaveBeenCalledWith(
+      'rutar-translate',
+      [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: 2,
+            endColumn: 5,
+          },
+          text: 'translated',
+        },
+      ]
+    );
+    expect(monacoMockState.model.getValue()).toBe('translated');
+    expect(monacoMockState.editorInstance.setPosition).toHaveBeenCalledWith({
+      lineNumber: 1,
+      column: 1,
+    });
+    expect(monacoMockState.editorInstance.revealPositionInCenterIfOutsideViewport).toHaveBeenCalledWith({
+      lineNumber: 1,
+      column: 1,
+    });
+  });
+
   it('applies markdown toolbar edits through the Monaco editor and restores selection', async () => {
     const tab = createTab({
       id: 'tab-markdown-editor',
