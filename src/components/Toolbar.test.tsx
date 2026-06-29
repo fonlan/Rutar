@@ -11,6 +11,8 @@ import { detectOutlineType, loadOutline } from "@/lib/outline";
 import { detectStructuredFormatSyntaxKey, isStructuredFormatSupported } from "@/lib/structuredFormat";
 import { confirmTabClose, saveTab } from "@/lib/tabClose";
 import { EDITOR_FIND_OPEN_EVENT } from "@/lib/editorFind";
+import { getDocumentText } from "@/lib/documentText";
+import { translateDocumentText } from "@/lib/translation";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -50,6 +52,14 @@ vi.mock("@/lib/tabClose", () => ({
   saveTab: vi.fn(async () => true),
 }));
 
+vi.mock("@/lib/documentText", () => ({
+  getDocumentText: vi.fn(async () => ""),
+}));
+
+vi.mock("@/lib/translation", () => ({
+  translateDocumentText: vi.fn(async () => ""),
+}));
+
 const invokeMock = vi.mocked(invoke);
 const messageMock = vi.mocked(message);
 const openMock = vi.mocked(open);
@@ -63,6 +73,8 @@ const detectStructuredFormatSyntaxKeyMock = vi.mocked(detectStructuredFormatSynt
 const isStructuredFormatSupportedMock = vi.mocked(isStructuredFormatSupported);
 const confirmTabCloseMock = vi.mocked(confirmTabClose);
 const saveTabMock = vi.mocked(saveTab);
+const getDocumentTextMock = vi.mocked(getDocumentText);
+const translateDocumentTextMock = vi.mocked(translateDocumentText);
 const readClipboardTextMock = vi.mocked(readClipboardText);
 
 function createTab(partial?: Partial<FileTab>): FileTab {
@@ -99,6 +111,8 @@ describe("Toolbar", () => {
     readClipboardTextMock.mockResolvedValue("");
     confirmTabCloseMock.mockResolvedValue("discard");
     saveTabMock.mockResolvedValue(true);
+    getDocumentTextMock.mockResolvedValue("document text");
+    translateDocumentTextMock.mockResolvedValue("translated text");
     detectOutlineTypeMock.mockReturnValue(null);
     loadOutlineMock.mockResolvedValue([]);
     detectStructuredFormatSyntaxKeyMock.mockReturnValue(null);
@@ -3210,5 +3224,116 @@ describe("Toolbar", () => {
         expect.objectContaining({ title: "Word Count", kind: "warning" })
       );
     });
+  });
+  it("translates active document and restores cached original on next click", async () => {
+    useStore.getState().addTab(createTab());
+    const replaceEvents: Array<{ tabId: string; text: string }> = [];
+    const handleReplace = (event: Event) => {
+      replaceEvents.push((event as CustomEvent<{ tabId: string; text: string }>).detail);
+    };
+    window.addEventListener("rutar:replace-document-text", handleReplace as EventListener);
+
+    try {
+      render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle("Translate Document").querySelector("button") as HTMLButtonElement);
+      });
+
+      await waitFor(() => {
+        expect(translateDocumentTextMock).toHaveBeenCalledWith({
+          settings: useStore.getState().settings.translation,
+          text: "document text",
+        });
+      });
+      expect(getDocumentTextMock).toHaveBeenCalledWith("tab-toolbar");
+      expect(replaceEvents).toEqual([{ tabId: "tab-toolbar", text: "translated text" }]);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle("Restore Original").querySelector("button") as HTMLButtonElement);
+      });
+      expect(replaceEvents).toEqual([
+        { tabId: "tab-toolbar", text: "translated text" },
+        { tabId: "tab-toolbar", text: "document text" },
+      ]);
+    } finally {
+      window.removeEventListener("rutar:replace-document-text", handleReplace as EventListener);
+    }
+  });
+
+  it("keeps translated originals isolated per tab", async () => {
+    const firstTab = createTab({ id: "tab-one", name: "one.txt", path: "C:\\repo\\one.txt" });
+    const secondTab = createTab({ id: "tab-two", name: "two.txt", path: "C:\\repo\\two.txt" });
+    useStore.getState().addTab(firstTab);
+    useStore.getState().addTab(secondTab);
+    useStore.getState().setActiveTab("tab-one");
+    getDocumentTextMock.mockImplementation(async (tabId: string) => `${tabId} original`);
+    translateDocumentTextMock.mockImplementation(async ({ text }: { text: string }) => `${text} translated`);
+    const replaceEvents: Array<{ tabId: string; text: string }> = [];
+    const handleReplace = (event: Event) => {
+      replaceEvents.push((event as CustomEvent<{ tabId: string; text: string }>).detail);
+    };
+    window.addEventListener("rutar:replace-document-text", handleReplace as EventListener);
+
+    try {
+      const { rerender } = render(<Toolbar />);
+      await waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-one" });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle("Translate Document").querySelector("button") as HTMLButtonElement);
+      });
+      await waitFor(() => {
+        expect(replaceEvents).toContainEqual({ tabId: "tab-one", text: "tab-one original translated" });
+      });
+
+      act(() => {
+        useStore.getState().setActiveTab("tab-two");
+      });
+      rerender(<Toolbar />);
+      await act(async () => {
+        fireEvent.click(screen.getByTitle("Translate Document").querySelector("button") as HTMLButtonElement);
+      });
+      await waitFor(() => {
+        expect(replaceEvents).toContainEqual({ tabId: "tab-two", text: "tab-two original translated" });
+      });
+
+      act(() => {
+        useStore.getState().setActiveTab("tab-one");
+      });
+      rerender(<Toolbar />);
+      await act(async () => {
+        fireEvent.click(screen.getByTitle("Restore Original").querySelector("button") as HTMLButtonElement);
+      });
+
+      expect(replaceEvents.at(-1)).toEqual({ tabId: "tab-one", text: "tab-one original" });
+    } finally {
+      window.removeEventListener("rutar:replace-document-text", handleReplace as EventListener);
+    }
+  });
+
+  it("shows translation warning and re-enables button when translation fails", async () => {
+    useStore.getState().addTab(createTab());
+    translateDocumentTextMock.mockRejectedValueOnce(new Error("translate-failed"));
+
+    render(<Toolbar />);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_edit_history_state", { id: "tab-toolbar" });
+    });
+
+    const translateButton = screen.getByTitle("Translate Document").querySelector("button") as HTMLButtonElement;
+    fireEvent.click(translateButton);
+
+    await waitFor(() => {
+      expect(messageMock).toHaveBeenCalledWith(
+        "Translation failed: translate-failed",
+        expect.objectContaining({ title: "Translate Document", kind: "warning" })
+      );
+    });
+    expect(screen.getByTitle("Translate Document").querySelector("button")).not.toBeDisabled();
   });
 });

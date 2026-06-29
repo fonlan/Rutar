@@ -1,6 +1,6 @@
 import {
     FilePlus, FolderOpen, FileUp, Save, SaveAll, Scissors, Copy, ClipboardPaste, 
-    Undo, Redo, Search, TextSearch, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen
+    Undo, Redo, Search, TextSearch, Replace, Filter as FilterIcon, WrapText, ListTree, WandSparkles, Minimize2, Bookmark, ChevronDown, X, Text, PanelRightOpen, Languages
 } from 'lucide-react';
 import { message, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,6 +27,8 @@ import { isMarkdownTab } from '@/lib/markdown';
 import { dispatchEditorFindOpen } from '@/lib/editorFind';
 import { pathBaseName } from '@/lib/pathUtils';
 import { cn } from '@/lib/utils';
+import { getDocumentText } from '@/lib/documentText';
+import { translateDocumentText } from '@/lib/translation';
 
 function dispatchEditorForceRefresh(
     tabId: string,
@@ -78,6 +80,18 @@ function dispatchDiffHistoryAction(diffTabId: string, panel: DiffPanelSide, acti
             detail: { diffTabId, panel, action },
         })
     );
+}
+
+function dispatchReplaceDocumentText(tabId: string, text: string) {
+    window.dispatchEvent(
+        new CustomEvent('rutar:replace-document-text', {
+            detail: { tabId, text },
+        })
+    );
+}
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function getActiveEditorElement() {
@@ -179,6 +193,7 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const tabWidth = useStore((state) => state.settings.tabWidth);
     const showLineNumbers = useStore((state) => state.settings.showLineNumbers);
     const newFileLineEnding = useStore((state) => state.settings.newFileLineEnding);
+    const translationSettings = useStore((state) => state.settings.translation);
     const updateSettings = useStore((state) => state.updateSettings);
     const toggleOutline = useStore((state) => state.toggleOutline);
     const outlineOpen = useStore((state) => state.outlineOpen);
@@ -212,6 +227,8 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const canMarkdownPreview = !!activeTab && isMarkdownTab(activeTab);
     const [canClipboardSelectionAction, setCanClipboardSelectionAction] = useState(false);
     const [editHistoryState, setEditHistoryState] = useState<EditHistoryState>(DEFAULT_EDIT_HISTORY_STATE);
+    const [translatedOriginalByTabId, setTranslatedOriginalByTabId] = useState<Record<string, string>>({});
+    const [isTranslating, setIsTranslating] = useState(false);
     const [recentMenu, setRecentMenu] = useState<RecentMenuKind>(null);
     const [recentPathToastMessage, setRecentPathToastMessage] = useState<string | null>(null);
     const openFileMenuRef = useRef<HTMLDivElement>(null);
@@ -234,6 +251,11 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const copyPathText = tr('titleBar.copyPath');
     const openContainingFolderText = tr('titleBar.openContainingFolder');
     const wordCountFailedPrefix = tr('toolbar.wordCount.failed');
+    const translationFailedPrefix = tr('toolbar.translate.failed');
+    const activeTranslatedOriginal = activeTab
+        ? translatedOriginalByTabId[activeTab.id]
+        : undefined;
+    const canTranslate = !!activeTab && !activeTab.largeFileMode && !isTranslating;
     const canSaveActiveTab = !!activeTab && (editHistoryState.isDirty || !!activeTab.isDirty);
     const canSaveAnyTab = useStore((state) => state.tabs.some((tab) => !!tab.isDirty));
     const canCutOrCopy = canEdit && canClipboardSelectionAction;
@@ -251,6 +273,11 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
     const cutCopyDisabledReason = !activeEditTab ? noActiveDocumentReason : !canClipboardSelectionAction ? noSelectedTextReason : undefined;
     const undoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canUndo ? noUndoHistoryReason : undefined;
     const redoDisabledReason = !activeEditTab ? noActiveDocumentReason : !editHistoryState.canRedo ? noRedoHistoryReason : undefined;
+    const translateDisabledReason = !activeTab
+        ? noActiveDocumentReason
+        : activeTab.largeFileMode
+            ? tr('status.largeFileHighlightOff')
+            : undefined;
     const previewDisabledReason = !activeTab ? noActiveDocumentReason : !canMarkdownPreview ? notMarkdownReason : undefined;
     const handleToggleMarkdownPreview = useCallback(() => {
         const nextOpen = !markdownPreviewOpen;
@@ -965,6 +992,45 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
         }
     }, [activeTab, formatWordCountResult, tr, wordCountFailedPrefix]);
 
+    const handleToggleTranslation = useCallback(async () => {
+        if (!activeTab || activeTab.largeFileMode || isTranslating) {
+            return;
+        }
+
+        const tabId = activeTab.id;
+        const originalText = translatedOriginalByTabId[tabId];
+        if (typeof originalText === 'string') {
+            dispatchReplaceDocumentText(tabId, originalText);
+            setTranslatedOriginalByTabId((current) => {
+                const remaining = { ...current };
+                delete remaining[tabId];
+                return remaining;
+            });
+            return;
+        }
+
+        setIsTranslating(true);
+        try {
+            const text = await getDocumentText(tabId);
+            const translatedText = await translateDocumentText({
+                settings: translationSettings,
+                text,
+            });
+            setTranslatedOriginalByTabId((current) => ({
+                ...current,
+                [tabId]: text,
+            }));
+            dispatchReplaceDocumentText(tabId, translatedText);
+        } catch (error) {
+            await message(`${translationFailedPrefix} ${getErrorMessage(error)}`, {
+                title: tr('toolbar.translate'),
+                kind: 'warning',
+            });
+        } finally {
+            setIsTranslating(false);
+        }
+    }, [activeTab, isTranslating, tr, translatedOriginalByTabId, translationFailedPrefix, translationSettings]);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape' && recentMenu) {
@@ -1262,6 +1328,14 @@ export function Toolbar({ onMarkdownPreviewToggleIntent }: ToolbarProps) {
                 title={formatMinifyTitle}
                 onClick={() => void handleFormatMinify()}
                 disabled={!canFormat}
+            />
+            <ToolbarBtn
+                icon={Languages}
+                title={activeTranslatedOriginal ? tr('toolbar.translate.restore') : tr('toolbar.translate')}
+                onClick={() => void handleToggleTranslation()}
+                active={!!activeTranslatedOriginal}
+                disabled={!canTranslate}
+                disabledReason={translateDisabledReason}
             />
 
             {/* View Group */}

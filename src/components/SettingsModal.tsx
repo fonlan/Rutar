@@ -318,6 +318,10 @@ export function SettingsModal() {
   const mouseGestureSequencePlaceholder = tr('settings.mouseGestureSequencePlaceholder');
   const mouseGestureAddLabel = tr('settings.mouseGestureAdd');
   const mouseGestureDeleteLabel = tr('settings.mouseGestureDelete');
+  const translationLabel = tr('settings.translation');
+  const translationEngineLabel = tr('settings.translationEngine');
+  const translationGoogleProxyUrlLabel = tr('settings.translationGoogleProxyUrl');
+  const translationMicrosoftProxyUrlLabel = tr('settings.translationMicrosoftProxyUrl');
 
   const handleOpenProjectHome = async () => {
     try {
@@ -896,6 +900,99 @@ export function SettingsModal() {
                     <p className="text-xs text-muted-foreground">
                       {tr('settings.languageDesc')}
                     </p>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-border/70 bg-card/80 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-medium mb-3">
+                    <Languages className="w-4 h-4 text-muted-foreground" />
+                    {translationLabel}
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-engine-select">
+                        {translationEngineLabel}
+                      </label>
+                      <select
+                        id="settings-translation-engine-select"
+                        className={controlClassName}
+                        value={settings.translation.engine}
+                        onChange={(event) => {
+                          updateSettings({
+                            translation: {
+                              ...settings.translation,
+                              engine: event.target.value as typeof settings.translation.engine,
+                            },
+                          });
+                        }}
+                        aria-label={translationEngineLabel}
+                        name="settings-translation-engine"
+                      >
+                        <option value="google">{tr('settings.translationEngine.google')}</option>
+                        <option value="microsoft">{tr('settings.translationEngine.microsoft')}</option>
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        {tr('settings.translationEngineDesc')}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-google-proxy-url">
+                        {translationGoogleProxyUrlLabel}
+                      </label>
+                      <input
+                        id="settings-translation-google-proxy-url"
+                        className={controlClassName}
+                        type="url"
+                        value={settings.translation.google.proxyUrl}
+                        onChange={(event) => {
+                          updateSettings({
+                            translation: {
+                              ...settings.translation,
+                              google: {
+                                ...settings.translation.google,
+                                proxyUrl: event.target.value,
+                              },
+                            },
+                          });
+                        }}
+                        aria-label={translationGoogleProxyUrlLabel}
+                        name="settings-translation-google-proxy-url"
+                        placeholder={tr('settings.translationGoogleProxyUrlPlaceholder')}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {tr('settings.translationGoogleProxyUrlDesc')}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-translation-microsoft-proxy-url">
+                        {translationMicrosoftProxyUrlLabel}
+                      </label>
+                      <input
+                        id="settings-translation-microsoft-proxy-url"
+                        className={controlClassName}
+                        type="url"
+                        value={settings.translation.microsoft.proxyUrl}
+                        onChange={(event) => {
+                          updateSettings({
+                            translation: {
+                              ...settings.translation,
+                              microsoft: {
+                                ...settings.translation.microsoft,
+                                proxyUrl: event.target.value,
+                              },
+                            },
+                          });
+                        }}
+                        aria-label={translationMicrosoftProxyUrlLabel}
+                        name="settings-translation-microsoft-proxy-url"
+                        placeholder={tr('settings.translationMicrosoftProxyUrlPlaceholder')}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {tr('settings.translationMicrosoftProxyUrlDesc')}
+                      </p>
+                    </div>
                   </div>
                 </section>
 

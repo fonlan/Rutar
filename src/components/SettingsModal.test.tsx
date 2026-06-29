@@ -99,6 +99,32 @@ describe("SettingsModal", () => {
     expect(screen.getByRole("combobox", { name: "新建文件换行符" })).toBeInTheDocument();
   });
 
+  it("updates full-document translation settings from general settings", async () => {
+    useStore.getState().toggleSettings(true);
+
+    render(<SettingsModal />);
+
+    expect(screen.getByRole("combobox", { name: "Translation Engine" })).toHaveValue("google");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation Engine" }), {
+      target: { value: "microsoft" },
+    });
+    fireEvent.change(screen.getByLabelText("Google Proxy URL"), {
+      target: { value: "https://proxy.example/google" },
+    });
+    fireEvent.change(screen.getByLabelText("Microsoft Proxy URL"), {
+      target: { value: "https://proxy.example/microsoft" },
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.translation).toMatchObject({
+        engine: "microsoft",
+        google: { proxyUrl: "https://proxy.example/google" },
+        microsoft: { proxyUrl: "https://proxy.example/microsoft" },
+      });
+    });
+  });
+
   it("toggles word wrap switch", async () => {
     useStore.getState().toggleSettings(true);
 
