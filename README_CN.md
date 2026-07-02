@@ -51,7 +51,10 @@ cd src-tauri && cargo test
 
 ## 配置说明
 
-- 用户配置文件：`%AppData%\Rutar\config.json`。
+- 用户配置文件：
+  - Windows：`%AppData%\Rutar\config.json`。
+  - macOS：`~/Library/Application Support/com.fonlan.rutar/config.json`。
+  - Linux：`$XDG_CONFIG_HOME/rutar/config.json`，未设置 `XDG_CONFIG_HOME` 时使用 `~/.config/rutar/config.json`。
 - 常见配置项：语言、字体、字号、Tab 宽度、换行符、自动换行、最近记录、锁定标签、窗口状态、鼠标手势。
 - Mermaid 兼容性要求：`src-tauri/tauri.conf.json` 中 `app.security.freezePrototype` 当前需保持 `false`。
 - 锁定标签会以路径形式保存在 `pinnedTabPaths`，并在启动时恢复。

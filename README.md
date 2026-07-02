@@ -71,7 +71,10 @@ Then run `npx tsx scripts/bench-startup.ts` to write a JSON snapshot under `.per
 
 ## Configuration
 
-- User config file: `%AppData%\Rutar\config.json`.
+- User config file:
+  - Windows: `%AppData%\Rutar\config.json`.
+  - macOS: `~/Library/Application Support/com.fonlan.rutar/config.json`.
+  - Linux: `$XDG_CONFIG_HOME/rutar/config.json`, or `~/.config/rutar/config.json` when `XDG_CONFIG_HOME` is not set.
 
 ## macOS Local DMG Install
 

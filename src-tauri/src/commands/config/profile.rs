@@ -324,9 +324,42 @@ pub(crate) fn normalize_app_config(config: AppConfig) -> AppConfig {
 }
 
 fn config_file_path() -> Result<PathBuf, String> {
-    let app_data =
-        std::env::var("APPDATA").map_err(|_| "Failed to locate APPDATA directory".to_string())?;
-    Ok(PathBuf::from(app_data).join("Rutar").join("config.json"))
+    config_file_path_for_platform(
+        std::env::consts::OS,
+        std::env::var_os("APPDATA"),
+        std::env::var_os("HOME"),
+        std::env::var_os("XDG_CONFIG_HOME"),
+    )
+}
+
+fn config_file_path_for_platform(
+    platform: &str,
+    app_data: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    xdg_config_home: Option<std::ffi::OsString>,
+) -> Result<PathBuf, String> {
+    match platform {
+        "windows" => app_data
+            .map(|path| PathBuf::from(path).join("Rutar").join("config.json"))
+            .ok_or_else(|| "Failed to locate APPDATA directory".to_string()),
+        "macos" => home
+            .map(|path| {
+                PathBuf::from(path)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("com.fonlan.rutar")
+                    .join("config.json")
+            })
+            .ok_or_else(|| "Failed to locate HOME directory".to_string()),
+        "linux" => {
+            let base = xdg_config_home
+                .map(PathBuf::from)
+                .or_else(|| home.map(|path| PathBuf::from(path).join(".config")))
+                .ok_or_else(|| "Failed to locate config directory".to_string())?;
+            Ok(base.join("rutar").join("config.json"))
+        }
+        _ => Err("Unsupported platform for config directory".to_string()),
+    }
 }
 
 pub(crate) fn get_startup_paths_impl(state: State<'_, AppState>) -> Vec<String> {
@@ -691,6 +724,75 @@ mod tests {
             italic: false,
             apply_to: apply_to.to_string(),
         }
+    }
+
+    #[test]
+    fn config_file_path_for_platform_should_use_macos_application_support() {
+        let path = config_file_path_for_platform(
+            "macos",
+            None,
+            Some(std::ffi::OsString::from("/Users/alice")),
+            None,
+        )
+        .expect("macos config path should resolve from HOME");
+
+        assert_eq!(
+            path,
+            PathBuf::from("/Users/alice")
+                .join("Library")
+                .join("Application Support")
+                .join("com.fonlan.rutar")
+                .join("config.json")
+        );
+    }
+
+    #[test]
+    fn config_file_path_for_platform_should_keep_windows_appdata_path() {
+        let app_data = std::ffi::OsString::from(r"C:\Users\alice\AppData\Roaming");
+        let path = config_file_path_for_platform("windows", Some(app_data.clone()), None, None)
+            .expect("windows config path should resolve from APPDATA");
+
+        assert_eq!(
+            path,
+            PathBuf::from(app_data).join("Rutar").join("config.json")
+        );
+    }
+
+    #[test]
+    fn config_file_path_for_platform_should_use_xdg_config_home_on_linux() {
+        let path = config_file_path_for_platform(
+            "linux",
+            None,
+            Some(std::ffi::OsString::from("/home/alice")),
+            Some(std::ffi::OsString::from("/tmp/config")),
+        )
+        .expect("linux config path should resolve from XDG_CONFIG_HOME");
+
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/config")
+                .join("rutar")
+                .join("config.json")
+        );
+    }
+
+    #[test]
+    fn config_file_path_for_platform_should_fallback_to_home_config_on_linux() {
+        let path = config_file_path_for_platform(
+            "linux",
+            None,
+            Some(std::ffi::OsString::from("/home/alice")),
+            None,
+        )
+        .expect("linux config path should resolve from HOME");
+
+        assert_eq!(
+            path,
+            PathBuf::from("/home/alice")
+                .join(".config")
+                .join("rutar")
+                .join("config.json")
+        );
     }
 
     #[test]
