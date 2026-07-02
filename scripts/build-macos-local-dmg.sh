@@ -28,8 +28,7 @@ ln -s /Applications "$STAGE_DIR/Applications"
 
 # ponytail: local installer only; no Finder window cosmetics. Use Tauri's dmg target if we later need polished public distribution.
 hdiutil create -volname "$PRODUCT_NAME" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH"
-rm -rf "$STAGE_DIR"
+rm -rf "$STAGE_DIR" "$APP_PATH"
 
-echo "Created app bundle: $APP_PATH"
 echo "Created local installer: $DMG_PATH"
 echo "Open the DMG and drag $PRODUCT_NAME.app to Applications, then use that installed app for daily use."

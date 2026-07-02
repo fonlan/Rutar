@@ -61,13 +61,13 @@ cd src-tauri && cargo test
 
 ## macOS 本地 DMG 安装
 
-在 macOS 上一条命令同时生成 `.app` 和本地安装用 `.dmg`：
+在 macOS 上一条命令生成本地安装用 `.dmg`：
 
 ```bash
 npm run build:macos
 ```
 
-脚本会把两个产物都放在同一个目录：`src-tauri/target/release/bundle/macos/`。其中 `.app` 是 `rutar.app`，`.dmg` 是 `rutar_0.1.0_<arch>_local.dmg`。正式使用时从 `.dmg` 安装到 `/Applications/rutar.app` 或 `~/Applications/rutar.app`，不要直接使用源码目录下的 `.app`，这样编译产物和日常使用版本会保持分离。文件关联声明在 `src-tauri/tauri.macos.conf.json` 中；Finder/Open With 只会关联已安装的 `.app` bundle，不会关联 `tauri dev` 或裸二进制。
+脚本只会把安装器输出到 `src-tauri/target/release/bundle/macos/`：`rutar_0.1.0_<arch>_local.dmg`。临时生成的 `rutar.app` 会在 `.dmg` 创建后删除。正式使用时从 `.dmg` 安装到 `/Applications/rutar.app` 或 `~/Applications/rutar.app`，不要直接使用源码目录下的编译产物。文件关联声明在 `src-tauri/tauri.macos.conf.json` 中；Finder/Open With 只会关联已安装的 `.app` bundle，不会关联 `tauri dev` 或裸二进制。
 
 本地注册已安装的 bundle：
 

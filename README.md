@@ -78,13 +78,13 @@ Then run `npx tsx scripts/bench-startup.ts` to write a JSON snapshot under `.per
 
 ## macOS Local DMG Install
 
-On macOS, build both the `.app` and local-install `.dmg` with one command:
+On macOS, build a local-install `.dmg` with one command:
 
 ```bash
 npm run build:macos
 ```
 
-The script writes both artifacts to the same directory: `src-tauri/target/release/bundle/macos/`. The `.app` is `rutar.app`, and the `.dmg` is `rutar_0.1.0_<arch>_local.dmg`. For normal use, install from the `.dmg` to `/Applications/rutar.app` or `~/Applications/rutar.app` instead of launching the `.app` inside the source tree, so build artifacts and the installed version stay separate. File associations are declared in `src-tauri/tauri.macos.conf.json`; Finder/Open With integration only applies to an installed `.app` bundle, not `tauri dev` or the bare binary.
+The script writes only the installer to `src-tauri/target/release/bundle/macos/`: `rutar_0.1.0_<arch>_local.dmg`. The temporary `rutar.app` bundle is removed after the `.dmg` is created. For normal use, install from the `.dmg` to `/Applications/rutar.app` or `~/Applications/rutar.app` instead of launching build artifacts inside the source tree. File associations are declared in `src-tauri/tauri.macos.conf.json`; Finder/Open With integration only applies to an installed `.app` bundle, not `tauri dev` or the bare binary.
 
 To register the installed bundle locally:
 
