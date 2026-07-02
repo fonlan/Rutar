@@ -2486,6 +2486,90 @@ describe('App component', () => {
     });
   });
 
+  it('keeps mouse fallback gesture alive when contextmenu fires before movement', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-contextmenu-before-move' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    let contextMenuEvent: MouseEvent;
+    let dispatched = true;
+    act(() => {
+      fireEvent.mouseDown(appRoot, {
+        button: 2,
+        buttons: 2,
+        clientX: 24,
+        clientY: 24,
+      });
+
+      contextMenuEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        buttons: 2,
+        clientX: 24,
+        clientY: 24,
+      });
+      dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+      fireEvent.mouseMove(appRoot, {
+        buttons: 2,
+        clientX: 84,
+        clientY: 24,
+      });
+
+      fireEvent.mouseUp(appRoot, {
+        button: 2,
+        buttons: 0,
+        clientX: 84,
+        clientY: 24,
+      });
+    });
+
+    expect(dispatched).toBe(false);
+    expect(contextMenuEvent!.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(useStore.getState().sidebarOpen).toBe(true);
+    });
+  });
+
   it('captures and releases pointer for mouse gesture drag lifecycle', async () => {
     const fileTab = createFileTab({ id: 'tab-gesture-pointer-capture-lifecycle' });
     useStore.setState({

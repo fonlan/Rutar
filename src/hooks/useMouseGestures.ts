@@ -465,8 +465,15 @@ export function useMouseGestures({
       };
 
       if (state.active) {
-        const { actionMatched, wasGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
-        if (actionMatched || wasGestureAttempt || consumeContextMenuSuppression(event.clientX, event.clientY)) {
+        const pattern = state.sequence;
+        const wasGestureAttempt = state.movedEnough || pattern.length > 0;
+        if (!wasGestureAttempt && (event.button === 2 || (event.buttons & 2) === 2)) {
+          suppressContextMenuEvent();
+          return;
+        }
+
+        const { actionMatched, wasGestureAttempt: finalizedGestureAttempt } = finalizeGesture(event.clientX, event.clientY);
+        if (actionMatched || finalizedGestureAttempt || consumeContextMenuSuppression(event.clientX, event.clientY)) {
           suppressContextMenuEvent();
         }
         return;
