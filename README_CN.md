@@ -56,23 +56,23 @@ cd src-tauri && cargo test
 - Mermaid 兼容性要求：`src-tauri/tauri.conf.json` 中 `app.security.freezePrototype` 当前需保持 `false`。
 - 锁定标签会以路径形式保存在 `pinnedTabPaths`，并在启动时恢复。
 
-## macOS 本地 App Bundle
+## macOS 本地 DMG 安装
 
-在 macOS 上构建本地 `.app`：
-
-```bash
-npm run tauri build
-```
-
-产物位于 `src-tauri/target/release/bundle/macos/rutar.app`。文件关联声明在 `src-tauri/tauri.macos.conf.json` 中；Finder/Open With 只会关联 `.app` bundle，不会关联 `tauri dev` 或裸二进制。
-
-本地注册 bundle：
+在 macOS 上一条命令同时生成 `.app` 和本地安装用 `.dmg`：
 
 ```bash
-scripts/register-macos-file-associations.sh
+npm run build:macos
 ```
 
-也可以把 `.app` 路径作为第一个参数传给脚本。若要让 Rutar 成为某类扩展名的默认应用，在 Finder 中使用“显示简介 > 打开方式 > 全部更改”。
+脚本会把两个产物都放在同一个目录：`src-tauri/target/release/bundle/macos/`。其中 `.app` 是 `rutar.app`，`.dmg` 是 `rutar_0.1.0_<arch>_local.dmg`。正式使用时从 `.dmg` 安装到 `/Applications/rutar.app` 或 `~/Applications/rutar.app`，不要直接使用源码目录下的 `.app`，这样编译产物和日常使用版本会保持分离。文件关联声明在 `src-tauri/tauri.macos.conf.json` 中；Finder/Open With 只会关联已安装的 `.app` bundle，不会关联 `tauri dev` 或裸二进制。
+
+本地注册已安装的 bundle：
+
+```bash
+scripts/register-macos-file-associations.sh /Applications/rutar.app
+```
+
+也可以把其他 `.app` 路径作为第一个参数传给脚本。若要让 Rutar 成为某类扩展名的默认应用，在 Finder 中使用“显示简介 > 打开方式 > 全部更改”。
 
 ## 项目结构
 

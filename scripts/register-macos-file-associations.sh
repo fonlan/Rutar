@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_PATH="${1:-src-tauri/target/release/bundle/macos/rutar.app}"
+APP_PATH="${1:-/Applications/rutar.app}"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Rutar app bundle not found: $APP_PATH" >&2
-  echo "Build it first with: npm run tauri build" >&2
+  echo "Install it first from the DMG, or pass an explicit .app path." >&2
   exit 1
 fi
 

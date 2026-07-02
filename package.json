@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:macos": "scripts/build-macos-local-dmg.sh",
+    "build:macos:local-dmg": "scripts/build-macos-local-dmg.sh"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",

@@ -73,23 +73,23 @@ Then run `npx tsx scripts/bench-startup.ts` to write a JSON snapshot under `.per
 
 - User config file: `%AppData%\Rutar\config.json`.
 
-## macOS Local App Bundle
+## macOS Local DMG Install
 
-On macOS, build the local `.app` bundle with:
-
-```bash
-npm run tauri build
-```
-
-The bundle is written under `src-tauri/target/release/bundle/macos/rutar.app`. File associations are declared in `src-tauri/tauri.macos.conf.json`; Finder/Open With integration only applies to the `.app` bundle, not `tauri dev` or the bare binary.
-
-To register the bundle locally:
+On macOS, build both the `.app` and local-install `.dmg` with one command:
 
 ```bash
-scripts/register-macos-file-associations.sh
+npm run build:macos
 ```
 
-You can also pass an explicit app path as the first argument. To make Rutar the default for an extension, use Finder > Get Info > Open with > Change All.
+The script writes both artifacts to the same directory: `src-tauri/target/release/bundle/macos/`. The `.app` is `rutar.app`, and the `.dmg` is `rutar_0.1.0_<arch>_local.dmg`. For normal use, install from the `.dmg` to `/Applications/rutar.app` or `~/Applications/rutar.app` instead of launching the `.app` inside the source tree, so build artifacts and the installed version stay separate. File associations are declared in `src-tauri/tauri.macos.conf.json`; Finder/Open With integration only applies to an installed `.app` bundle, not `tauri dev` or the bare binary.
+
+To register the installed bundle locally:
+
+```bash
+scripts/register-macos-file-associations.sh /Applications/rutar.app
+```
+
+You can also pass another explicit app path as the first argument. To make Rutar the default for an extension, use Finder > Get Info > Open with > Change All.
 
 ## Project Structure
 
