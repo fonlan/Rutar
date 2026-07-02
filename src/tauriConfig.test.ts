@@ -2,6 +2,8 @@ import cargoManifest from "../src-tauri/Cargo.toml?raw";
 import capabilityConfig from "../src-tauri/capabilities/default.json";
 import tauriConfig from "../src-tauri/tauri.conf.json";
 import macosTauriConfig from "../src-tauri/tauri.macos.conf.json";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const config = tauriConfig as {
@@ -24,6 +26,7 @@ const macosConfig = macosTauriConfig as {
   bundle?: {
     active?: boolean;
     targets?: string[];
+    icon?: string[];
     fileAssociations?: Array<{
       ext?: string[];
       role?: string;
@@ -80,9 +83,17 @@ describe("tauri macOS bundle config", () => {
 
     expect(macosConfig.bundle?.active).toBe(true);
     expect(macosConfig.bundle?.targets).toEqual(["app"]);
+    expect(macosConfig.bundle?.icon).toEqual(["icons/icon.icns", "icons/icon.png"]);
     expect(association?.role).toBe("Editor");
     expect(association?.rank).toBe("Default");
     expect(association?.ext).toEqual(expectedMacosAssociationExts);
     expect(association?.ext?.every((ext) => !ext.startsWith("."))).toBe(true);
+  });
+
+  it("uses the root rutar_document image for the macOS bundle icon", () => {
+    const rootDocumentIcon = readFileSync(resolve("rutar_document.png"));
+    const bundledPngIcon = readFileSync(resolve("src-tauri/icons/icon.png"));
+
+    expect(bundledPngIcon.equals(rootDocumentIcon)).toBe(true);
   });
 });
