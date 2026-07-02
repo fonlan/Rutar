@@ -17,9 +17,7 @@ use windows_sys::Win32::UI::Shell::{
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
 use winreg::RegKey;
 
-use super::profile::{
-    load_config_impl, normalize_windows_file_association_extensions,
-};
+use super::profile::{load_config_impl, normalize_windows_file_association_extensions};
 
 pub(crate) const WIN_FILE_SHELL_KEY: &str = r"Software\Classes\*\shell\Rutar";
 pub(crate) const WIN_DIR_SHELL_KEY: &str = r"Software\Classes\Directory\shell\Rutar";
@@ -562,11 +560,7 @@ pub(crate) fn apply_file_associations(
     let icon_path = windows_document_icon_path_string()?;
     let executable_name = executable_file_name_string()?;
 
-    write_windows_file_association_progid(
-        &hkcu,
-        icon_path.as_str(),
-        normalized_language.as_str(),
-    )?;
+    write_windows_file_association_progid(&hkcu, icon_path.as_str(), normalized_language.as_str())?;
     write_windows_registered_application(
         &hkcu,
         executable_name.as_str(),

@@ -1,4 +1,4 @@
-﻿use dashmap::DashMap;
+use dashmap::DashMap;
 use regex::RegexBuilder;
 use ropey::Rope;
 use std::collections::BTreeSet;
@@ -362,10 +362,7 @@ fn build_search_cursor_context_cache_key(document_id: &str, document_version: u6
     format!("{document_id}\u{1f}{document_version}")
 }
 
-fn obtain_search_context_owned(
-    id: &str,
-    doc: &Document,
-) -> (String, Vec<usize>, Vec<usize>) {
+fn obtain_search_context_owned(id: &str, doc: &Document) -> (String, Vec<usize>, Vec<usize>) {
     let cache_key = build_search_cursor_context_cache_key(id, doc.document_version);
     if let Some(entry) = search_cursor_context_cache().get(&cache_key) {
         return (
@@ -4164,9 +4161,18 @@ mod tests {
     #[test]
     fn remove_search_sessions_by_document_should_only_drop_matching_document_entries() {
         search_session_cache().clear();
-        search_session_cache().insert("doc-a-session".to_string(), make_search_session_entry("doc-a"));
-        search_session_cache().insert("doc-b-session-1".to_string(), make_search_session_entry("doc-b"));
-        search_session_cache().insert("doc-b-session-2".to_string(), make_search_session_entry("doc-b"));
+        search_session_cache().insert(
+            "doc-a-session".to_string(),
+            make_search_session_entry("doc-a"),
+        );
+        search_session_cache().insert(
+            "doc-b-session-1".to_string(),
+            make_search_session_entry("doc-b"),
+        );
+        search_session_cache().insert(
+            "doc-b-session-2".to_string(),
+            make_search_session_entry("doc-b"),
+        );
 
         remove_search_sessions_by_document("doc-b");
 
@@ -4178,8 +4184,14 @@ mod tests {
     #[test]
     fn remove_filter_sessions_by_document_should_only_drop_matching_document_entries() {
         filter_session_cache().clear();
-        filter_session_cache().insert("doc-x-session".to_string(), make_filter_session_entry("doc-x"));
-        filter_session_cache().insert("doc-y-session".to_string(), make_filter_session_entry("doc-y"));
+        filter_session_cache().insert(
+            "doc-x-session".to_string(),
+            make_filter_session_entry("doc-x"),
+        );
+        filter_session_cache().insert(
+            "doc-y-session".to_string(),
+            make_filter_session_entry("doc-y"),
+        );
 
         remove_filter_sessions_by_document("doc-y");
 

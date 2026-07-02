@@ -825,6 +825,10 @@ function App() {
         }
       } catch (error) {
         console.error('Failed to load startup paths:', error);
+      } finally {
+        if (!cancelled) {
+          await getCurrentWindow().emit('rutar://frontend-ready');
+        }
       }
     };
 

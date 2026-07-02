@@ -73,6 +73,24 @@ Then run `npx tsx scripts/bench-startup.ts` to write a JSON snapshot under `.per
 
 - User config file: `%AppData%\Rutar\config.json`.
 
+## macOS Local App Bundle
+
+On macOS, build the local `.app` bundle with:
+
+```bash
+npm run tauri build
+```
+
+The bundle is written under `src-tauri/target/release/bundle/macos/rutar.app`. File associations are declared in `src-tauri/tauri.macos.conf.json`; Finder/Open With integration only applies to the `.app` bundle, not `tauri dev` or the bare binary.
+
+To register the bundle locally:
+
+```bash
+scripts/register-macos-file-associations.sh
+```
+
+You can also pass an explicit app path as the first argument. To make Rutar the default for an extension, use Finder > Get Info > Open with > Change All.
+
 ## Project Structure
 
 - `src/`: React frontend.

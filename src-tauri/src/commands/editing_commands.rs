@@ -86,10 +86,7 @@ pub fn encode_image_file_as_data_url(path: String) -> Result<String, String> {
     editing::encode_image_file_as_data_url_impl(path)
 }
 #[tauri::command]
-pub fn copy_image_file_to_clipboard(
-    app: tauri::AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub fn copy_image_file_to_clipboard(app: tauri::AppHandle, path: String) -> Result<(), String> {
     // Reuse the app-scoped clipboard plugin state instead of creating ad-hoc
     // clipboard handles on worker threads. The latter can hang image copy on Windows.
     let image = editing::decode_image_file_to_clipboard_image(path)?;

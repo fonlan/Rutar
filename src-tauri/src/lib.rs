@@ -3,7 +3,9 @@ mod state;
 
 use state::AppState;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, PhysicalSize, Size, WebviewWindow, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Listener, Manager, PhysicalSize, Size, WebviewWindow, WindowEvent,
+};
 
 #[derive(Clone, serde::Serialize)]
 struct ExternalFileChangeEventPayload {
@@ -20,15 +22,61 @@ fn collect_valid_startup_paths_from_args<I>(args: I) -> Vec<String>
 where
     I: IntoIterator<Item = String>,
 {
-    args.into_iter()
-        .filter(|value| {
+    collect_valid_startup_paths(args)
+}
+
+fn collect_valid_startup_paths<I, S>(paths: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    paths
+        .into_iter()
+        .filter_map(|value| {
+            let value = value.as_ref();
             if value.starts_with('-') {
-                return false;
+                return None;
             }
 
-            std::path::Path::new(value).exists()
+            let path = std::path::Path::new(value);
+            if path.exists() {
+                Some(path.to_string_lossy().to_string())
+            } else {
+                None
+            }
         })
         .collect()
+}
+
+fn collect_valid_startup_paths_from_urls<I>(urls: I) -> Vec<String>
+where
+    I: IntoIterator<Item = tauri::Url>,
+{
+    collect_valid_startup_paths(urls.into_iter().filter_map(|url| match url.to_file_path() {
+        Ok(path) => Some(path.to_string_lossy().to_string()),
+        Err(()) => None,
+    }))
+}
+
+fn emit_or_queue_open_paths(app: &AppHandle, startup_paths: Vec<String>) {
+    if startup_paths.is_empty() {
+        return;
+    }
+
+    if app.state::<AppState>().is_frontend_ready() {
+        forward_startup_paths_to_main_window(app, startup_paths);
+    } else {
+        app.state::<AppState>().push_startup_paths(startup_paths);
+    }
+}
+
+fn setup_frontend_ready_listener(app: &AppHandle) {
+    let app_handle = app.clone();
+    app.listen("rutar://frontend-ready", move |_| {
+        app_handle.state::<AppState>().mark_frontend_ready();
+        let startup_paths = app_handle.state::<AppState>().take_startup_paths();
+        forward_startup_paths_to_main_window(&app_handle, startup_paths);
+    });
 }
 
 fn forward_startup_paths_to_main_window(app: &AppHandle, startup_paths: Vec<String>) {
@@ -174,6 +222,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            setup_frontend_ready_listener(app.handle());
             setup_main_window_state_tracking(app.handle());
             setup_external_file_change_tracking(app.handle());
             Ok(())
@@ -182,11 +231,11 @@ pub fn run() {
     if single_instance_mode_enabled {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let startup_paths = collect_valid_startup_paths_from_args(args.into_iter().skip(1));
-            forward_startup_paths_to_main_window(app, startup_paths);
+            emit_or_queue_open_paths(app, startup_paths);
         }));
     }
 
-    if let Err(err) = builder
+    let app = builder
         .manage(AppState::new(startup_paths))
         .invoke_handler(tauri::generate_handler![
             commands::file_io_commands::open_file,
@@ -282,15 +331,22 @@ pub fn run() {
             commands::get_startup_paths,
             show_main_window_when_ready
         ])
-        .run(tauri::generate_context!())
-    {
-        eprintln!("error while running tauri application: {err}");
+        .build(tauri::generate_context!());
+
+    match app {
+        Ok(app) => app.run(|app_handle, event| {
+            if let tauri::RunEvent::Opened { urls } = event {
+                let startup_paths = collect_valid_startup_paths_from_urls(urls);
+                emit_or_queue_open_paths(app_handle, startup_paths);
+            }
+        }),
+        Err(err) => eprintln!("error while running tauri application: {err}"),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::collect_valid_startup_paths_from_args;
+    use super::{collect_valid_startup_paths_from_args, collect_valid_startup_paths_from_urls};
     use std::fs;
     use std::path::PathBuf;
 
@@ -333,6 +389,20 @@ mod tests {
 
         let paths = collect_valid_startup_paths_from_args(args);
         assert_eq!(paths, vec![existing_file, existing_dir]);
+
+        let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn collect_valid_startup_paths_from_urls_should_keep_existing_file_urls() {
+        let (root, existing_file, _existing_dir, missing_file) = make_temp_workspace();
+        let existing_url =
+            tauri::Url::from_file_path(&existing_file).expect("valid existing file url");
+        let missing_url =
+            tauri::Url::from_file_path(&missing_file).expect("valid missing file url");
+        let web_url = tauri::Url::parse("https://example.com/file.txt").expect("valid web url");
+
+        let paths = collect_valid_startup_paths_from_urls(vec![existing_url, missing_url, web_url]);
+        assert_eq!(paths, vec![existing_file]);
 
         let _ = fs::remove_dir_all(root);
     }

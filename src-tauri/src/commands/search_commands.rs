@@ -346,4 +346,3 @@ pub fn step_result_filter_search_in_filter_document(
         max_results,
     )
 }
-

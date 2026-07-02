@@ -3,6 +3,7 @@ use encoding_rs::Encoding;
 use notify::RecommendedWatcher;
 use ropey::Rope;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -126,6 +127,7 @@ impl Document {
 pub struct AppState {
     pub documents: DashMap<String, Document>,
     startup_paths: Mutex<Vec<String>>,
+    frontend_ready: AtomicBool,
     folder_watch: Mutex<Option<FolderWatchState>>,
 }
 
@@ -142,6 +144,7 @@ impl AppState {
         Self {
             documents: DashMap::new(),
             startup_paths: Mutex::new(startup_paths),
+            frontend_ready: AtomicBool::new(false),
             folder_watch: Mutex::new(None),
         }
     }
@@ -152,6 +155,21 @@ impl AppState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         std::mem::take(&mut *paths)
+    }
+
+    pub fn push_startup_paths(&self, new_paths: Vec<String>) {
+        self.startup_paths
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .extend(new_paths);
+    }
+
+    pub fn mark_frontend_ready(&self) {
+        self.frontend_ready.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_frontend_ready(&self) -> bool {
+        self.frontend_ready.load(Ordering::SeqCst)
     }
 
     pub fn watched_folder_path(&self) -> Option<PathBuf> {

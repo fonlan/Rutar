@@ -30,6 +30,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(() => ({
     close: vi.fn(async () => undefined),
+    emit: vi.fn(async () => undefined),
     onDragDropEvent: vi.fn(async () => vi.fn()),
     onCloseRequested: vi.fn(async () => vi.fn()),
   })),

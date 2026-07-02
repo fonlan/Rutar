@@ -129,8 +129,7 @@ pub fn expand_target_path(
     }
 
     let path = PathBuf::from(trimmed);
-    let metadata =
-        fs::metadata(&path).map_err(|error| format!("cannot stat target: {error}"))?;
+    let metadata = fs::metadata(&path).map_err(|error| format!("cannot stat target: {error}"))?;
     if metadata.is_file() {
         return Ok(vec![path]);
     }
@@ -258,8 +257,7 @@ fn read_text_file(path: &Path) -> Result<String, String> {
 }
 
 fn read_text_file_snapshot(path: &Path) -> Result<TextFileSnapshot, String> {
-    let file =
-        File::open(path).map_err(|error| format!("cannot open file: {error}"))?;
+    let file = File::open(path).map_err(|error| format!("cannot open file: {error}"))?;
     let metadata = file
         .metadata()
         .map_err(|error| format!("cannot read metadata: {error}"))?;
@@ -277,8 +275,7 @@ fn read_text_file_snapshot(path: &Path) -> Result<TextFileSnapshot, String> {
             bom: Vec::new(),
         });
     }
-    let mmap =
-        unsafe { Mmap::map(&file).map_err(|error| format!("cannot mmap file: {error}"))? };
+    let mmap = unsafe { Mmap::map(&file).map_err(|error| format!("cannot mmap file: {error}"))? };
 
     if is_binary_content(&mmap[..mmap.len().min(8192)]) {
         return Err("file appears to be binary".to_string());

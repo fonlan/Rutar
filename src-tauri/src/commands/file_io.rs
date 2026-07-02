@@ -659,12 +659,13 @@ fn render_markdown_preview_html(source: &str) -> Result<String, String> {
     // what you see in the preview. We do the same by rewriting every
     // `SoftBreak` event into a `HardBreak` before handing the stream off to
     // pulldown-cmark's HTML renderer.
-    let parser = pulldown_cmark::Parser::new_ext(source, markdown_preview_options()).map(
-        |event| match event {
-            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-            other => other,
-        },
-    );
+    let parser =
+        pulldown_cmark::Parser::new_ext(source, markdown_preview_options()).map(
+            |event| match event {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                other => other,
+            },
+        );
 
     let mut html_output = String::with_capacity(source.len() + source.len() / 4);
     pulldown_cmark::html::push_html(&mut html_output, parser);
@@ -739,18 +740,17 @@ async fn write_snapshot_to_disk(
 ) -> Result<(SaveSnapshot, Option<FileFingerprint>), String> {
     let path_for_io = snapshot.path.clone();
     let bytes_for_io = snapshot.bytes.clone();
-    let fingerprint = tauri::async_runtime::spawn_blocking(
-        move || -> Result<Option<FileFingerprint>, String> {
+    let fingerprint =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Option<FileFingerprint>, String> {
             let mut file = File::create(&path_for_io).map_err(|e| e.to_string())?;
             use std::io::Write;
             file.write_all(&bytes_for_io).map_err(|e| e.to_string())?;
             Ok(fs::metadata(&path_for_io)
                 .ok()
                 .map(|metadata| build_file_fingerprint(&metadata)))
-        },
-    )
-    .await
-    .map_err(|error| error.to_string())??;
+        })
+        .await
+        .map_err(|error| error.to_string())??;
     Ok((snapshot, fingerprint))
 }
 
@@ -1103,10 +1103,9 @@ fn validate_file_tree_entry_name(name: &str) -> Result<String, String> {
         return Err("Name cannot end with a space or period".to_string());
     }
 
-    if trimmed
-        .chars()
-        .any(|ch| ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
-    {
+    if trimmed.chars().any(|ch| {
+        ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+    }) {
         return Err("Name contains invalid characters".to_string());
     }
 

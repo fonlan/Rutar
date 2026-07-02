@@ -56,6 +56,24 @@ cd src-tauri && cargo test
 - Mermaid 兼容性要求：`src-tauri/tauri.conf.json` 中 `app.security.freezePrototype` 当前需保持 `false`。
 - 锁定标签会以路径形式保存在 `pinnedTabPaths`，并在启动时恢复。
 
+## macOS 本地 App Bundle
+
+在 macOS 上构建本地 `.app`：
+
+```bash
+npm run tauri build
+```
+
+产物位于 `src-tauri/target/release/bundle/macos/rutar.app`。文件关联声明在 `src-tauri/tauri.macos.conf.json` 中；Finder/Open With 只会关联 `.app` bundle，不会关联 `tauri dev` 或裸二进制。
+
+本地注册 bundle：
+
+```bash
+scripts/register-macos-file-associations.sh
+```
+
+也可以把 `.app` 路径作为第一个参数传给脚本。若要让 Rutar 成为某类扩展名的默认应用，在 Finder 中使用“显示简介 > 打开方式 > 全部更改”。
+
 ## 项目结构
 
 - `src/`：React 前端。

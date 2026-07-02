@@ -11,12 +11,16 @@ pub struct TranslationRequest {
 }
 
 fn normalize_proxy_server(proxy_server: Option<&str>) -> Result<Option<String>, String> {
-    let Some(proxy_server) = proxy_server.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(proxy_server) = proxy_server
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(None);
     };
 
-    let url = reqwest::Url::parse(proxy_server)
-        .map_err(|_| "Proxy server must be a valid http://, https://, or socks5:// URL.".to_string())?;
+    let url = reqwest::Url::parse(proxy_server).map_err(|_| {
+        "Proxy server must be a valid http://, https://, or socks5:// URL.".to_string()
+    })?;
     if !matches!(url.scheme(), "http" | "https" | "socks5") {
         return Err("Proxy server must use http://, https://, or socks5://.".to_string());
     }
@@ -28,7 +32,8 @@ fn build_client(proxy_server: Option<&str>) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(60));
 
     if let Some(proxy_server) = normalize_proxy_server(proxy_server)? {
-        builder = builder.proxy(reqwest::Proxy::all(proxy_server).map_err(|error| error.to_string())?);
+        builder =
+            builder.proxy(reqwest::Proxy::all(proxy_server).map_err(|error| error.to_string())?);
     }
 
     builder.build().map_err(|error| error.to_string())
@@ -62,7 +67,10 @@ fn parse_microsoft_translation_response(body: &Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
-async fn translate_with_google(client: reqwest::Client, request: &TranslationRequest) -> Result<String, String> {
+async fn translate_with_google(
+    client: reqwest::Client,
+    request: &TranslationRequest,
+) -> Result<String, String> {
     let url = reqwest::Url::parse_with_params(
         "https://translate.googleapis.com/translate_a/single",
         &[
@@ -90,12 +98,18 @@ async fn translate_with_google(client: reqwest::Client, request: &TranslationReq
         .ok_or_else(|| "Translation response did not include translated text.".to_string())
 }
 
-async fn translate_with_microsoft(client: reqwest::Client, request: &TranslationRequest) -> Result<String, String> {
+async fn translate_with_microsoft(
+    client: reqwest::Client,
+    request: &TranslationRequest,
+) -> Result<String, String> {
     let url = reqwest::Url::parse_with_params(
         "https://api-edge.cognitive.microsofttranslator.com/translate",
         &[
             ("api-version", "3.0"),
-            ("to", microsoft_target_language(request.target_language.as_str())),
+            (
+                "to",
+                microsoft_target_language(request.target_language.as_str()),
+            ),
         ],
     )
     .map_err(|error| error.to_string())?;
@@ -116,7 +130,9 @@ async fn translate_with_microsoft(client: reqwest::Client, request: &Translation
         .ok_or_else(|| "Translation response did not include translated text.".to_string())
 }
 
-pub(crate) async fn translate_document_text_impl(request: TranslationRequest) -> Result<String, String> {
+pub(crate) async fn translate_document_text_impl(
+    request: TranslationRequest,
+) -> Result<String, String> {
     let client = build_client(request.proxy_server.as_deref())?;
 
     match request.engine.as_str() {

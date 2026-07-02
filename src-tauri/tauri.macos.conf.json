@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "fileAssociations": [
+      {
+        "name": "Rutar Text Documents",
+        "description": "Text and code files opened with Rutar",
+        "ext": ["txt", "md", "log", "json", "yaml", "yml", "toml", "xml", "ini", "conf"],
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Default",
+        "contentTypes": [
+          "public.plain-text",
+          "public.data",
+          "public.json",
+          "public.yaml",
+          "public.xml"
+        ]
+      }
+    ]
+  }
+}
