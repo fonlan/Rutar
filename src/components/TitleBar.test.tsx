@@ -260,6 +260,45 @@ describe("TitleBar", () => {
     });
   });
 
+  it("toggles maximize when double-clicking empty title bar space", async () => {
+    const tab = createTab({ id: "tab-titlebar-double", name: "titlebar.ts", path: "C:\\repo\\titlebar.ts" });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+    });
+
+    const { container } = render(<TitleBar />);
+    const titleBar = container.querySelector('[data-layout-region="titlebar"]');
+    expect(titleBar).not.toBeNull();
+
+    fireEvent.doubleClick(titleBar as Element);
+
+    await waitFor(() => {
+      expect(tauriWindowMocks.appWindow.toggleMaximize).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not toggle maximize when double-clicking a tab", async () => {
+    const leftTab = createTab({ id: "tab-double-no-max-left", name: "left.ts", path: "C:\\repo\\left.ts" });
+    const rightTab = createTab({ id: "tab-double-no-max-right", name: "right.ts", path: "C:\\repo\\right.ts" });
+    useStore.setState({
+      tabs: [leftTab, rightTab],
+      activeTabId: rightTab.id,
+    });
+    useStore.getState().updateSettings({ doubleClickCloseTab: true });
+
+    render(<TitleBar />);
+
+    fireEvent.doubleClick(screen.getByText("left.ts"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_files", {
+        ids: ["tab-double-no-max-left"],
+      });
+    });
+    expect(tauriWindowMocks.appWindow.toggleMaximize).not.toHaveBeenCalled();
+  });
+
   it("shows restore button state when window is maximized", async () => {
     const tab = createTab({ id: "tab-window-maximized", name: "window-maximized.ts", path: "C:\\repo\\window-maximized.ts" });
     const resizeHandlers: Array<(event: unknown) => void> = [];

@@ -283,6 +283,16 @@ export function TitleBar() {
             console.error('Failed to toggle maximize state:', error);
         }
     }, []);
+    const handleTitleBarDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement | null;
+
+        if (target?.closest('[data-titlebar-no-maximize]')) {
+            return;
+        }
+
+        event.preventDefault();
+        void handleMaximize();
+    }, [handleMaximize]);
     const handleClose = () => appWindow.close();
     const handleWindowControlContextMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -959,6 +969,7 @@ export function TitleBar() {
             className="flex h-9 w-full select-none items-stretch bg-background relative"
             data-tauri-drag-region
             data-layout-region="titlebar"
+            onDoubleClick={handleTitleBarDoubleClick}
             onPointerDown={() => {
                 window.dispatchEvent(new Event('rutar:titlebar-pointerdown'));
             }}
@@ -1026,6 +1037,7 @@ export function TitleBar() {
                                 !isPendingTab && 'hover:bg-muted/80',
                                 isPendingTab && 'opacity-80'
                             )}
+                            data-titlebar-no-maximize
                             style={noDragStyle}
                         >
                             {activeTabId === tab.id && <div className="absolute -left-px -right-px top-0 h-[3px] bg-blue-500" />}
@@ -1239,7 +1251,10 @@ export function TitleBar() {
             )}
 
             {/* Window Controls */}
-            <div className="flex items-center h-full bg-background border-b border-border relative z-20 px-1">
+            <div
+                className="flex items-center h-full bg-background border-b border-border relative z-20 px-1"
+                data-titlebar-no-maximize
+            >
                 <button
                     type="button"
                     onClick={() => void handleToggleAlwaysOnTop()}
