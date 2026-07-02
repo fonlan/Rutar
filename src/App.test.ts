@@ -295,6 +295,7 @@ describe('App component', () => {
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: vi.fn(async () => () => undefined),
     } as never);
@@ -490,6 +491,7 @@ describe('App component', () => {
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: vi.fn(async () => deferred.promise),
     } as never);
@@ -510,6 +512,7 @@ describe('App component', () => {
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: vi.fn(async () => {
         throw new Error('close-guard-register-failed');
@@ -545,6 +548,7 @@ describe('App component', () => {
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: onCloseRequestedSpy,
     } as never);
@@ -587,6 +591,7 @@ describe('App component', () => {
 
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: onCloseRequestedSpy,
     } as never);
@@ -1546,6 +1551,7 @@ describe('App component', () => {
     let dragDropHandler: ((event: { payload: { type: string; paths: string[] } }) => void) | null = null;
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async (callback: unknown) => {
         dragDropHandler = callback as (event: { payload: { type: string; paths: string[] } }) => void;
         return () => undefined;
@@ -1575,6 +1581,7 @@ describe('App component', () => {
   it('logs error when registering drag-drop listener fails', async () => {
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: vi.fn(async () => undefined),
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => {
         throw new Error('drag-drop-listener-failed');
       }),
@@ -2391,6 +2398,77 @@ describe('App component', () => {
       fireEvent.pointerMove(appRoot, {
         pointerId: 71,
         pointerType: 'mouse',
+        clientX: 84,
+        clientY: 24,
+      });
+
+      fireEvent.mouseUp(appRoot, {
+        button: 2,
+        buttons: 0,
+        clientX: 84,
+        clientY: 24,
+      });
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().sidebarOpen).toBe(true);
+    });
+  });
+
+  it('executes matched mouse gesture action with mouse event fallback path', async () => {
+    const fileTab = createFileTab({ id: 'tab-gesture-mouse-event-fallback' });
+    useStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      sidebarOpen: false,
+    });
+
+    vi.mocked(invoke).mockImplementation(
+      createInvokeHandler({
+        load_config: async () => ({
+          language: 'en-US',
+          theme: 'light',
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: 14,
+          tabWidth: 4,
+          newFileLineEnding: 'LF',
+          wordWrap: false,
+          doubleClickCloseTab: true,
+          showLineNumbers: true,
+          highlightCurrentLine: true,
+          singleInstanceMode: true,
+          rememberWindowState: true,
+          recentFiles: [],
+          recentFolders: [],
+          windowsFileAssociationExtensions: [],
+          mouseGesturesEnabled: true,
+          mouseGestures: [{ pattern: 'R', action: 'toggleSidebar' }],
+        }),
+      })
+    );
+
+    const { container } = render(React.createElement(App));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.mouseGesturesEnabled).toBe(true);
+    });
+
+    const appRoot = container.querySelector('[data-rutar-app-root="true"]') as HTMLDivElement | null;
+    expect(appRoot).toBeTruthy();
+    if (!appRoot) {
+      return;
+    }
+
+    act(() => {
+      fireEvent.mouseDown(appRoot, {
+        button: 2,
+        buttons: 2,
+        clientX: 24,
+        clientY: 24,
+      });
+
+      fireEvent.mouseMove(appRoot, {
+        buttons: 2,
         clientX: 84,
         clientY: 24,
       });
@@ -3713,6 +3791,7 @@ describe('App component', () => {
     });
     vi.mocked(getCurrentWindow).mockReturnValue({
       close: closeSpy,
+      emit: vi.fn(async () => undefined),
       onDragDropEvent: vi.fn(async () => vi.fn()),
       onCloseRequested: vi.fn(async () => () => undefined),
     } as never);

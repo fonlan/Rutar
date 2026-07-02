@@ -274,33 +274,17 @@ export function useMouseGestures({
       return true;
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
-      const pointerType = event.pointerType?.toLowerCase();
-      if (pointerType && pointerType !== 'mouse') {
-        return;
-      }
-
-      if (event.button !== 2 && (event.buttons & 2) !== 2) {
-        return;
-      }
-
-      const target = event.target instanceof Element
-        ? event.target
-        : event.composedPath().find((entry) => entry instanceof Element) as Element | undefined;
-      if (!target?.closest(areaSelector)) {
-        return;
-      }
-
+    const beginGesture = (target: Element, pointerId: number, clientX: number, clientY: number) => {
       releasePointerCaptureIfNeeded();
       state.active = true;
-      state.pointerId = event.pointerId;
-      state.pointerCaptureTarget = target;
-      state.startX = event.clientX;
-      state.startY = event.clientY;
-      state.lastX = event.clientX;
-      state.lastY = event.clientY;
-      state.trailLastX = event.clientX;
-      state.trailLastY = event.clientY;
+      state.pointerId = pointerId;
+      state.pointerCaptureTarget = pointerId >= 0 ? target : null;
+      state.startX = clientX;
+      state.startY = clientY;
+      state.lastX = clientX;
+      state.lastY = clientY;
+      state.trailLastX = clientX;
+      state.trailLastY = clientY;
       state.sequence = '';
       state.movedEnough = false;
       attachTrailCanvas();
@@ -317,6 +301,52 @@ export function useMouseGestures({
       }
 
       clearTrail();
+    };
+
+    const updateGesture = (clientX: number, clientY: number) => {
+      const trailDx = clientX - state.trailLastX;
+      const trailDy = clientY - state.trailLastY;
+      if (Math.hypot(trailDx, trailDy) >= TRAIL_POINT_DISTANCE_THRESHOLD) {
+        drawTrailSegment(state.trailLastX, state.trailLastY, clientX, clientY);
+        state.trailLastX = clientX;
+        state.trailLastY = clientY;
+      }
+
+      const totalDx = clientX - state.startX;
+      const totalDy = clientY - state.startY;
+      if (!state.movedEnough && Math.hypot(totalDx, totalDy) >= GESTURE_DISTANCE_THRESHOLD) {
+        state.movedEnough = true;
+      }
+
+      const dx = clientX - state.lastX;
+      const dy = clientY - state.lastY;
+
+      if (appendDirection(dx, dy, DIRECTION_THRESHOLD)) {
+        state.lastX = clientX;
+        state.lastY = clientY;
+      }
+    };
+
+    const findEventElement = (event: Event) => event.target instanceof Element
+      ? event.target
+      : event.composedPath().find((entry) => entry instanceof Element) as Element | undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const pointerType = event.pointerType?.toLowerCase();
+      if (pointerType && pointerType !== 'mouse') {
+        return;
+      }
+
+      if (event.button !== 2 && (event.buttons & 2) !== 2) {
+        return;
+      }
+
+      const target = findEventElement(event);
+      if (!target?.closest(areaSelector)) {
+        return;
+      }
+
+      beginGesture(target, event.pointerId, event.clientX, event.clientY);
 
       try {
         target.setPointerCapture(event.pointerId);
@@ -325,32 +355,37 @@ export function useMouseGestures({
       }
     };
 
+    const handleMouseDown = (event: MouseEvent) => {
+      if (state.active) {
+        return;
+      }
+
+      if (event.button !== 2 && (event.buttons & 2) !== 2) {
+        return;
+      }
+
+      const target = findEventElement(event);
+      if (!target?.closest(areaSelector)) {
+        return;
+      }
+
+      beginGesture(target, -1, event.clientX, event.clientY);
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       if (!state.active || event.pointerId !== state.pointerId) {
         return;
       }
 
-      const trailDx = event.clientX - state.trailLastX;
-      const trailDy = event.clientY - state.trailLastY;
-      if (Math.hypot(trailDx, trailDy) >= TRAIL_POINT_DISTANCE_THRESHOLD) {
-        drawTrailSegment(state.trailLastX, state.trailLastY, event.clientX, event.clientY);
-        state.trailLastX = event.clientX;
-        state.trailLastY = event.clientY;
+      updateGesture(event.clientX, event.clientY);
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!state.active || state.pointerId !== -1) {
+        return;
       }
 
-      const totalDx = event.clientX - state.startX;
-      const totalDy = event.clientY - state.startY;
-      if (!state.movedEnough && Math.hypot(totalDx, totalDy) >= GESTURE_DISTANCE_THRESHOLD) {
-        state.movedEnough = true;
-      }
-
-      const dx = event.clientX - state.lastX;
-      const dy = event.clientY - state.lastY;
-
-      if (appendDirection(dx, dy, DIRECTION_THRESHOLD)) {
-        state.lastX = event.clientX;
-        state.lastY = event.clientY;
-      }
+      updateGesture(event.clientX, event.clientY);
     };
 
     const finalizeGesture = (clientX: number, clientY: number) => {
@@ -445,7 +480,9 @@ export function useMouseGestures({
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('mousedown', handleMouseDown, true);
     document.addEventListener('pointermove', handlePointerMove, true);
+    document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('pointerup', handlePointerUp, true);
     document.addEventListener('mouseup', handleMouseUp, true);
     document.addEventListener('pointercancel', handlePointerCancel, true);
@@ -454,7 +491,9 @@ export function useMouseGestures({
 
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('mousedown', handleMouseDown, true);
       document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('mousemove', handleMouseMove, true);
       document.removeEventListener('pointerup', handlePointerUp, true);
       document.removeEventListener('mouseup', handleMouseUp, true);
       document.removeEventListener('pointercancel', handlePointerCancel, true);
