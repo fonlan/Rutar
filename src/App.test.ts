@@ -2486,7 +2486,7 @@ describe('App component', () => {
     });
   });
 
-  it('allows mouse fallback contextmenu before movement when no gesture attempt exists', async () => {
+  it('allows mouse fallback contextmenu before movement and keeps gesture alive', async () => {
     const fileTab = createFileTab({ id: 'tab-gesture-contextmenu-before-move' });
     useStore.setState({
       tabs: [fileTab],
@@ -2549,11 +2549,26 @@ describe('App component', () => {
         clientY: 24,
       });
       dispatched = appRoot.dispatchEvent(contextMenuEvent);
+
+      fireEvent.mouseMove(appRoot, {
+        buttons: 2,
+        clientX: 84,
+        clientY: 24,
+      });
+
+      fireEvent.mouseUp(appRoot, {
+        button: 2,
+        buttons: 0,
+        clientX: 84,
+        clientY: 24,
+      });
     });
 
     expect(dispatched).toBe(true);
     expect(contextMenuEvent!.defaultPrevented).toBe(false);
-    expect(useStore.getState().sidebarOpen).toBe(false);
+    await waitFor(() => {
+      expect(useStore.getState().sidebarOpen).toBe(true);
+    });
   });
 
   it('captures and releases pointer for mouse gesture drag lifecycle', async () => {

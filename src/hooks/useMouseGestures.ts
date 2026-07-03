@@ -69,6 +69,7 @@ export function useMouseGestures({
       trailLastY: 0,
       sequence: '',
       movedEnough: false,
+      suppressedPlainContextMenu: false,
       suppressContextMenuBudget: 0,
       suppressContextMenuUntil: 0,
       suppressContextMenuX: 0,
@@ -255,6 +256,7 @@ export function useMouseGestures({
       state.trailLastY = 0;
       state.sequence = '';
       state.movedEnough = false;
+      state.suppressedPlainContextMenu = false;
     };
 
     const appendDirection = (dx: number, dy: number, threshold: number) => {
@@ -287,6 +289,7 @@ export function useMouseGestures({
       state.trailLastY = clientY;
       state.sequence = '';
       state.movedEnough = false;
+      state.suppressedPlainContextMenu = false;
       attachTrailCanvas();
       clearGesturePreview();
 
@@ -316,6 +319,10 @@ export function useMouseGestures({
       const totalDy = clientY - state.startY;
       if (!state.movedEnough && Math.hypot(totalDx, totalDy) >= GESTURE_DISTANCE_THRESHOLD) {
         state.movedEnough = true;
+        if (state.suppressedPlainContextMenu) {
+          state.suppressedPlainContextMenu = false;
+          window.dispatchEvent(new CustomEvent('rutar:mouse-gesture-started-after-contextmenu'));
+        }
       }
 
       const dx = clientX - state.lastX;
@@ -379,9 +386,12 @@ export function useMouseGestures({
 
       updateGesture(event.clientX, event.clientY);
     };
-
     const handleMouseMove = (event: MouseEvent) => {
-      if (!state.active || state.pointerId !== -1) {
+      if (!state.active) {
+        return;
+      }
+
+      if (event.buttons !== 0 && (event.buttons & 2) !== 2) {
         return;
       }
 
@@ -468,12 +478,9 @@ export function useMouseGestures({
         const pattern = state.sequence;
         const wasGestureAttempt = state.movedEnough || pattern.length > 0;
         if (!wasGestureAttempt) {
-          // ponytail: no movement means this is a plain right click; prefer the editor menu
-          // over trying to preserve a possible future gesture.
-          clearTrail();
-          detachTrailCanvas();
-          clearGesturePreview();
-          reset();
+          // ponytail: let a plain right click open the editor menu, but keep the
+          // gesture alive in case the user is still holding the button and drags.
+          state.suppressedPlainContextMenu = true;
           return;
         }
 

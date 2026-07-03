@@ -1703,6 +1703,54 @@ describe('Editor (Monaco)', () => {
     expect(screen.getByRole('button', { name: 'Paste' })).toBeEnabled();
   });
 
+  it('closes editor context menu when a mouse gesture starts after contextmenu', async () => {
+    const tab = createTab({ id: 'tab-monaco-context-gesture-close' });
+    useStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      settings: {
+        ...useStore.getState().settings,
+        language: 'en-US',
+      },
+    });
+
+    render(<Editor tab={tab} />);
+
+    await waitFor(() => {
+      expect(monacoMockState.contextMenuListener).toBeTruthy();
+    });
+
+    act(() => {
+      monacoMockState.contextMenuListener?.({
+        event: {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          browserEvent: {
+            clientX: 160,
+            clientY: 180,
+          },
+        },
+        target: {
+          type: monacoMockState.mouseTargetType.CONTENT_TEXT,
+          position: {
+            lineNumber: 1,
+            column: 1,
+          },
+        },
+      });
+    });
+
+    expect(await screen.findByRole('button', { name: 'Copy' })).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('rutar:mouse-gesture-started-after-contextmenu'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    });
+  });
+
   it('runs cleanup action from context menu', async () => {
     const tab = createTab({ id: 'tab-monaco-context-cleanup', lineCount: 4 });
     useStore.setState({

@@ -1271,12 +1271,14 @@ export function Editor({
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('rutar:mouse-gesture-started-after-contextmenu', closeMenu);
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('blur', closeMenu);
     window.addEventListener('resize', closeMenu);
 
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('rutar:mouse-gesture-started-after-contextmenu', closeMenu);
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('blur', closeMenu);
       window.removeEventListener('resize', closeMenu);
