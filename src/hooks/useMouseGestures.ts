@@ -467,8 +467,13 @@ export function useMouseGestures({
       if (state.active) {
         const pattern = state.sequence;
         const wasGestureAttempt = state.movedEnough || pattern.length > 0;
-        if (!wasGestureAttempt && (event.button === 2 || (event.buttons & 2) === 2)) {
-          suppressContextMenuEvent();
+        if (!wasGestureAttempt) {
+          // ponytail: no movement means this is a plain right click; prefer the editor menu
+          // over trying to preserve a possible future gesture.
+          clearTrail();
+          detachTrailCanvas();
+          clearGesturePreview();
+          reset();
           return;
         }
 
